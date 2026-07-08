@@ -38,20 +38,19 @@
   display: block;
 }
 
-/* --- Scope window (centre) --------------------------------------------- */
+/* --- Scope window (centre) ---------------------------------------------
+   Bounding box of the circle+left-rectangle union: circle cx533 cy222 r150,
+   left rect x320..533 y150..294, in the 1000x460 viewBox. The canvas is
+   clipped to that union via the SVG #jf-screen-clip path. */
 .jf-screen {
   position: absolute;
-  /* circle: cx500 cy222 r169 in a 1000x460 box */
-  left: 33.1%;
-  top: 11.52%;
-  width: 33.8%;
-  height: 73.5%;
-  border-radius: 50%;
+  left: 32%;
+  top: 15.65%;
+  width: 36.3%;
+  height: 65.22%;
+  clip-path: url(#jf-screen-clip);
   overflow: hidden;
   background: #050505;
-  box-shadow:
-    inset 0 0 0 2px rgba(0, 0, 0, 0.9),
-    inset 0 6px 22px rgba(0, 0, 0, 0.85);
 }
 
 .jf-screen__canvas {
@@ -66,7 +65,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  border-radius: 50%;
+  clip-path: url(#jf-screen-clip);
   background: radial-gradient(120% 80% at 30% 12%, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0) 55%);
   pointer-events: none;
 }
