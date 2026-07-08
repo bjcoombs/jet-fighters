@@ -35,7 +35,26 @@ if (app) {
 
 async function start(mount: HTMLElement): Promise<void> {
   const { root, canvas } = buildCase(mount);
-  const render = createRenderer({ canvas, width: canvas.width, height: canvas.height });
+  const renderer = createRenderer(canvas);
+  const render = (state: GameState): void => renderer.draw(state);
+
+  // Size the backing store to the canvas's CSS box x devicePixelRatio and
+  // re-derive the scope layout. Runs now, on every viewport resize, and when
+  // the devicePixelRatio changes (e.g. dragging the window between monitors) so
+  // the render stays crisp and uniformly scaled.
+  const applyCanvasSize = (): void => {
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      renderer.resize(rect.width, rect.height, window.devicePixelRatio || 1);
+    }
+  };
+  applyCanvasSize();
+  window.addEventListener('resize', applyCanvasSize);
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(applyCanvasSize).observe(canvas);
+  }
+  watchDevicePixelRatio(applyCanvasSize);
+
   const audio = await createAudioSystem();
 
   // The single source of truth. Start powered off: the screen shows only the
@@ -103,6 +122,29 @@ async function start(mount: HTMLElement): Promise<void> {
   };
 
   requestAnimationFrame(frame);
+}
+
+/**
+ * Invoke `onChange` whenever the devicePixelRatio changes. `matchMedia` fires
+ * once per transition, so the listener re-arms itself against the new ratio -
+ * this catches monitor-to-monitor drags and browser-zoom steps that the
+ * `resize` event alone can miss.
+ */
+function watchDevicePixelRatio(onChange: () => void): void {
+  if (typeof window.matchMedia !== 'function') return;
+  const arm = (): void => {
+    const dpr = window.devicePixelRatio || 1;
+    const media = window.matchMedia(`(resolution: ${dpr}dppx)`);
+    media.addEventListener(
+      'change',
+      () => {
+        onChange();
+        arm();
+      },
+      { once: true },
+    );
+  };
+  arm();
 }
 
 /**

@@ -39,15 +39,12 @@
 }
 
 /* --- Scope window (centre) ---------------------------------------------
-   Bounding box of the circle+left-rectangle union: circle cx533 cy222 r150,
-   left rect x320..533 y150..294, in the 1000x460 viewBox. The canvas is
-   clipped to that union via the SVG #jf-screen-clip path. */
+   Position/size (left/top/width/height) are set inline from the shared scope
+   geometry (src/ui/geometry.ts) so this clipped box, the SVG black window, the
+   clip path, and the renderer all derive from one source. The canvas is clipped
+   to the circle+left-rectangle union via the SVG #jf-screen-clip path. */
 .jf-screen {
   position: absolute;
-  left: 32%;
-  top: 15.65%;
-  width: 36.3%;
-  height: 65.22%;
   clip-path: url(#jf-screen-clip);
   overflow: hidden;
   background: #050505;

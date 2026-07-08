@@ -1,41 +1,48 @@
 // Pure, resolution-independent layout math for the VFD renderer.
 //
-// Everything here is a plain function of the canvas dimensions and the grid
-// shape from GameState - no DOM, no canvas, no game logic - so it can be unit
-// tested in the vitest node environment. renderer.ts turns these coordinates
-// into pixels; sprites.ts owns the shapes drawn at them.
+// Everything here is a plain function of the projected scope geometry (from
+// src/ui/geometry) and the grid shape from GameState - no DOM, no canvas, no
+// game logic - so it can be unit tested in the vitest node environment.
+// renderer.ts turns these coordinates into pixels; sprites.ts owns the shapes
+// drawn at them. The scope-window shape (circle + left rectangle) is the single
+// source of truth in src/ui/geometry; the playfield and rim geometry below are
+// derived from it, never invented independently.
 
 import { WIN_SCORE } from '../game/index.js';
+import type { Rect, ScopeGeometry } from '../ui/geometry.js';
 
-/** An axis-aligned rectangle in canvas pixels. */
-export interface Rect {
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-}
+export type { Rect } from '../ui/geometry.js';
 
 /**
- * The bordered playfield rectangle as fractions of the canvas. The scope window
- * is round (task 6 supplies the case); the silkscreen rectangle sits centred in
- * it with the ruler above and the zone labels below, matching the reference
- * photos (screen-closeup-gameplay.jpg / device-front-gameplay.jpg).
+ * The bordered playfield as fractions of the scope bounding box. The band is
+ * centred vertically on the circle and spans nearly the full width (from the
+ * left rectangle tab across the circle), leaving room for the ruler above and
+ * the zone labels below, matching the reference photos.
  */
 export const PLAYFIELD_FRACTION = {
-  x: 0.085,
-  y: 0.345,
-  width: 0.83,
-  height: 0.3,
+  left: 0.055,
+  right: 0.95,
+  top: 0.34,
+  bottom: 0.66,
 } as const;
 
-/** The white bordered playfield rectangle in canvas pixels. */
-export function computePlayfield(width: number, height: number): Rect {
-  return {
-    x: PLAYFIELD_FRACTION.x * width,
-    y: PLAYFIELD_FRACTION.y * height,
-    width: PLAYFIELD_FRACTION.width * width,
-    height: PLAYFIELD_FRACTION.height * height,
-  };
+/** The white bordered playfield rectangle in canvas pixels, derived from geometry. */
+export function computePlayfield(geom: ScopeGeometry): Rect {
+  const b = geom.bounds;
+  const x = b.x + PLAYFIELD_FRACTION.left * b.width;
+  const right = b.x + PLAYFIELD_FRACTION.right * b.width;
+  const y = b.y + PLAYFIELD_FRACTION.top * b.height;
+  const bottom = b.y + PLAYFIELD_FRACTION.bottom * b.height;
+  return { x, y, width: right - x, height: bottom - y };
+}
+
+/** Centre and radius for the arc title text, riding just inside the circle rim. */
+export function arcGeometry(geom: ScopeGeometry): {
+  readonly cx: number;
+  readonly cy: number;
+  readonly radius: number;
+} {
+  return { cx: geom.circle.cx, cy: geom.circle.cy, radius: geom.circle.r * 0.9 };
 }
 
 /**
