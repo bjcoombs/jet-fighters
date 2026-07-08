@@ -1,0 +1,283 @@
+/* Jet Fighters tabletop case + on-case controls.
+   Layout coordinate space matches the SVG viewBox (1000 x 460). Overlay
+   elements are positioned as percentages of `.jf-case`, whose locked
+   aspect-ratio guarantees the round scope window stays circular at any size. */
+
+.jf-stage {
+  width: 100%;
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(8px, 2.5vmin, 32px);
+  box-sizing: border-box;
+}
+
+.jf-case {
+  position: relative;
+  /* Fit the shorter of: available width, sensible max, and viewport height
+     (short mobile-landscape viewports are height-bound, not width-bound). */
+  width: min(100%, 1100px, calc((100dvh - 2 * clamp(8px, 2.5vmin, 32px)) * (1000 / 460)));
+  max-height: 100%;
+  aspect-ratio: 1000 / 460;
+  /* Scale controls/typography with the case, not the viewport. */
+  container-type: inline-size;
+  filter: drop-shadow(0 18px 30px rgba(0, 0, 0, 0.55));
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+.jf-body {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* --- Scope window ------------------------------------------------------- */
+.jf-screen {
+  position: absolute;
+  /* circle: cx500 cy235 r170 in a 1000x460 box */
+  left: 33%;
+  top: 14.13%;
+  width: 34%;
+  height: 73.9%;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #050505;
+  box-shadow:
+    inset 0 0 0 2px rgba(0, 0, 0, 0.9),
+    inset 0 6px 22px rgba(0, 0, 0, 0.85);
+}
+
+.jf-screen__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Glass sheen across the scope */
+.jf-screen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(120% 80% at 30% 12%, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0) 55%);
+  pointer-events: none;
+}
+
+/* --- Fire button (top-right) ------------------------------------------- */
+.jf-fire {
+  position: absolute;
+  left: 80.6%;
+  top: 9.35%;
+  width: 10.4%;
+  height: 22.6%;
+  border-radius: 50%;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.jf-fire__ring {
+  position: absolute;
+  inset: -8%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 35%, #7c1e0d, #4d1206 70%);
+  box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.2), inset 0 -3px 6px rgba(0, 0, 0, 0.6);
+}
+
+.jf-fire__cap {
+  position: absolute;
+  inset: 6%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 30%, #6f8fe6 0%, #2f52b6 45%, #1c357f 100%);
+  box-shadow:
+    inset 0 3px 8px rgba(255, 255, 255, 0.55),
+    inset 0 -6px 12px rgba(0, 0, 0, 0.45),
+    0 6px 10px rgba(0, 0, 0, 0.45);
+  transition: transform 60ms ease-out, box-shadow 60ms ease-out;
+}
+
+.jf-fire.is-pressed .jf-fire__cap {
+  transform: translateY(6%) scale(0.965);
+  box-shadow:
+    inset 0 2px 6px rgba(255, 255, 255, 0.35),
+    inset 0 -3px 8px rgba(0, 0, 0, 0.55),
+    0 2px 4px rgba(0, 0, 0, 0.4);
+}
+
+/* --- Power slide switch (below the fire button) ------------------------ */
+.jf-switch {
+  position: absolute;
+  left: 71%;
+  top: 33.5%;
+  width: 18%;
+  height: 12%;
+  display: flex;
+  align-items: center;
+  gap: 4%;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.jf-switch__label {
+  font: 700 clamp(6px, 1.5cqw, 13px) / 1 Arial, Helvetica, sans-serif;
+  color: rgba(255, 255, 255, 0.85);
+  letter-spacing: 0.05em;
+  flex: 0 0 auto;
+}
+
+.jf-switch__track {
+  position: relative;
+  flex: 1 1 auto;
+  height: 62%;
+  border-radius: 999px;
+  background: linear-gradient(#3a0f05, #601a0a);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.75), inset 0 -1px 2px rgba(255, 255, 255, 0.12);
+}
+
+.jf-switch__thumb {
+  position: absolute;
+  top: 8%;
+  left: 4%;
+  width: 42%;
+  height: 84%;
+  border-radius: 4px;
+  background: linear-gradient(#3b3b3b, #111);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.4), 0 2px 3px rgba(0, 0, 0, 0.6);
+  transition: left 120ms ease-out;
+}
+
+.jf-switch[data-on='true'] .jf-switch__thumb {
+  left: 54%;
+}
+
+.jf-switch[data-on='true'] .jf-switch__label--on {
+  color: #7dff9a;
+  text-shadow: 0 0 6px rgba(90, 255, 130, 0.6);
+}
+
+/* --- Launcher lever (bottom-left) -------------------------------------- */
+.jf-lever {
+  position: absolute;
+  left: 6%;
+  top: 63.5%;
+  width: 13%;
+  height: 33%;
+  cursor: grab;
+  touch-action: none;
+}
+
+.jf-lever:active {
+  cursor: grabbing;
+}
+
+.jf-lever__slot {
+  position: absolute;
+  left: 42%;
+  top: 8%;
+  width: 16%;
+  height: 84%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2a0c04, #501608, #2a0c04);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.8);
+}
+
+.jf-lever__arm {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 78%;
+  height: 26%;
+  transform: translate(-50%, -50%);
+  transition: top 130ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.jf-lever[data-lane='0'] .jf-lever__arm { top: 20%; }
+.jf-lever[data-lane='1'] .jf-lever__arm { top: 50%; }
+.jf-lever[data-lane='2'] .jf-lever__arm { top: 80%; }
+
+.jf-lever__knob {
+  position: absolute;
+  inset: 0;
+  border-radius: 40% / 50%;
+  background: radial-gradient(circle at 40% 30%, #6f8fe6 0%, #2f52b6 50%, #1c357f 100%);
+  box-shadow:
+    inset 0 2px 5px rgba(255, 255, 255, 0.5),
+    inset 0 -4px 8px rgba(0, 0, 0, 0.4),
+    0 4px 8px rgba(0, 0, 0, 0.5);
+}
+
+/* --- Skill dial (bottom-right) ----------------------------------------- */
+.jf-dial {
+  position: absolute;
+  left: 80%;
+  top: 65.6%;
+  width: 11.6%;
+  height: 25.2%;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.jf-dial__face {
+  position: absolute;
+  inset: 14%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 42% 32%, #4a4a4a 0%, #1c1c1c 60%, #050505 100%);
+  box-shadow:
+    inset 0 3px 6px rgba(255, 255, 255, 0.28),
+    inset 0 -5px 10px rgba(0, 0, 0, 0.6),
+    0 4px 8px rgba(0, 0, 0, 0.5);
+  transform: rotate(var(--dial-angle, -50deg));
+  transition: transform 150ms cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+.jf-dial__grip {
+  position: absolute;
+  inset: 30%;
+  border-radius: 50%;
+  background: repeating-conic-gradient(#333 0deg 12deg, #1a1a1a 12deg 24deg);
+}
+
+.jf-dial__pointer {
+  position: absolute;
+  left: 47%;
+  top: 6%;
+  width: 6%;
+  height: 42%;
+  border-radius: 2px;
+  background: linear-gradient(#fff, #cfcfcf);
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.6);
+}
+
+.jf-dial__mark {
+  position: absolute;
+  font: 800 clamp(7px, 1.9cqw, 16px) / 1 Arial, Helvetica, sans-serif;
+  color: rgba(255, 255, 255, 0.9);
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+}
+
+.jf-dial__mark--1 { left: 8%; top: 78%; }
+.jf-dial__mark--2 { left: 50%; top: -6%; }
+.jf-dial__mark--3 { left: 92%; top: 78%; }
+
+.jf-dial[data-level='1'] .jf-dial__mark--1,
+.jf-dial[data-level='2'] .jf-dial__mark--2,
+.jf-dial[data-level='3'] .jf-dial__mark--3 {
+  color: #ffd36b;
+  text-shadow: 0 0 6px rgba(255, 200, 90, 0.7);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jf-fire__cap,
+  .jf-switch__thumb,
+  .jf-lever__arm,
+  .jf-dial__face {
+    transition: none;
+  }
+}
