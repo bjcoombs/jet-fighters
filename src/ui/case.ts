@@ -87,10 +87,11 @@ function buildPowerSwitch(): HTMLElement {
   el.dataset.control = 'power';
   el.setAttribute('role', 'switch');
   el.setAttribute('aria-label', 'Power');
+  // Vertical slide on the left-wing shoulder: ON at the top, OFF at the bottom.
   el.innerHTML = [
-    '<span class="jf-switch__label jf-switch__label--off">OFF</span>',
-    '<span class="jf-switch__track"><span class="jf-switch__thumb"></span></span>',
     '<span class="jf-switch__label jf-switch__label--on">ON</span>',
+    '<span class="jf-switch__track"><span class="jf-switch__thumb"></span></span>',
+    '<span class="jf-switch__label jf-switch__label--off">OFF</span>',
   ].join('');
   return el;
 }
@@ -129,11 +130,13 @@ function buildDial(): HTMLElement {
   return el;
 }
 
-// SVG note: viewBox is 1000 x 460 (~24x11 cm, held-in-both-hands landscape).
-// Only the static molded body, decks, grip texture, label plate, and the scope
-// rim live here. Interactive controls + the screen are HTML overlays.
+// SVG note: viewBox is 1100 x 500 (~24x11 cm, held-in-both-hands landscape).
+// The silhouette is three stepped sections: two lower side wings flanking a
+// taller central block that carries the dominant round scope. Only the static
+// molded body, decks, grip texture, housings, label plate, and the scope rim
+// live here. Interactive controls + the screen are HTML overlays.
 const CASE_SVG = `
-<svg class="jf-body" viewBox="0 0 1000 460" preserveAspectRatio="xMidYMid meet"
+<svg class="jf-body" viewBox="0 0 1100 500" preserveAspectRatio="xMidYMid meet"
      xmlns="${SVG_NS}" aria-hidden="true" focusable="false">
   <defs>
     <linearGradient id="jf-body-red" x1="0" y1="0" x2="0" y2="1">
@@ -144,6 +147,11 @@ const CASE_SVG = `
     <linearGradient id="jf-deck-red" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#ef6a45"/>
       <stop offset="1" stop-color="#bd3a1e"/>
+    </linearGradient>
+    <linearGradient id="jf-block-red" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f0754f"/>
+      <stop offset="0.5" stop-color="#cf4926"/>
+      <stop offset="1" stop-color="#a12c13"/>
     </linearGradient>
     <radialGradient id="jf-panel-red" cx="0.5" cy="0.42" r="0.75">
       <stop offset="0" stop-color="#a02c15"/>
@@ -158,6 +166,11 @@ const CASE_SVG = `
       <stop offset="0.9" stop-color="#5a1a0b"/>
       <stop offset="1" stop-color="#932c15"/>
     </radialGradient>
+    <radialGradient id="jf-recess" cx="0.5" cy="0.4" r="0.6">
+      <stop offset="0" stop-color="#6a1c0c"/>
+      <stop offset="0.7" stop-color="#8a2712"/>
+      <stop offset="1" stop-color="#b23c1f"/>
+    </radialGradient>
     <pattern id="jf-ribs" width="14" height="14" patternTransform="rotate(35)"
              patternUnits="userSpaceOnUse">
       <rect width="14" height="14" fill="none"/>
@@ -169,43 +182,63 @@ const CASE_SVG = `
     </filter>
   </defs>
 
-  <!-- Body silhouette: rounded landscape slab pinched at the sides (hand grips) -->
+  <!-- Body silhouette: two lower wings stepping up to a taller centre block,
+       with a small rounded tab where the scope bulges past the bottom edge. -->
   <path filter="url(#jf-soft)" fill="url(#jf-body-red)" stroke="#6e1a09" stroke-width="2"
-        d="M40,10 H960 Q990,10 990,44 V170
-           C948,202 948,258 990,290 V416 Q990,450 956,450 H44
-           Q10,450 10,416 V290 C52,258 52,202 10,170 V44 Q10,10 40,10 Z"/>
+        d="M44,140 Q44,104 80,104 H298 Q312,104 320,94 L372,34 Q380,24 398,24
+           H702 Q720,24 728,34 L780,94 Q788,104 802,104 H1020 Q1056,104 1056,140
+           V450 Q1056,482 1022,482 H636 Q628,498 612,498 H488 Q472,498 464,482
+           H78 Q44,482 44,450 Z"/>
 
-  <!-- Top highlight to suggest molded gloss -->
+  <!-- Top gloss highlight following the stepped top edge -->
   <path fill="#ffffff" fill-opacity="0.12"
-        d="M40,10 H960 Q990,10 990,44 V60 H10 V44 Q10,10 40,10 Z"/>
+        d="M80,104 H298 Q312,104 320,94 L372,34 Q380,24 398,24 H702 Q720,24 728,34
+           L780,94 Q788,104 802,104 H1020 Q1056,104 1056,140 V150 H44 V140 Q44,104 80,104 Z"/>
 
-  <!-- Top control deck (raised) -->
+  <!-- Central raised block (tallest section, carries the scope) -->
+  <path fill="url(#jf-block-red)" stroke="#7c2010" stroke-width="1.5"
+        d="M366,44 Q374,36 388,36 H712 Q726,36 734,44 L748,66 V446 Q748,470 724,470
+           H636 Q628,486 612,486 H488 Q472,486 464,470 H376 Q352,470 352,446 V66 Z"/>
+
+  <!-- Left wing deck (raised, ribbed grip on the outer flank) -->
   <path fill="url(#jf-deck-red)" stroke="#7c2010" stroke-width="1.5"
-        d="M60,26 H940 Q958,26 958,44 V150 Q958,168 940,168 H60 Q42,168 42,150 V44 Q42,26 60,26 Z"/>
-  <!-- Bottom control deck (raised, ribbed grip) -->
+        d="M82,124 H320 Q332,124 332,142 V444 Q332,462 314,462 H82 Q64,462 64,444 V142 Q64,124 82,124 Z"/>
+  <path fill="url(#jf-ribs)"
+        d="M82,124 H150 V462 H82 Q64,462 64,444 V142 Q64,124 82,124 Z"/>
+
+  <!-- Right wing deck (raised, ribbed grip on the outer flank) -->
   <path fill="url(#jf-deck-red)" stroke="#7c2010" stroke-width="1.5"
-        d="M60,300 H940 Q958,300 958,318 V424 Q958,434 940,434 H60 Q42,434 42,424 V318 Q42,300 60,300 Z"/>
+        d="M786,124 H1018 Q1036,124 1036,142 V444 Q1036,462 1018,462 H786 Q768,462 768,444 V142 Q768,124 786,124 Z"/>
   <path fill="url(#jf-ribs)"
-        d="M60,300 H340 V434 H60 Q42,434 42,424 V318 Q42,300 60,300 Z"/>
-  <path fill="url(#jf-ribs)"
-        d="M660,300 H940 Q958,300 958,318 V424 Q958,434 940,434 H660 Z"/>
+        d="M950,124 H1018 Q1036,124 1036,142 V444 Q1036,462 1018,462 H950 Z"/>
 
   <!-- Central recessed panel behind the scope -->
-  <rect x="300" y="52" width="400" height="356" rx="26" fill="url(#jf-panel-red)"
+  <rect x="368" y="70" width="364" height="392" rx="24" fill="url(#jf-panel-red)"
         stroke="#5c1808" stroke-width="2"/>
   <!-- Scope rim (bezel) - HTML screen sits just inside this -->
-  <circle cx="500" cy="235" r="182" fill="url(#jf-rim)"/>
-  <circle cx="500" cy="235" r="170" fill="#050505"/>
+  <circle cx="550" cy="250" r="196" fill="url(#jf-rim)"/>
+  <circle cx="550" cy="250" r="184" fill="#050505"/>
 
-  <!-- JET FIGHTERS label plate (top-left) -->
+  <!-- Shoulder ramp (left) that the ON/OFF slide switch sits on -->
+  <path fill="url(#jf-block-red)" stroke="#7c2010" stroke-width="1.2"
+        d="M336,116 H360 V246 H336 Q318,246 318,228 V134 Q318,116 336,116 Z"/>
+
+  <!-- Lever housing (round recess, top of the right wing) -->
+  <circle cx="865" cy="185" r="70" fill="url(#jf-recess)" stroke="#6a1c0c" stroke-width="2"/>
+  <circle cx="865" cy="185" r="60" fill="#7c2413"/>
+
+  <!-- Skill dial base (round recess, bottom-right) -->
+  <circle cx="988" cy="380" r="62" fill="url(#jf-recess)" stroke="#6a1c0c" stroke-width="2"/>
+
+  <!-- JET FIGHTERS label plate (bottom-left) -->
   <g>
-    <rect x="58" y="44" width="196" height="104" rx="12" fill="url(#jf-label-blue)"
+    <rect x="86" y="356" width="196" height="96" rx="10" fill="url(#jf-label-blue)"
           stroke="#16265c" stroke-width="2"/>
-    <rect x="66" y="52" width="180" height="88" rx="8" fill="none"
+    <rect x="94" y="364" width="180" height="80" rx="7" fill="none"
           stroke="#ffffff" stroke-opacity="0.25" stroke-width="1.5"/>
-    <text x="156" y="94" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
-          font-weight="800" font-size="34" letter-spacing="1" fill="#ffffff">JET</text>
-    <text x="156" y="128" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
-          font-weight="800" font-size="30" letter-spacing="1" fill="#ffffff">FIGHTERS</text>
+    <text x="184" y="398" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
+          font-weight="800" font-size="30" letter-spacing="1" fill="#ffffff">JET</text>
+    <text x="184" y="430" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
+          font-weight="800" font-size="27" letter-spacing="1" fill="#ffffff">FIGHTERS</text>
   </g>
 </svg>`;
