@@ -32,10 +32,11 @@
 //                     gameplay-audio.m4a ~54 s dense section
 //   - win:            F#5(750)-A#5(940)-D#6(1244) arpeggio x3 resolving to a long
 //                     A#5, ~1.83 s                     gameplay-audio.m4a ~120.5 s
-//   - gameOver (loss): buzzy descent from the ~390 Hz opening down into a ~145 Hz
-//                     rasp + noise, ~1.1 s             loss-audio.m4a ~85.85 s
-//   - launcher-hit warning beep: the loss opening tone (measured ~360-409 Hz,
-//                     F#4-G#4); synthesized at 392 Hz (G4), two or three beeps.
+//   - gameOver (loss): brief ~466 Hz opening transient collapsing to an ~80-97 Hz
+//                     buzz, body rasp ~200-280 Hz, dark noise, ~1.13 s
+//                                                      loss-audio.m4a ~85.86-86.99 s
+//   - launcher-hit warning beep: the loss opening tone (measured ~455-545 Hz),
+//                     synthesized at 466 Hz; two or three very short (~12 ms) beeps.
 
 /** The five named, static game effects. */
 export type EffectName =
@@ -94,10 +95,16 @@ const F5s = 750; // F#5
 const A5s = 940; // A#5
 const D6s = 1244; // D#6
 
-/** Pitch of the launcher-hit warning beep - the loss sound's opening note (~G4). */
-export const WARNING_BEEP_HZ = 392;
-const WARNING_BEEP_MS = 110;
-const WARNING_GAP_MS = 90;
+/**
+ * Pitch of the launcher-hit warning beep - the loss sound's opening note.
+ * Measured from loss-audio.m4a: the loss opening transient and the discrete
+ * triple-beep warning at ~27.4 s both read ~455-545 Hz (dominant partials
+ * 455/455/544, whine-notched); 466 Hz (A#4) sits in that measured cluster.
+ * The beeps themselves are very short piezo blips (~10 ms) spaced ~25-28 ms apart.
+ */
+export const WARNING_BEEP_HZ = 466;
+const WARNING_BEEP_MS = 12;
+const WARNING_GAP_MS = 28;
 
 /**
  * The static effect table: which sound each fixed game event makes. Every entry
@@ -156,22 +163,24 @@ export const EFFECTS: Record<EffectName, EffectSpec> = {
     attackMs: 4,
     releaseMs: 90,
   },
-  // LOSS sound: buzzy descent from the ~390 Hz opening into a low ~145 Hz rasp,
-  // layered with a dark decaying noise burst. Transcribed from loss-audio.m4a.
+  // LOSS sound (loss-audio.m4a ~85.86-86.99 s, ~1.13 s). Measured shape: a brief
+  // high opening transient (~466 Hz, ~20 ms) collapses within ~30 ms to a very low
+  // buzz (~80-97 Hz), the body rasp then sits loudest at ~200-280 Hz before decaying
+  // through a low ~147 Hz rasp. Layered with a dark decaying noise burst (measured
+  // rolloff mostly 400-1150 Hz with intermittent crackle bursts).
   gameOver: {
     type: 'square',
     steps: [
-      { freq: 392, durationMs: 90 },
-      { freq: 349, durationMs: 90 },
-      { freq: 294, durationMs: 100 },
-      { freq: 233, durationMs: 110 },
-      { freq: 175, durationMs: 140 },
-      { freq: 147, durationMs: 360 },
+      { freq: 466, durationMs: 25 }, // opening transient (= warning-beep pitch)
+      { freq: 96, durationMs: 45 }, // sharp collapse to the low buzz
+      { freq: 240, durationMs: 180 }, // main rasp body, loudest (~200-280 Hz)
+      { freq: 196, durationMs: 170 }, // body drifting down
+      { freq: 147, durationMs: 240 }, // low decay
     ],
     gain: 0.4,
-    attackMs: 3,
-    releaseMs: 200,
-    noise: { gain: 0.3, durationMs: 1100, lowpassHz: 700 },
+    attackMs: 2,
+    releaseMs: 180,
+    noise: { gain: 0.32, durationMs: 1130, lowpassHz: 850 },
   },
 };
 
