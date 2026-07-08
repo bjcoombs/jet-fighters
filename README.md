@@ -4,7 +4,7 @@ Browser replica of the 1979 Gakken/CGL Jet Fighters tabletop VFD game.
 
 **[Play it here](https://bjcoombs.github.io/jet-fighters/)**
 
-![Jet Fighters gameplay](assets/reference/device-front-gameplay.jpg)
+<img src="assets/reference/device-front-gameplay.jpg" alt="Jet Fighters - original CGL unit during gameplay" width="480">
 
 > Screenshot placeholder: the reference photo of the original unit above will be
 > replaced with a capture of the running game once the renderer lands.
