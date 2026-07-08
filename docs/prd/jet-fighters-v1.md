@@ -112,12 +112,25 @@ and photos of an original CGL unit plus documented research. The finished game i
 
 ### R6. Audio
 
-- Clip the real effects from `assets/reference/gameplay-audio.m4a` (relative to repo root):
-  missile fire, jet march/buzz, battleship low buzz, explosion/hit, game over. Clean up
-  (high-pass filter, trim, normalize) and commit as small assets.
-- Web Audio playback keyed to game events; mute toggle.
-- Any clip too contaminated by room noise is replaced by a synthesized square-wave
-  equivalent matched by ear to the recording (the original is a simple piezo speaker).
+All effects are mathematical Web Audio syntheses (oscillators/envelopes) - no sampled
+clips ship. The reference recordings are ground truth to imitate: measure fundamentals,
+envelopes, and note sequences from them (the original is a simple piezo speaker, so
+square waves are the authentic waveform).
+
+Owner-confirmed sound semantics (verified against the real unit):
+
+- Missile fire: a single beep. A missile hitting a jet/battleship produces the SAME beep.
+- Player's launcher hit by a rocket: two beeps on the first hit, three beeps on the
+  second hit, and on the third hit the full LOSS sound (game over).
+- Battleship crossing: distinctive lower-pitch buzz. Jets: march/step buzz.
+- WIN at 199 points: the melodic jingle heard at the tail (~120.4 s) of
+  `assets/reference/gameplay-audio.m4a` - the owner confirmed that recording ended in a
+  win. Transcribe and synthesize that melody for `playWin()`.
+- LOSS (third hit): the full loss sound is captured in `assets/reference/loss-audio.m4a`
+  (~89 s recording; the loss sound is near its end). The two-beep and three-beep warning
+  patterns use the same notes as the loss sound's opening - extract them from it.
+- Paths above are relative to the repo root. Web Audio playback keyed to game events;
+  mute toggle.
 
 ### R7. Integration and game states
 
