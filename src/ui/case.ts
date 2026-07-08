@@ -1,14 +1,18 @@
 /**
- * Renders the Jet Fighters tabletop unit: a warm-red landscape case with a
- * blue JET FIGHTERS label, a round black scope window (holding the VFD canvas),
- * and the on-case controls. The molded body is drawn as scalable SVG; the
- * interactive controls and the screen are HTML overlays positioned as
- * percentages of a fixed-aspect stage so a circular window stays circular at
- * every size.
+ * Renders the Jet Fighters tabletop unit: a warm-red landscape case with two
+ * raised control wings flanking a central round black scope window (holding the
+ * VFD canvas). The molded body is drawn as scalable SVG; the interactive
+ * controls and the screen are HTML overlays positioned as percentages of a
+ * fixed-aspect stage so the circular window stays circular at every size.
  *
- * The white silkscreen INSIDE the window (zone labels, ruler, arc text) is the
- * VFD canvas renderer's job (task 4), not this module's - we provide the
- * window and bezel only.
+ * Layout (true landscape orientation, verified against the reference photos):
+ *   LEFT wing  - blue fire button (top), black ON/OFF slide switch (right of
+ *                it), blue JET FIGHTERS label plate (bottom).
+ *   CENTER     - round scope window; the white silkscreen INSIDE it (arc text
+ *                across the top, zone labels along the bottom, 10/3/2/1/G ruler)
+ *                is the VFD canvas renderer's job (task 4), not this module's.
+ *   RIGHT wing - launcher lever (top): a vertical slide with a light knob that
+ *                snaps between 3 positions; blue rotary skill dial 1/2/3 (bottom).
  */
 import './case.css';
 
@@ -88,9 +92,9 @@ function buildPowerSwitch(): HTMLElement {
   el.setAttribute('role', 'switch');
   el.setAttribute('aria-label', 'Power');
   el.innerHTML = [
-    '<span class="jf-switch__label jf-switch__label--off">OFF</span>',
-    '<span class="jf-switch__track"><span class="jf-switch__thumb"></span></span>',
     '<span class="jf-switch__label jf-switch__label--on">ON</span>',
+    '<span class="jf-switch__track"><span class="jf-switch__thumb"></span></span>',
+    '<span class="jf-switch__label jf-switch__label--off">OFF</span>',
   ].join('');
   return el;
 }
@@ -105,8 +109,9 @@ function buildLever(): HTMLElement {
   el.setAttribute('aria-valuemax', '2');
   el.setAttribute('aria-valuenow', '1');
   el.innerHTML = [
+    '<span class="jf-lever__housing"></span>',
     '<span class="jf-lever__slot"></span>',
-    '<span class="jf-lever__arm"><span class="jf-lever__knob"></span></span>',
+    '<span class="jf-lever__knob"></span>',
   ].join('');
   return el;
 }
@@ -130,8 +135,9 @@ function buildDial(): HTMLElement {
 }
 
 // SVG note: viewBox is 1000 x 460 (~24x11 cm, held-in-both-hands landscape).
-// Only the static molded body, decks, grip texture, label plate, and the scope
-// rim live here. Interactive controls + the screen are HTML overlays.
+// Only the static molded body (two wings + central scope housing with the
+// bottom grip scallop), grip texture, label plate, and scope rim live here.
+// Interactive controls + the screen are HTML overlays.
 const CASE_SVG = `
 <svg class="jf-body" viewBox="0 0 1000 460" preserveAspectRatio="xMidYMid meet"
      xmlns="${SVG_NS}" aria-hidden="true" focusable="false">
@@ -141,13 +147,13 @@ const CASE_SVG = `
       <stop offset="0.45" stop-color="#c53d20"/>
       <stop offset="1" stop-color="#951f0d"/>
     </linearGradient>
-    <linearGradient id="jf-deck-red" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ef6a45"/>
-      <stop offset="1" stop-color="#bd3a1e"/>
+    <linearGradient id="jf-wing-red" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f06c46"/>
+      <stop offset="1" stop-color="#bb391d"/>
     </linearGradient>
-    <radialGradient id="jf-panel-red" cx="0.5" cy="0.42" r="0.75">
-      <stop offset="0" stop-color="#a02c15"/>
-      <stop offset="1" stop-color="#701c0a"/>
+    <radialGradient id="jf-panel-red" cx="0.5" cy="0.4" r="0.8">
+      <stop offset="0" stop-color="#a82f16"/>
+      <stop offset="1" stop-color="#6f1c0a"/>
     </radialGradient>
     <linearGradient id="jf-label-blue" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#3a5bb0"/>
@@ -158,54 +164,55 @@ const CASE_SVG = `
       <stop offset="0.9" stop-color="#5a1a0b"/>
       <stop offset="1" stop-color="#932c15"/>
     </radialGradient>
-    <pattern id="jf-ribs" width="14" height="14" patternTransform="rotate(35)"
+    <pattern id="jf-ribs" width="13" height="13" patternTransform="rotate(38)"
              patternUnits="userSpaceOnUse">
-      <rect width="14" height="14" fill="none"/>
-      <line x1="0" y1="0" x2="0" y2="14" stroke="#000" stroke-opacity="0.14" stroke-width="4"/>
-      <line x1="7" y1="0" x2="7" y2="14" stroke="#fff" stroke-opacity="0.06" stroke-width="3"/>
+      <line x1="0" y1="0" x2="0" y2="13" stroke="#000" stroke-opacity="0.13" stroke-width="4"/>
+      <line x1="6.5" y1="0" x2="6.5" y2="13" stroke="#fff" stroke-opacity="0.06" stroke-width="3"/>
     </pattern>
     <filter id="jf-soft" x="-20%" y="-20%" width="140%" height="140%">
       <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000" flood-opacity="0.35"/>
     </filter>
   </defs>
 
-  <!-- Body silhouette: rounded landscape slab pinched at the sides (hand grips) -->
+  <!-- Unified body silhouette: two wing blocks + a central scope housing whose
+       bottom edge scallops upward (the hand-grip notch under the screen). -->
   <path filter="url(#jf-soft)" fill="url(#jf-body-red)" stroke="#6e1a09" stroke-width="2"
-        d="M40,10 H960 Q990,10 990,44 V170
-           C948,202 948,258 990,290 V416 Q990,450 956,450 H44
-           Q10,450 10,416 V290 C52,258 52,202 10,170 V44 Q10,10 40,10 Z"/>
+        d="M44,54 H300 Q322,54 336,44 Q360,24 430,24 H570 Q640,24 664,44
+           Q678,54 700,54 H956 Q992,54 992,90 V402 Q992,438 956,438 H700
+           C640,438 600,410 500,410 C400,410 360,438 300,438 H44
+           Q8,438 8,402 V90 Q8,54 44,54 Z"/>
 
-  <!-- Top highlight to suggest molded gloss -->
-  <path fill="#ffffff" fill-opacity="0.12"
-        d="M40,10 H960 Q990,10 990,44 V60 H10 V44 Q10,10 40,10 Z"/>
+  <!-- Central recessed scope housing -->
+  <path fill="url(#jf-panel-red)" stroke="#5c1808" stroke-width="1.5"
+        d="M330,44 Q360,20 430,20 H570 Q640,20 670,44 Q690,62 690,120 V340
+           C690,378 640,404 500,404 C360,404 310,378 310,340 V120
+           Q310,62 330,44 Z"/>
 
-  <!-- Top control deck (raised) -->
-  <path fill="url(#jf-deck-red)" stroke="#7c2010" stroke-width="1.5"
-        d="M60,26 H940 Q958,26 958,44 V150 Q958,168 940,168 H60 Q42,168 42,150 V44 Q42,26 60,26 Z"/>
-  <!-- Bottom control deck (raised, ribbed grip) -->
-  <path fill="url(#jf-deck-red)" stroke="#7c2010" stroke-width="1.5"
-        d="M60,300 H940 Q958,300 958,318 V424 Q958,434 940,434 H60 Q42,434 42,424 V318 Q42,300 60,300 Z"/>
-  <path fill="url(#jf-ribs)"
-        d="M60,300 H340 V434 H60 Q42,434 42,424 V318 Q42,300 60,300 Z"/>
-  <path fill="url(#jf-ribs)"
-        d="M660,300 H940 Q958,300 958,318 V424 Q958,434 940,434 H660 Z"/>
+  <!-- Left wing (raised control block) -->
+  <path fill="url(#jf-wing-red)" stroke="#7c2010" stroke-width="1.5"
+        d="M44,54 H286 Q300,54 300,74 V418 Q300,438 280,438 H44 Q8,438 8,402 V90 Q8,54 44,54 Z"/>
+  <path fill="#ffffff" fill-opacity="0.14" d="M44,54 H286 Q300,54 300,74 V96 H8 V90 Q8,54 44,54 Z"/>
+  <path fill="url(#jf-ribs)" d="M20,300 H300 V438 H44 Q8,438 8,402 V320 Q8,300 20,300 Z"/>
 
-  <!-- Central recessed panel behind the scope -->
-  <rect x="300" y="52" width="400" height="356" rx="26" fill="url(#jf-panel-red)"
-        stroke="#5c1808" stroke-width="2"/>
-  <!-- Scope rim (bezel) - HTML screen sits just inside this -->
-  <circle cx="500" cy="235" r="182" fill="url(#jf-rim)"/>
-  <circle cx="500" cy="235" r="170" fill="#050505"/>
+  <!-- Right wing (raised control block) -->
+  <path fill="url(#jf-wing-red)" stroke="#7c2010" stroke-width="1.5"
+        d="M720,54 H956 Q992,54 992,90 V402 Q992,438 956,438 H720 Q700,438 700,418 V74 Q700,54 720,54 Z"/>
+  <path fill="#ffffff" fill-opacity="0.14" d="M720,54 H956 Q992,54 992,90 V96 H700 V74 Q700,54 720,54 Z"/>
+  <path fill="url(#jf-ribs)" d="M700,300 H992 V402 Q992,438 956,438 H700 Z"/>
 
-  <!-- JET FIGHTERS label plate (top-left) -->
+  <!-- Scope rim (bezel) - the HTML screen sits just inside this -->
+  <circle cx="500" cy="222" r="180" fill="url(#jf-rim)"/>
+  <circle cx="500" cy="222" r="169" fill="#050505"/>
+
+  <!-- JET FIGHTERS label plate (bottom-left) -->
   <g>
-    <rect x="58" y="44" width="196" height="104" rx="12" fill="url(#jf-label-blue)"
+    <rect x="40" y="316" width="188" height="96" rx="10" fill="url(#jf-label-blue)"
           stroke="#16265c" stroke-width="2"/>
-    <rect x="66" y="52" width="180" height="88" rx="8" fill="none"
+    <rect x="47" y="323" width="174" height="82" rx="6" fill="none"
           stroke="#ffffff" stroke-opacity="0.25" stroke-width="1.5"/>
-    <text x="156" y="94" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
-          font-weight="800" font-size="34" letter-spacing="1" fill="#ffffff">JET</text>
-    <text x="156" y="128" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
-          font-weight="800" font-size="30" letter-spacing="1" fill="#ffffff">FIGHTERS</text>
+    <text x="134" y="360" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
+          font-weight="800" font-size="30" letter-spacing="1" fill="#ffffff">JET</text>
+    <text x="134" y="390" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
+          font-weight="800" font-size="26" letter-spacing="1" fill="#ffffff">FIGHTERS</text>
   </g>
 </svg>`;
