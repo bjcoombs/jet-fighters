@@ -2,46 +2,59 @@
 //
 // Every effect is synthesized live from an OscillatorNode square wave - the
 // period-authentic waveform for the original unit's piezo speaker. No sampled
-// clips ship: the reference recording (assets/reference/gameplay-audio.m4a) is
-// ground truth we measure and imitate, not audio we bundle.
+// clips ship: the reference recordings are ground truth we measure and imitate,
+// not audio we bundle.
 //
 // Each recipe is a pure data definition (square-wave frequency steps, an
-// amplitude envelope, and for the explosion a shaped noise burst). Because the
+// amplitude envelope, and for the loss sound a shaped noise burst). Because the
 // recipes carry no Web APIs they are fully unit-testable. The engine (routing,
 // mute, gesture gating) is likewise pure and tested against an injected
 // AudioDriver stub. The WebAudioDriver at the bottom is the thin, untested
 // boundary that owns the AudioContext and turns a recipe into scheduled nodes.
 //
+// Owner-confirmed semantics (PRD R6):
+//   - Missile fire is a single beep; a missile HITTING a jet/battleship makes the
+//     SAME beep (no separate explosion sound), so playMissileFire covers both.
+//   - The player's launcher taking a rocket hit warns with two beeps on the first
+//     hit and three on the second; the third hit plays the full loss sound.
+//   - WIN at 199 points is the melodic jingle at the tail of gameplay-audio.m4a.
+//   - LOSS is the descending buzz near the end of loss-audio.m4a; its opening
+//     note is the warning-beep pitch.
+//
 // Reference provenance (frequencies from a windowed-FFT / harmonic-product-
-// spectrum sweep of the recording; timestamps are into gameplay-audio.m4a):
-//   - missileFire:    ~1.55 kHz blip, ~70 ms                       (~7.30 s)
-//   - jetMarch:       ~620 Hz step buzz, re-triggered per march step (dense section ~70 s)
-//   - battleshipBuzz: ~300 Hz sustained low buzz                   (dense section)
-//   - explosion:      square descent 1.2 kHz -> 300 Hz + noise crash
-//   - gameOver:       melodic jingle, F#5-A#5-D#6 arpeggio x3 resolving
-//                     through E6 to A#5, ~1.9 s                     (~120.4 s)
-//   - win:            NOT present in the recording. The reference holds a single
-//                     melodic vocabulary (the same F#5-A#5-D#6 motif also recurs
-//                     at ~12 s and ~28 s), so the win jingle is composed here as
-//                     a celebratory ascending fanfare in that same key/timbre,
-//                     landing on a held A#6. Confirm against hardware if found.
+// spectrum sweep; timestamps into the named recording):
+//   - missileFire:    ~1.55 kHz blip, ~75 ms          gameplay-audio.m4a ~7.30 s
+//   - jetMarch:       ~620 Hz step buzz (per march step) gameplay-audio.m4a ~70 s
+//   - battleshipBuzz: ~300 Hz sustained low buzz       gameplay-audio.m4a dense section
+//   - win:            F#5(751)-A#5(937)-D#6(1249) arpeggio x3 resolving through
+//                     E6(1284) to A#5, ~1.9 s          gameplay-audio.m4a ~120.4 s
+//   - gameOver (loss): buzzy descent from the ~390 Hz opening down into a ~145 Hz
+//                     rasp + noise, ~1.1 s             loss-audio.m4a ~85.85 s
+//   - launcher-hit warning beep: the loss opening tone (measured ~360-409 Hz,
+//                     F#4-G#4); synthesized at 392 Hz (G4), two or three beeps.
 
-/** The six game sound effects. */
+/** The five named, static game effects. */
 export type EffectName =
   | 'missileFire'
   | 'jetMarch'
   | 'battleshipBuzz'
-  | 'explosion'
-  | 'gameOver'
-  | 'win';
+  | 'win'
+  | 'gameOver';
 
-/** One step of a synthesized tone: a frequency held for a duration. */
+/**
+ * One step of a synthesized effect: a frequency held for a duration, optionally
+ * followed by a silent gap. Steps with no gap glide legato into the next (the
+ * piezo just changes pitch); a gap re-articulates the next step as a separate
+ * beep (used by the launcher-hit warnings).
+ */
 export interface ToneStep {
   readonly freq: number;
   readonly durationMs: number;
+  /** Silence after this step before the next, milliseconds. Default 0 (legato). */
+  readonly gapMs?: number;
 }
 
-/** A shaped noise burst layered under a tone (the explosion's crash). */
+/** A shaped noise burst layered under a tone (the loss sound's rasp). */
 export interface NoiseSpec {
   /** Peak gain of the noise layer, 0..1. */
   readonly gain: number;
@@ -53,9 +66,9 @@ export interface NoiseSpec {
 
 /**
  * A fully synthesized effect: a square-wave oscillator stepped through a list of
- * frequencies under a single attack/release envelope, optionally layered with a
- * noise burst. A single-step recipe is a blip or sustained buzz; a multi-step
- * recipe is a melodic jingle (the oscillator glides between pitches piezo-style).
+ * frequencies under an attack/release envelope, optionally layered with a noise
+ * burst. A single-step recipe is a blip or sustained buzz; a multi-step recipe
+ * is a melody or a beep train.
  */
 export interface EffectSpec {
   readonly type: OscillatorType;
@@ -66,25 +79,29 @@ export interface EffectSpec {
   readonly attackMs: number;
   /** Release ramp to silence after the last step, milliseconds. */
   readonly releaseMs: number;
-  /** Optional layered noise burst (used by the explosion). */
+  /** Optional layered noise burst (used by the loss sound). */
   readonly noise?: NoiseSpec;
 }
 
-// Measured piezo pitches from the reference jingle (Hz, left detuned as heard).
+// Measured piezo pitches from the reference win jingle (Hz, left detuned as heard).
 const F5s = 751; // F#5
 const A5s = 937; // A#5
 const D6s = 1249; // D#6
 const E6 = 1284; // E6
-const F6s = 1502; // F#6 (octave of F#5)
-const A6s = 1874; // A#6 (octave of A#5)
+
+/** Pitch of the launcher-hit warning beep - the loss sound's opening note (~G4). */
+export const WARNING_BEEP_HZ = 392;
+const WARNING_BEEP_MS = 110;
+const WARNING_GAP_MS = 90;
 
 /**
- * The effect table: which sound each game event makes. Every entry is a
- * synthesized square-wave recipe; see the provenance block above for the
- * reference timestamp each one imitates.
+ * The static effect table: which sound each fixed game event makes. Every entry
+ * is a synthesized square-wave recipe; see the provenance block above for the
+ * reference each imitates. (The launcher-hit warning is dynamic - see
+ * launcherHitBeeps - because the beep count depends on which hit it is.)
  */
 export const EFFECTS: Record<EffectName, EffectSpec> = {
-  // Sharp high blip, near-steady ~1.55 kHz with a tiny downward chirp for "pew".
+  // Sharp high blip; missile fire and a missile hitting a target share this beep.
   missileFire: {
     type: 'square',
     steps: [
@@ -111,22 +128,9 @@ export const EFFECTS: Record<EffectName, EffectSpec> = {
     attackMs: 2,
     releaseMs: 40,
   },
-  // Fast descending crash: square glide 1.2 kHz -> 300 Hz plus a dark noise burst.
-  explosion: {
-    type: 'square',
-    steps: [
-      { freq: 1200, durationMs: 45 },
-      { freq: 820, durationMs: 55 },
-      { freq: 520, durationMs: 60 },
-      { freq: 300, durationMs: 70 },
-    ],
-    gain: 0.4,
-    attackMs: 1,
-    releaseMs: 60,
-    noise: { gain: 0.3, durationMs: 220, lowpassHz: 900 },
-  },
-  // Transcribed end jingle: F#5-A#5-D#6 arpeggio x3, resolving E6 -> A#5 (~1.9 s).
-  gameOver: {
+  // WIN jingle: transcribed tail of gameplay-audio.m4a - F#5-A#5-D#6 arpeggio x3
+  // resolving E6 -> A#5 (~1.9 s). Legato (no gaps): the piezo glides between notes.
+  win: {
     type: 'square',
     steps: [
       { freq: F5s, durationMs: 250 },
@@ -145,24 +149,40 @@ export const EFFECTS: Record<EffectName, EffectSpec> = {
     attackMs: 4,
     releaseMs: 90,
   },
-  // Composed victory fanfare (199 points): the reference's F# vocabulary driven
-  // clearly upward - a rising arpeggio landing on a held high A#6.
-  win: {
+  // LOSS sound: buzzy descent from the ~390 Hz opening into a low ~145 Hz rasp,
+  // layered with a dark decaying noise burst. Transcribed from loss-audio.m4a.
+  gameOver: {
     type: 'square',
     steps: [
-      { freq: F5s, durationMs: 110 },
-      { freq: A5s, durationMs: 110 },
-      { freq: D6s, durationMs: 110 },
-      { freq: F6s, durationMs: 130 },
-      { freq: D6s, durationMs: 90 },
-      { freq: F6s, durationMs: 130 },
-      { freq: A6s, durationMs: 360 },
+      { freq: 392, durationMs: 90 },
+      { freq: 349, durationMs: 90 },
+      { freq: 294, durationMs: 100 },
+      { freq: 233, durationMs: 110 },
+      { freq: 175, durationMs: 140 },
+      { freq: 147, durationMs: 360 },
     ],
-    gain: 0.34,
+    gain: 0.4,
     attackMs: 3,
-    releaseMs: 110,
+    releaseMs: 200,
+    noise: { gain: 0.3, durationMs: 1100, lowpassHz: 700 },
   },
 };
+
+/**
+ * Build the launcher-hit warning: a train of identical beeps at the loss sound's
+ * opening pitch. First hit (1) warns with two beeps, second hit (2) with three.
+ * The third hit is the full loss sound (playGameOver), not modelled here.
+ */
+export function launcherHitBeeps(hitNumber: 1 | 2): EffectSpec {
+  const count = hitNumber + 1; // hit 1 -> 2 beeps, hit 2 -> 3 beeps
+  const steps: ToneStep[] = Array.from({ length: count }, (_, i) => ({
+    freq: WARNING_BEEP_HZ,
+    durationMs: WARNING_BEEP_MS,
+    // Silence between beeps so they are heard as separate; none after the last.
+    gapMs: i < count - 1 ? WARNING_GAP_MS : 0,
+  }));
+  return { type: 'square', steps, gain: 0.34, attackMs: 2, releaseMs: 40 };
+}
 
 /**
  * The thin play boundary the engine drives. The real implementation owns the
@@ -182,11 +202,15 @@ export interface AudioDriver {
 
 /** Public surface consumed by the game/integration layer. */
 export interface AudioSystem {
+  /** Missile fired, or a missile striking a jet/battleship (same beep). */
   playMissileFire(): void;
   playJetMarch(): void;
   playBattleshipBuzz(): void;
-  playExplosion(): void;
+  /** Launcher hit by a rocket: hit 1 = two beeps, hit 2 = three beeps. */
+  playLauncherHit(hitNumber: 1 | 2): void;
+  /** Third launcher hit / capture: the full loss sound. */
   playGameOver(): void;
+  /** Reached 199 points: the win jingle. */
   playWin(): void;
   setMuted(muted: boolean): void;
   isMuted(): boolean;
@@ -204,36 +228,37 @@ export class AudioEngine implements AudioSystem {
     private readonly effects: Record<EffectName, EffectSpec> = EFFECTS,
   ) {}
 
-  private trigger(name: EffectName): void {
+  /** Route a spec to the driver, honouring mute and gesture gating. */
+  private play(spec: EffectSpec): void {
     // Skip work while muted; the shared gain node also silences any in-flight tails.
     if (this.muted) return;
     // Before the first user gesture the context is suspended: soft-fail silently.
     if (!this.driver.isReady()) return;
-    this.driver.playEffect(this.effects[name]);
+    this.driver.playEffect(spec);
   }
 
   playMissileFire(): void {
-    this.trigger('missileFire');
+    this.play(this.effects.missileFire);
   }
 
   playJetMarch(): void {
-    this.trigger('jetMarch');
+    this.play(this.effects.jetMarch);
   }
 
   playBattleshipBuzz(): void {
-    this.trigger('battleshipBuzz');
+    this.play(this.effects.battleshipBuzz);
   }
 
-  playExplosion(): void {
-    this.trigger('explosion');
+  playLauncherHit(hitNumber: 1 | 2): void {
+    this.play(launcherHitBeeps(hitNumber));
   }
 
   playGameOver(): void {
-    this.trigger('gameOver');
+    this.play(this.effects.gameOver);
   }
 
   playWin(): void {
-    this.trigger('win');
+    this.play(this.effects.win);
   }
 
   setMuted(muted: boolean): void {
@@ -267,6 +292,9 @@ type WindowWithWebkit = Window &
 
 /** Gesture events after which browsers allow audio to start. */
 const GESTURE_EVENTS = ['pointerdown', 'keydown', 'touchstart'] as const;
+
+/** Ramp used to gate a beep on/off without a click, seconds. */
+const GATE_RAMP = 0.006;
 
 class WebAudioDriver implements AudioDriver {
   private ctx: AudioContext | null = null;
@@ -326,34 +354,52 @@ class WebAudioDriver implements AudioDriver {
     if (!this.ctx || !this.muteGain) return;
     const t0 = this.ctx.currentTime;
 
-    // Square-wave oscillator stepped through the recipe's frequencies.
+    // Schedule each step's frequency, accumulating start times across gaps.
     const osc = this.ctx.createOscillator();
     osc.type = spec.type;
+    const segs: { start: number; end: number; gap: number }[] = [];
     let t = t0;
     for (const step of spec.steps) {
-      osc.frequency.setValueAtTime(step.freq, t);
-      t += step.durationMs / 1000;
+      const start = t;
+      const end = start + step.durationMs / 1000;
+      const gap = (step.gapMs ?? 0) / 1000;
+      osc.frequency.setValueAtTime(step.freq, start);
+      segs.push({ start, end, gap });
+      t = end + gap;
     }
-    const end = t;
+    const overallEnd = segs[segs.length - 1].end;
 
-    const gain = this.ctx.createGain();
+    // Envelope: initial attack to peak, a silent gate across any gaps, final release.
+    const gainNode = this.ctx.createGain();
+    const g = gainNode.gain;
+    const peak = spec.gain;
     const attack = spec.attackMs / 1000;
     const release = spec.releaseMs / 1000;
-    gain.gain.setValueAtTime(0, t0);
-    gain.gain.linearRampToValueAtTime(spec.gain, t0 + attack);
-    gain.gain.setValueAtTime(spec.gain, end);
-    gain.gain.linearRampToValueAtTime(0, end + release);
+    g.setValueAtTime(0, t0);
+    g.linearRampToValueAtTime(peak, t0 + attack);
+    for (let i = 0; i < segs.length - 1; i += 1) {
+      const seg = segs[i];
+      if (seg.gap <= 0) continue;
+      // Hold, drop to silence for the gap, then ramp back up at the next beep.
+      g.setValueAtTime(peak, Math.max(seg.end - GATE_RAMP, t0 + attack));
+      g.linearRampToValueAtTime(0, seg.end);
+      const next = segs[i + 1].start;
+      g.setValueAtTime(0, next);
+      g.linearRampToValueAtTime(peak, next + GATE_RAMP);
+    }
+    g.setValueAtTime(peak, overallEnd);
+    g.linearRampToValueAtTime(0, overallEnd + release);
 
-    osc.connect(gain).connect(this.muteGain);
+    osc.connect(gainNode).connect(this.muteGain);
     osc.start(t0);
-    osc.stop(end + release);
+    osc.stop(overallEnd + release);
 
     if (spec.noise) {
       this.playNoise(spec.noise, t0);
     }
   }
 
-  /** Layer a lowpassed, decaying white-noise burst (the explosion's crash). */
+  /** Layer a lowpassed, decaying white-noise burst (the loss sound's rasp). */
   private playNoise(noise: NoiseSpec, t0: number): void {
     if (!this.ctx || !this.muteGain) return;
     const dur = noise.durationMs / 1000;

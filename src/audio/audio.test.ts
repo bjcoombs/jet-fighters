@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   AudioEngine,
   EFFECTS,
+  launcherHitBeeps,
+  WARNING_BEEP_HZ,
   type AudioDriver,
   type EffectName,
   type EffectSpec,
@@ -34,9 +36,8 @@ const ALL_NAMES: EffectName[] = [
   'missileFire',
   'jetMarch',
   'battleshipBuzz',
-  'explosion',
-  'gameOver',
   'win',
+  'gameOver',
 ];
 
 /** Peak (highest) frequency across a recipe's steps. */
@@ -45,8 +46,12 @@ function peakFreq(spec: EffectSpec): number {
 }
 
 describe('EFFECTS manifest', () => {
-  it('defines exactly the six game effects', () => {
+  it('defines exactly the five named static effects', () => {
     expect(Object.keys(EFFECTS).sort()).toEqual([...ALL_NAMES].sort());
+  });
+
+  it('no longer defines a separate explosion effect', () => {
+    expect(EFFECTS).not.toHaveProperty('explosion');
   });
 
   it('gives every effect a valid, in-range synthesized spec', () => {
@@ -61,6 +66,9 @@ describe('EFFECTS manifest', () => {
       for (const step of spec.steps) {
         expect(step.freq).toBeGreaterThan(0);
         expect(step.durationMs).toBeGreaterThan(0);
+        if (step.gapMs !== undefined) {
+          expect(step.gapMs).toBeGreaterThanOrEqual(0);
+        }
       }
     }
   });
@@ -84,41 +92,77 @@ describe('EFFECTS manifest', () => {
     expect(total).toBeLessThan(150);
     expect(peakFreq(missile)).toBeGreaterThan(1200);
   });
-
-  it('gives the explosion a downward pitch sweep and a noise crash', () => {
-    const ex = EFFECTS.explosion;
-    expect(ex.steps.length).toBeGreaterThan(1);
-    expect(ex.steps[0].freq).toBeGreaterThan(ex.steps[ex.steps.length - 1].freq);
-    expect(ex.noise).toBeDefined();
-    expect(ex.noise!.gain).toBeGreaterThan(0);
-    expect(ex.noise!.durationMs).toBeGreaterThan(0);
-    expect(ex.noise!.lowpassHz).toBeGreaterThan(0);
-  });
-
-  it('is the only effect carrying a noise layer', () => {
-    const withNoise = ALL_NAMES.filter((n) => EFFECTS[n].noise !== undefined);
-    expect(withNoise).toEqual(['explosion']);
-  });
 });
 
-describe('jingles', () => {
-  it('models game over as a multi-note melodic jingle', () => {
-    const jingle = EFFECTS.gameOver;
-    expect(jingle.steps.length).toBeGreaterThanOrEqual(3);
-    // Uses more than one distinct pitch (it is a melody, not a sustained buzz).
-    const pitches = new Set(jingle.steps.map((s) => s.freq));
+describe('win jingle (gameplay-audio.m4a tail)', () => {
+  it('is a multi-note melody spanning several pitches', () => {
+    const win = EFFECTS.win;
+    expect(win.steps.length).toBeGreaterThanOrEqual(3);
+    const pitches = new Set(win.steps.map((s) => s.freq));
     expect(pitches.size).toBeGreaterThanOrEqual(3);
   });
 
-  it('models win as a multi-note jingle that climbs to a celebratory peak', () => {
-    const win = EFFECTS.win;
-    expect(win.steps.length).toBeGreaterThanOrEqual(3);
-    // Clearly ascending: it ends higher than it begins...
-    expect(win.steps[win.steps.length - 1].freq).toBeGreaterThan(
-      win.steps[0].freq,
+  it('is a bright, high-register jingle (well above the loss sound)', () => {
+    expect(peakFreq(EFFECTS.win)).toBeGreaterThan(peakFreq(EFFECTS.gameOver));
+  });
+
+  it('plays legato - no inter-note gaps (the piezo glides between pitches)', () => {
+    for (const step of EFFECTS.win.steps) {
+      expect(step.gapMs ?? 0).toBe(0);
+    }
+  });
+});
+
+describe('loss sound (loss-audio.m4a) as gameOver', () => {
+  it('descends from its opening pitch into a low buzz', () => {
+    const loss = EFFECTS.gameOver;
+    expect(loss.steps.length).toBeGreaterThan(1);
+    expect(loss.steps[0].freq).toBeGreaterThan(
+      loss.steps[loss.steps.length - 1].freq,
     );
-    // ...and peaks above the game-over jingle for a triumphant finish.
-    expect(peakFreq(win)).toBeGreaterThan(peakFreq(EFFECTS.gameOver));
+  });
+
+  it('opens at the warning-beep pitch (warnings reuse the loss opening note)', () => {
+    expect(EFFECTS.gameOver.steps[0].freq).toBe(WARNING_BEEP_HZ);
+  });
+
+  it('carries a dark noise rasp and is the only effect that does', () => {
+    const withNoise = ALL_NAMES.filter((n) => EFFECTS[n].noise !== undefined);
+    expect(withNoise).toEqual(['gameOver']);
+    const noise = EFFECTS.gameOver.noise!;
+    expect(noise.gain).toBeGreaterThan(0);
+    expect(noise.durationMs).toBeGreaterThan(0);
+    expect(noise.lowpassHz).toBeGreaterThan(0);
+  });
+});
+
+describe('launcherHitBeeps', () => {
+  it('warns with two beeps on the first hit, three on the second', () => {
+    expect(launcherHitBeeps(1).steps).toHaveLength(2);
+    expect(launcherHitBeeps(2).steps).toHaveLength(3);
+  });
+
+  it('beeps all sound at the warning pitch (the loss opening note)', () => {
+    for (const hit of [1, 2] as const) {
+      for (const step of launcherHitBeeps(hit).steps) {
+        expect(step.freq).toBe(WARNING_BEEP_HZ);
+      }
+    }
+  });
+
+  it('separates the beeps with a silent gap, but not after the last', () => {
+    const steps = launcherHitBeeps(2).steps;
+    expect(steps[0].gapMs).toBeGreaterThan(0);
+    expect(steps[1].gapMs).toBeGreaterThan(0);
+    expect(steps[steps.length - 1].gapMs ?? 0).toBe(0);
+  });
+
+  it('is a valid, in-range spec', () => {
+    const spec = launcherHitBeeps(1);
+    expect(spec.type).toBe('square');
+    expect(spec.gain).toBeGreaterThan(0);
+    expect(spec.gain).toBeLessThanOrEqual(1);
+    expect(spec.releaseMs).toBeGreaterThan(0);
   });
 });
 
@@ -132,21 +176,25 @@ describe('AudioEngine routing', () => {
     driver.ready = true;
   });
 
-  it('routes each play method to playEffect with its spec', () => {
+  it('routes each named play method to playEffect with its spec', () => {
     engine.playMissileFire();
     engine.playJetMarch();
     engine.playBattleshipBuzz();
-    engine.playExplosion();
     engine.playGameOver();
     engine.playWin();
     expect(driver.effects).toEqual([
       EFFECTS.missileFire,
       EFFECTS.jetMarch,
       EFFECTS.battleshipBuzz,
-      EFFECTS.explosion,
       EFFECTS.gameOver,
       EFFECTS.win,
     ]);
+  });
+
+  it('routes launcher hits to the matching beep train', () => {
+    engine.playLauncherHit(1);
+    engine.playLauncherHit(2);
+    expect(driver.effects.map((e) => e.steps.length)).toEqual([2, 3]);
   });
 });
 
@@ -157,6 +205,7 @@ describe('AudioEngine gesture gating', () => {
     const engine = new AudioEngine(driver);
 
     engine.playMissileFire();
+    engine.playLauncherHit(1);
     engine.playWin();
 
     expect(driver.effects).toHaveLength(0);
@@ -190,7 +239,8 @@ describe('AudioEngine mute state machine', () => {
   it('plays nothing while muted', () => {
     engine.setMuted(true);
     engine.playMissileFire();
-    engine.playExplosion();
+    engine.playLauncherHit(2);
+    engine.playGameOver();
     engine.playWin();
     expect(driver.effects).toHaveLength(0);
   });
