@@ -23,11 +23,15 @@
 //
 // Reference provenance (frequencies from a windowed-FFT / harmonic-product-
 // spectrum sweep; timestamps into the named recording):
-//   - missileFire:    ~1.55 kHz blip, ~75 ms          gameplay-audio.m4a ~7.30 s
-//   - jetMarch:       ~620 Hz step buzz (per march step) gameplay-audio.m4a ~70 s
-//   - battleshipBuzz: ~300 Hz sustained low buzz       gameplay-audio.m4a dense section
-//   - win:            F#5(751)-A#5(937)-D#6(1249) arpeggio x3 resolving through
-//                     E6(1284) to A#5, ~1.9 s          gameplay-audio.m4a ~120.4 s
+//   - missileFire:    ~1.52 kHz blip, ~20 ms (piezo blips are very short: the
+//                     measured main transient is ~10 ms) gameplay-audio.m4a ~7.30/38.31 s
+//   - jetMarch:       ~620 Hz step buzz (per march step; measured ~600-650 Hz)
+//                     gameplay-audio.m4a ~66 s (march cadence is set by the game
+//                     re-triggering the step, not by this recipe)
+//   - battleshipBuzz: ~300 Hz sustained low buzz (measured low-buzz band ~240-300 Hz)
+//                     gameplay-audio.m4a ~54 s dense section
+//   - win:            F#5(750)-A#5(940)-D#6(1244) arpeggio x3 resolving to a long
+//                     A#5, ~1.83 s                     gameplay-audio.m4a ~120.5 s
 //   - gameOver (loss): buzzy descent from the ~390 Hz opening down into a ~145 Hz
 //                     rasp + noise, ~1.1 s             loss-audio.m4a ~85.85 s
 //   - launcher-hit warning beep: the loss opening tone (measured ~360-409 Hz,
@@ -83,11 +87,12 @@ export interface EffectSpec {
   readonly noise?: NoiseSpec;
 }
 
-// Measured piezo pitches from the reference win jingle (Hz, left detuned as heard).
-const F5s = 751; // F#5
-const A5s = 937; // A#5
-const D6s = 1249; // D#6
-const E6 = 1284; // E6
+// Measured piezo pitches from the reference win jingle (Hz). Fundamentals recovered
+// from the harmonic partials at gameplay-audio.m4a ~120.5-122.4 s (e.g. partials
+// 1500 & 2250 -> 750; 940/1880/2820 -> 940; 1240 & 2480 -> 1244).
+const F5s = 750; // F#5
+const A5s = 940; // A#5
+const D6s = 1244; // D#6
 
 /** Pitch of the launcher-hit warning beep - the loss sound's opening note (~G4). */
 export const WARNING_BEEP_HZ = 392;
@@ -105,12 +110,12 @@ export const EFFECTS: Record<EffectName, EffectSpec> = {
   missileFire: {
     type: 'square',
     steps: [
-      { freq: 1600, durationMs: 25 },
-      { freq: 1500, durationMs: 50 },
+      { freq: 1550, durationMs: 7 },
+      { freq: 1490, durationMs: 8 },
     ],
     gain: 0.5,
     attackMs: 1,
-    releaseMs: 25,
+    releaseMs: 8,
   },
   // Short step buzz; the marching rhythm comes from the game re-triggering it.
   jetMarch: {
@@ -128,22 +133,24 @@ export const EFFECTS: Record<EffectName, EffectSpec> = {
     attackMs: 2,
     releaseMs: 40,
   },
-  // WIN jingle: transcribed tail of gameplay-audio.m4a - F#5-A#5-D#6 arpeggio x3
-  // resolving E6 -> A#5 (~1.9 s). Legato (no gaps): the piezo glides between notes.
+  // WIN jingle: transcribed tail of gameplay-audio.m4a (~120.5-122.4 s). The
+  // measured melody is a clean F#5-A#5-D#6 arpeggio repeated three times, then a
+  // long A#5 resolution (~1.83 s). The earlier E6 pass-tone was not present in the
+  // recording: the final arpeggio's D#6 resolves straight to the sustained A#5.
+  // Legato (no gaps): the piezo glides between notes.
   win: {
     type: 'square',
     steps: [
-      { freq: F5s, durationMs: 250 },
+      { freq: F5s, durationMs: 200 },
       { freq: A5s, durationMs: 150 },
-      { freq: D6s, durationMs: 130 },
-      { freq: F5s, durationMs: 290 },
-      { freq: A5s, durationMs: 110 },
       { freq: D6s, durationMs: 150 },
-      { freq: F5s, durationMs: 250 },
-      { freq: A5s, durationMs: 110 },
-      { freq: D6s, durationMs: 200 },
-      { freq: E6, durationMs: 150 },
-      { freq: A5s, durationMs: 180 },
+      { freq: F5s, durationMs: 200 },
+      { freq: A5s, durationMs: 150 },
+      { freq: D6s, durationMs: 150 },
+      { freq: F5s, durationMs: 200 },
+      { freq: A5s, durationMs: 150 },
+      { freq: D6s, durationMs: 150 },
+      { freq: A5s, durationMs: 330 },
     ],
     gain: 0.32,
     attackMs: 4,
