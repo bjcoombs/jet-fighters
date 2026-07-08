@@ -15,6 +15,7 @@
  *                snaps between 3 positions; blue rotary skill dial 1/2/3 (bottom).
  */
 import './case.css';
+import { clipPathMarkup, scopeWindowMarkup, screenBoxPercent } from './geometry.js';
 
 export interface CaseElements {
   /** Root case element - pass this to `setupControls`. */
@@ -59,18 +60,19 @@ export function buildCase(mount: HTMLElement): CaseElements {
 function buildScreen(): HTMLElement {
   const screen = document.createElement('div');
   screen.className = 'jf-screen';
+  // Position/size derived from the shared scope geometry (single source of
+  // truth) so the clipped canvas box exactly matches the SVG black window.
+  const box = screenBoxPercent();
+  screen.style.left = box.left;
+  screen.style.top = box.top;
+  screen.style.width = box.width;
+  screen.style.height = box.height;
+
   const canvas = document.createElementNS('http://www.w3.org/1999/xhtml', 'canvas') as HTMLCanvasElement;
   canvas.id = 'vfd';
-  canvas.width = 480;
-  canvas.height = 360;
   canvas.className = 'jf-screen__canvas';
-  // Placeholder fill so the scope reads as "off" until the renderer (task 3)
-  // takes over. Kept minimal - the real screen is not this module's concern.
-  const ctx = canvas.getContext('2d');
-  if (ctx) {
-    ctx.fillStyle = '#050505';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-  }
+  // The renderer sizes the backing store to this element's CSS box x
+  // devicePixelRatio (see main.ts). No fixed pixel dimensions here.
   screen.appendChild(canvas);
   return screen;
 }
@@ -179,13 +181,11 @@ const CASE_SVG = `
     <filter id="jf-soft" x="-20%" y="-20%" width="140%" height="140%">
       <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000" flood-opacity="0.35"/>
     </filter>
-    <!-- Screen clip: radar circle UNIONed with the shorter left rectangle.
-         objectBoundingBox units (0..1 of the .jf-screen box); the ellipse rx/ry
-         compensate for the box aspect so the circle renders truly round. -->
-    <clipPath id="jf-screen-clip" clipPathUnits="objectBoundingBox">
-      <rect x="0" y="0.26" width="0.587" height="0.48" rx="0.04" ry="0.05"/>
-      <ellipse cx="0.587" cy="0.5" rx="0.413" ry="0.5"/>
-    </clipPath>
+    <!-- Screen clip: radar circle UNIONed with the shorter left rectangle,
+         generated from the shared scope geometry (objectBoundingBox units of the
+         .jf-screen box; the ellipse rx/ry compensate for the box aspect so the
+         circle renders truly round). -->
+    ${clipPathMarkup('jf-screen-clip')}
   </defs>
 
   <!-- Body silhouette: two lower wings flanking a taller central bezel block,
@@ -217,13 +217,10 @@ const CASE_SVG = `
   <rect x="314" y="60" width="372" height="356" rx="24" fill="url(#jf-panel-red)"
         stroke="#5c1808" stroke-width="1.5"/>
 
-  <!-- Scope rim (bezel) - circle + left rectangle union, drawn behind the canvas -->
-  <g>
-    <rect x="312" y="142" width="229" height="160" rx="18" fill="url(#jf-rim)"/>
-    <circle cx="533" cy="222" r="158" fill="url(#jf-rim)"/>
-    <rect x="320" y="150" width="213" height="144" rx="14" fill="#050505"/>
-    <circle cx="533" cy="222" r="150" fill="#050505"/>
-  </g>
+  <!-- Scope rim (bezel) + black window - circle + left rectangle union, drawn
+       behind the canvas and generated from the shared scope geometry so the
+       canvas paints precisely inside this shape. -->
+  <g>${scopeWindowMarkup()}</g>
 
   <!-- JET FIGHTERS label plate (bottom-left) -->
   <g>

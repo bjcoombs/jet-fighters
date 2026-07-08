@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { GRID_COLUMNS, LANE_COUNT, WIN_SCORE } from '../game/index.js';
+import { projectScope, SCOPE_ASPECT, SCOPE_BOUNDS } from '../ui/geometry.js';
 import {
+  arcGeometry,
   cellExtent,
   columnToX,
   computePlayfield,
@@ -9,22 +11,56 @@ import {
   splitScoreDigits,
 } from './layout.js';
 
-const W = 800;
+// A canvas sized to the scope bounding-box aspect (as main.ts guarantees).
 const H = 600;
-const pf = computePlayfield(W, H);
+const W = Math.round(H * SCOPE_ASPECT);
+const geom = projectScope(W, H);
+const pf = computePlayfield(geom);
 
-describe('computePlayfield', () => {
-  it('places the playfield inside the canvas', () => {
-    expect(pf.x).toBeGreaterThan(0);
-    expect(pf.y).toBeGreaterThan(0);
-    expect(pf.x + pf.width).toBeLessThanOrEqual(W);
-    expect(pf.y + pf.height).toBeLessThanOrEqual(H);
+describe('projectScope', () => {
+  it('fills the target box and keeps the circle round (uniform scale)', () => {
+    expect(geom.bounds.width).toBeCloseTo(W);
+    expect(geom.bounds.height).toBeCloseTo(H);
+    // rx (fraction of width) and ry (fraction of height) in pixels are equal.
+    expect(geom.circle.r).toBeGreaterThan(0);
+    expect(geom.scale).toBeCloseTo(H / SCOPE_BOUNDS.height);
   });
 
-  it('scales with canvas size', () => {
-    const doubled = computePlayfield(W * 2, H * 2);
+  it('offsets the circle to the right of the bounding-box centre', () => {
+    // The left rectangle pushes the circle past mid-width - the old bug assumed
+    // the circle sat at w/2.
+    expect(geom.circle.cx).toBeGreaterThan(geom.bounds.width / 2);
+  });
+});
+
+describe('computePlayfield', () => {
+  it('places the playfield inside the scope bounds', () => {
+    expect(pf.x).toBeGreaterThan(0);
+    expect(pf.y).toBeGreaterThan(0);
+    expect(pf.x + pf.width).toBeLessThanOrEqual(geom.bounds.width);
+    expect(pf.y + pf.height).toBeLessThanOrEqual(geom.bounds.height);
+  });
+
+  it('centres the playfield band vertically on the circle', () => {
+    expect(pf.y + pf.height / 2).toBeCloseTo(geom.circle.cy, 0);
+  });
+
+  it('scales with the target size', () => {
+    const doubled = computePlayfield(projectScope(W * 2, H * 2));
     expect(doubled.width).toBeCloseTo(pf.width * 2);
     expect(doubled.height).toBeCloseTo(pf.height * 2);
+  });
+});
+
+describe('arcGeometry', () => {
+  it('centres on the circle and rides just inside the rim', () => {
+    const arc = arcGeometry(geom);
+    expect(arc.cx).toBeCloseTo(geom.circle.cx);
+    expect(arc.cy).toBeCloseTo(geom.circle.cy);
+    expect(arc.radius).toBeGreaterThan(0);
+    expect(arc.radius).toBeLessThan(geom.circle.r);
+    // Text arc must clear the playfield top so it sits on the rim, not over play.
+    expect(arc.cy - arc.radius).toBeLessThan(pf.y);
   });
 });
 

@@ -10,8 +10,10 @@
 
 import type { GameState, Lane } from '../game/index.js';
 import { BATTLESHIP_SCORE, LANE_COUNT, MAX_LIVES } from '../game/index.js';
-import type { Rect } from './layout.js';
+import type { Rect, ScopeGeometry } from '../ui/geometry.js';
+import { projectScope, SCOPE_BOUNDS } from '../ui/geometry.js';
 import {
+  arcGeometry,
   cellExtent,
   columnToX,
   computePlayfield,
@@ -32,10 +34,16 @@ import {
   PALETTE,
 } from './sprites.js';
 
-export interface RenderConfig {
-  readonly canvas: HTMLCanvasElement;
-  readonly width: number;
-  readonly height: number;
+/** A renderer bound to a canvas: draw a frame, or re-derive layout on resize. */
+export interface Renderer {
+  /** Paint one frame for the supplied GameState. Call once per animation frame. */
+  draw(state: GameState): void;
+  /**
+   * Re-size the backing store to `cssWidth` x `cssHeight` logical pixels at the
+   * given `devicePixelRatio` and re-derive the scope layout. All drawing is done
+   * in logical pixels; the backing store is `css * dpr` for crisp output.
+   */
+  resize(cssWidth: number, cssHeight: number, dpr?: number): void;
 }
 
 /** How many render frames an explosion burst persists after a hit. */
@@ -253,10 +261,13 @@ function drawLives(
   cell: { width: number; height: number },
   ghost: boolean,
 ): void {
-  const w = cell.width * 0.45;
-  const h = cell.height * 0.35;
+  const w = cell.width * 0.42;
+  const h = cell.height * 0.32;
   const x = playfield.x + playfield.width - w * 0.9;
-  const spacing = h * 1.5;
+  // Three distinct reserve marks near the missile-station edge, spaced ~one lane
+  // apart around the centre lane so they read separately (as in the reference)
+  // rather than blurring into one blob.
+  const spacing = cell.height * 0.82;
   const first = laneToY(1, LANE_COUNT, playfield) - spacing;
   const glow = h * GLOW.cyan;
   for (let i = 0; i < MAX_LIVES; i += 1) {
@@ -303,7 +314,7 @@ function drawArcText(
   ctx.font = `${fontPx}px sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const step = (fontPx * 0.66) / radius; // angular advance per character
+  const step = (fontPx * 0.62) / radius; // angular advance per character
   const start = -Math.PI / 2 - (step * (text.length - 1)) / 2;
   for (let i = 0; i < text.length; i += 1) {
     const angle = start + i * step;
@@ -321,24 +332,26 @@ function drawArcText(
 function drawSilkscreen(
   ctx: CanvasRenderingContext2D,
   state: GameState,
-  w: number,
-  h: number,
+  geom: ScopeGeometry,
   playfield: Rect,
   cell: { width: number; height: number },
 ): void {
+  const w = geom.bounds.width;
+  const h = geom.bounds.height;
   const line = Math.max(1, Math.min(w, h) * 0.003);
   ctx.strokeStyle = PALETTE.silkscreen;
   ctx.fillStyle = PALETTE.silkscreen;
   ctx.lineWidth = line;
 
-  // Arc title across the top of the round scope.
+  // Arc title riding the top rim of the round scope (outside the playfield).
+  const arc = arcGeometry(geom);
   drawArcText(
     ctx,
     'COAST SIDE MISSILE STATION RADAR SIGHT SCREEN',
-    w / 2,
-    h * 0.52,
-    h * 0.3,
-    Math.round(h * 0.03),
+    arc.cx,
+    arc.cy,
+    arc.radius,
+    Math.round(geom.circle.r * 0.076),
   );
 
   // Playfield border.
@@ -380,36 +393,52 @@ function drawSilkscreen(
     ctx.stroke();
   }
 
-  // Zone labels below the playfield.
-  const zonePx = Math.round(cell.height * 0.34);
+  // Zone labels below the playfield. The lower row must stay high enough to
+  // remain inside the window (the circle narrows below the left rectangle tab),
+  // so the side labels are pulled inward from the playfield edges.
+  const zonePx = Math.round(cell.height * 0.32);
   ctx.font = `${zonePx}px sans-serif`;
   ctx.textAlign = 'center';
-  const midY = playfield.y + playfield.height + cell.height * 0.5;
-  const lowY = playfield.y + playfield.height + cell.height * 0.9;
+  const midY = playfield.y + playfield.height + cell.height * 0.34;
+  const lowY = playfield.y + playfield.height + cell.height * 0.66;
   ctx.fillText('JET FIGHTER FLYING ZONE', playfield.x + playfield.width * 0.5, midY);
-  ctx.fillText('BATTLE SHIP ZONE', playfield.x + playfield.width * 0.2, lowY);
-  ctx.fillText('MISSILE STATION ZONE', playfield.x + playfield.width * 0.78, lowY);
+  ctx.fillText('BATTLE SHIP ZONE', playfield.x + playfield.width * 0.27, lowY);
+  ctx.fillText('MISSILE STATION ZONE', playfield.x + playfield.width * 0.72, lowY);
 }
 
 /**
- * Build a renderer bound to a canvas. The returned function draws a single
- * frame for the supplied GameState; call it once per animation frame.
+ * Build a renderer bound to a canvas. All drawing happens in logical (CSS)
+ * pixels; call {@link Renderer.resize} at least once (and on every viewport /
+ * devicePixelRatio change) to size the backing store and derive the scope
+ * layout from the shared geometry, then {@link Renderer.draw} once per frame.
  */
-export function createRenderer(config: RenderConfig): (state: GameState) => void {
-  const { canvas, width, height } = config;
-  canvas.width = width;
-  canvas.height = height;
+export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   const ctx = canvas.getContext('2d');
   if (!ctx) {
     throw new Error('createRenderer: 2D canvas context unavailable');
   }
 
-  const playfield = computePlayfield(width, height);
+  // Seed a layout so a draw before the first resize still produces valid output.
+  let geometry: ScopeGeometry = projectScope(SCOPE_BOUNDS.width, SCOPE_BOUNDS.height);
+  let playfield = computePlayfield(geometry);
 
   let prev: GameState | null = null;
   const bursts: Burst[] = [];
 
-  return (state: GameState): void => {
+  const resize = (cssWidth: number, cssHeight: number, dpr?: number): void => {
+    const ratio = dpr ?? (typeof globalThis.devicePixelRatio === 'number' ? globalThis.devicePixelRatio : 1);
+    const scale = ratio > 0 ? ratio : 1;
+    canvas.width = Math.max(1, Math.round(cssWidth * scale));
+    canvas.height = Math.max(1, Math.round(cssHeight * scale));
+    // Draw in logical pixels; the backing store is `css * dpr` for crisp output.
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    geometry = projectScope(cssWidth, cssHeight);
+    playfield = computePlayfield(geometry);
+  };
+
+  const draw = (state: GameState): void => {
+    const width = geometry.bounds.width;
+    const height = geometry.bounds.height;
     const grid = cellExtent(state.gridColumns, LANE_COUNT, playfield);
 
     // Advance existing bursts and fold in any new hits this frame.
@@ -433,8 +462,10 @@ export function createRenderer(config: RenderConfig): (state: GameState) => void
     }
 
     // Silkscreen is printed on the glass - always visible, drawn on top.
-    drawSilkscreen(ctx, state, width, height, playfield, grid);
+    drawSilkscreen(ctx, state, geometry, playfield, grid);
 
     prev = state;
   };
+
+  return { draw, resize };
 }

@@ -3,11 +3,12 @@
 // returned function once per animation frame with the current GameState. The
 // layout math and sprite tables are exported for reuse and testing.
 
-export type { RenderConfig } from './renderer.js';
+export type { Renderer } from './renderer.js';
 export { createRenderer } from './renderer.js';
 
 export type { Rect, RulerTick } from './layout.js';
 export {
+  arcGeometry,
   cellExtent,
   columnToX,
   computePlayfield,

@@ -65,18 +65,16 @@ export const BATTLESHIP_SHAPE: readonly Point[] = [
 ];
 
 /**
- * Player launcher at the right (missile station) edge - a base with a barrel
- * pointing left into the field.
+ * Player launcher at the right (missile station) edge - a slim inclined ramp on
+ * a low base, raised on the missile-station side and sloping down into the field
+ * (missiles launch left). Traced from the reference silhouette; deliberately not
+ * a blocky slab.
  */
 export const LAUNCHER_SHAPE: readonly Point[] = [
-  { x: 0.5, y: -0.4 }, // base back-top
-  { x: 0.5, y: 0.4 }, // base back-bottom
-  { x: 0.1, y: 0.4 },
-  { x: 0.1, y: 0.14 },
-  { x: -0.5, y: 0.09 }, // barrel tip (points left, into the field)
-  { x: -0.5, y: -0.09 },
-  { x: 0.1, y: -0.14 },
-  { x: 0.1, y: -0.4 },
+  { x: -0.5, y: 0.5 }, // base bottom-left (field side)
+  { x: 0.5, y: 0.5 }, // base bottom-right (station side)
+  { x: 0.5, y: -0.5 }, // ramp peak (raised, station side)
+  { x: -0.5, y: 0.16 }, // ramp slope down into the field
 ];
 
 /** Remaining-launcher (life) indicator - a small right-pointing dart. */
