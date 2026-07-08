@@ -7,11 +7,10 @@ export type {
   AudioDriver,
   EffectName,
   EffectSpec,
-  ClipEffect,
-  ToneEffect,
   ToneStep,
+  NoiseSpec,
 } from './audio.js';
-export { createAudioSystem, AudioEngine, EFFECTS, clipEffects } from './audio.js';
+export { createAudioSystem, AudioEngine, EFFECTS } from './audio.js';
 
 // Retained scaffold marker so the placeholder wiring in main.ts keeps compiling
 // until the integration task (PRD R7) replaces it.

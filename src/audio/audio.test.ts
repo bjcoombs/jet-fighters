@@ -2,12 +2,9 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   AudioEngine,
   EFFECTS,
-  clipEffects,
   type AudioDriver,
-  type ClipEffect,
   type EffectName,
   type EffectSpec,
-  type ToneEffect,
 } from './audio.js';
 import { AUDIO_MODULE } from './index.js';
 
@@ -16,8 +13,7 @@ class FakeDriver implements AudioDriver {
   ready = false;
   muted = false;
   startCount = 0;
-  clips: { name: EffectName; effect: ClipEffect }[] = [];
-  tones: ToneEffect[] = [];
+  effects: EffectSpec[] = [];
 
   async start(): Promise<void> {
     this.startCount += 1;
@@ -26,72 +22,103 @@ class FakeDriver implements AudioDriver {
   isReady(): boolean {
     return this.ready;
   }
-  playClip(name: EffectName, effect: ClipEffect): void {
-    this.clips.push({ name, effect });
-  }
-  playTone(effect: ToneEffect): void {
-    this.tones.push(effect);
+  playEffect(spec: EffectSpec): void {
+    this.effects.push(spec);
   }
   setMuted(muted: boolean): void {
     this.muted = muted;
   }
 }
 
-describe('EFFECTS manifest', () => {
-  const names: EffectName[] = [
-    'missileFire',
-    'jetMarch',
-    'battleshipBuzz',
-    'explosion',
-    'gameOver',
-  ];
+const ALL_NAMES: EffectName[] = [
+  'missileFire',
+  'jetMarch',
+  'battleshipBuzz',
+  'explosion',
+  'gameOver',
+  'win',
+];
 
-  it('defines exactly the five game effects', () => {
-    expect(Object.keys(EFFECTS).sort()).toEqual([...names].sort());
+/** Peak (highest) frequency across a recipe's steps. */
+function peakFreq(spec: EffectSpec): number {
+  return Math.max(...spec.steps.map((s) => s.freq));
+}
+
+describe('EFFECTS manifest', () => {
+  it('defines exactly the six game effects', () => {
+    expect(Object.keys(EFFECTS).sort()).toEqual([...ALL_NAMES].sort());
   });
 
-  it('gives every effect a valid, in-range spec', () => {
-    for (const name of names) {
+  it('gives every effect a valid, in-range synthesized spec', () => {
+    for (const name of ALL_NAMES) {
       const spec: EffectSpec = EFFECTS[name];
       expect(spec.gain).toBeGreaterThan(0);
       expect(spec.gain).toBeLessThanOrEqual(1);
-      if (spec.kind === 'clip') {
-        expect(spec.url).toMatch(/^audio\/.+\.(wav|mp3)$/);
-      } else {
-        expect(spec.type).toBe('square');
-        expect(spec.steps.length).toBeGreaterThan(0);
-        expect(spec.attackMs).toBeGreaterThanOrEqual(0);
-        expect(spec.releaseMs).toBeGreaterThan(0);
-        for (const step of spec.steps) {
-          expect(step.freq).toBeGreaterThan(0);
-          expect(step.durationMs).toBeGreaterThan(0);
-        }
+      expect(spec.type).toBe('square');
+      expect(spec.steps.length).toBeGreaterThan(0);
+      expect(spec.attackMs).toBeGreaterThanOrEqual(0);
+      expect(spec.releaseMs).toBeGreaterThan(0);
+      for (const step of spec.steps) {
+        expect(step.freq).toBeGreaterThan(0);
+        expect(step.durationMs).toBeGreaterThan(0);
       }
     }
   });
 
-  it('extracts missile fire and game over as clip effects, others synthesized', () => {
-    expect(EFFECTS.missileFire.kind).toBe('clip');
-    expect(EFFECTS.gameOver.kind).toBe('clip');
-    expect(EFFECTS.jetMarch.kind).toBe('tone');
-    expect(EFFECTS.battleshipBuzz.kind).toBe('tone');
-    expect(EFFECTS.explosion.kind).toBe('tone');
+  it('synthesizes every effect - no clip/file-backed specs remain', () => {
+    for (const name of ALL_NAMES) {
+      expect(EFFECTS[name]).not.toHaveProperty('url');
+      expect(EFFECTS[name]).not.toHaveProperty('kind');
+    }
   });
 
   it('models the battleship buzz at a distinctly lower pitch than the jet march', () => {
-    const battleship = EFFECTS.battleshipBuzz as ToneEffect;
-    const march = EFFECTS.jetMarch as ToneEffect;
-    expect(battleship.steps[0].freq).toBeLessThan(march.steps[0].freq);
+    expect(EFFECTS.battleshipBuzz.steps[0].freq).toBeLessThan(
+      EFFECTS.jetMarch.steps[0].freq,
+    );
+  });
+
+  it('models the missile fire as a short high blip (~1.5 kHz, well under 150 ms)', () => {
+    const missile = EFFECTS.missileFire;
+    const total = missile.steps.reduce((s, x) => s + x.durationMs, 0);
+    expect(total).toBeLessThan(150);
+    expect(peakFreq(missile)).toBeGreaterThan(1200);
+  });
+
+  it('gives the explosion a downward pitch sweep and a noise crash', () => {
+    const ex = EFFECTS.explosion;
+    expect(ex.steps.length).toBeGreaterThan(1);
+    expect(ex.steps[0].freq).toBeGreaterThan(ex.steps[ex.steps.length - 1].freq);
+    expect(ex.noise).toBeDefined();
+    expect(ex.noise!.gain).toBeGreaterThan(0);
+    expect(ex.noise!.durationMs).toBeGreaterThan(0);
+    expect(ex.noise!.lowpassHz).toBeGreaterThan(0);
+  });
+
+  it('is the only effect carrying a noise layer', () => {
+    const withNoise = ALL_NAMES.filter((n) => EFFECTS[n].noise !== undefined);
+    expect(withNoise).toEqual(['explosion']);
   });
 });
 
-describe('clipEffects', () => {
-  it('returns only the file-backed effects with their urls', () => {
-    const clips = clipEffects();
-    expect(clips.map((c) => c.name).sort()).toEqual(['gameOver', 'missileFire']);
-    for (const c of clips) {
-      expect(c.url).toBe((EFFECTS[c.name] as ClipEffect).url);
-    }
+describe('jingles', () => {
+  it('models game over as a multi-note melodic jingle', () => {
+    const jingle = EFFECTS.gameOver;
+    expect(jingle.steps.length).toBeGreaterThanOrEqual(3);
+    // Uses more than one distinct pitch (it is a melody, not a sustained buzz).
+    const pitches = new Set(jingle.steps.map((s) => s.freq));
+    expect(pitches.size).toBeGreaterThanOrEqual(3);
+  });
+
+  it('models win as a multi-note jingle that climbs to a celebratory peak', () => {
+    const win = EFFECTS.win;
+    expect(win.steps.length).toBeGreaterThanOrEqual(3);
+    // Clearly ascending: it ends higher than it begins...
+    expect(win.steps[win.steps.length - 1].freq).toBeGreaterThan(
+      win.steps[0].freq,
+    );
+    // ...and peaks above the game-over jingle for a triumphant finish.
+    expect(peakFreq(win)).toBeGreaterThan(peakFreq(EFFECTS.gameOver));
   });
 });
 
@@ -105,24 +132,21 @@ describe('AudioEngine routing', () => {
     driver.ready = true;
   });
 
-  it('routes clip effects to playClip with their spec', () => {
+  it('routes each play method to playEffect with its spec', () => {
     engine.playMissileFire();
-    engine.playGameOver();
-    expect(driver.clips.map((c) => c.name)).toEqual(['missileFire', 'gameOver']);
-    expect(driver.clips[0].effect).toBe(EFFECTS.missileFire);
-    expect(driver.tones).toHaveLength(0);
-  });
-
-  it('routes synthesized effects to playTone with their spec', () => {
     engine.playJetMarch();
     engine.playBattleshipBuzz();
     engine.playExplosion();
-    expect(driver.tones).toEqual([
+    engine.playGameOver();
+    engine.playWin();
+    expect(driver.effects).toEqual([
+      EFFECTS.missileFire,
       EFFECTS.jetMarch,
       EFFECTS.battleshipBuzz,
       EFFECTS.explosion,
+      EFFECTS.gameOver,
+      EFFECTS.win,
     ]);
-    expect(driver.clips).toHaveLength(0);
   });
 });
 
@@ -133,10 +157,9 @@ describe('AudioEngine gesture gating', () => {
     const engine = new AudioEngine(driver);
 
     engine.playMissileFire();
-    engine.playJetMarch();
+    engine.playWin();
 
-    expect(driver.clips).toHaveLength(0);
-    expect(driver.tones).toHaveLength(0);
+    expect(driver.effects).toHaveLength(0);
   });
 });
 
@@ -168,16 +191,16 @@ describe('AudioEngine mute state machine', () => {
     engine.setMuted(true);
     engine.playMissileFire();
     engine.playExplosion();
-    expect(driver.clips).toHaveLength(0);
-    expect(driver.tones).toHaveLength(0);
+    engine.playWin();
+    expect(driver.effects).toHaveLength(0);
   });
 
   it('resumes playing after unmute', () => {
     engine.setMuted(true);
-    engine.playMissileFire();
+    engine.playWin();
     engine.setMuted(false);
-    engine.playMissileFire();
-    expect(driver.clips.map((c) => c.name)).toEqual(['missileFire']);
+    engine.playWin();
+    expect(driver.effects).toEqual([EFFECTS.win]);
   });
 });
 
