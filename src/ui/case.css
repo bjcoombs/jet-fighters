@@ -1,7 +1,10 @@
 /* Jet Fighters tabletop case + on-case controls.
    Layout coordinate space matches the SVG viewBox (1000 x 460). Overlay
    elements are positioned as percentages of `.jf-case`, whose locked
-   aspect-ratio guarantees the round scope window stays circular at any size. */
+   aspect-ratio guarantees the round scope window stays circular at any size.
+
+   Wings hold the controls: LEFT = fire button (top), power switch (right of
+   it), label (bottom); RIGHT = launcher lever (top), skill dial (bottom). */
 
 .jf-stage {
   width: 100%;
@@ -20,7 +23,6 @@
   width: min(100%, 1100px, calc((100dvh - 2 * clamp(8px, 2.5vmin, 32px)) * (1000 / 460)));
   max-height: 100%;
   aspect-ratio: 1000 / 460;
-  /* Scale controls/typography with the case, not the viewport. */
   container-type: inline-size;
   filter: drop-shadow(0 18px 30px rgba(0, 0, 0, 0.55));
   user-select: none;
@@ -36,14 +38,14 @@
   display: block;
 }
 
-/* --- Scope window ------------------------------------------------------- */
+/* --- Scope window (centre) --------------------------------------------- */
 .jf-screen {
   position: absolute;
-  /* circle: cx500 cy235 r170 in a 1000x460 box */
-  left: 33%;
-  top: 14.13%;
-  width: 34%;
-  height: 73.9%;
+  /* circle: cx500 cy222 r169 in a 1000x460 box */
+  left: 33.1%;
+  top: 11.52%;
+  width: 33.8%;
+  height: 73.5%;
   border-radius: 50%;
   overflow: hidden;
   background: #050505;
@@ -60,7 +62,6 @@
   display: block;
 }
 
-/* Glass sheen across the scope */
 .jf-screen::after {
   content: '';
   position: absolute;
@@ -70,13 +71,13 @@
   pointer-events: none;
 }
 
-/* --- Fire button (top-right) ------------------------------------------- */
+/* --- Fire button (left wing, top) -------------------------------------- */
 .jf-fire {
   position: absolute;
-  left: 80.6%;
-  top: 9.35%;
-  width: 10.4%;
-  height: 22.6%;
+  left: 4.9%;
+  top: 13.5%;
+  width: 11.2%;
+  height: 24.3%;
   border-radius: 50%;
   cursor: pointer;
   touch-action: none;
@@ -84,7 +85,7 @@
 
 .jf-fire__ring {
   position: absolute;
-  inset: -8%;
+  inset: -9%;
   border-radius: 50%;
   background: radial-gradient(circle at 50% 35%, #7c1e0d, #4d1206 70%);
   box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.2), inset 0 -3px 6px rgba(0, 0, 0, 0.6);
@@ -110,50 +111,52 @@
     0 2px 4px rgba(0, 0, 0, 0.4);
 }
 
-/* --- Power slide switch (below the fire button) ------------------------ */
+/* --- Power slide switch (left wing, right of fire; vertical, ON at top) - */
 .jf-switch {
   position: absolute;
-  left: 71%;
-  top: 33.5%;
-  width: 18%;
-  height: 12%;
+  left: 17.5%;
+  top: 13.5%;
+  width: 7%;
+  height: 27%;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 4%;
+  justify-content: space-between;
   cursor: pointer;
   touch-action: none;
 }
 
 .jf-switch__label {
-  font: 700 clamp(6px, 1.5cqw, 13px) / 1 Arial, Helvetica, sans-serif;
+  font: 700 clamp(6px, 1.4cqw, 12px) / 1 Arial, Helvetica, sans-serif;
   color: rgba(255, 255, 255, 0.85);
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   flex: 0 0 auto;
 }
 
 .jf-switch__track {
   position: relative;
   flex: 1 1 auto;
-  height: 62%;
+  width: 46%;
+  margin: 6% 0;
   border-radius: 999px;
-  background: linear-gradient(#3a0f05, #601a0a);
+  background: linear-gradient(90deg, #3a0f05, #601a0a, #3a0f05);
   box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.75), inset 0 -1px 2px rgba(255, 255, 255, 0.12);
 }
 
 .jf-switch__thumb {
   position: absolute;
-  top: 8%;
-  left: 4%;
-  width: 42%;
-  height: 84%;
+  left: 6%;
+  bottom: 4%;
+  width: 88%;
+  height: 42%;
   border-radius: 4px;
   background: linear-gradient(#3b3b3b, #111);
   box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.4), 0 2px 3px rgba(0, 0, 0, 0.6);
-  transition: left 120ms ease-out;
+  transition: bottom 120ms ease-out;
 }
 
 .jf-switch[data-on='true'] .jf-switch__thumb {
-  left: 54%;
+  bottom: 54%;
 }
 
 .jf-switch[data-on='true'] .jf-switch__label--on {
@@ -161,13 +164,13 @@
   text-shadow: 0 0 6px rgba(90, 255, 130, 0.6);
 }
 
-/* --- Launcher lever (bottom-left) -------------------------------------- */
+/* --- Launcher lever (right wing, top): light knob in a vertical slot ---- */
 .jf-lever {
   position: absolute;
-  left: 6%;
-  top: 63.5%;
-  width: 13%;
-  height: 33%;
+  left: 81.6%;
+  top: 14.8%;
+  width: 12.4%;
+  height: 27%;
   cursor: grab;
   touch-action: none;
 }
@@ -176,47 +179,48 @@
   cursor: grabbing;
 }
 
+.jf-lever__housing {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 42% 32%, #7d2513 0%, #571707 70%, #3a0f04 100%);
+  box-shadow: inset 0 3px 7px rgba(0, 0, 0, 0.6), inset 0 -3px 6px rgba(255, 255, 255, 0.12);
+}
+
 .jf-lever__slot {
   position: absolute;
   left: 42%;
-  top: 8%;
+  top: 16%;
   width: 16%;
-  height: 84%;
+  height: 68%;
   border-radius: 999px;
-  background: linear-gradient(90deg, #2a0c04, #501608, #2a0c04);
-  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.8);
+  background: linear-gradient(90deg, #180702, #35100a, #180702);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.85);
 }
-
-.jf-lever__arm {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 78%;
-  height: 26%;
-  transform: translate(-50%, -50%);
-  transition: top 130ms cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.jf-lever[data-lane='0'] .jf-lever__arm { top: 20%; }
-.jf-lever[data-lane='1'] .jf-lever__arm { top: 50%; }
-.jf-lever[data-lane='2'] .jf-lever__arm { top: 80%; }
 
 .jf-lever__knob {
   position: absolute;
-  inset: 0;
-  border-radius: 40% / 50%;
-  background: radial-gradient(circle at 40% 30%, #6f8fe6 0%, #2f52b6 50%, #1c357f 100%);
+  left: 34%;
+  width: 32%;
+  height: 20%;
+  border-radius: 4px;
+  background: linear-gradient(#fdfdfb, #c7c4bb);
   box-shadow:
-    inset 0 2px 5px rgba(255, 255, 255, 0.5),
-    inset 0 -4px 8px rgba(0, 0, 0, 0.4),
-    0 4px 8px rgba(0, 0, 0, 0.5);
+    inset 0 2px 2px rgba(255, 255, 255, 0.9),
+    inset 0 -2px 3px rgba(0, 0, 0, 0.35),
+    0 3px 5px rgba(0, 0, 0, 0.55);
+  transition: top 130ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-/* --- Skill dial (bottom-right) ----------------------------------------- */
+.jf-lever[data-lane='0'] .jf-lever__knob { top: 18%; }
+.jf-lever[data-lane='1'] .jf-lever__knob { top: 40%; }
+.jf-lever[data-lane='2'] .jf-lever__knob { top: 62%; }
+
+/* --- Skill dial (right wing, bottom): blue rotary, 1/2/3 --------------- */
 .jf-dial {
   position: absolute;
-  left: 80%;
-  top: 65.6%;
+  left: 82%;
+  top: 60.9%;
   width: 11.6%;
   height: 25.2%;
   cursor: pointer;
@@ -225,12 +229,12 @@
 
 .jf-dial__face {
   position: absolute;
-  inset: 14%;
+  inset: 16%;
   border-radius: 50%;
-  background: radial-gradient(circle at 42% 32%, #4a4a4a 0%, #1c1c1c 60%, #050505 100%);
+  background: radial-gradient(circle at 40% 30%, #6f8fe6 0%, #2f52b6 52%, #1a3078 100%);
   box-shadow:
-    inset 0 3px 6px rgba(255, 255, 255, 0.28),
-    inset 0 -5px 10px rgba(0, 0, 0, 0.6),
+    inset 0 3px 7px rgba(255, 255, 255, 0.5),
+    inset 0 -5px 10px rgba(0, 0, 0, 0.4),
     0 4px 8px rgba(0, 0, 0, 0.5);
   transform: rotate(var(--dial-angle, -50deg));
   transition: transform 150ms cubic-bezier(0.34, 1.4, 0.64, 1);
@@ -238,20 +242,21 @@
 
 .jf-dial__grip {
   position: absolute;
-  inset: 30%;
+  inset: 32%;
   border-radius: 50%;
-  background: repeating-conic-gradient(#333 0deg 12deg, #1a1a1a 12deg 24deg);
+  background: repeating-conic-gradient(rgba(255, 255, 255, 0.18) 0deg 12deg, rgba(0, 0, 0, 0.12) 12deg 24deg);
 }
 
+/* Pointer arm reaching out past the knob edge, like the reference lever. */
 .jf-dial__pointer {
   position: absolute;
-  left: 47%;
-  top: 6%;
-  width: 6%;
-  height: 42%;
-  border-radius: 2px;
-  background: linear-gradient(#fff, #cfcfcf);
-  box-shadow: 0 0 4px rgba(255, 255, 255, 0.6);
+  left: 44%;
+  top: -14%;
+  width: 12%;
+  height: 40%;
+  border-radius: 3px;
+  background: linear-gradient(#7fa0ee, #274db0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
 }
 
 .jf-dial__mark {
@@ -262,9 +267,9 @@
   cursor: pointer;
 }
 
-.jf-dial__mark--1 { left: 8%; top: 78%; }
-.jf-dial__mark--2 { left: 50%; top: -6%; }
-.jf-dial__mark--3 { left: 92%; top: 78%; }
+.jf-dial__mark--1 { left: 2%; top: 26%; }
+.jf-dial__mark--2 { left: 50%; top: -16%; }
+.jf-dial__mark--3 { left: 98%; top: 26%; }
 
 .jf-dial[data-level='1'] .jf-dial__mark--1,
 .jf-dial[data-level='2'] .jf-dial__mark--2,
@@ -276,7 +281,7 @@
 @media (prefers-reduced-motion: reduce) {
   .jf-fire__cap,
   .jf-switch__thumb,
-  .jf-lever__arm,
+  .jf-lever__knob,
   .jf-dial__face {
     transition: none;
   }
