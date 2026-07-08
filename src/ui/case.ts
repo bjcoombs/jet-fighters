@@ -135,9 +135,11 @@ function buildDial(): HTMLElement {
 }
 
 // SVG note: viewBox is 1000 x 460 (~24x11 cm, held-in-both-hands landscape).
-// Only the static molded body (two wings + central scope housing with the
-// bottom grip scallop), grip texture, label plate, and scope rim live here.
-// Interactive controls + the screen are HTML overlays.
+// Only the static molded body (two lower wing blocks flanking a dominant, taller
+// central bezel block), grip texture, label plate, and the scope rim live here.
+// The scope window is a UNION of a large radar circle and a shorter rectangle
+// extending to its left (where SCORE + the left playfield sit), matching the
+// real console. Interactive controls + the screen canvas are HTML overlays.
 const CASE_SVG = `
 <svg class="jf-body" viewBox="0 0 1000 460" preserveAspectRatio="xMidYMid meet"
      xmlns="${SVG_NS}" aria-hidden="true" focusable="false">
@@ -150,6 +152,11 @@ const CASE_SVG = `
     <linearGradient id="jf-wing-red" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#f06c46"/>
       <stop offset="1" stop-color="#bb391d"/>
+    </linearGradient>
+    <linearGradient id="jf-block-red" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f2764f"/>
+      <stop offset="0.5" stop-color="#cf4926"/>
+      <stop offset="1" stop-color="#a52d14"/>
     </linearGradient>
     <radialGradient id="jf-panel-red" cx="0.5" cy="0.4" r="0.8">
       <stop offset="0" stop-color="#a82f16"/>
@@ -172,21 +179,22 @@ const CASE_SVG = `
     <filter id="jf-soft" x="-20%" y="-20%" width="140%" height="140%">
       <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000" flood-opacity="0.35"/>
     </filter>
+    <!-- Screen clip: radar circle UNIONed with the shorter left rectangle.
+         objectBoundingBox units (0..1 of the .jf-screen box); the ellipse rx/ry
+         compensate for the box aspect so the circle renders truly round. -->
+    <clipPath id="jf-screen-clip" clipPathUnits="objectBoundingBox">
+      <rect x="0" y="0.26" width="0.587" height="0.48" rx="0.04" ry="0.05"/>
+      <ellipse cx="0.587" cy="0.5" rx="0.413" ry="0.5"/>
+    </clipPath>
   </defs>
 
-  <!-- Unified body silhouette: two wing blocks + a central scope housing whose
-       bottom edge scallops upward (the hand-grip notch under the screen). -->
+  <!-- Body silhouette: two lower wings flanking a taller central bezel block,
+       flat-bottomed with a small central dip (the moulding under the screen). -->
   <path filter="url(#jf-soft)" fill="url(#jf-body-red)" stroke="#6e1a09" stroke-width="2"
-        d="M44,54 H300 Q322,54 336,44 Q360,24 430,24 H570 Q640,24 664,44
-           Q678,54 700,54 H956 Q992,54 992,90 V402 Q992,438 956,438 H700
-           C640,438 600,410 500,410 C400,410 360,438 300,438 H44
-           Q8,438 8,402 V90 Q8,54 44,54 Z"/>
-
-  <!-- Central recessed scope housing -->
-  <path fill="url(#jf-panel-red)" stroke="#5c1808" stroke-width="1.5"
-        d="M330,44 Q360,20 430,20 H570 Q640,20 670,44 Q690,62 690,120 V340
-           C690,378 640,404 500,404 C360,404 310,378 310,340 V120
-           Q310,62 330,44 Z"/>
+        d="M44,54 H298 Q300,54 300,44 Q300,32 316,32 H684 Q700,32 700,44
+           Q700,54 702,54 H956 Q992,54 992,90 V402 Q992,438 956,438 H704
+           Q702,438 702,446 Q702,454 686,454 H314 Q298,454 298,446
+           Q298,438 296,438 H44 Q8,438 8,402 V90 Q8,54 44,54 Z"/>
 
   <!-- Left wing (raised control block) -->
   <path fill="url(#jf-wing-red)" stroke="#7c2010" stroke-width="1.5"
@@ -200,9 +208,22 @@ const CASE_SVG = `
   <path fill="#ffffff" fill-opacity="0.14" d="M720,54 H956 Q992,54 992,90 V96 H700 V74 Q700,54 720,54 Z"/>
   <path fill="url(#jf-ribs)" d="M700,300 H992 V402 Q992,438 956,438 H700 Z"/>
 
-  <!-- Scope rim (bezel) - the HTML screen sits just inside this -->
-  <circle cx="500" cy="222" r="180" fill="url(#jf-rim)"/>
-  <circle cx="500" cy="222" r="169" fill="#050505"/>
+  <!-- Central bezel block (dominant, raised, taller than the wings) -->
+  <path fill="url(#jf-block-red)" stroke="#7c2010" stroke-width="1.5"
+        d="M316,38 H684 Q702,38 702,56 V426 Q702,446 682,446 H318 Q298,446 298,426 V56 Q298,38 316,38 Z"/>
+  <path fill="#ffffff" fill-opacity="0.14" d="M316,38 H684 Q702,38 702,56 V74 H298 V56 Q298,38 316,38 Z"/>
+
+  <!-- Recessed dark panel that frames the scope window -->
+  <rect x="314" y="60" width="372" height="356" rx="24" fill="url(#jf-panel-red)"
+        stroke="#5c1808" stroke-width="1.5"/>
+
+  <!-- Scope rim (bezel) - circle + left rectangle union, drawn behind the canvas -->
+  <g>
+    <rect x="312" y="142" width="229" height="160" rx="18" fill="url(#jf-rim)"/>
+    <circle cx="533" cy="222" r="158" fill="url(#jf-rim)"/>
+    <rect x="320" y="150" width="213" height="144" rx="14" fill="#050505"/>
+    <circle cx="533" cy="222" r="150" fill="#050505"/>
+  </g>
 
   <!-- JET FIGHTERS label plate (bottom-left) -->
   <g>
