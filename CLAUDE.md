@@ -26,3 +26,30 @@ PRD: `docs/prd/jet-fighters-v1.md` (paths in this file are relative to the repo 
 - Markdown-only approvals: 0
 - CI patterns: `ci` workflow (lint + test + build) required; `pages` deploy runs on main only
 - Bot reviewer rules: none
+
+## Acceptance contract gates
+
+Marathon runs are gated on a frozen acceptance contract at both entry and exit.
+The gate implementations ship with the ai-native-toolkit plugin; `scripts/contract/`
+holds thin shims that exec them, so the documented relative invocations work from
+this repo without vendoring (and forking) the enforcement logic. A shim that cannot
+resolve the toolkit fails closed and blocks the run.
+
+Run identifier = the Task Master tag. Contract artifacts:
+
+- `docs/contract/<run-id>.contract.md` - the contract, committed and reviewed here.
+- `.taskmaster/contract/<run-id>.completion.json` - freeze evidence and the
+  completion record. Run state, alongside `tasks.json` at the Task Master root,
+  not committed to this repo.
+
+Because `.taskmaster/` sits at the Task Master root rather than inside this repo,
+invoke the gates from there so the default `--contract-dir` resolves:
+
+```bash
+cd ~/dev/github.com/bjcoombs/jet-fighters   # Task Master root
+python3 scripts/contract/start_gate.py <run-id>
+```
+
+The contract's sha256 is recorded at freeze and re-hashed by the exit verifier, so
+editing a contract mid-run aborts the run rather than certifying against a moved
+target. Author and freeze the contract *before* decomposing the tag.

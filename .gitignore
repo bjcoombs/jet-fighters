@@ -3,3 +3,7 @@ dist/
 coverage/
 .DS_Store
 *.log
+
+# Python bytecode from the contract gate shims
+__pycache__/
+*.pyc
