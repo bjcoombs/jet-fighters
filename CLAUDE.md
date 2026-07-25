@@ -42,12 +42,27 @@ Run identifier = the Task Master tag. Contract artifacts:
   completion record. Run state, alongside `tasks.json` at the Task Master root,
   not committed to this repo.
 
-Because `.taskmaster/` sits at the Task Master root rather than inside this repo,
-invoke the gates from there so the default `--contract-dir` resolves:
+`.taskmaster/` does not live inside this git repository. This checkout is
+`jet-fighters/jet-fighters-main/` (worktrees are siblings under
+`jet-fighters/worktree/`), and `.taskmaster/` sits one level up in the parent
+`jet-fighters/` directory alongside them. That parent is the Task Master root.
+
+The default `--contract-dir` is `.taskmaster/contract` relative to the current
+directory, so run the gates from the Task Master root - not from this checkout,
+where the default would resolve to a path that does not exist:
 
 ```bash
-cd ~/dev/github.com/bjcoombs/jet-fighters   # Task Master root
+cd ~/dev/github.com/bjcoombs/jet-fighters       # parent dir; holds .taskmaster/
 python3 scripts/contract/start_gate.py <run-id>
+```
+
+From inside this checkout or a worktree, pass the directory explicitly. Relative
+depth differs between the two (a worktree is three levels down, this checkout
+one), so use the absolute path rather than counting `../`:
+
+```bash
+python3 scripts/contract/start_gate.py <run-id> \
+  --contract-dir ~/dev/github.com/bjcoombs/jet-fighters/.taskmaster/contract
 ```
 
 The contract's sha256 is recorded at freeze and re-hashed by the exit verifier, so
