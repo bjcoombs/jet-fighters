@@ -47,7 +47,7 @@ merely inside the bounding rectangle.
 The printed playfield is taken unchanged from v1's `PLAYFIELD_FRACTION`
 (`left 0.055, right 0.95, top 0.34, bottom 0.66` of the scope bounding box):
 
-```
+```text
 playfield = { x: 19.965, y: 102, width: 324.885, height: 96 }
 ```
 
@@ -55,7 +55,7 @@ v1's `columnToX` spreads all six distance columns across that whole rectangle.
 The atlas does not, because the reference photos show the printed border
 enclosing **two** regions (see "Provenance" below):
 
-```
+```text
 playfield.x                  field.x                       playfield right
 19.965        SCORE box      84.942      6 distance columns        344.85
   |------------------------------|-----------------------------------|
