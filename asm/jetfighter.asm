@@ -899,9 +899,24 @@ rs_done:
 ; these lookups own their nibbles outright and no OR is needed here. Segments a-d
 ; are plates 0-3 (R0) and e,f,g plates 4-6 (R1), which is the atlas's own
 ; seven-segment order.
+;
+; A leading digit is dark while it and every digit above it is zero, so the tube
+; carries a 1-3 digit number and never a leading zero. The units digit is not a
+; leading digit and always lights: a score of nothing reads as a single `0`, which
+; is what both photographs of the lit unit show
+; (assets/reference/tube-closeup-score0.webp shows one `0`,
+; tube-closeup-score10.webp shows `10` with the tens column lit). PRD v1 rule 6
+; calls the readout "2-3 digit", which describes the field on the glass - three
+; digit positions, two of them lit through most of a game; the photographs are
+; what settle how a score under ten is drawn into it.
+;
+; The blank is an omitted write, not a write of zero - render_field has already
+; cleared all three plate files, so a column nothing draws into stays dark for the
+; whole sweep.
 
 .PAGE
 render_score:
+        ; --- the units digit, which is never blanked ---
         LXI FILE_TIME
         LYI NIB_SC_U
         LAM
@@ -913,9 +928,13 @@ render_score:
         LXI FILE_PLATE1
         XMA
 
+        ; --- the tens digit, blanked while it and the hundreds are both zero ---
         LXI FILE_TIME
         LYI NIB_SC_T
         LAM
+        ALEI 0                  ; ST <- 1 while the tens digit is zero
+        BR rs_tens_leading      ; a zero tens may still be a leading zero
+rs_tens_show:
         P PAT_DIGIT
         LXI FILE_PLATE0
         LYI GRID_SC_T
@@ -923,7 +942,15 @@ render_score:
         LAB
         LXI FILE_PLATE1
         XMA
-
+        BR rs_tens_done
+rs_tens_leading:
+        LYI NIB_SC_H            ; X is still FILE_TIME
+        LAM
+        ALEI 0                  ; ST <- 1 when the hundreds digit is zero as well
+        BR rs_tens_done         ; under ten: leave the column dark
+        LAI 0                   ; 100 and up: a zero tens is not a leading zero
+        BR rs_tens_show
+rs_tens_done:
         JMPL render_hundreds
 
 ; ============================================================================
@@ -931,8 +958,10 @@ render_score:
 ; ============================================================================
 ;
 ; The unit's readout is a 2-3 digit display (PRD v1 rule 6): the hundreds column
-; is dark below 100 rather than showing a leading zero. This is the tail of the
-; render chain, so its RTN is the one that returns to the sweep.
+; is dark below 100 rather than showing a leading zero. The hundreds is the
+; highest digit, so unlike the tens above it has no digit to consult - its own
+; zero is always a leading zero. This is the tail of the render chain, so its RTN
+; is the one that returns to the sweep.
 
 .PAGE
 render_hundreds:
