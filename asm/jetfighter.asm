@@ -113,7 +113,6 @@
 
 .EQU COL_LAUNCH,     0          ; the launcher's column, and the G line
 .EQU COL_MSL_START,  1          ; the column a launched missile appears in
-.EQU COL_JET_NEAR,   1          ; the last jet column before the G line
 .EQU COL_JET_FAR,    4          ; the leading column a fresh squadron enters at;
                                 ; its rear rank sits one further out, in column 5
 .EQU COL_BSHIP,      6          ; the battleship's column
@@ -264,6 +263,7 @@
 .EQU RANK_SPLIT,     2          ; jet indices 0-2 are rank 0, 3-5 are rank 1
 .EQU LIVES_MAX,      3          ; three launchers, per the printed silhouettes
 .EQU SPEED_LAST,    15          ; the last entry in PAT_STEP
+.EQU WAVE_LAST,     15          ; NIB_WAVE saturates here rather than wrapping
 .EQU ST_PLAY,        0          ; game states; anything above ST_PLAY is an end
 .EQU ST_OVER,        1
 .EQU ST_WIN,         2
@@ -987,24 +987,26 @@ missile_kill:
         LAI 0
         XMA                     ; add_score's tens addend: jets never score ten
         LXI FILE_STATE
-        LYI NIB_MCOL
-        LAM
-        P PAT_COLUMN            ; B <- the scoring band for that column
-        LAB
-        CALL add_score
-
-        LXI FILE_STATE
         LYI NIB_KILLS
         LAM
         AI 1
         XMA                     ; one fewer jet in this squadron
-        LYI NIB_MCOL
-        LAI 0
-        XMA                     ; the shot is spent
 
+        ; The hit beep first, then the score. Scoring can reach 199 and take the
+        ; win jingle with it, and the jingle has to follow the hit it was earned
+        ; by rather than interrupt it.
         LAI SND_MISSILE
         LBI BURSTS_MISSILE
         CALL play_sound
+
+        LXI FILE_STATE
+        LYI NIB_MCOL
+        LAM
+        P PAT_COLUMN            ; B <- the scoring band for that column
+        LAI 0
+        XMA                     ; the shot is spent; B still holds the band
+        LAB
+        CALL add_score
         JMPL tick_jets
 
 ; ============================================================================
@@ -1017,13 +1019,6 @@ missile_kill:
 
 .PAGE
 bship_kill:
-        LXI FILE_TIME
-        LYI NIB_SCRATCH
-        LAI 1
-        XMA                     ; tens addend: 10 points
-        LAI 0                   ; units addend
-        CALL add_score
-
         LXI FILE_STATE
         LYI NIB_BSLANE
         LAI BS_NONE
@@ -1032,10 +1027,31 @@ bship_kill:
         LAI 0
         XMA
 
+        ; --- schedule the next crossing ---
+        ; Inline rather than a jump to bship_wait: that block is the tail of the
+        ; battleship's own turn and returns to tick_input, which from here would
+        ; cost the jets and the rockets their turn on this sweep.
+        LYI NIB_RAND
+        LAM
+        LXI FILE_TIME
+        LYI NIB_BS_LO
+        LMAIY
+        LAI BSHIP_GAP_HI
+        LMAIY
+
         LAI SND_MISSILE
         LBI BURSTS_MISSILE
         CALL play_sound
-        JMPL bship_wait
+
+        ; Ten points, and the beep comes first for the same reason it does in
+        ; missile_kill: this score can be the winning one.
+        LXI FILE_TIME
+        LYI NIB_SCRATCH
+        LAI 1
+        XMA                     ; tens addend: 10 points
+        LAI 0                   ; units addend
+        CALL add_score
+        JMPL tick_jets
 
 ; ============================================================================
 ; the score, in BCD
@@ -1124,11 +1140,6 @@ tick_jets:
         ; --- a cleared squadron respawns ---
         LXI FILE_STATE
         LYI NIB_KILLS
-        LAM
-        ALEI JET_COUNT
-        BR tj_alive
-        BR tj_alive             ; kills can never exceed six; fall through
-tj_alive:
         MNEI JET_COUNT          ; ST <- 0 when the last jet of the wave is down
         BR tj_timer
         JMPL new_wave
@@ -1216,13 +1227,18 @@ jet_step:
         LAB
         LMAIY
 
+        ; --- one column closer, then see where that put it ---
+        ; The step happens first so the tube actually shows a jet standing on
+        ; the G line at the moment of capture, which is what the player sees on
+        ; the unit. PRD v1 rule 6: reaching G is an instant game over.
         LXI FILE_STATE
         LYI NIB_SQCOL
         LAM
-        ALEI COL_JET_NEAR       ; ST <- 1 when the next step is onto the G line
-        BR js_capture
-        AI 15                   ; one column closer to the missile station
+        AI 15
         XMA
+        LAM
+        ALEI COL_LAUNCH         ; ST <- 1 when the squadron has reached the G line
+        BR js_capture
 
         ; --- the march beep, one per step (audio-reference.md, jetMarch) ---
         LAI SND_MARCH
@@ -1256,7 +1272,9 @@ new_wave:
         XMA
         LYI NIB_WAVE
         LAM
-        ALEI SPEED_LAST         ; the wave count saturates rather than wrapping
+        ALEI WAVE_LAST - 1      ; the wave count saturates rather than wrapping:
+                                ; a nibble that rolled over to zero would hand
+                                ; the player back the slowest cadence
         BR nw_bump
         BR nw_reload
 nw_bump:
@@ -1662,7 +1680,18 @@ bship_wait:
 
 .PAGE
 tick_input:
+        ; --- a game that ended earlier in this very chain stops here ---
+        ; tick tested NIB_STATE at the top of the sweep, but scoring can end the
+        ; game halfway down: a hit that reaches 199 sets ST_WIN from inside
+        ; add_score. Without this second test the rest of that one chain would
+        ; still run and the player would get one more shot after winning.
         LXI FILE_STATE
+        LYI NIB_STATE
+        LAM
+        ALEI ST_PLAY
+        BR ti_playing
+        RTN
+ti_playing:
         LYI NIB_FIRE
         LAM
         ALEI 0
@@ -1719,13 +1748,13 @@ fire_missile:
 ; launchers destroyed, or a jet reaching the G line. Nothing clears NIB_STATE -
 ; the power switch is the only reset the unit has.
 
+; The two losing endings differ in the rules and not at all in the machine: a
+; jet reaching the G line and the third launcher being destroyed both stop the
+; game and play the same sound. They keep separate labels so the two callers
+; read as the two rules they implement.
+
 .PAGE
 game_capture:
-        LXI FILE_STATE
-        LYI NIB_STATE
-        LAI ST_OVER
-        XMA
-        JMPL play_loss
 game_lost:
         LXI FILE_STATE
         LYI NIB_STATE
@@ -1769,7 +1798,9 @@ play_loss:
 ;
 ; audio-reference.md's `win` transcription: the arpeggio 750, 940, 1240 played
 ; three times, resolving on a long 940. The three repeats are a loop rather than
-; nine note entries, which is what keeps this inside one page.
+; nine note entries, which is what fits the whole jingle in one page - and it has
+; to be one page, because `BR gw_pass` closes the loop and BR cannot leave its
+; own page.
 ;
 ; 1240 Hz is the measurement. 1244 Hz is the equal-tempered frequency of the note
 ; name D#6 that was attached to it afterwards, and audio-reference.md shows the
@@ -1796,48 +1827,17 @@ gw_pass:
         LAI SND_WIN3
         LBI BURSTS_WIN3
         CALL play_sound
-        JMPL win_again
-
-; ============================================================================
-; the jingle's repeat counter and its resolution
-; ============================================================================
-
-.PAGE
-win_again:
         LXI FILE_SOUND
         LYI NIB_NOTE_LEFT
         LAM
         AI 15
         XMA
         TC                      ; ST <- carry: 1 until the counter borrowed
-        BR wa_more
+        BR gw_pass
         LAI SND_WIN2
         LBI BURSTS_WINEND       ; the sustained A#5 the jingle resolves on
         CALL play_sound
         RTN
-wa_more:
-        JMPL game_win_pass
-
-; ============================================================================
-; back round the arpeggio
-; ============================================================================
-;
-; game_win writes NIB_STATE and reloads the counter, so the repeat re-enters
-; below both. Two entry points into one body would need a page-crossing BR;
-; a second block costs four words and no branch at all.
-
-.PAGE
-game_win_pass:
-        LAI SND_WIN1
-        LBI BURSTS_WIN1
-        CALL play_sound
-        LAI SND_WIN2
-        LBI BURSTS_WIN2
-        CALL play_sound
-        LAI SND_WIN3
-        LBI BURSTS_WIN3
-        CALL play_sound
-        JMPL win_again
 
 ; ============================================================================
 ; setting up a note
