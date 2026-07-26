@@ -33,9 +33,34 @@ const LINE_WIDTH = 0.9;
 /** Arc title text, riding the top rim of the round scope. From v1. */
 const ARC_TITLE = 'COAST SIDE MISSILE STATION RADAR SIGHT SCREEN';
 
-/** Arc title radius and font size, as fractions of the circle radius. From v1. */
-const ARC_RADIUS_FRACTION = 0.9;
-const ARC_FONT_FRACTION = 0.076;
+/**
+ * Arc title radius and font size, as fractions of the circle radius.
+ *
+ * Measured off the two lit close-ups in `assets/reference/`
+ * (`tube-closeup-score0.webp`, `tube-closeup-score10.webp`). An axis-aligned
+ * ellipse was least-squares fitted to the red bezel's inner edge in each photo
+ * to recover the scope circle under the camera's mild foreshortening (residual
+ * rms 0.7 px and 1.0 px; the fitted squash is 0.977 and 0.962, so the face is
+ * close to head-on). The white silkscreen pixels were then un-squashed into
+ * that circle's frame and measured against it:
+ *
+ * | Quantity                          | score0 | score10 |
+ * | --------------------------------- | ------ | ------- |
+ * | arc centreline radius / circle r  | 0.932  | 0.920   |
+ * | cap height / circle r             | 0.029  | 0.025   |
+ * | angular sweep, first ink to last  | 67.7d  | 66.0d   |
+ * | sweep midpoint (-90d is straight up) | -88.5d | -88.1d |
+ *
+ * v1 used 0.9 and 0.076. The radius was close; the font was twice life size,
+ * and since {@link drawArcText} derives its angular step from the font size,
+ * that doubled the sweep too - 132 degrees against the real 67, which wrapped
+ * the legend a third of the way down both sides of the scope until the last
+ * letters of SCREEN collided with the G ruler label. Halving the font both
+ * shrinks the glyphs and pulls the sweep back to the photographed 65 degrees;
+ * the 0.62 advance factor and the top-centred start angle were already right.
+ */
+const ARC_RADIUS_FRACTION = 0.925;
+const ARC_FONT_FRACTION = 0.038;
 
 /**
  * Draw one line of text bent around a circle, character by character.
