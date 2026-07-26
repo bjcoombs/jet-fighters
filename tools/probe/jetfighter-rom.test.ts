@@ -42,9 +42,24 @@ const PLATE_MISSILE_PAIR = [
 ];
 /** Grid 5 only. */
 const PLATE_LAUNCHER = [6, 7, 8];
-/** Grid 9 only: the lit SCORE label, then the three reserve-launcher marks. */
+/** Grid 9 only: the lit SCORE label. */
 const PLATE_SCORE_LABEL = 0;
-const PLATE_LIFE = [1, 2, 3];
+
+/**
+ * Addresses the ROM still drives that the tube has no segment at.
+ *
+ * The unit has **no lives display** - owner-confirmed against his own CGL
+ * machine; damage is signalled only by the two- and three-beep warnings. The
+ * three white marks at the right-hand edge that `life_0..2` were traced from
+ * are printed paint on the overlay, not phosphor, so they left the atlas. The
+ * ROM has not caught up: it still writes a launcher tally into grid 9's R0
+ * nibble (`LIFEP_BASE` in asm/jetfighter.asm). Removing that write is ROM work
+ * and belongs in its own change.
+ *
+ * This is an allowance, not a permission: the assertion below fails the moment
+ * the ROM stops driving these, so the list cannot outlive the defect.
+ */
+const ROM_PHANTOM_ADDRESSES = ['9-1', '9-2', '9-3'];
 
 /** Playfield geometry, mirroring the ROM's "Playfield geometry" block. */
 const GRID_COLUMN_LAST = 5;
@@ -178,7 +193,10 @@ describe('the field the ROM puts up at power-on', () => {
       .filter((segment) => segment.duty > 0)
       .filter((segment) => getSegmentByAddress(segment.grid, segment.plate) === undefined)
       .map((segment) => `${segment.grid}-${segment.plate}`);
-    expect(unmapped).toEqual([]);
+    // The known lives-tally writes, and nothing else. Asserting equality rather
+    // than filtering them out means this test starts failing - correctly - when
+    // the ROM is fixed, and the allowance gets deleted with the defect.
+    expect(unmapped.sort()).toEqual([...ROM_PHANTOM_ADDRESSES].sort());
   });
 
   it('holds a squadron in the jet lanes, not a saturated row', () => {
@@ -196,8 +214,10 @@ describe('the field the ROM puts up at power-on', () => {
     expect(platesUnder(board, GRID_LAUNCH)).not.toContain(PLATE_LAUNCHER[0]);
   });
 
-  it('shows three standing launchers, beside the lit SCORE label', () => {
-    expect(platesUnder(board, GRID_STATUS)).toEqual([PLATE_SCORE_LABEL, ...PLATE_LIFE]);
+  it('lights the SCORE label on the status grid', () => {
+    // The tube has nothing else on this grid. The ROM's launcher tally in the
+    // rest of the nibble reaches no phosphor - see ROM_PHANTOM_ADDRESSES.
+    expect(platesUnder(board, GRID_STATUS)).toContain(PLATE_SCORE_LABEL);
   });
 
   it('brings the first jet in at the far column, in one lane only', () => {

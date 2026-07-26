@@ -50,14 +50,28 @@ export type ScoreDigitIndex = 0 | 1 | 2;
 export type JetSegmentId = `jet_lane${LaneIndex}_col${ColumnIndex}`;
 /** Jet rocket dots travelling back toward the player (18 total). */
 export type RocketSegmentId = `rocket_lane${LaneIndex}_col${ColumnIndex}`;
-/** The player missile's two-dot trail: dot0 = head, dot1 = trail (6 total). */
+/**
+ * The player missile: two spiky bursts stacked vertically in one column, the
+ * upper broader than the lower (6 total). `dot0` is the upper burst, `dot1` the
+ * lower. The ids predate the photographs that showed the pair is stacked, not
+ * side by side, and are kept so the ROM's plate map does not move.
+ */
 export type MissileSegmentId = `missile_lane${LaneIndex}_dot${0 | 1}`;
-/** The player launcher at the G line, one segment per lane position (3 total). */
+/**
+ * The player's ship, inside the field at the G line, one segment per lane
+ * position (3 total). Owner-confirmed as the object the player controls and
+ * fires from; the id keeps the `launcher_` prefix because the (grid, plate)
+ * addresses the ROM writes have not moved. See ATLAS-COORDINATES.md.
+ */
 export type LauncherSegmentId = `launcher_lane${LaneIndex}`;
 /** Seven-segment SCORE readout: 3 digits x 7 segments (21 total). */
 export type ScoreSegmentId = `score_digit${ScoreDigitIndex}_seg${SevenSegmentKey}`;
-/** Remaining-launcher (life) indicators (3 total). */
-export type LifeSegmentId = `life_${LaneIndex}`;
+/**
+ * The red starburst thrown up where the player's ship is hit, one per lane
+ * position (3 total). Photographed in
+ * `assets/reference/sprites/explosion-red-lit.png`.
+ */
+export type ExplosionSegmentId = `explosion_lane${LaneIndex}`;
 
 /**
  * Every addressable segment on the tube. Exhaustive by construction: a typo in
@@ -69,7 +83,7 @@ export type SegmentId =
   | MissileSegmentId
   | LauncherSegmentId
   | ScoreSegmentId
-  | LifeSegmentId
+  | ExplosionSegmentId
   | 'battleship'
   | 'score_label';
 
@@ -122,7 +136,7 @@ export const EXPECTED_SEGMENT_COUNTS = {
   missile: 6,
   launcher: 3,
   score: 21,
-  life: 3,
+  explosion: 3,
   battleship: 1,
   scoreLabel: 1,
 } as const;
