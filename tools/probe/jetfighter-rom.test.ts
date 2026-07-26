@@ -23,20 +23,41 @@ import { assemble } from '../hmasm/assembler.js';
 import { romImage } from '../hmasm/output.js';
 import { Board } from '../../src/machine/board/board.js';
 import { CYCLE_HZ } from '../../src/machine/cpu/cpu.js';
+import { getSegmentByAddress } from '../../src/machine/tube/atlas.js';
 
-/** Plate assignments, mirroring the "Plate assignments" block in the ROM. */
-const PLATE_GROUND = 0;
-const PLATE_MISSILE = [1, 2, 3];
-const PLATE_LAUNCHER = [4, 5, 6];
-const PLATE_LIFE = 7;
-const PLATE_ACTOR = [8, 9, 10];
+/**
+ * Plate assignments, mirroring the "Plate assignments" block in the ROM - which
+ * in turn copies them from the segment atlas, src/machine/tube/atlas.json. The
+ * atlas is the description of the glass; the ROM has no freedom here, and the
+ * conformance test below is what holds the two together.
+ */
+const PLATE_JET = [0, 1, 2];
+const PLATE_ROCKET = [3, 4, 5];
+const PLATE_BSHIP = 6;
+/** Grid 4 only: a head/trail dot pair per lane. */
+const PLATE_MISSILE_PAIR = [
+  [6, 7],
+  [8, 9],
+  [10, 11],
+];
+/** Grid 5 only. */
+const PLATE_LAUNCHER = [6, 7, 8];
+/** Grid 9 only: the lit SCORE label, then the three reserve-launcher marks. */
+const PLATE_SCORE_LABEL = 0;
+const PLATE_LIFE = [1, 2, 3];
 
 /** Playfield geometry, mirroring the ROM's "Playfield geometry" block. */
-const COL_LAUNCH = 0;
-const COL_BSHIP = 6;
-const GRID_SCORE_H = 7;
-const GRID_SCORE_T = 8;
-const GRID_SCORE_U = 9;
+const GRID_COLUMN_LAST = 5;
+const GRID_BSHIP = 0;
+const GRID_MISSILE = 4;
+const GRID_LAUNCH = 5;
+const GRID_SCORE_H = 6;
+const GRID_SCORE_T = 7;
+const GRID_SCORE_U = 8;
+const GRID_STATUS = 9;
+
+/** Six jets, two ranks of three (the ROM's JET_COUNT). */
+const JET_COUNT = 6;
 
 /** Segments the PAT_DIGIT entry for zero lights: a b c d e f, and not g. */
 const DIGIT_ZERO_PLATES = [0, 1, 2, 3, 4, 5];
@@ -75,6 +96,32 @@ function platesUnder(board: Board, grid: number): number[] {
     .sort((left, right) => left - right);
 }
 
+/**
+ * The distance columns showing a jet, left (far) to right (the G line).
+ *
+ * Restricted to the six playfield grids on purpose: plates 0-2 mean a jet under
+ * grids 0-5 and the digit segments a-c under 6-8, which is what a multiplexed
+ * tube is.
+ */
+function jetColumns(board: Board): number[] {
+  return gridsShowing(board, PLATE_JET).filter((grid) => grid <= GRID_COLUMN_LAST);
+}
+
+/** How many columns of one lane are showing a jet. */
+function columnsLitInLane(board: Board, lane: number): number {
+  return gridsShowing(board, [PLATE_JET[lane]!]).filter((grid) => grid <= GRID_COLUMN_LAST).length;
+}
+
+/** Every jet segment lit anywhere on the playfield. */
+function jetSegmentCount(board: Board): number {
+  return board
+    .getLitSegments()
+    .filter(
+      (segment) =>
+        segment.duty > 0 && segment.grid <= GRID_COLUMN_LAST && PLATE_JET.includes(segment.plate),
+    ).length;
+}
+
 /** The pitch of each distinct sound in an edge stream, in hertz. */
 function burstPitches(board: Board): number[] {
   const edges = board.takeSpeakerEdges();
@@ -108,33 +155,55 @@ describe('the field the ROM puts up at power-on', () => {
   const board = romBoard();
   board.runFrames(3);
 
-  it('draws the ground line under every playfield column and no further', () => {
-    // Plate 0 is also the score digits' `a` segment - the same plate line means
-    // different things under different grids, which is what a multiplexed tube
-    // is - so the assertion is about the playfield columns, 0 to 6.
-    const playfield = gridsShowing(board, [PLATE_GROUND]).filter((grid) => grid < GRID_SCORE_H);
-    expect(playfield).toEqual([0, 1, 2, 3, 4, 5, 6]);
+  it('drives no address the tube has no segment at', () => {
+    // The regression this file exists to stop coming back. The ROM once carried
+    // its own invented (grid, plate) map: a ground line on plate 0 of every
+    // playfield column, jets up on plates 8-10, the launcher tally on plate 7.
+    // The tube has no segment at any of those addresses - the atlas puts jets on
+    // plates 0-2 of the column's own grid - so what actually reached the glass
+    // was one lit jet in the top lane of all six columns at once, plus a handful
+    // of segments driven into thin air. Every lit address must resolve.
+    const unmapped = board
+      .getLitSegments()
+      .filter((segment) => segment.duty > 0)
+      .filter((segment) => getSegmentByAddress(segment.grid, segment.plate) === undefined)
+      .map((segment) => `${segment.grid}-${segment.plate}`);
+    expect(unmapped).toEqual([]);
+  });
+
+  it('holds a squadron in the jet lanes, not a saturated row', () => {
+    // Six jets in two ranks of three is the whole squadron, so nothing on this
+    // tube can ever show more; and no lane can be lit the full width of the
+    // field, which is exactly what the invented plate map used to produce.
+    expect(jetSegmentCount(board)).toBeLessThanOrEqual(JET_COUNT);
+    for (const lane of [0, 1, 2]) {
+      expect(columnsLitInLane(board, lane)).toBeLessThan(GRID_COLUMN_LAST + 1);
+    }
   });
 
   it('stands the launcher in the centre lane, where the lever rests', () => {
-    expect(platesUnder(board, COL_LAUNCH)).toContain(PLATE_LAUNCHER[1]);
-    expect(platesUnder(board, COL_LAUNCH)).not.toContain(PLATE_LAUNCHER[0]);
+    expect(platesUnder(board, GRID_LAUNCH)).toContain(PLATE_LAUNCHER[1]);
+    expect(platesUnder(board, GRID_LAUNCH)).not.toContain(PLATE_LAUNCHER[0]);
   });
 
-  it('shows three standing launchers', () => {
-    expect(gridsShowing(board, [PLATE_LIFE])).toEqual([0, 1, 2]);
+  it('shows three standing launchers, beside the lit SCORE label', () => {
+    expect(platesUnder(board, GRID_STATUS)).toEqual([PLATE_SCORE_LABEL, ...PLATE_LIFE]);
   });
 
   it('puts a squadron of two ranks in the flying zone', () => {
-    // Six jets: three lanes in the leading column and three one further out.
-    const columns = gridsShowing(board, PLATE_ACTOR);
-    expect(columns).toEqual([4, 5]);
-    expect(platesUnder(board, 4)).toEqual(expect.arrayContaining(PLATE_ACTOR));
-    expect(platesUnder(board, 5)).toEqual(expect.arrayContaining(PLATE_ACTOR));
+    // Six jets: three lanes in the leading column and three one further out. A
+    // fresh squadron enters from the far side, which is grid 0.
+    expect(jetColumns(board)).toEqual([0, 1]);
+    expect(platesUnder(board, 0)).toEqual(expect.arrayContaining(PLATE_JET));
+    expect(platesUnder(board, 1)).toEqual(expect.arrayContaining(PLATE_JET));
   });
 
-  it('leaves the battleship zone empty until a crossing starts', () => {
-    expect(gridsShowing(board, PLATE_ACTOR)).not.toContain(COL_BSHIP);
+  it('leaves the battleship dark until a crossing starts', () => {
+    expect(platesUnder(board, GRID_BSHIP)).not.toContain(PLATE_BSHIP);
+  });
+
+  it('holds no jet rocket in the air before the jets have fired one', () => {
+    expect(gridsShowing(board, PLATE_ROCKET).filter((grid) => grid <= GRID_COLUMN_LAST)).toEqual([]);
   });
 
   it('reads zero with the leading zero blanked', () => {
@@ -145,13 +214,17 @@ describe('the field the ROM puts up at power-on', () => {
 });
 
 describe('the squadron advances, and the skill dial sets how fast', () => {
-  /** The leading column of the squadron after `frames` sweeps at `skill`. */
-  function leadingColumnAfter(skill: string, frames: number): number {
+  /**
+   * The squadron's leading column after `frames` sweeps at `skill`, as a grid.
+   *
+   * The jets march toward the missile station, which is +x on the glass, so the
+   * leading rank is the *highest* grid showing a jet and it climbs with time.
+   */
+  function leadingGridAfter(skill: string, frames: number): number {
     const board = romBoard();
     board.setControl('skill', skill);
     board.runFrames(frames);
-    const columns = gridsShowing(board, PLATE_ACTOR).filter((grid) => grid !== COL_BSHIP);
-    return Math.min(...columns);
+    return Math.max(...jetColumns(board));
   }
 
   it('walks the squadron toward the missile station', () => {
@@ -159,12 +232,12 @@ describe('the squadron advances, and the skill dial sets how fast', () => {
     // provisional-cadence block), so 160 frames is three steps or so. The test
     // asserts the direction of travel, not the number of steps - the number is
     // unmeasured and will change when the reference video arrives.
-    expect(leadingColumnAfter('1', 160)).toBeLessThan(4);
+    expect(leadingGridAfter('1', 160)).toBeGreaterThan(1);
   });
 
   it('advances no faster at skill 1 than at skill 3', () => {
     // Rule 1 of the back label: the dial sets level 1 (easiest) to 3 (fastest).
-    expect(leadingColumnAfter('3', 100)).toBeLessThanOrEqual(leadingColumnAfter('1', 100));
+    expect(leadingGridAfter('3', 100)).toBeGreaterThanOrEqual(leadingGridAfter('1', 100));
   });
 });
 
@@ -175,12 +248,13 @@ describe('firing', () => {
     board.runFrames(4);
     board.setFire(true);
     board.runFrames(3);
-    // The missile is cyan, on plates 1-3, and travels away from the launcher -
-    // so it is somewhere on the field but never in the launcher's own column.
-    const columns = gridsShowing(board, PLATE_MISSILE);
-    expect(columns.length).toBeGreaterThan(0);
-    expect(columns).not.toContain(COL_LAUNCH);
-    expect(platesUnder(board, columns[0]!)).toContain(PLATE_MISSILE[0]);
+    // The tube carries one cyan dot pair per lane, all six on grid 4
+    // (ATLAS-COORDINATES.md assumption 5), so a shot in the top lane is that
+    // lane's pair and nothing in the other two lanes.
+    expect(platesUnder(board, GRID_MISSILE)).toEqual(
+      expect.arrayContaining(PLATE_MISSILE_PAIR[0]!),
+    );
+    expect(platesUnder(board, GRID_MISSILE)).not.toContain(PLATE_MISSILE_PAIR[2]![0]);
   });
 
   it('does not launch a second shot while the button is merely held', () => {
