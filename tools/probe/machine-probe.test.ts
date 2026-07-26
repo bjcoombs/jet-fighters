@@ -33,9 +33,14 @@ import {
   type Snapshot,
 } from './machine-probe.js';
 
-/** The launcher's column, and the plates its three lanes sit on (jetfighter.asm). */
-const LAUNCH_GRID = 0;
-const LANE_PLATES = [4, 5, 6];
+/**
+ * The launcher's grid, and the plates its three lanes sit on.
+ *
+ * From the segment atlas (src/machine/tube/atlas.json, `launcher_lane0..2`),
+ * which is also where jetfighter.asm's GRID_LAUNCH and PAT_LANE take them from.
+ */
+const LAUNCH_GRID = 5;
+const LANE_PLATES = [6, 7, 8];
 
 /** The band contract V5 measures the missile-fire blip against, in hertz. */
 const BLIP_HZ_MIN = 1480;
