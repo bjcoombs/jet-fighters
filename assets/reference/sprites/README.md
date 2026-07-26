@@ -21,15 +21,42 @@ resampler's.
 
 ## What the photographs establish
 
-### 1. The playfield is 7 columns x 3 rows, not 6
+### 1. The playfield is 7 cells wide - which the code already models
 
 Counted independently on both photographs from the printed cell dividers: **seven**
-cell rectangles span the field between the left rail and the G line, each holding
-three lane positions. That is **21 jet cells**.
+cell rectangles span the field between the left rail and the G line.
 
-`atlas.json` currently defines `jet_lane{0-2}_col{0-5}` - six columns, 18 cells. This
-is a structural error and everything downstream inherits it: the ROM's column
-numbering, the distance-zone mapping and the scoring ruler all count in columns.
+**An earlier revision of this document claimed that contradicted the code. It does
+not.** The ROM already works in seven columns - `COL_LAUNCH 0` (the G line) through
+`COL_JET_FAR 5`, plus `COL_BSHIP 6` - and the atlas already carries six jet columns
+plus a separate `battleship` segment, which is seven cells. `PAT_COLUMN` inverts ROM
+column numbering onto atlas grids, so ROM column 0 (the G line, at the right of the
+glass) resolves to the atlas's rightmost jet column. That indirection is what made the
+two look inconsistent on a first reading.
+
+The claim was wrong and no column-count rework is needed. It is recorded here rather
+than deleted because it was acted on: it nearly commissioned a large change to the
+ROM's distance-zone mapping on a false premise.
+
+What the photographs do **not** settle is the shape of that far-left cell. The atlas
+models the battleship as a single segment 43 units wide against a jet's 18, whereas
+the seven printed cells read as roughly equal width. Whether the far-left cell is a
+battleship-only zone drawn wide, or a seventh jet column with the battleship overlaid,
+is unresolved - and the ROM's own comment concedes the point:
+
+> the split below (5=3, 4,3=2, 2,1=1) is this ROM's reading of the ruler and is
+> recorded in PAT_COLUMN rather than spread through the code
+
+The overlay photograph has never been column-counted against the ruler bands. That is
+worth doing before trusting either reading.
+
+**One piece of evidence leans toward the seventh-jet-column reading.** Every one of the
+seven printed cells carries three jet ghosts - including the far-left one. A cell that
+existed only to hold a battleship would not be printed with a jet in each of its three
+lanes. That is suggestive rather than conclusive: the ghost field is legible in these
+photographs but not crisp, and a shared print pattern across all seven cells could be a
+manufacturing convenience rather than a statement about what occupies them. It is the
+thread to pull first when an angled-light photograph of the dark tube arrives.
 
 ### 2. Every cell carries a ghost jet
 
