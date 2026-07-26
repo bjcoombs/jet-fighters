@@ -44,6 +44,43 @@ const BLIP_HZ_MAX = 1632;
 /** Longest a blip may last, in seconds (contract V5). */
 const BLIP_MAX_SECONDS = 0.15;
 
+/**
+ * Silence long enough to separate two sounds, in machine cycles.
+ *
+ * The slowest note the ROM plays is the loss sound's 96 Hz collapse, whose
+ * period is ~4150 cycles, and the shortest silence between two sounds is the
+ * ~10200-cycle warning-beep gap. 8000 sits between them, so this splits sounds
+ * without splitting a note in half.
+ */
+const BURST_GAP_CYCLES = 8000;
+
+/**
+ * Blips in the missile band one held press may account for.
+ *
+ * One for the launch itself, and the rest for missiles that go on to hit
+ * something: a hit makes the same sound (audio-reference.md, missileFire). A
+ * level-triggered ROM would emit one per sweep, i.e. thirty or more.
+ */
+const MAX_BLIPS_PER_HELD_PRESS = 4;
+
+/** Split an edge stream into the individual sounds that produced it. */
+function splitBursts(edges: ProbeReport['speakerEdges']): ProbeReport['speakerEdges'][] {
+  const bursts: (readonly [number, number])[][] = [];
+  let current: (readonly [number, number])[] = [];
+  for (const edge of edges) {
+    const previous = current[current.length - 1];
+    if (previous !== undefined && edge[0] - previous[0] > BURST_GAP_CYCLES) {
+      bursts.push(current);
+      current = [];
+    }
+    current.push(edge);
+  }
+  if (current.length > 0) {
+    bursts.push(current);
+  }
+  return bursts;
+}
+
 /** Run the CLI, capturing what it wrote to each stream. */
 function run(args: readonly string[]): { code: number; out: string; err: string } {
   let out = '';
@@ -286,6 +323,8 @@ describe('contract V5: pressing fire produces the missile blip on D14', () => {
     parseArguments(['--cycles', '400000', '--input', 'fire@200000', '--emit-edges']),
   );
   const edges = report.speakerEdges;
+  const bursts = splitBursts(edges);
+  const blip = bursts[0] ?? [];
 
   it('emitted an edge stream', () => {
     expect(edges.length).toBeGreaterThan(0);
@@ -307,7 +346,12 @@ describe('contract V5: pressing fire produces the missile blip on D14', () => {
     // the waveform, and the property that survives that is the spacing of the
     // rising edges. Measuring it directly says the same thing without a
     // thousand-line dependency-free FFT in a unit test.
-    const risingCycles = edges.filter(([, level]) => level === 1).map(([cycle]) => cycle);
+    //
+    // The first burst is the launch, because the press is the first thing that
+    // makes any noise. Later bursts in the same run are other game sounds - the
+    // jet march, the battleship, a launcher-hit warning - and are measured
+    // against their own bands in the ROM's sound table, not against this one.
+    const risingCycles = blip.filter(([, level]) => level === 1).map(([cycle]) => cycle);
     const periods = risingCycles.slice(1).map((cycle, index) => cycle - risingCycles[index]!);
     expect(periods.length).toBeGreaterThan(8);
     for (const period of periods) {
@@ -318,14 +362,29 @@ describe('contract V5: pressing fire produces the missile blip on D14', () => {
   });
 
   it('keeps the burst shorter than 150 ms', () => {
-    const span = edges[edges.length - 1]![0] - edges[0]![0];
+    const span = blip[blip.length - 1]![0] - blip[0]![0];
     expect(span / CYCLE_HZ).toBeLessThan(BLIP_MAX_SECONDS);
   });
 
   it('blips once for a press, not once per sweep it is held for', () => {
-    // The button is held from cycle 200000 to the end of the run. A ROM that
-    // retriggered on the level rather than the edge would emit hundreds of
-    // periods; the blip is four bursts of sixteen.
-    expect(edges).toHaveLength(128);
+    // The button is held from cycle 200000 to the end of the run - some thirty
+    // display sweeps. A ROM that retriggered on the level rather than the edge
+    // would launch on every one of them, so the count of bursts in the missile
+    // band is the property under test, not the count of edges: the ROM also
+    // beeps on a hit (the same sound, owner-confirmed) and makes other noises.
+    const blipsInBand = bursts.filter((burst) => {
+      const rising = burst.filter(([, level]) => level === 1).map(([cycle]) => cycle);
+      if (rising.length < 2) {
+        return false;
+      }
+      const hz = CYCLE_HZ / (rising[1]! - rising[0]!);
+      return hz >= BLIP_HZ_MIN && hz <= BLIP_HZ_MAX;
+    });
+    expect(blipsInBand.length).toBeGreaterThan(0);
+    expect(blipsInBand.length).toBeLessThanOrEqual(MAX_BLIPS_PER_HELD_PRESS);
+    // Each one is the same fixed shape: four bursts of sixteen periods.
+    for (const inBand of blipsInBand) {
+      expect(inBand).toHaveLength(128);
+    }
   });
 });
