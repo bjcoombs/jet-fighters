@@ -30,25 +30,48 @@ describe('the copied scope geometry', () => {
     expect(RECT).toEqual({ x: 0, y: 78, width: 213, height: 144 });
   });
 
-  it('reproduces the documented playfield rectangle', () => {
-    expect(PLAYFIELD.x).toBeCloseTo(19.965, 3);
-    expect(PLAYFIELD.y).toBeCloseTo(102, 3);
-    expect(PLAYFIELD.width).toBeCloseTo(324.885, 3);
-    expect(PLAYFIELD.height).toBeCloseTo(96, 3);
+  it('reproduces the measured playfield rectangle', () => {
+    // The printed frame, as measured off the two lit close-ups: rails at y 85.2
+    // and 187.2, x 41.4 and 313.6. See PLAYFIELD_FRACTION.
+    expect(PLAYFIELD.x).toBeCloseTo(41.382, 3);
+    expect(PLAYFIELD.y).toBeCloseTo(85.2, 3);
+    expect(PLAYFIELD.width).toBeCloseTo(272.25, 3);
+    expect(PLAYFIELD.height).toBeCloseTo(102, 3);
+  });
+
+  it('sits the cell band inside the frame with printed air above and below', () => {
+    // The lanes fill the middle 52% of the frame's height, not all of it. This is
+    // the whole point of FIELD_BAND_FRACTION: the frame carries the dotted ruler
+    // clear above the cells and leaves room below the bottom rail for the
+    // zone-label plumbing.
+    const railTop = PLAYFIELD.y;
+    const railBottom = PLAYFIELD.y + PLAYFIELD.height;
+    expect(FIELD.y).toBeCloseTo(113.76, 3);
+    expect(FIELD.height).toBeCloseTo(53.04, 3);
+    expect(FIELD.y).toBeGreaterThan(railTop);
+    expect(FIELD.y + FIELD.height).toBeLessThan(railBottom);
+    // The air above is a little more than the air below, as the photographs show.
+    const above = FIELD.y - railTop;
+    const below = railBottom - (FIELD.y + FIELD.height);
+    expect(above).toBeGreaterThan(below);
+    expect(above / PLAYFIELD.height).toBeCloseTo(0.28, 6);
+    // SCORE shares the band: it is the same three printed rows.
+    expect(SCORE_BOX.y).toBeCloseTo(FIELD.y, 10);
+    expect(SCORE_BOX.height).toBeCloseTo(FIELD.height, 10);
   });
 
   it('splits the playfield into the SCORE box and the distance-column field', () => {
-    expect(SCORE_BOX.width).toBeCloseTo(64.977, 3);
-    expect(FIELD.x).toBeCloseTo(84.942, 3);
-    expect(FIELD.width).toBeCloseTo(259.908, 3);
-    // The two partition the playfield exactly, with no gap and no overlap.
+    expect(SCORE_BOX.width).toBeCloseTo(54.45, 3);
+    expect(FIELD.x).toBeCloseTo(95.832, 3);
+    expect(FIELD.width).toBeCloseTo(217.8, 3);
+    // The two partition the playfield's width exactly, with no gap and no overlap.
     expect(SCORE_BOX.x + SCORE_BOX.width).toBeCloseTo(FIELD.x, 10);
     expect(FIELD.x + FIELD.width).toBeCloseTo(PLAYFIELD.x + PLAYFIELD.width, 10);
   });
 
   it('derives the documented cell size', () => {
-    expect(CELL.width).toBeCloseTo(43.318, 3);
-    expect(CELL.height).toBeCloseTo(32, 3);
+    expect(CELL.width).toBeCloseTo(36.3, 3);
+    expect(CELL.height).toBeCloseTo(17.68, 3);
   });
 });
 
@@ -56,14 +79,14 @@ describe('columnCenterX and laneCenterY', () => {
   it('reproduces the documented column centres', () => {
     const centres = [0, 1, 2, 3, 4, 5].map((c) => columnCenterX(c));
     // ATLAS-COORDINATES.md quotes these to one decimal place.
-    const expected = [106.6, 149.9, 193.2, 236.5, 279.9, 323.2];
+    const expected = [114.0, 150.3, 186.6, 222.9, 259.2, 295.5];
     centres.forEach((centre, index) => {
       expect(Math.abs(centre - expected[index]), `column ${index}`).toBeLessThan(0.1);
     });
   });
 
   it('reproduces the documented lane centres', () => {
-    [118, 150, 182].forEach((expected, lane) => {
+    [122.6, 140.28, 157.96].forEach((expected, lane) => {
       expect(laneCenterY(lane)).toBeCloseTo(expected, 9);
     });
   });
