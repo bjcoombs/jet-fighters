@@ -108,8 +108,8 @@
 ;   grids 6,7,8   SCORE - hundreds, tens, units
 ;   grid 9        status: the lit SCORE label and the three reserve-launcher marks
 ;
-; Six distance columns, +x toward the missile station: the squadron enters at
-; grid 0 and marches toward grid 5. There is no ground-line segment - the
+; Six distance columns, +x toward the missile station: a jet enters at grid 0 and
+; marches toward grid 5. There is no ground-line segment - the
 ; playfield border, the lane dashes and the 10/3/2/1/G ruler are printed
 ; silkscreen on the overlay, not phosphor.
 ;
@@ -127,8 +127,8 @@
 
 .EQU COL_LAUNCH,     0          ; the launcher's column, and the G line
 .EQU COL_MSL_START,  1          ; the column a launched missile appears in
-.EQU COL_JET_FAR,    4          ; the leading column a fresh squadron enters at;
-                                ; its rear rank sits one further out, in column 5
+.EQU COL_JET_FAR,    5          ; the far column a jet enters the field at - the
+                                ; battleship side of the flying zone, grid 0
 .EQU COL_BSHIP,      6          ; the battleship's column
 .EQU GRID_LAUNCH,    5          ; atlas: the launcher segments live on grid 5
 .EQU GRID_MISSILE,   4          ; atlas: the missile dot pairs live on grid 4
@@ -199,7 +199,7 @@
 ; |  4   | FILE_INPUT  | one nibble per strobe line: 1 = contact closed        |
 ; |  5   | FILE_SOUND  | the note being played and its loop counters           |
 ; |  6   | FILE_TIME   | every countdown, plus the BCD score                   |
-; |  7   | FILE_JETS   | one nibble per jet: 1 = alive                         |
+; |  7   | FILE_JETS   | the three lanes' jets, and how each one is flown      |
 ;
 ; The plate table is the important one. Three files hold, per grid, the nibble
 ; that goes to R0, R1 and R2 when that grid is strobed. The sweep does no drawing
@@ -223,7 +223,8 @@
 .EQU NIB_SKILL,      1          ; skill dial, 1..3
 .EQU NIB_FIRE,       2          ; fire contact, this sweep
 .EQU NIB_FIRE_PREV,  3          ; fire contact, previous sweep
-.EQU NIB_SQCOL,      4          ; the squadron's leading column
+                                ; 4 is spare: it held the squadron's leading
+                                ; column when the squadron was one rigid block
 .EQU NIB_MCOL,       5          ; player missile column, 0 = none in flight
 .EQU NIB_MLANE,      6          ; player missile lane
 .EQU NIB_RCOL,       7          ; jet rocket column, 0 = none in flight
@@ -242,8 +243,8 @@
 ; hi*16 + lo sweeps, which is the range a squadron cadence needs; the one-nibble
 ; timers never exceed fifteen sweeps.
 .EQU NIB_TICK,       0          ; sweeps counted, wrapping every sixteen
-.EQU NIB_STEP_LO,    1          ; squadron step countdown, low nibble
-.EQU NIB_STEP_HI,    2          ;   "                      high nibble
+.EQU NIB_ENTRY_LO,   1          ; sweeps until the next jet enters, low nibble
+.EQU NIB_ENTRY_HI,   2          ;   "                               high nibble
 .EQU NIB_MSTEP,      3          ; sweeps until the player missile advances
 .EQU NIB_RSTEP,      4          ; sweeps until the jet rocket advances
 .EQU NIB_BSTEP,      5          ; sweeps until the battleship advances
@@ -271,6 +272,29 @@
 .EQU NIB_SND_ID,     7          ; the sound being set up
 .EQU NIB_NOTE_LEFT,  8          ; win jingle: arpeggio repeats left
 
+; --- FILE_JETS: one jet per lane, each flying its own step ---------------------
+;
+; A lane's jet nibble is the column it stands in *plus one*, so that zero can
+; mean "no jet in this lane" without stealing column 0 - a jet standing on the G
+; line has to be drawable, because that is the frame the player sees at the
+; moment of capture.
+;
+; Each lane carries its own (lo, hi) step countdown, reloaded from the same
+; PAT_STEP cadence every jet steps on. Same period, different phase: the jets
+; therefore step one at a time rather than as a block, and the phases come from
+; the sweeps their lanes happened to be filled on.
+.EQU NIB_J_LANE0,    0          ; lane 0's jet: its column + 1, 0 = lane empty
+                                ; 1 and 2 are lanes 1 and 2, indexed by the lane
+.EQU NIB_J_STEP,     3          ; lane 0's step countdown (lo, hi); lane L's pair
+                                ; is at NIB_J_STEP + 2*L
+.EQU NIB_J_SENT,     9          ; jets of this wave released so far, 0..6
+.EQU NIB_J_ROTOR,   10          ; the lane the next entry tries
+.EQU NIB_J_WORK,    11          ; the lane being worked on
+.EQU NIB_J_TEMP,    12          ; scratch, for a cadence's high nibble
+.EQU NIB_J_FLAG,    13          ; this sweep: bit 0 a jet stepped, bit 1 captured
+.EQU FLAG_STEPPED,   0
+.EQU FLAG_CAPTURED,  1
+
 ; The assembler counts any constant named RAM_* into the high-water mark it
 ; reports (tools/hmasm/assembler.ts). render_field and main select files through
 ; LXA, whose operand is a register and therefore invisible to that count, so the
@@ -282,12 +306,18 @@
 .EQU LANE_TOP,       0
 .EQU LANE_CENTRE,    1
 .EQU LANE_LAST,      2          ; three lanes, 0..2
+.EQU LANE_COUNT,     3
 .EQU SKILL_ONE,      1
 .EQU SKILL_LAST,     3          ; three skill settings, 1..3
 .EQU CONTACT_NONE,  15          ; find_contact's "nothing was closed" answer
 .EQU BS_NONE,       15          ; NIB_BSLANE when no crossing is in progress
-.EQU JET_COUNT,      6          ; a squadron: two ranks of three
-.EQU RANK_SPLIT,     2          ; jet indices 0-2 are rank 0, 3-5 are rank 1
+.EQU JET_COUNT,      6          ; a squadron: six jets, released a few at a time
+; How many of the six may be in the air at once. Two, from
+; assets/reference/device-front-gameplay.jpg: the unit has two jets on the
+; screen, in different lanes, at different distances - not a rank in every lane.
+; This is a count read off a photograph of the running unit, not a cadence, so it
+; is not one of the provisional timing constants below.
+.EQU AIRBORNE_MAX,   2
 
 ; PAT_LANE is four groups of three, one per actor, indexed by group base + lane.
 ; Grouping them into one table rather than four costs an AI and keeps the pattern
@@ -686,10 +716,14 @@ render_lives:
 ; the squadron
 ; ============================================================================
 ;
-; Six jets, indexed 0-5: 0-2 are rank 0 in the squadron's leading column, 3-5 are
-; rank 1 one column further out. A nibble per jet rather than a bit mask, because
-; the machine has no AND - testing a bit of a mask would cost more than the ten
-; nibbles it would save, and RAM is the resource this program is *not* short of.
+; At most one jet flies in each lane, so the squadron is three nibbles: lane L's
+; jet is FILE_JETS nibble L, holding the column it stands in plus one.
+;
+; It is not a rank in every lane, and it is not a block. A wave is still six jets
+; (JET_COUNT) but they are released into free lanes a few at a time, each flying
+; its own countdown, which is what the reference photograph shows -
+; assets/reference/device-front-gameplay.jpg has two jets airborne, in different
+; lanes, at different distances. See jet_release and jet_advance.
 
 .PAGE
 render_actors:
@@ -697,12 +731,12 @@ render_actors:
         LYI 0
 ra_jet:
         LAM
-        ALEI 0                  ; ST <- 1 when that jet is dead
+        ALEI 0                  ; ST <- 1 when no jet is flying in this lane
         BR ra_next
         CALL draw_jet           ; preserves X and Y for the loop
 ra_next:
         IY
-        YNEI JET_COUNT
+        YNEI LANE_COUNT
         BR ra_jet
         JMPL render_bship
 
@@ -710,55 +744,25 @@ ra_next:
 ; one jet
 ; ============================================================================
 ;
-; In:  X = FILE_JETS, Y = jet index 0..5. Out: nothing. Preserves X and Y.
+; In:  X = FILE_JETS, Y = the lane, 0..2. Out: nothing. Preserves X and Y.
 ;
-; The index carries both facts the drawing needs: index mod 3 is the lane, and
-; index >= 3 puts the jet in rank 1, one column further from the player. The
-; caller's pointers are parked in the shadow pair so the loop above can keep
-; walking, which is also how the index is recovered - LASPY reads it back.
-;
-; The lane has to survive a RAM pointer move and the grid has to survive another,
-; and only one of the two can travel in B, so the lane goes to scratch and comes
-; back last. LANEP_JET is zero, so the lane doubles as its own PAT_LANE index.
-;
-; This routine runs past its page boundary. That is allowed here because both of
-; its branch targets sit in the first 32 words; nothing past the boundary is
-; reached by BR.
+; The caller's pointers are parked in the shadow pair so the loop above can keep
+; walking, which is also how the lane is recovered - LASPY reads it back. It is
+; read twice: once to reach the jet's nibble, and once after `P` has taken the
+; accumulator, because LANEP_JET is zero and the lane is therefore its own
+; PAT_LANE index.
 
 .PAGE
 draw_jet:
         XSP                     ; park the loop's X/Y
-        LASPY                   ; A <- the jet index
-        ALEI RANK_SPLIT         ; ST <- 1 for indices 0-2
-        BR dj_rank0
-        AI 13                   ; index - 3: rank 1's lane
-        LXI FILE_TIME
-        LYI NIB_SCRATCH
-        XMA                     ; scratch <- lane
-        LXI FILE_STATE
-        LYI NIB_SQCOL
-        LAM
-        AI 1                    ; rank 1 trails one column further out
-        BR dj_draw
-dj_rank0:
-        LXI FILE_TIME
-        LYI NIB_SCRATCH
-        XMA                     ; scratch <- lane
-        LXI FILE_STATE
-        LYI NIB_SQCOL
-        LAM
-dj_draw:
-        ; A = the column to draw in, scratch = the lane.
+        LASPY                   ; A <- the lane
+        LYA
+        LXI FILE_JETS
+        LAM                     ; A <- the jet's column, plus one
+        AI 15                   ; A <- the column it stands in
         P PAT_COLUMN            ; A <- the grid that column is strobed on
-        LXI FILE_TIME
-        LYI NIB_SCRATCH2
-        XMA                     ; scratch2 <- the grid
-        LYI NIB_SCRATCH
-        LBM                     ; B <- the lane, which is its own PAT_LANE index
-        LYI NIB_SCRATCH2
-        LAM
         LYA                     ; Y <- the grid
-        LAB                     ; A <- the PAT_LANE index
+        LASPY                   ; A <- the lane, which is its own PAT_LANE index
         CALL or_plate
         XSP                     ; give the loop its X/Y back
         RTN
@@ -989,40 +993,32 @@ tm_hit_test:
 ; did the missile reach anything
 ; ============================================================================
 ;
-; Two ranks to test. The squadron is a rigid block, so rank 0 sits in NIB_SQCOL
-; and rank 1 in NIB_SQCOL + 1; a hit needs the column to match one of those and
-; the jet in the missile's lane of that rank to still be alive.
+; One jet to test: the one flying down the lane the shot is in, if there is one.
+; Its nibble is its column plus one, so the comparison is against the missile's
+; column plus one - done the other way round, taking one off the jet, so that an
+; empty lane (nibble zero) is rejected before the arithmetic.
 
 .PAGE
 missile_hit:
         LXI FILE_STATE
-        LYI NIB_SQCOL
-        LAM
-        LYI NIB_MCOL
-        ANEM                    ; ST <- 1 when the columns differ
-        BR mh_rank1
-        LAI 0                   ; rank 0: jet indices 0-2
-        BR mh_jet
-mh_rank1:
-        LXI FILE_STATE
-        LYI NIB_SQCOL
-        LAM
-        AI 1
-        LYI NIB_MCOL
-        ANEM
-        BR mh_bship
-        LAI 3                   ; rank 1: jet indices 3-5
-mh_jet:
-        LXI FILE_STATE
         LYI NIB_MLANE
-        AM                      ; A <- rank base + lane = the jet index
-        LYA
+        LAM
+        LYA                     ; Y <- the lane the shot is flying down
         LXI FILE_JETS
         LAM
-        ALEI 0                  ; ST <- 1 when that jet is already down
+        ALEI 0                  ; ST <- 1 when no jet is flying in that lane
         BR mh_bship
+        AI 15                   ; A <- the column that jet stands in
+        LXI FILE_STATE
+        LYI NIB_MCOL
+        ANEM                    ; ST <- 1 when the shot has not reached it
+        BR mh_bship
+        LYI NIB_MLANE
+        LAM
+        LYA
+        LXI FILE_JETS
         LAI 0
-        XMA                     ; the jet is destroyed
+        XMA                     ; the jet is destroyed and its lane is free
         JMPL missile_kill
 mh_bship:
         JMPL missile_bship
@@ -1220,113 +1216,323 @@ sc_done:
 ; ============================================================================
 ; the squadron's turn
 ; ============================================================================
+;
+; A wave is six jets (JET_COUNT), and they are neither all in the air at once nor
+; moved as one. Each sweep: release a jet if one is due and a lane is free, then
+; give each airborne jet's own countdown a tick. PRD v1 rule 2's "step, pause,
+; step" is that countdown, and its "as a squadron thins out, the survivors speed
+; up" is speed_index, which every jet reloads from on every step. What the six of
+; them add up to at any moment is the squadron - two or so jets, in different
+; lanes at different distances, as in assets/reference/device-front-gameplay.jpg.
 
 .PAGE
 tick_jets:
-        ; --- a cleared squadron respawns ---
+        ; --- a wave shot down to the last jet is replaced ---
         LXI FILE_STATE
         LYI NIB_KILLS
         MNEI JET_COUNT          ; ST <- 0 when the last jet of the wave is down
-        BR tj_timer
+        BR tj_release
         JMPL new_wave
-tj_timer:
-        LXI FILE_TIME
-        LYI NIB_STEP_LO
-        CALL dec_timer          ; A <- 1 on the sweep the countdown reaches zero
-        ALEI 0
-        BR tj_done
-        JMPL jet_step
-tj_done:
-        JMPL tick_rocket
+tj_release:
+        JMPL jet_release
 
 ; ============================================================================
-; the squadron closes up
+; is another jet due
 ; ============================================================================
 ;
 ; In:  nothing. Out: nothing.
 ;
-; Invader-style, the block advances rigidly - but once every jet in the leading
-; rank is gone, the rank behind becomes the leading rank. Copying the flags down
-; and stepping NIB_SQCOL back one column moves nothing on the tube: rank 1 was
-; already being drawn at NIB_SQCOL + 1, which is the new NIB_SQCOL. Keeping that
-; invariant is what lets jet_step test the capture line against one nibble.
-;
-; Runs past its page boundary; the single BR and its target are both inside it.
+; The wave's six enter a few at a time on their own countdown. Once all six have
+; been sent that countdown stops mattering: what is left of the wave is whatever
+; is still flying.
 
 .PAGE
-close_up:
+jet_release:
         LXI FILE_JETS
-        LYI 0
-        LAM
-        LYI 1
-        LBM
-        OR
-        LYI 2
-        LBM
-        OR
-        ALEI 0                  ; ST <- 1 when all three of rank 0 are down
-        BR cu_shift
-        RTN
-cu_shift:
-        LXI FILE_JETS
-        LYI 3
-        LAM
-        LYI 0
-        XMA                     ; rank 0 lane 0 <- rank 1 lane 0; A <- the old 0
-        LYI 3
-        XMA
-        LYI 4
-        LAM
-        LYI 1
-        XMA
-        LYI 4
-        XMA
-        LYI 5
-        LAM
-        LYI 2
-        XMA
-        LYI 5
+        LYI NIB_J_SENT
+        MNEI JET_COUNT          ; ST <- 0 when the whole wave has been sent
+        BR jr_timer
+        JMPL jet_advance
+jr_timer:
+        LXI FILE_TIME
+        LYI NIB_ENTRY_LO
+        CALL dec_timer          ; A <- 1 on the sweep the countdown reaches zero
+        ALEI 0                  ; ST <- 1 while it is still running
+        BR jr_done
+        JMPL jet_enter
+jr_done:
+        JMPL jet_advance
+
+; ============================================================================
+; the gap to the jet after this one
+; ============================================================================
+;
+; In:  nothing. Out: nothing.
+;
+; Twice the current step period, plus the sampled counter. Two periods is what
+; keeps about two jets in the air at once, which is the formation the reference
+; photograph shows; taking it from PAT_STEP rather than from a constant of its
+; own means the field stays about that sparse at every skill setting and every
+; rung of the thin-out ladder, instead of emptying out as the survivors speed up.
+; The low nibble is NIB_RAND - the free-running counter as the player's last
+; press left it, the machine's only randomness (PRD R3) - which is what stops the
+; entries settling into a fixed diagonal.
+
+.PAGE
+jet_enter:
+        CALL speed_index
+        P PAT_STEP              ; A <- the period's low nibble, B <- its high
+        REC
+        ROTL                    ; A <- lo * 2; the carry belongs to the high half
+        LAB
+        ROTL                    ; A <- hi * 2 plus that carry
+        LXI FILE_TIME
+        LYI NIB_ENTRY_HI
         XMA
         LXI FILE_STATE
-        LYI NIB_SQCOL
+        LYI NIB_RAND
         LAM
-        AI 1                    ; the block's leading column steps back one
+        LXI FILE_TIME
+        LYI NIB_ENTRY_LO
         XMA
-        RTN
+        JMPL jet_room
 
 ; ============================================================================
-; the squadron steps
+; is there room for it
 ; ============================================================================
 ;
-; One column closer, one march beep, one reloaded cadence. The cadence comes from
-; PAT_STEP through speed_index, so the thin-out and per-wave speed-ups are a walk
-; down one table rather than arithmetic scattered here.
+; In:  nothing. Out: nothing.
+;
+; The gap above is reloaded whether or not this jet gets in, so a full sky costs
+; the wave a turn rather than queueing one up to arrive the moment a lane frees.
+; AIRBORNE_MAX is the photograph's two.
 
 .PAGE
-jet_step:
-        CALL close_up
+jet_room:
+        LXI FILE_JETS
+        LYI NIB_J_LANE0
+        LBI 0
+jrm_lane:
+        LAM
+        ALEI 0                  ; ST <- 1 when this lane is empty
+        BR jrm_next
+        IB                      ; one more jet already in the air
+jrm_next:
+        IY
+        YNEI LANE_COUNT
+        BR jrm_lane
+        LAB
+        ALEI AIRBORNE_MAX - 1   ; ST <- 1 while the sky has room for another
+        BR jrm_spawn
+        JMPL jet_advance
+jrm_spawn:
+        JMPL jet_spawn
+
+; ============================================================================
+; and where it comes in
+; ============================================================================
+;
+; In:  nothing. Out: nothing.
+;
+; A rotor picks the lane, so three consecutive entries land in three different
+; lanes; where the rotor starts is the sampled counter, so which lane leads is
+; not the same every wave. A lane that still holds a jet is skipped rather than
+; queued: the field is allowed to stay sparse, and the wave simply takes longer
+; to come out. The rotor moves on either way, so a busy lane cannot stall it.
+
+.PAGE
+jet_spawn:
+        LXI FILE_JETS
+        LYI NIB_J_ROTOR
+        LAM
+        LBA                     ; B <- the lane this entry tries
+        AI 1
+        ALEI LANE_LAST          ; ST <- 1 while the rotor is still on the field
+        BR jsp_rotor
+        LAI 0                   ; three lanes, so it wraps back to the top one
+jsp_rotor:
+        XMA                     ; left pointing at the lane after this one
+        LAB
+        LYA                     ; Y <- this entry's lane
+        LAM
+        ALEI 0                  ; ST <- 1 when that lane is empty
+        BR jsp_place
+        JMPL jet_advance        ; the lane is busy: nothing enters this time
+jsp_place:
+        LAI COL_JET_FAR + 1     ; a jet nibble is its column plus one, so that
+        XMA                     ; zero can mean "no jet in this lane"
+        LAB
+        LYI NIB_J_WORK
+        XMA                     ; jet_reload takes the lane in NIB_J_WORK
+        LYI NIB_J_SENT
+        LAM
+        AI 1
+        XMA                     ; one more of the wave's six is airborne
+        CALL jet_reload         ; its step countdown starts from this sweep
+        JMPL jet_advance
+
+; ============================================================================
+; a lane's step countdown
+; ============================================================================
+;
+; In:  NIB_J_WORK = the lane. Out: nothing. Clobbers A, B, X, Y.
+;
+; Every jet reloads the same cadence - one squadron, one step period, the whole
+; of PRD v1 rule 2's speed-up curve intact - but reloads it at the moment *it*
+; stepped. Same period, different phase, which is the difference between a
+; squadron and a block: the jets step one at a time.
+;
+; The pair is written in two passes because the cadence needs both A and B and
+; the index needs A as well; the lane is read back from NIB_J_WORK each time
+; rather than parked in a register that the lookup would take.
+
+.PAGE
+jet_reload:
         CALL speed_index
         P PAT_STEP              ; A <- sweeps low nibble, B <- high nibble
-        LXI FILE_TIME
-        LYI NIB_STEP_LO
-        LMAIY
-        LAB
-        LMAIY
-
-        ; --- one column closer, then see where that put it ---
-        ; The step happens first so the tube actually shows a jet standing on
-        ; the G line at the moment of capture, which is what the player sees on
-        ; the unit. PRD v1 rule 6: reaching G is an instant game over.
-        LXI FILE_STATE
-        LYI NIB_SQCOL
+        LXI FILE_JETS
+        LYI NIB_J_TEMP
+        XMB                     ; temp <- the high nibble
+        LBA                     ; B <- the low nibble
+        LYI NIB_J_WORK
         LAM
-        AI 15
+        REC
+        ROTL                    ; A <- lane * 2
+        AI NIB_J_STEP           ; A <- this lane's countdown, low nibble
+        LYA
+        LAB
+        XMA
+        LYI NIB_J_TEMP
+        LBM                     ; B <- the high nibble again
+        LYI NIB_J_WORK
+        LAM
+        REC
+        ROTL
+        AI NIB_J_STEP + 1       ; A <- the same countdown's high nibble
+        LYA
+        LAB
+        XMA
+        RTN
+
+; ============================================================================
+; every jet takes its turn
+; ============================================================================
+;
+; In:  nothing. Out: nothing.
+;
+; Three lanes, walked with the lane in RAM rather than in a register, so the walk
+; is a JMPL loop and costs no stack. Two things are collected across the walk in
+; NIB_J_FLAG: whether any jet stepped, so the march beep sounds once a sweep
+; rather than once a jet, and whether any jet reached the G line.
+
+.PAGE
+jet_advance:
+        LXI FILE_JETS
+        LYI NIB_J_FLAG
+        LAI 0
+        XMA                     ; nothing has stepped or captured this sweep
+        LYI NIB_J_WORK
+        LAI 0
+        XMA                     ; the walk starts at lane 0
+        JMPL jet_lane
+
+.PAGE
+jet_lane:
+        LXI FILE_JETS
+        LYI NIB_J_WORK
+        LAM
+        LYA                     ; Y <- the lane; its jet shares that index
+        LAM
+        ALEI 0                  ; ST <- 1 when no jet is flying in this lane
+        BR jl_next
+        JMPL jet_lane_step
+jl_next:
+        JMPL jet_next
+
+.PAGE
+jet_lane_step:
+        LXI FILE_JETS
+        LYI NIB_J_WORK
+        LAM
+        REC
+        ROTL                    ; A <- lane * 2
+        AI NIB_J_STEP           ; A <- this lane's countdown, low nibble
+        LYA
+        CALL dec_timer          ; A <- 1 on the sweep the countdown reaches zero
+        ALEI 0                  ; ST <- 1 while it is still running
+        BR jls_next
+        JMPL jet_move
+jls_next:
+        JMPL jet_next
+
+; ============================================================================
+; one jet steps
+; ============================================================================
+;
+; In:  NIB_J_WORK = the lane. Out: nothing.
+;
+; The step happens first and the capture test second, so the tube actually shows
+; a jet standing on the G line at the moment of capture - which is what the
+; player sees on the unit. PRD v1 rule 6: reaching G is an instant game over.
+
+.PAGE
+jet_move:
+        CALL jet_reload         ; this jet's next step, from this moment
+        LXI FILE_JETS
+        LYI NIB_J_FLAG
+        SEM FLAG_STEPPED        ; one march beep will follow this sweep
+        LYI NIB_J_WORK
+        LAM
+        LYA                     ; Y <- the lane
+        LAM
+        AI 15                   ; one column closer to the missile station
         XMA
         LAM
-        ALEI COL_LAUNCH         ; ST <- 1 when the squadron has reached the G line
-        BR js_capture
+        ALEI 1                  ; ST <- 1 when the jet now stands on the G line
+        BR jm_capture
+        JMPL jet_next
+jm_capture:
+        LXI FILE_JETS
+        LYI NIB_J_FLAG
+        SEM FLAG_CAPTURED
+        JMPL jet_next
 
-        ; --- the march beep, one per step (audio-reference.md, jetMarch) ---
+.PAGE
+jet_next:
+        LXI FILE_JETS
+        LYI NIB_J_WORK
+        LAM
+        AI 1
+        XMA                     ; on to the next lane
+        LAM
+        ALEI LANE_LAST          ; ST <- 1 while there are lanes left to walk
+        BR jn_lane
+        JMPL jet_swept
+jn_lane:
+        JMPL jet_lane
+
+; ============================================================================
+; what the walk found
+; ============================================================================
+;
+; In:  NIB_J_FLAG. Out: nothing.
+;
+; One march beep per sweep at most, however many jets stepped on it: the beep is
+; the squadron's step, and audio-reference.md's jetMarch is one note, not a
+; chord. A capture beats it - the game is over and game_capture owns the speaker.
+
+.PAGE
+jet_swept:
+        LXI FILE_JETS
+        LYI NIB_J_FLAG
+        TM FLAG_CAPTURED        ; ST <- 1 when a jet reached the G line
+        BR js_capture
+        LXI FILE_JETS
+        LYI NIB_J_FLAG
+        TM FLAG_STEPPED         ; ST <- 1 when a jet stepped this sweep
+        BR js_march
+        JMPL tick_rocket
+js_march:
         LAI SND_MARCH
         LBI BURSTS_MARCH
         CALL play_sound
@@ -1340,48 +1546,51 @@ js_capture:
 
 .PAGE
 new_wave:
+        ; --- the field is clear and none of the next six has been sent ---
         LXI FILE_JETS
-        LYI 0
-        LMIIY 1
-        LMIIY 1
-        LMIIY 1
-        LMIIY 1
-        LMIIY 1
-        LMIIY 1                 ; six jets, two ranks of three
+        LYI NIB_J_LANE0
+        LMIIY 0
+        LMIIY 0
+        LMIIY 0                 ; three empty lanes
+        LYI NIB_J_SENT
+        LAI 0
+        XMA
 
+        ; --- which lane the first of them tries, from the sampled counter ---
+        LXI FILE_STATE
+        LYI NIB_RAND
+        LAM
+nw_lane:
+        ALEI LANE_LAST          ; ST <- 1 once the counter has come down to a lane
+        BR nw_rotor
+        AI 13                   ; less three, and round again
+        BR nw_lane              ; unconditional: ST is 1 after the untaken BR
+nw_rotor:
+        LXI FILE_JETS
+        LYI NIB_J_ROTOR
+        XMA
+        JMPL new_wave_count
+
+; ============================================================================
+; and its place on the speed ladder
+; ============================================================================
+
+.PAGE
+new_wave_count:
         LXI FILE_STATE
         LYI NIB_KILLS
         LAI 0
-        XMA
-        LYI NIB_SQCOL
-        LAI COL_JET_FAR
         XMA
         LYI NIB_WAVE
         LAM
         ALEI WAVE_LAST - 1      ; the wave count saturates rather than wrapping:
                                 ; a nibble that rolled over to zero would hand
                                 ; the player back the slowest cadence
-        BR nw_bump
-        BR nw_reload
-nw_bump:
+        BR nwc_bump
+        JMPL tick_rocket
+nwc_bump:
         AI 1
         XMA
-nw_reload:
-        JMPL new_wave_speed
-
-; ============================================================================
-; and its cadence
-; ============================================================================
-
-.PAGE
-new_wave_speed:
-        CALL speed_index
-        P PAT_STEP
-        LXI FILE_TIME
-        LYI NIB_STEP_LO
-        LMAIY
-        LAB
-        LMAIY
         JMPL tick_rocket
 
 ; ============================================================================
@@ -1562,15 +1771,14 @@ rf_lane:
         XMA                     ; the rocket's lane
         LAM
         LXI FILE_JETS
-        LYA                     ; Y <- that lane's rank 0 jet
+        LYA                     ; Y <- the jet flying in that lane
         LAM
         ALEI 0                  ; ST <- 1 when there is no jet there to fire
         BR rf_none
+        AI 15                   ; A <- the column that jet stands in
         LXI FILE_STATE
-        LYI NIB_SQCOL
-        LAM
         LYI NIB_RCOL
-        XMA                     ; it starts at the squadron's leading column
+        XMA                     ; the rocket starts from the jet that fired it
         LXI FILE_TIME
         LYI NIB_RSTEP
         LAI ROCKET_SWEEPS
@@ -2086,34 +2294,13 @@ mn_nibble:
         LYI NIB_BSLANE
         LAI BS_NONE
         XMA                     ; no crossing in progress
-        LYI NIB_SQCOL
-        LAI COL_JET_FAR
-        XMA
-        JMPL main_jets
-
-; ============================================================================
-; the first squadron and the first countdowns
-; ============================================================================
-
-.PAGE
-main_jets:
-        LXI FILE_JETS
-        LYI 0
-        LMIIY 1
-        LMIIY 1
-        LMIIY 1
-        LMIIY 1
-        LMIIY 1
-        LMIIY 1
-
-        CALL speed_index
-        P PAT_STEP
-        LXI FILE_TIME
-        LYI NIB_STEP_LO
-        LMAIY
-        LAB
-        LMAIY
         JMPL main_timers
+
+; The squadron needs nothing here. An empty sky is three zeroed jet nibbles and
+; no jets sent, which is what the RAM clear above already left, and a zeroed
+; entry countdown fires on the first tick - so the first jet of the first wave
+; comes in on the first sweep, at the far column, in the lane the rotor starts
+; on.
 
 ; ============================================================================
 ; the rest of reset
