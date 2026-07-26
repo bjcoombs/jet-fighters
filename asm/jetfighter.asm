@@ -106,7 +106,8 @@
 ;   grids 1-4     distance columns 1-4 - JET FIGHTER FLYING ZONE
 ;   grid 5        distance column 5 - the G capture line and the launcher
 ;   grids 6,7,8   SCORE - hundreds, tens, units
-;   grid 9        status: the lit SCORE label and the three reserve-launcher marks
+;   grid 9        status: the lit SCORE label, and nothing else - this unit has
+;                 no lives display, only the beeped damage warnings
 ;
 ; Six distance columns, +x toward the missile station: a jet enters at grid 0 and
 ; marches toward grid 5. There is no ground-line segment - the
@@ -136,7 +137,7 @@
 .EQU GRID_SC_H,      6          ; score, hundreds
 .EQU GRID_SC_T,      7          ; score, tens
 .EQU GRID_SC_U,      8          ; score, units
-.EQU GRID_STATUS,    9          ; the SCORE label and the reserve-launcher marks
+.EQU GRID_STATUS,    9          ; the lit SCORE label, the grid's one segment
 
 ; --- Plate assignments ------------------------------------------------------
 ;
@@ -157,7 +158,7 @@
 ;     grid 5 only
 ;       plates 6-8 cyan: the launcher, one plate per lane
 ;   grids 6-8      cyan: the seven score digit segments, a-g on plates 0-6
-;   grid 9         cyan: plate 0 the SCORE label, plates 1-3 the reserve marks
+;   grid 9         cyan: plate 0 the SCORE label - the only segment on the grid
 ;
 ; Plates 0-3 are R0, 4-7 are R1, 8-11 are R2, so a segment's plate decides which
 ; of the three plate files carries it. Several actors straddle that boundary -
@@ -165,6 +166,7 @@
 ; the *file* alongside the bit and or_plate below does the dispatch.
 
 .EQU PLATE_BSHIP,   %0100       ; R1 bit 2 -> plate 6, under grid 0
+.EQU PLATE_SC_LBL,  %0001       ; R0 bit 0 -> plate 0, under grid 9
 
 ; --- Pattern tables ---------------------------------------------------------
 ;
@@ -327,10 +329,6 @@
 .EQU LANEP_LAUNCH,   8          ; +lane -> the launcher standing in that lane
 .EQU LANEP_MISSILE, 12          ; +lane -> the player missile's dot pair
 
-; PAT_COLUMN's entries 12-15 are indexed by NIB_HITS, not by a column: see the
-; table for why the two share one table.
-.EQU LIFEP_BASE,    12          ; +hits -> grid 9's whole R0 nibble
-.EQU LIVES_MAX,      3          ; three launchers, per the printed silhouettes
 .EQU SPEED_LAST,    15          ; the last entry in PAT_STEP
 .EQU WAVE_LAST,     15          ; NIB_WAVE saturates here rather than wrapping
 .EQU ST_PLAY,        0          ; game states; anything above ST_PLAY is an end
@@ -677,7 +675,7 @@ rf_nibble:
         LYI GRID_LAUNCH         ; LYI does not disturb A
         CALL or_plate
 
-        JMPL render_lives       ; a jump, not a call: the tail returns for us
+        JMPL render_status      ; a jump, not a call: the tail returns for us
 
 ; ============================================================================
 ; one segment onto the plate table
@@ -718,28 +716,29 @@ op_write:
         RTN
 
 ; ============================================================================
-; the launcher tally
+; the status grid
 ; ============================================================================
 ;
-; Three reserve-launcher marks stand outside the right-hand border of the printed
-; playfield (assets/reference/device-front-lit.jpg). The atlas puts them on grid
-; 9, plates 1-3, beside the lit SCORE label on plate 0 - so the whole status grid
-; is one R0 nibble that nothing else on the tube contributes to, and one lookup
-; can own it outright.
+; Grid 9 carries one segment: the lit SCORE label on plate 0. There is no lives
+; display on this tube - owner-confirmed against his own CGL unit. The three
+; white marks outside the right-hand border of the printed playfield are paint on
+; the overlay, not phosphor, which is why the atlas has no segment for them
+; (src/machine/tube/atlas.json: grid 9 holds `score_label` and nothing else).
+; Damage is signalled by sound alone - launcher_hit's two- and three-beep
+; warnings.
 ;
-; NIB_HITS counts destroyed launchers up from zero, so PAT_COLUMN's four entries
-; at LIFEP_BASE hold that nibble for hits 0-3 with the SCORE label's bit already
-; set in each. Sharing PAT_COLUMN is not elegance: the pattern region has exactly
-; eight tables (isa.ts, PATTERN_TABLE_COUNT) and all eight are spoken for, while
-; PAT_COLUMN is indexed by a column and columns stop at 6.
+; This routine used to look NIB_HITS up in PAT_COLUMN and write a tally into
+; plates 1-3 alongside the label. Those three addresses reach no phosphor, so the
+; write was the ROM telling the hardware to light segments that do not exist -
+; the same fault as the invented ground line. The label is a constant, so no
+; lookup is needed to draw it.
+;
+; NIB_HITS itself is untouched: the count of destroyed launchers is real game
+; state and drives the warnings and the loss. Only its display was phantom.
 
 .PAGE
-render_lives:
-        LXI FILE_STATE
-        LYI NIB_HITS
-        LAM
-        AI LIFEP_BASE
-        P PAT_COLUMN            ; A <- the marks still standing, plus the label
+render_status:
+        LAI PLATE_SC_LBL        ; the whole of grid 9's R0 nibble
         LXI FILE_PLATE0
         LYI GRID_STATUS
         XMA
@@ -2461,10 +2460,9 @@ digit_plates:
 ; 1 / G from the far side inwards; the battleship zone carries the 10 and is
 ; scored through add_score's tens addend, so its band here is zero.
 ;
-; Entries 12-15 are not columns. They are indexed by NIB_HITS and hold grid 9's
-; whole R0 nibble - the SCORE label on plate 0 plus the reserve-launcher marks
-; still standing on plates 1-3. They live here because all eight pattern tables
-; are already in use and a column index cannot reach 12. See render_lives.
+; Entries 7-15 are unused: a column index stops at 6. Entries 12-15 once held a
+; launcher tally for grid 9's plates 1-3, which the tube has no segments for -
+; see render_status.
 .PATTERN PAT_COLUMN
 column_plates:
         .DW $005                ; 0: grid 5, the G line - a jet here captures
@@ -2474,11 +2472,8 @@ column_plates:
         .DW $021                ; 4: grid 1, middle band, 2 points
         .DW $030                ; 5: grid 0, far band, 3 points
         .DW $000                ; 6: the battleship zone
-        .DW $000, $000, $000, $000, $000    ; 7-11: unused
-        .DW $00F                ; 12: hits 0 - label, three marks standing
-        .DW $007                ; 13: hits 1 - label, two marks
-        .DW $003                ; 14: hits 2 - label, one mark
-        .DW $001                ; 15: hits 3 - the label alone
+        .DW $000, $000, $000, $000, $000    ; 7-11:  unused
+        .DW $000, $000, $000, $000          ; 12-15: unused
 
 ; --- Skill -> how often the jets fire back ----------------------------------
 ; Sweeps between rocket launches, as A = low nibble and B = high nibble.

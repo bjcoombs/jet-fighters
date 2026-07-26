@@ -45,22 +45,6 @@ const PLATE_LAUNCHER = [6, 7, 8];
 /** Grid 9 only: the lit SCORE label. */
 const PLATE_SCORE_LABEL = 0;
 
-/**
- * Addresses the ROM still drives that the tube has no segment at.
- *
- * The unit has **no lives display** - owner-confirmed against his own CGL
- * machine; damage is signalled only by the two- and three-beep warnings. The
- * three white marks at the right-hand edge that `life_0..2` were traced from
- * are printed paint on the overlay, not phosphor, so they left the atlas. The
- * ROM has not caught up: it still writes a launcher tally into grid 9's R0
- * nibble (`LIFEP_BASE` in asm/jetfighter.asm). Removing that write is ROM work
- * and belongs in its own change.
- *
- * This is an allowance, not a permission: the assertion below fails the moment
- * the ROM stops driving these, so the list cannot outlive the defect.
- */
-const ROM_PHANTOM_ADDRESSES = ['9-1', '9-2', '9-3'];
-
 /** Playfield geometry, mirroring the ROM's "Playfield geometry" block. */
 const GRID_COLUMN_LAST = 5;
 const GRID_BSHIP = 0;
@@ -191,16 +175,15 @@ describe('the field the ROM puts up at power-on', () => {
     // The tube has no segment at any of those addresses - the atlas puts jets on
     // plates 0-2 of the column's own grid - so what actually reached the glass
     // was one lit jet in the top lane of all six columns at once, plus a handful
-    // of segments driven into thin air. Every lit address must resolve.
+    // of segments driven into thin air. The launcher tally on grid 9's plates
+    // 1-3 was the last of them: this unit has no lives display, so the ROM now
+    // draws the SCORE label alone on that grid. Every lit address must resolve.
     const unmapped = board
       .getLitSegments()
       .filter((segment) => segment.duty > 0)
       .filter((segment) => getSegmentByAddress(segment.grid, segment.plate) === undefined)
       .map((segment) => `${segment.grid}-${segment.plate}`);
-    // The known lives-tally writes, and nothing else. Asserting equality rather
-    // than filtering them out means this test starts failing - correctly - when
-    // the ROM is fixed, and the allowance gets deleted with the defect.
-    expect(unmapped.sort()).toEqual([...ROM_PHANTOM_ADDRESSES].sort());
+    expect(unmapped).toEqual([]);
   });
 
   it('holds a squadron in the jet lanes, not a saturated row', () => {
@@ -218,10 +201,9 @@ describe('the field the ROM puts up at power-on', () => {
     expect(platesUnder(board, GRID_LAUNCH)).not.toContain(PLATE_LAUNCHER[0]);
   });
 
-  it('lights the SCORE label on the status grid', () => {
-    // The tube has nothing else on this grid. The ROM's launcher tally in the
-    // rest of the nibble reaches no phosphor - see ROM_PHANTOM_ADDRESSES.
-    expect(platesUnder(board, GRID_STATUS)).toContain(PLATE_SCORE_LABEL);
+  it('lights the SCORE label, and only that, on the status grid', () => {
+    // The tube has nothing else on this grid: no lives display, owner-confirmed.
+    expect(platesUnder(board, GRID_STATUS)).toEqual([PLATE_SCORE_LABEL]);
   });
 
   it('brings the first jet in at the far column, in one lane only', () => {
