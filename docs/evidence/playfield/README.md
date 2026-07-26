@@ -8,7 +8,7 @@ pixel here is one the renderer actually produced.
 
 | File | Geometry |
 | --- | --- |
-| `before.png` | `main` at eac59f5 |
+| `before.png` | `main` at b3180b6 |
 | `after.png` | this branch |
 
 Read them against `../../../assets/reference/tube-closeup-score0.webp` and
@@ -36,6 +36,14 @@ of the frame height below the rail and the lower line 0.57, where `before.png`
 drew them at 0.235 and 0.45 - fitted figures, because at the real depths the
 inherited rectangle pushed them outside the glass. Same story for all four bracket
 arm columns, both lower bracket columns and the station missiles' gap.
+
+**The station missiles are back to scale.** They are the clearest single read on
+the width fix. #51 had to squeeze them to 12.1 x 6 against the bezel, at an aspect
+of 2.0 where the photographs show 2.6, and said in as many words that if the
+playfield geometry were corrected upstream these constants should go back to
+scale. There are now 49 atlas units of glass outboard of the right rail instead of
+15, so they are the photographed 15.4 x 6 with their noses at x 331.6 - which is
+where the bullets' noses register in the photographs, x 331.4 and 331.7.
 
 **The playfield is narrower.** Left and right rails at x 41.4 and 313.6 against
 v1's 20.0 and 344.9. This was not a cosmetic extra: at v1's width the measured

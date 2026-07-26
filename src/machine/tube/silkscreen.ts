@@ -356,22 +356,34 @@ const ZONE_DASH_GAP = 3;
  * The three station missiles at the right edge of the glass.
  *
  * Painted, not phosphor - owner-confirmed - and drawn here because the atlas no
- * longer carries them. Both photographs show, at 8x, a bullet lying horizontally
- * with a rounded nose pointing left into the field and a square tail on the right,
- * about 49 x 19 px, one per lane row between the right rail and the bezel. (The
- * task described them as nose up; the photographs do not support that, and this
- * follows the photographs.)
+ * longer carries them. One at each lane centre, in the glass outboard of the right
+ * rail. Two figures were handed over with this item, `x 346.4 to 359.4` and
+ * `13 x 8`; the x origin is taken from them, and the other two need recording,
+ * because they disagree with the photographs and with the scope window.
  *
- * The gap they sit in was the sixth constant fitted to the inherited playfield:
- * that rectangle reached to x 344.85 where the real right rail is at 313.6, so
- * there were 15 atlas units of glass outboard of it instead of the real 49, and
- * the missiles were squeezed against the rail to fit. With the frame measured off
- * the photographs the gap is the photographed one - the bullets' noses register at
- * x 331.4 and 331.7 in the two close-ups, 18 units clear of the rail.
+ * **Orientation.** The item was described as nose up. At 8x both photographs show
+ * a bullet lying *horizontally* - rounded nose pointing left, into the field and
+ * toward the jets, square tail outboard - measuring about 49 x 19 px. The handed
+ * over `13 x 8` is itself wider than it is tall, so it agrees with the
+ * photographs and only the word disagrees. Drawn horizontal, nose left.
+ *
+ * **These four constants have gone back to scale**, which #51 asked for: "the
+ * inherited playfield is about 27 units wider than the photographed one and so
+ * reaches much closer to the bezel. If that geometry is corrected upstream, these
+ * four constants should go back to scale." layout.ts has now corrected it - the
+ * right rail is at the measured 313.6 rather than 344.85 - so there are 49 atlas
+ * units of glass outboard of the rail instead of 15, and the squeeze is gone.
+ *
+ * At the photograph scale 49 x 19 px is 15.4 x 6.0 atlas units (score10) or
+ * 17.1 x 6.6 (score0); 15.4 x 6 is taken, an aspect of 2.6 against the
+ * photographed 2.6 - #51 could only reach 2.0. The nose lands at x 331.6, which is
+ * where the bullets' noses register in the photographs: x 331.4 and 331.7. The
+ * furthest corner is now 137 units from the scope circle's centre against a radius
+ * of 150, where before the same figures would not have fitted at all.
  */
 const MISSILE_GAP = 18;
-const MISSILE_LENGTH = 11.5;
-const MISSILE_HEIGHT = 5.6;
+const MISSILE_LENGTH = 15.4;
+const MISSILE_HEIGHT = 6;
 const MISSILE_NOSE_FRACTION = 0.5;
 
 /** The printed frame: left rail, the solid rail stretches, and the right rail. */
