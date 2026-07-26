@@ -147,8 +147,11 @@ describe('InputMatrix - reading the matrix', () => {
   it('ignores strobe bits above D6 - those grids carry no contacts', () => {
     const input = new InputMatrix();
     input.setLever(0);
+    // D7-D15 are grids and the speaker and read lines: nothing answers there.
     expect(input.read(0xff80)).toBe(0);
-    expect(input.read(0x3ff & ~0b10)).toBe(1); // D2 (lever centre is open, D4 skill 1 closed)
+    // The whole display sweep, minus the lever contact on D1: the skill-1
+    // contact on D4 is still closed, so the line still reads high.
+    expect(input.read(0x3ff & ~0b10)).toBe(1);
   });
 
   it('reports the closed contacts as a mask', () => {
