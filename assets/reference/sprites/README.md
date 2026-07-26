@@ -58,50 +58,67 @@ side horizontally, which is what the current atlas models.
 
 They are spiky burst shapes rather than round dots.
 
-### 5. Explosions exist in both phosphor colours
+### 5. The cyan shape near G is the player's ship
 
-`explosion-red-lit.png`, `battleship-cyan-lit.png`.
+`battleship-cyan-lit.png` (filename is a misnomer - kept so the commit history lines
+up; the crop is the player's ship).
 
-Photo 2 shows a red-orange starburst near the G line and a cyan shape just below it.
-The tube is two-phosphor (cyan/red) and both are in use for event sprites. The current
-atlas has no explosion segments at all.
+**Owner-confirmed.** The cyan shape near the G line is the **player's launcher** - the
+thing you control. It occupies one of three vertical positions and it is what fires the
+two cyan dots. It is drawn in cyan phosphor, inside the playfield.
 
-The cyan shape's identity is **not settled** from these photographs - it may be the
-battleship, a jet rendered in the other phosphor, or a capture indicator. Do not guess
-it into the atlas; it needs either a clearer photograph or the owner's word.
+The red-orange starburst directly above it in photo 2 is **the player being hit at that
+position**, immediately before moving away.
 
-### 6. Launcher and reserve marks
+So the two event sprites are:
+- `explosion-red-lit.png` - the player's ship taking a hit
+- the cyan ship itself, at three lane positions
 
-`launcher-lit.png`.
+This corrects the atlas, which places `launcher_lane{0-2}` at the right-hand edge as
+white wedges. Those wedges are not the launcher - see below.
 
-At the right-hand edge: three cream/white wedge shapes at the three lane positions,
-each with a short bar to its left. Rounded, bullet-like, blunt end outward.
+### 6. The white marks are printed paint, not segments
 
-### 7. Score and lives
+`launcher-lit.png` (also a misnomer - these are the painted marks).
 
-`score-lives.png`.
+**Owner-confirmed:** the cream/white wedges and bars at the right-hand edge are **white
+paint on the overlay**. They are fixed silkscreen, not lit phosphor, and the machine
+cannot change them. They must not be atlas segments at all.
 
-`SCORE` label and the digits are **cyan** seven-segment. Photo 2 reads `10` with a
-ghost digit position visible to the left, so the field is three digits wide with
-leading blanking (consistent with the 199 cap).
+### 7. There is no lives display
 
-Three short white bars sit stacked vertically immediately right of the `SCORE` block -
-the reserve/lives indicators.
+**Owner-confirmed and important:** the unit has **no way to show remaining lives**.
+Damage is communicated **only by sound** - the two-beep and three-beep warnings between
+hits.
+
+`atlas.json` currently defines `life_0`, `life_1`, `life_2` as lit segments. They should
+not exist. Whatever the ROM writes there is writing to segments the tube does not have,
+which is the same class of fault as the phantom ground line fixed in #32.
+
+This also explains why the warning-beep sequence carries so much weight in
+`docs/evidence/audio-reference.md`: it is the *entire* damage feedback channel.
+
+### 8. Score
+
+`score-lives.png` (misnomer again - there are no lives in it).
+
+`SCORE` label and digits are **cyan** seven-segment. Photo 2 reads `10` with a ghost
+digit position visible to the left, so the field is three digits wide with leading
+blanking, consistent with the 199 cap.
 
 ## Colour assignment
 
 | Sprite | Lit colour |
 | --- | --- |
 | Jets | red-orange |
+| Player's ship (launcher) | cyan |
 | Missile bursts | cyan |
 | Score label and digits | cyan |
-| Explosion (jet hit) | red-orange |
-| Unidentified shape near G | cyan |
-| Launcher wedges, reserve bars, lives | cream/white |
+| Explosion (player hit) | red-orange |
 
-Note the atlas models `colorRegion` as `cyan | red`. The launcher wedges and lives read
-as near-white in both photographs; whether that is a third phosphor region or cyan
-washed out by exposure is **unresolved** and should not be guessed.
+The `cyan | red` model in the atlas is correct and complete. The near-white marks at
+the right-hand edge are **painted overlay, not phosphor**, so they need no colour
+region - they need removing from the segment list entirely.
 
 ## Wording and spacing
 
@@ -120,7 +137,12 @@ adjusting - the wording is right, the geometry and spacing are not.
 
 ## What these photographs do not settle
 
-- The cyan shape near the G line (section 5)
-- Whether the launcher/lives white is a distinct phosphor region (colour table)
 - Anything about **timing** - these are stills. Cadence remains blocked on the
-  per-skill gameplay video, per `docs/evidence/timing-analysis.md`
+  per-skill gameplay video, per `docs/evidence/timing-analysis.md`.
+- The battleship. Neither photograph catches one crossing the far zone, so its sprite
+  is still untraced. It is worth 10 points per the rules and has a documented buzz in
+  `audio-reference.md`, but its shape is unknown.
+
+The two questions the first draft left open - the identity of the cyan shape, and
+whether the white marks were a third phosphor - were both answered by the owner and are
+now recorded above as fact, not inference.
