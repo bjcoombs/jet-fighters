@@ -95,18 +95,32 @@
 
 ; --- Playfield geometry -----------------------------------------------------
 ;
-; Ten grids, read left to right as the case is held: seven playfield columns and
-; three score digits.
+; The tube is not ours to choose. Which phosphor segment sits at which
+; (grid, plate) address is fixed by the glass, and this machine's description of
+; that glass is the segment atlas, src/machine/tube/atlas.json - documented in
+; src/machine/tube/ATLAS-COORDINATES.md, "Grid and plate mapping". The ROM has to
+; drive the tube it is soldered to, so every address below is copied from that
+; table with this citation, not invented here:
 ;
-;   grid 0        MISSILE STATION ZONE - the launcher, and the G capture line
-;   grids 1-5     JET FIGHTER FLYING ZONE - five columns the squadron walks down
-;   grid 6        BATTLE SHIP ZONE - the far side the battleship crosses
-;   grids 7,8,9   SCORE - hundreds, tens, units
+;   grid 0        distance column 0 - the far side, BATTLE SHIP ZONE, ruler "10"
+;   grids 1-4     distance columns 1-4 - JET FIGHTER FLYING ZONE
+;   grid 5        distance column 5 - the G capture line and the launcher
+;   grids 6,7,8   SCORE - hundreds, tens, units
+;   grid 9        status: the lit SCORE label and the three reserve-launcher marks
+;
+; Six distance columns, +x toward the missile station: the squadron enters at
+; grid 0 and marches toward grid 5. There is no ground-line segment - the
+; playfield border, the lane dashes and the 10/3/2/1/G ruler are printed
+; silkscreen on the overlay, not phosphor.
+;
+; The *game's* column numbering runs the other way, and is deliberately left
+; alone: column 0 is the G line, column 6 the battleship zone, and the squadron
+; advances by counting down. PAT_COLUMN carries the column -> grid translation so
+; the tick chain never has to know which end of the glass it is looking at.
 ;
 ; The overlay's printed ruler reads 10 / 3 / 2 / 1 / G from the far side inwards
-; (PRD v1, "The original hardware"). The battleship zone is the 10; the five jet
-; columns carry the 3/2/1 bands. Which of the five columns falls in which band is
-; *not* established by any reference asset - the photograph
+; (PRD v1, "The original hardware"). Which column falls in which band is *not*
+; established by any reference asset - the photograph
 ; assets/reference/screen-overlay-closeup.jpg has not been column-counted - so the
 ; split below (5=3, 4,3=2, 2,1=1) is this ROM's reading of the ruler and is
 ; recorded in PAT_COLUMN rather than spread through the code.
@@ -116,28 +130,41 @@
 .EQU COL_JET_FAR,    4          ; the leading column a fresh squadron enters at;
                                 ; its rear rank sits one further out, in column 5
 .EQU COL_BSHIP,      6          ; the battleship's column
-.EQU GRID_SC_H,      7          ; score, hundreds
-.EQU GRID_SC_T,      8          ; score, tens
-.EQU GRID_SC_U,      9          ; score, units
+.EQU GRID_LAUNCH,    5          ; atlas: the launcher segments live on grid 5
+.EQU GRID_MISSILE,   4          ; atlas: the missile dot pairs live on grid 4
+.EQU GRID_BSHIP,     0          ; atlas: the single battleship segment, grid 0
+.EQU GRID_SC_H,      6          ; score, hundreds
+.EQU GRID_SC_T,      7          ; score, tens
+.EQU GRID_SC_U,      8          ; score, units
+.EQU GRID_STATUS,    9          ; the SCORE label and the reserve-launcher marks
 
 ; --- Plate assignments ------------------------------------------------------
 ;
 ; A segment is a (grid, plate) pair, so the same plate line means different
 ; things under different grids - that is how a multiplexed tube works, not an
 ; overload. Plates 0-11 are the ones the segment atlas addresses
-; (src/machine/tube/atlas-schema.ts). The two-colour split follows the real
-; unit: amber for everything on the jets' side, cyan for the player's.
+; (src/machine/tube/atlas-schema.ts), and the assignment below is that atlas's,
+; not a convention of this file. The two-colour split follows the real unit: red
+; for everything on the jets' side, cyan for the player's.
 ;
-;   plate 0        ground line, under the seven playfield columns
-;   plates 1-3     cyan: the player's missile, one plate per lane
-;   plates 4-6     cyan: the launcher, one plate per lane (grid 0 only)
-;   plate 7        cyan: a standing launcher, under grids 0-2 (the lives tally)
-;   plates 8-10    amber: jets, the battleship and jet rockets, one per lane
-;   plates 0-6     under grids 7-9 only: the seven score digit segments
+;   grids 0-5 (the six distance columns)
+;     plates 0-2   red:  the jet in lane 0, 1, 2 of that column
+;     plates 3-5   red:  that lane's jet-rocket dot
+;     grid 0 only
+;       plate 6    red:  the battleship
+;     grid 4 only
+;       plates 6-11 cyan: the player's missile, a head/trail dot pair per lane
+;     grid 5 only
+;       plates 6-8 cyan: the launcher, one plate per lane
+;   grids 6-8      cyan: the seven score digit segments, a-g on plates 0-6
+;   grid 9         cyan: plate 0 the SCORE label, plates 1-3 the reserve marks
 ;
-; Nothing draws on plate 11.
+; Plates 0-3 are R0, 4-7 are R1, 8-11 are R2, so a segment's plate decides which
+; of the three plate files carries it. Several actors straddle that boundary -
+; the rocket dots are plates 3,4,5 and the launcher 6,7,8 - so PAT_LANE stores
+; the *file* alongside the bit and or_plate below does the dispatch.
 
-.EQU PLATE_LIFE,    %1000       ; R1 bit 3 -> plate 7
+.EQU PLATE_BSHIP,   %0100       ; R1 bit 2 -> plate 6, under grid 0
 
 ; --- Pattern tables ---------------------------------------------------------
 ;
@@ -146,9 +173,9 @@
 ; the comment says which is which. Eight tables of sixteen entries is the whole
 ; pattern region (isa.ts, PATTERN_TABLE_COUNT), and all eight are in use.
 
-.EQU PAT_LANE,       0          ; lane  -> A = actor plate bit, B = missile bit
+.EQU PAT_LANE,       0          ; actor+lane -> A = plate file, B = plate bit
 .EQU PAT_DIGIT,      1          ; 0-9   -> A = segments a-d,    B = segments e-g
-.EQU PAT_COLUMN,     2          ; grid  -> A = ground plates,   B = points
+.EQU PAT_COLUMN,     2          ; column -> A = display grid,   B = points
 .EQU PAT_ROCKET,     3          ; skill -> rocket interval, sweeps (A lo, B hi)
 .EQU PAT_STEP,       4          ; speed -> squadron cadence, sweeps (A lo, B hi)
 .EQU PAT_SKILL,      5          ; skill -> A = base index into PAT_STEP
@@ -261,6 +288,18 @@
 .EQU BS_NONE,       15          ; NIB_BSLANE when no crossing is in progress
 .EQU JET_COUNT,      6          ; a squadron: two ranks of three
 .EQU RANK_SPLIT,     2          ; jet indices 0-2 are rank 0, 3-5 are rank 1
+
+; PAT_LANE is four groups of three, one per actor, indexed by group base + lane.
+; Grouping them into one table rather than four costs an AI and keeps the pattern
+; region at the eight tables the hardware has (isa.ts, PATTERN_TABLE_COUNT).
+.EQU LANEP_JET,      0          ; +lane -> the jet segment of that lane
+.EQU LANEP_ROCKET,   4          ; +lane -> that lane's jet-rocket dot
+.EQU LANEP_LAUNCH,   8          ; +lane -> the launcher standing in that lane
+.EQU LANEP_MISSILE, 12          ; +lane -> the player missile's dot pair
+
+; PAT_COLUMN's entries 12-15 are indexed by NIB_HITS, not by a column: see the
+; table for why the two share one table.
+.EQU LIFEP_BASE,    12          ; +hits -> grid 9's whole R0 nibble
 .EQU LIVES_MAX,      3          ; three launchers, per the printed silhouettes
 .EQU SPEED_LAST,    15          ; the last entry in PAT_STEP
 .EQU WAVE_LAST,     15          ; NIB_WAVE saturates here rather than wrapping
@@ -560,56 +599,84 @@ rf_nibble:
         DB
         BR rf_file
 
-        ; --- the ground line, one lookup per column ---
-        ; PAT_COLUMN's high nibble is the scoring band and is ignored here.
-        LYI 0
-rf_ground:
-        LAY                     ; A <- the column
-        P PAT_COLUMN            ; A <- its R0 plates
-        LXI FILE_PLATE0
-        XMA
-        IY
-        YNEI GRID_COUNT
-        BR rf_ground
-
         ; --- the launcher, in whichever lane the lever selects ---
+        ; There is no ground line to draw first: the playfield border, the lane
+        ; dashes and the ruler are printed silkscreen, not phosphor. See the
+        ; playfield geometry block.
         LXI FILE_STATE
         LYI NIB_LANE
         LAM
-        P PAT_LANE              ; A <- the lane's plate bit, on R1: plates 4-6
-        LXI FILE_PLATE1
-        LYI COL_LAUNCH
-        XMA
+        AI LANEP_LAUNCH
+        LYI GRID_LAUNCH         ; LYI does not disturb A
+        CALL or_plate
 
         JMPL render_lives       ; a jump, not a call: the tail returns for us
+
+; ============================================================================
+; one segment onto the plate table
+; ============================================================================
+;
+; In:  A = a PAT_LANE index (an actor's group base plus its lane), Y = the grid
+;      the segment hangs under. Out: nothing. Clobbers A, B, X; preserves Y.
+;
+; Every actor on the playfield is drawn through here, which is what keeps the
+; atlas's plate numbers in one table instead of spread through four routines.
+; The plate *file* has to be dispatched rather than computed because RAM is
+; addressed by X and the file arrives in a register: A and B are both spoken for
+; by the time the write happens (B holds the bit, X and Y are the address), so
+; there is no register left to carry the file number into LXA. Three LXIs cost
+; less than the shadow-pair juggling the alternative would need.
+;
+; The write ORs rather than overwrites: one grid's nibble can carry three jets,
+; or a rocket alongside the battleship.
+
+.PAGE
+or_plate:
+        P PAT_LANE              ; A <- the plate file, B <- the plate bit
+        ALEI FILE_PLATE0
+        BR op_file0
+        ALEI FILE_PLATE1
+        BR op_file1
+        LXI FILE_PLATE2
+        BR op_write
+op_file1:
+        LXI FILE_PLATE1
+        BR op_write
+op_file0:
+        LXI FILE_PLATE0
+op_write:
+        LAM                     ; A <- what is already lit on that plate nibble
+        OR                      ; A <- A | the segment's bit
+        XMA
+        RTN
 
 ; ============================================================================
 ; the launcher tally
 ; ============================================================================
 ;
-; Three silhouettes are printed at the base of the missile station zone on the
-; real case (PRD v1). Here they are plate 7 under grids 0, 1 and 2: one lit per
-; launcher still standing. NIB_HITS counts destroyed launchers up from zero, so
-; the lit columns are hits..2 and the loop simply starts at NIB_HITS.
+; Three reserve-launcher marks stand outside the right-hand border of the printed
+; playfield (assets/reference/device-front-lit.jpg). The atlas puts them on grid
+; 9, plates 1-3, beside the lit SCORE label on plate 0 - so the whole status grid
+; is one R0 nibble that nothing else on the tube contributes to, and one lookup
+; can own it outright.
+;
+; NIB_HITS counts destroyed launchers up from zero, so PAT_COLUMN's four entries
+; at LIFEP_BASE hold that nibble for hits 0-3 with the SCORE label's bit already
+; set in each. Sharing PAT_COLUMN is not elegance: the pattern region has exactly
+; eight tables (isa.ts, PATTERN_TABLE_COUNT) and all eight are spoken for, while
+; PAT_COLUMN is indexed by a column and columns stop at 6.
 
 .PAGE
 render_lives:
         LXI FILE_STATE
         LYI NIB_HITS
         LAM
-        LYA                     ; Y <- the first column to leave dark
-rl_life:
-        YNEI LIVES_MAX          ; ST <- 0 once every remaining launcher is drawn
-        BR rl_draw
-        JMPL render_actors
-rl_draw:
-        LXI FILE_PLATE1
-        LBM                     ; B <- whatever is already on R1 for that column
-        LAI PLATE_LIFE
-        OR                      ; draw over the field, do not erase it
+        AI LIFEP_BASE
+        P PAT_COLUMN            ; A <- the marks still standing, plus the label
+        LXI FILE_PLATE0
+        LYI GRID_STATUS
         XMA
-        IY
-        BR rl_life
+        JMPL render_actors
 
 ; ============================================================================
 ; the squadron
@@ -646,6 +713,10 @@ ra_next:
 ; caller's pointers are parked in the shadow pair so the loop above can keep
 ; walking, which is also how the index is recovered - LASPY reads it back.
 ;
+; The lane has to survive a RAM pointer move and the grid has to survive another,
+; and only one of the two can travel in B, so the lane goes to scratch and comes
+; back last. LANEP_JET is zero, so the lane doubles as its own PAT_LANE index.
+;
 ; This routine runs past its page boundary. That is allowed here because both of
 ; its branch targets sit in the first 32 words; nothing past the boundary is
 ; reached by BR.
@@ -674,26 +745,30 @@ dj_rank0:
         LAM
 dj_draw:
         ; A = the column to draw in, scratch = the lane.
+        P PAT_COLUMN            ; A <- the grid that column is strobed on
         LXI FILE_TIME
         LYI NIB_SCRATCH2
-        XMA                     ; scratch2 <- column
+        XMA                     ; scratch2 <- the grid
         LYI NIB_SCRATCH
-        LAM
-        P PAT_LANE              ; A <- the amber actor bit for that lane
-        LBA                     ; park it in B: A is needed for the column
+        LBM                     ; B <- the lane, which is its own PAT_LANE index
         LYI NIB_SCRATCH2
         LAM
-        LYA                     ; Y <- the column
-        LXI FILE_PLATE2
-        LAM                     ; A <- what is already drawn there
-        OR
-        XMA
+        LYA                     ; Y <- the grid
+        LAB                     ; A <- the PAT_LANE index
+        CALL or_plate
         XSP                     ; give the loop its X/Y back
         RTN
 
 ; ============================================================================
 ; the battleship
 ; ============================================================================
+;
+; One segment, on grid 0 beside distance column 0, in the centre lane
+; (src/machine/tube/ATLAS-COORDINATES.md, assumption 4). The tube cannot show the
+; ship moving between lanes, so a crossing is the segment lighting and going out
+; again; NIB_BSLANE remains the crossing's progress counter, and missile_bship
+; tests the centre lane rather than that counter, because the centre lane is
+; where the player can see it.
 
 .PAGE
 render_bship:
@@ -704,10 +779,9 @@ render_bship:
         BR rb_draw
         JMPL render_rocket
 rb_draw:
-        P PAT_LANE
-        LBA
-        LXI FILE_PLATE2
-        LYI COL_BSHIP
+        LXI FILE_PLATE1
+        LYI GRID_BSHIP
+        LBI PLATE_BSHIP
         LAM
         OR
         XMA
@@ -724,22 +798,26 @@ render_rocket:
         LAM
         ALEI 0                  ; ST <- 1 when no rocket is in flight
         BR rr_done
-        LXI FILE_TIME
-        LYI NIB_SCRATCH2
-        XMA                     ; scratch2 <- the rocket's column
-        LXI FILE_STATE
         LYI NIB_RLANE
         LAM
-        P PAT_LANE              ; A <- the amber actor bit
-        LBA
+        AI LANEP_ROCKET
+        LXI FILE_TIME
+        LYI NIB_SCRATCH
+        XMA                     ; scratch <- the PAT_LANE index
+        LXI FILE_STATE
+        LYI NIB_RCOL
+        LAM
+        P PAT_COLUMN            ; A <- the grid that column is strobed on
         LXI FILE_TIME
         LYI NIB_SCRATCH2
+        XMA                     ; scratch2 <- the grid
+        LYI NIB_SCRATCH
+        LBM                     ; B <- the PAT_LANE index
+        LYI NIB_SCRATCH2
         LAM
-        LYA
-        LXI FILE_PLATE2
-        LAM
-        OR
-        XMA
+        LYA                     ; Y <- the grid
+        LAB
+        CALL or_plate
 rr_done:
         JMPL render_missile
 
@@ -747,8 +825,15 @@ rr_done:
 ; the player's missile
 ; ============================================================================
 ;
-; The missile is cyan and sits on plates 1-3, which is PAT_LANE's *high* nibble -
-; so `P` leaves the bit in B already and no LBA is needed.
+; The tube carries six missile segments in total: a head/trail dot pair for each
+; lane, all six on grid 4 (src/machine/tube/ATLAS-COORDINATES.md, assumption 5,
+; which names this as the atlas's most likely omission - "a missile that visibly
+; travels the length of the field needs a dot pair per column"). So a shot in
+; flight lights its lane's pair and NIB_MCOL, which the tick chain still advances
+; column by column for the hit tests, has nowhere on the glass to show itself.
+; Drawing the pair at a column the tube has no segment for is not an option; the
+; alternative here would be to draw nothing at all, and a missile the player
+; cannot see is worse than one that does not visibly travel.
 
 .PAGE
 render_missile:
@@ -757,21 +842,11 @@ render_missile:
         LAM
         ALEI 0                  ; ST <- 1 when no missile is in flight
         BR rs_done
-        LXI FILE_TIME
-        LYI NIB_SCRATCH2
-        XMA                     ; scratch2 <- the missile's column
-        LXI FILE_STATE
         LYI NIB_MLANE
         LAM
-        P PAT_LANE              ; B <- the cyan missile bit
-        LXI FILE_TIME
-        LYI NIB_SCRATCH2
-        LAM
-        LYA
-        LXI FILE_PLATE0
-        LAM
-        OR
-        XMA
+        AI LANEP_MISSILE
+        LYI GRID_MISSILE        ; LYI does not disturb A
+        CALL or_plate
 rs_done:
         JMPL render_score
 
@@ -779,8 +854,10 @@ rs_done:
 ; the score digits
 ; ============================================================================
 ;
-; Grids 7-9 are not playfield: PAT_COLUMN leaves them dark and these lookups own
-; them outright, so no OR is needed here.
+; Grids 6-8 are not playfield - nothing else on the tube hangs under them - so
+; these lookups own their nibbles outright and no OR is needed here. Segments a-d
+; are plates 0-3 (R0) and e,f,g plates 4-6 (R1), which is the atlas's own
+; seven-segment order.
 
 .PAGE
 render_score:
@@ -949,6 +1026,10 @@ mh_bship:
 ; ============================================================================
 ; or the battleship
 ; ============================================================================
+;
+; The tube has one battleship segment and it sits in the centre lane, so the shot
+; has to be in the centre lane to reach it - not in NIB_BSLANE, which is the
+; crossing's progress counter and shows nowhere on the glass. See render_bship.
 
 .PAGE
 missile_bship:
@@ -959,8 +1040,9 @@ missile_bship:
         BR mb_lane
         JMPL tick_jets
 mb_lane:
+        LAI LANE_CENTRE
         LYI NIB_MLANE
-        ANEM                    ; ST <- 1 when the lanes differ
+        ANEM                    ; ST <- 1 when the shot is in another lane
         BR mb_none
         LAI COL_BSHIP
         LYI NIB_MCOL
@@ -2071,16 +2153,33 @@ main_timers:
 ; 128 ten-bit words above the program, read by `P` rather than executed. Each
 ; word splits low nibble -> A, high nibble -> B.
 
-; --- Lane -> the two plate bits a lane owns --------------------------------
-; A = the amber actor bit on R2 (plates 8-10: jets, battleship, rockets).
-; B = the cyan missile bit on R0 (plates 1-3). The launcher uses A as well, on
-; R1 (plates 4-6), because the three lane rows line up on all three ports.
+; --- Actor and lane -> where that segment lives -----------------------------
+; A = the plate file (FILE_PLATE0/1/2, i.e. which of R0, R1, R2 carries it).
+; B = the bit within that file. or_plate reads both.
+;
+; Four groups of three, indexed by LANEP_* + lane. Every address is the segment
+; atlas's (src/machine/tube/atlas.json); the plate numbers in the comments are
+; the atlas's plate indices, and file/bit is just plate/4 and 1 << (plate mod 4).
+; The groups are not contiguous because a fourth slot each keeps the arithmetic
+; to a single AI.
 .PATTERN PAT_LANE
 lane_plates:
-        .DW $021, $042, $084, $000
-        .DW $000, $000, $000, $000
-        .DW $000, $000, $000, $000
-        .DW $000, $000, $000, $000
+        .DW $010                ;  0: jet, lane 0        - plate 0,  R0 bit 0
+        .DW $020                ;  1: jet, lane 1        - plate 1,  R0 bit 1
+        .DW $040                ;  2: jet, lane 2        - plate 2,  R0 bit 2
+        .DW $000                ;  3: unused
+        .DW $080                ;  4: rocket, lane 0     - plate 3,  R0 bit 3
+        .DW $011                ;  5: rocket, lane 1     - plate 4,  R1 bit 0
+        .DW $021                ;  6: rocket, lane 2     - plate 5,  R1 bit 1
+        .DW $000                ;  7: unused
+        .DW $041                ;  8: launcher, lane 0   - plate 6,  R1 bit 2
+        .DW $081                ;  9: launcher, lane 1   - plate 7,  R1 bit 3
+        .DW $012                ; 10: launcher, lane 2   - plate 8,  R2 bit 0
+        .DW $000                ; 11: unused
+        .DW $0C1                ; 12: missile, lane 0    - plates 6,7   on R1
+        .DW $032                ; 13: missile, lane 1    - plates 8,9   on R2
+        .DW $0C2                ; 14: missile, lane 2    - plates 10,11 on R2
+        .DW $000                ; 15: unused
 
 ; --- Digit -> seven-segment plates ------------------------------------------
 ; Segments a,b,c,d on plates 0-3 (R0) and e,f,g on plates 4-6 (R1):
@@ -2099,23 +2198,34 @@ digit_plates:
         .DW $06F                ; 9: a b c d f g
         .DW $000, $000, $000, $000, $000, $000
 
-; --- Column -> the ground line, and what a jet there is worth ----------------
-; A = plate 0, the ground line under the seven playfield columns. Columns 7-9
-; are the score digits and are left dark for the digit lookups to fill.
+; --- Column -> its display grid, and what a jet there is worth ---------------
+; A = the display grid that column is strobed on. The game counts columns from
+; the G line outwards and the tube numbers its grids from the far side inwards,
+; so this is the whole of that translation: grid = 5 - column. Column 6 is the
+; battleship zone, which has no jet cells of its own - the ship is one segment on
+; grid 0 - so its grid entry is never read.
 ; B = the scoring band, read by missile_kill. The printed ruler is 10 / 3 / 2 /
 ; 1 / G from the far side inwards; the battleship zone carries the 10 and is
 ; scored through add_score's tens addend, so its band here is zero.
+;
+; Entries 12-15 are not columns. They are indexed by NIB_HITS and hold grid 9's
+; whole R0 nibble - the SCORE label on plate 0 plus the reserve-launcher marks
+; still standing on plates 1-3. They live here because all eight pattern tables
+; are already in use and a column index cannot reach 12. See render_lives.
 .PATTERN PAT_COLUMN
 column_plates:
-        .DW $001                ; 0: the G line - a jet here captures, not scores
-        .DW $011                ; 1: near band, 1 point
-        .DW $011                ; 2: near band, 1 point
-        .DW $021                ; 3: middle band, 2 points
-        .DW $021                ; 4: middle band, 2 points
-        .DW $031                ; 5: far band, 3 points
-        .DW $001                ; 6: the battleship zone
-        .DW $000, $000, $000    ; 7-9: the score digits
-        .DW $000, $000, $000, $000, $000, $000
+        .DW $005                ; 0: grid 5, the G line - a jet here captures
+        .DW $014                ; 1: grid 4, near band, 1 point
+        .DW $013                ; 2: grid 3, near band, 1 point
+        .DW $022                ; 3: grid 2, middle band, 2 points
+        .DW $021                ; 4: grid 1, middle band, 2 points
+        .DW $030                ; 5: grid 0, far band, 3 points
+        .DW $000                ; 6: the battleship zone
+        .DW $000, $000, $000, $000, $000    ; 7-11: unused
+        .DW $00F                ; 12: hits 0 - label, three marks standing
+        .DW $007                ; 13: hits 1 - label, two marks
+        .DW $003                ; 14: hits 2 - label, one mark
+        .DW $001                ; 15: hits 3 - the label alone
 
 ; --- Skill -> how often the jets fire back ----------------------------------
 ; Sweeps between rocket launches, as A = low nibble and B = high nibble.
