@@ -340,9 +340,9 @@ const ZONE_DASH_GAP = 3;
  * the missiles are drawn to fit that gap rather than to scale.
  */
 const MISSILE_GAP = 2.2;
-const MISSILE_LENGTH = 11.3;
-const MISSILE_HEIGHT = 7.7;
-const MISSILE_NOSE_FRACTION = 0.45;
+const MISSILE_LENGTH = 11.5;
+const MISSILE_HEIGHT = 5.6;
+const MISSILE_NOSE_FRACTION = 0.5;
 
 /** The printed frame: left rail, the solid rail stretches, and the right rail. */
 function drawFrame(ctx: CanvasRenderingContext2D, rightRailBottom: number): void {
@@ -504,8 +504,9 @@ function drawZoneBrackets(ctx: CanvasRenderingContext2D): void {
   ctx.lineTo(FIELD.x, midY);
   ctx.lineTo(outerL, midY);
   ctx.lineTo(outerL, innerTop);
-  ctx.moveTo(right, rail);
-  ctx.lineTo(right, midY);
+  // The right-hand drop is the right rail itself, which {@link drawFrame} has
+  // already run down to this depth.
+  ctx.moveTo(right, midY);
   ctx.lineTo(outerR, midY);
   ctx.lineTo(outerR, innerTop);
 
@@ -538,9 +539,9 @@ function drawZoneBrackets(ctx: CanvasRenderingContext2D): void {
   ctx.textAlign = 'center';
   ctx.fillText(midLabel, midCentre, midY + drop);
   ctx.textAlign = 'left';
-  ctx.fillText(lowLabel, lowLeft + ZONE_DASH_GAP * 2, lowY + drop);
+  ctx.fillText(lowLabel, lowLeft + ZONE_DASH_GAP * 3, lowY + drop);
   ctx.textAlign = 'right';
-  ctx.fillText(stationLabel, lowRight - ZONE_DASH_GAP * 2, lowY + drop);
+  ctx.fillText(stationLabel, lowRight - ZONE_DASH_GAP * 3, lowY + drop);
   ctx.textAlign = 'center';
 }
 

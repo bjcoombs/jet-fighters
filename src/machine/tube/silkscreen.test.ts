@@ -9,6 +9,7 @@ import {
   FIELD,
   LANE_COUNT,
   PLAYFIELD,
+  RECT,
   RULER_TICKS,
   VIEWBOX,
   columnCenterX,
@@ -423,6 +424,132 @@ describe('drawSilkscreen', () => {
     const labels = callsOf(draw(), 'fillText').map((call) => call.text);
     for (const tick of RULER_TICKS) {
       expect(labels).toContain(tick.label);
+    }
+  });
+
+  it('hangs the zone labels off nested bracket plumbing, not in mid air', () => {
+    // The most distinctive thing on the lower face: drop lines leave the bottom
+    // rail and turn into nested square brackets, the middle label is joined by a
+    // dash on each side, and the two lower labels hang from a deeper bracket.
+    const drawn = trace();
+    const rail = PLAYFIELD.y + PLAYFIELD.height;
+    const right = PLAYFIELD.x + PLAYFIELD.width;
+    const below = drawn.segments.filter((seg) => seg.alpha === 1 && seg.y1 > rail + 1);
+
+    // Two drop lines off the rail, at the field's left edge and the right rail.
+    for (const x of [FIELD.x, right]) {
+      expect(
+        below.some((seg) => near(seg.x0, x) && near(seg.x1, x) && seg.y0 <= rail + 1e-9),
+        `drop line off the rail at x=${x}`,
+      ).toBe(true);
+    }
+
+    // Both bracket runs turn inward along one depth, and each ends in an arm
+    // turning back up, with a second arm nested just inboard of it.
+    // Two horizontal depths below the rail: the bracket run, then the deeper row.
+    const depths = [
+      ...new Set(below.filter((seg) => near(seg.y0, seg.y1)).map((seg) => seg.y0)),
+    ].sort((a, b) => a - b);
+    expect(depths.length).toBe(2);
+    const midY = depths[0];
+    expect(midY).toBeGreaterThan(rail);
+    // Turn-ups only: they rise from the bracket run without reaching the rail.
+    const risers = below
+      .filter((seg) => near(seg.x0, seg.x1) && near(seg.y1, midY) && seg.y0 > rail + 1e-9)
+      .map((seg) => seg.x0)
+      .sort((a, b) => a - b);
+    // Four: the two outer turn-ups and the two nested inner ones.
+    expect(risers.length).toBe(4);
+    expect(risers[1] - risers[0]).toBeLessThan(CELL.width * 0.5);
+    expect(risers[3] - risers[2]).toBeLessThan(CELL.width * 0.5);
+    expect(risers[2] - risers[1]).toBeGreaterThan(CELL.width * 2);
+
+    // The middle label sits between the nested pair, joined by a dash each side.
+    const labels = ops(drawn.calls, 'fillText');
+    const middle = labels.find((call) => call.text === 'JET FIGHTER FLYING ZONE');
+    expect(middle).toBeDefined();
+    expect(middle!.args[0]).toBeCloseTo((risers[1] + risers[2]) / 2, 6);
+    const dashes = below.filter((seg) => near(seg.y0, midY) && near(seg.y1, midY));
+    expect(dashes.some((seg) => near(seg.x0, risers[1]) && seg.x1 < middle!.args[0])).toBe(true);
+    expect(dashes.some((seg) => near(seg.x1, risers[2]) && seg.x0 > middle!.args[0])).toBe(true);
+
+    // The lower row hangs deeper, one label off each outer run.
+    const lowY = depths[1];
+    expect(lowY).toBeGreaterThan(midY);
+    for (const text of ['BATTLE SHIP ZONE', 'MISSILE STATION ZONE']) {
+      const label = labels.find((call) => call.text === text);
+      expect(label, text).toBeDefined();
+      expect(label!.args[1]).toBeGreaterThan(midY);
+      const hanger = below.find(
+        (seg) => near(seg.x0, seg.x1) && near(seg.y0, midY) && near(seg.y1, lowY),
+      );
+      expect(hanger, `hanger for ${text}`).toBeDefined();
+    }
+  });
+
+  it('paints three station missiles outboard of the right rail, nose left', () => {
+    // Painted, not phosphor: the atlas no longer carries them. Both photographs
+    // show a bullet lying horizontally with a rounded nose pointing into the
+    // field and a square tail outboard of it, one per lane row.
+    const recorder = draw();
+    const right = PLAYFIELD.x + PLAYFIELD.width;
+    const noses = callsOf(recorder, 'quadraticCurveTo');
+    // The bottom rail's last dash starts on the rail itself; allow for that.
+    const outboard = callsOf(recorder, 'moveTo').filter((call) => call.args[0] > right + 1);
+    expect(outboard.length).toBe(LANE_COUNT);
+
+    for (let lane = 0; lane < LANE_COUNT; lane += 1) {
+      const cy = laneCenterY(lane);
+      // The nose curve's apex is the leftmost point, and it is on the lane centre.
+      const apex = noses.find((call) => near(call.args[3], cy) && call.args[2] > right);
+      expect(apex, `missile nose at lane ${lane}`).toBeDefined();
+      const tail = outboard.find((call) => Math.abs(call.args[1] - cy) < CELL.height * 0.5);
+      expect(tail, `missile tail at lane ${lane}`).toBeDefined();
+      // Nose left of tail: the bullet points into the field.
+      expect(apex!.args[2]).toBeLessThan(tail!.args[0]);
+      // Longer than it is tall, so it reads as a bullet and not a blob.
+      const height = Math.abs(tail!.args[1] - cy) * 2;
+      expect(tail!.args[0] - apex!.args[2]).toBeGreaterThan(height);
+    }
+  });
+
+  it('keeps the whole printed overlay inside the scope window', () => {
+    // The canvas is clipped to the scope window (circle united with the SCORE
+    // tab), so ink outside it is silently cut off. Several of the measurements
+    // here - the bracket depths, the bottom rail's overhang, the missile tails -
+    // sit against that boundary, and this is what stops one drifting outside it.
+    const inside = (x: number, y: number): boolean => {
+      const inCircle = Math.hypot(x - CIRCLE.cx, y - CIRCLE.cy) <= CIRCLE.r;
+      const inRect =
+        x >= RECT.x && x <= RECT.x + RECT.width && y >= RECT.y && y <= RECT.y + RECT.height;
+      return inCircle || inRect;
+    };
+    for (const call of draw().calls) {
+      if (call.op === 'moveTo' || call.op === 'lineTo' || call.op === 'arc') {
+        // An arc's own radius pushes it out beyond its centre.
+        const pad = call.op === 'arc' ? call.args[2] : 0;
+        for (const [dx, dy] of [
+          [-pad, 0],
+          [pad, 0],
+          [0, -pad],
+          [0, pad],
+        ]) {
+          expect(
+            inside(call.args[0] + dx, call.args[1] + dy),
+            `${call.op} at ${call.args[0]},${call.args[1]}`,
+          ).toBe(true);
+        }
+      }
+      if (call.op === 'fillRect' || call.op === 'strokeRect') {
+        for (const [x, y] of [
+          [call.args[0], call.args[1]],
+          [call.args[0] + call.args[2], call.args[1]],
+          [call.args[0], call.args[1] + call.args[3]],
+          [call.args[0] + call.args[2], call.args[1] + call.args[3]],
+        ]) {
+          expect(inside(x, y), `${call.op} corner at ${x},${y}`).toBe(true);
+        }
+      }
     }
   });
 
