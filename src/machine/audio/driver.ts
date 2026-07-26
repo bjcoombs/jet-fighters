@@ -27,7 +27,7 @@
 // ROM toggled the pin; if it does not, `render()` emits the held level, which
 // is silence.
 
-import { EdgeBuffer, DEFAULT_LATENCY_MS, type EdgeInput } from './edge-buffer.js';
+import { EdgeBuffer, DEFAULT_LATENCY_MS, normaliseEdges, type EdgeInput } from './edge-buffer.js';
 import { SquareSynth, DEFAULT_AMPLITUDE } from './square-synth.js';
 
 /** Name the worklet processor registers itself under. */
@@ -185,6 +185,14 @@ export interface SpeakerDriverStats {
   readonly underruns: number;
   /** Edges the buffer dropped because a caller stopped draining. */
   readonly dropped: number;
+  /**
+   * Times the edge timeline was re-anchored on the playhead.
+   *
+   * One at the start of every sound is normal - it is how the machine's clock
+   * is introduced to the output's. A rising count during play means the
+   * emulation is losing time against the audio hardware.
+   */
+  readonly realignments: number;
 }
 
 /**
@@ -311,6 +319,8 @@ export class SpeakerDriver {
   private _framesRendered = 0;
   private _edgesConsumed = 0;
   private _underruns = 0;
+  private _realignments = 0;
+  private _held = 0;
 
   constructor(options: SpeakerDriverOptions) {
     const { context, source, cyclesPerSecond } = options;
@@ -382,6 +392,7 @@ export class SpeakerDriver {
       edgesConsumed: this._edgesConsumed,
       underruns: this._underruns,
       dropped: this.buffer.dropped,
+      realignments: this._realignments,
     };
   }
 
@@ -441,9 +452,46 @@ export class SpeakerDriver {
    * @returns edges accepted.
    */
   pump(): number {
-    const accepted = this.buffer.push(this._source.takeSpeakerEdges());
+    const edges = normaliseEdges(this._source.takeSpeakerEdges());
+    if (edges.length === 0) {
+      return 0;
+    }
+    this.realign(edges[0].cycle);
+    const accepted = this.buffer.push(edges);
     this._edgesConsumed += accepted;
     return accepted;
+  }
+
+  /**
+   * Introduce the machine's clock to the output's, and keep them introduced.
+   *
+   * The two clocks start life unrelated. {@link EdgeBuffer} anchors sample zero
+   * on the first edge it is ever handed, but the playhead has been advancing
+   * since the graph was connected - including through every render pass that
+   * ran before the ROM first touched the pin, which on a cold machine is the
+   * best part of a second. An edge that arrives behind the playhead is in the
+   * past: `take()` folds it into the held level rather than reporting it, and
+   * because the offset never closes, so is every edge after it. The output sits
+   * at the rest level forever, which is precisely what silence sounds like.
+   *
+   * So when the machine hands over sound the playhead has already gone past,
+   * rewind the timeline onto the playhead and withhold a latency's worth of
+   * frames while the buffer refills. Withholding is what builds the cushion:
+   * the machine keeps producing during the hold, so play resumes with the ROM
+   * running the buffer's depth ahead of the output and jitter has somewhere to
+   * go. The hold is bounded, so a blip shorter than the cushion still plays.
+   *
+   * This is a resynchronisation, not a correction to the waveform. Nothing is
+   * stretched or resampled - the edges keep their exact cycle spacing, and only
+   * sound the output has already run past is dropped.
+   */
+  private realign(cycle: number): void {
+    if (this.buffer.cycleToSample(cycle) >= this.buffer.playhead) {
+      return;
+    }
+    this.buffer.clear();
+    this._held = Math.ceil(this.buffer.latencySamples);
+    this._realignments += 1;
   }
 
   /**
@@ -459,6 +507,15 @@ export class SpeakerDriver {
    */
   render(frames: number, out?: Float32Array): Float32Array {
     this.pump();
+    if (this._held > 0) {
+      // Holding the playhead still after a realign while the machine fills the
+      // buffer. The pin is not moving during a hold, so the block is the level
+      // it is sitting at - the synth is the authority on which.
+      this._held -= frames;
+      const samples = this.synth.render({ startLevel: this.buffer.level, edges: [], frames }, out);
+      this._framesRendered += frames;
+      return samples;
+    }
     if (this.buffer.available <= 0) {
       this._underruns += 1;
     }
@@ -500,6 +557,8 @@ export class SpeakerDriver {
     this._framesRendered = 0;
     this._edgesConsumed = 0;
     this._underruns = 0;
+    this._realignments = 0;
+    this._held = 0;
   }
 
   /** Stop and release everything. The driver is not restartable afterwards. */
