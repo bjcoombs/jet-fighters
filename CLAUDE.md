@@ -1,16 +1,48 @@
 # Jet Fighters - Claude Code Instructions
 
-Browser replica of the 1979 Gakken "Jet Fighter" / CGL "Jet Fighters" tabletop VFD game.
-PRD: `docs/prd/jet-fighters-v1.md` (paths in this file are relative to the repo root).
+Emulation of the 1979 Gakken "Jet Fighter" / CGL "Jet Fighters" tabletop VFD game: an
+HMCS44 microcontroller running a game program we author, scanning a vacuum fluorescent
+tube. PRD: `docs/prd/jet-fighters-v2.md` (paths in this file are relative to the repo
+root). `docs/prd/jet-fighters-v1.md` describes the superseded behavioural replica and is
+kept only as the record of what the rules are.
 
 ## Architecture rules
 
-- TypeScript + canvas + Web Audio, zero runtime dependencies. Vite build, Vitest tests.
-- Game logic (`src/game/`) is pure and deterministic (seedable RNG): no DOM, no timers,
-  no Web APIs. Rendering (`src/render/`), audio (`src/audio/`), and input (`src/input/`)
-  consume it through explicit interfaces.
+TypeScript, zero runtime dependencies. Vite build, Vitest tests. Five layers, mirroring
+the physical machine:
+
+| Path                 | Layer                                                                     |
+| -------------------- | ------------------------------------------------------------------------- |
+| `asm/jetfighter.asm` | The game program - every rule, cadence, sound and score, in HMCS44 assembly |
+| `tools/hmasm/`       | The assembler, its CLI, and the Vite plugin that makes `.asm` importable    |
+| `src/machine/cpu/`   | HMCS44 core: 91 instructions, 4-bit ALU, 4-level stack, timer, R/D ports    |
+| `src/machine/board/` | PWM display state, input strobe matrix, D14 edge capture, power switch      |
+| `src/machine/tube/`  | Segment atlas and the renderer's phosphor rise/decay curves                 |
+| `src/machine/audio/` | Cycle-stamped edges band-limited into a waveform                            |
+| `src/ui/`, `src/input/`, `src/main.ts` | Case shell, keyboard/touch, and the frame driver          |
+
+The rules that keep it honest:
+
+- **Nothing owns a clock except `src/main.ts`.** The board advances only when stepped.
+  No module below `src/main.ts` may call `requestAnimationFrame`, `setTimeout`,
+  `Date.now()` or `performance.now()`.
+- **`src/machine/` never touches the DOM** (the tube renderer takes a 2D context handed
+  to it; it does not look one up). This is what lets `tools/probe/machine-probe.ts` and
+  the spectral tests drive the real machine headlessly, and the Vitest `node` environment
+  enforces it.
+- **No game state outside the emulated RAM.** Score, jets, lives and skill are nibbles the
+  program put there. A control movement reaches the game only by closing a contact on the
+  input matrix, which the program reads on its next sweep - never by writing state.
+- **Game behaviour is changed in `asm/jetfighter.asm`**, not in TypeScript. A gameplay bug
+  is a ROM bug. Reassemble with a listing:
+  `npx vite-node tools/hmasm/cli.ts asm/jetfighter.asm --listing /tmp/jetfighter.lst`
+- **The power switch is the only reset.** On = core reset with RAM undefined then cleared
+  by the ROM; off = halt and invalidate RAM. Do not add a restart path.
+- Geometry and palette values shared with other layers are **copied with a citation
+  comment, not imported** - `src/machine/` depends on nothing above it.
 - Every gameplay rule lives in the PRD. If a rule is ambiguous, check
   `assets/reference/` (video frames, audio, back-label photo) before inventing behaviour.
+  Measured audio bands are in `docs/evidence/audio-reference.md`.
 
 ## Commands
 
