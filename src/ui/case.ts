@@ -12,7 +12,13 @@
  *                across the top, zone labels along the bottom, 10/3/2/1/G ruler)
  *                is the VFD canvas renderer's job (task 4), not this module's.
  *   RIGHT wing - launcher lever (top): a vertical slide with a light knob that
- *                snaps between 3 positions; blue rotary skill dial 1/2/3 (bottom).
+ *                snaps between 3 positions; blue skill lever 1/2/3 (bottom).
+ *
+ * Dressing is held to what assets/reference/ actually shows. The real unit is a
+ * single orange plastic moulding throughout - the centre module is NOT a darker
+ * panel, the control recesses are body-colour countersinks rather than black
+ * donuts, the wings carry a uniform fine stipple rather than diagonal ribs, and
+ * the only printed white anywhere on the case is the JET FIGHTERS sticker.
  */
 import './case.css';
 import { clipPathMarkup, scopeWindowMarkup, screenBoxPercent } from './geometry.js';
@@ -43,6 +49,9 @@ export function buildCase(mount: HTMLElement): CaseElements {
   root.innerHTML = CASE_SVG;
 
   root.appendChild(buildScreen());
+  // After the screen: the tab is moulded plastic that OVERLAPS the glass, so it
+  // has to paint above the canvas overlay, not inside the SVG body beneath it.
+  root.appendChild(buildBezelTab());
   root.appendChild(buildFireButton());
   root.appendChild(buildPowerSwitch());
   root.appendChild(buildLever());
@@ -75,6 +84,18 @@ function buildScreen(): HTMLElement {
   // devicePixelRatio (see main.ts). No fixed pixel dimensions here.
   screen.appendChild(canvas);
   return screen;
+}
+
+/**
+ * The small moulded tab that hangs off the module's top edge at 12 o'clock and
+ * overlaps the glass (assets/reference/screen-overlay-closeup.jpg). Positioned
+ * in body units: x 520..546, y 38..91 of the 1000 x 460 viewBox.
+ */
+function buildBezelTab(): HTMLElement {
+  const el = document.createElement('div');
+  el.className = 'jf-tab';
+  el.setAttribute('aria-hidden', 'true');
+  return el;
 }
 
 function buildFireButton(): HTMLElement {
@@ -118,9 +139,16 @@ function buildLever(): HTMLElement {
   return el;
 }
 
+/**
+ * Skill selector: a blue flag-shaped lever pivoting on a screwed hub at the
+ * right wing's bottom corner, with three faint moulded numerals on the arc above
+ * it (assets/reference/device-front-gameplay.jpg, device-front-lit.jpg). The
+ * handle hangs BELOW the pivot; the level it indicates is the direction opposite
+ * the handle, which is why the marks sit above while the flag points down.
+ */
 function buildDial(): HTMLElement {
   const el = document.createElement('div');
-  el.className = 'jf-dial';
+  el.className = 'jf-skill';
   el.dataset.control = 'skill';
   el.setAttribute('role', 'slider');
   el.setAttribute('aria-label', 'Skill level');
@@ -128,10 +156,14 @@ function buildDial(): HTMLElement {
   el.setAttribute('aria-valuemax', '3');
   el.setAttribute('aria-valuenow', '1');
   el.innerHTML = [
-    '<span class="jf-dial__mark jf-dial__mark--1" data-level="1">1</span>',
-    '<span class="jf-dial__mark jf-dial__mark--2" data-level="2">2</span>',
-    '<span class="jf-dial__mark jf-dial__mark--3" data-level="3">3</span>',
-    '<span class="jf-dial__face"><span class="jf-dial__pointer"></span><span class="jf-dial__grip"></span></span>',
+    '<span class="jf-skill__mark jf-skill__mark--1" data-level="1">1</span>',
+    '<span class="jf-skill__mark jf-skill__mark--2" data-level="2">2</span>',
+    '<span class="jf-skill__mark jf-skill__mark--3" data-level="3">3</span>',
+    '<span class="jf-skill__lever">',
+    '<span class="jf-skill__flag"></span>',
+    '<span class="jf-skill__hub"></span>',
+    '<span class="jf-skill__screw"></span>',
+    '</span>',
   ].join('');
   return el;
 }
@@ -142,6 +174,14 @@ function buildDial(): HTMLElement {
 // The scope window is a UNION of a large radar circle and a shorter rectangle
 // extending to its left (where SCORE + the left playfield sit), matching the
 // real console. Interactive controls + the screen canvas are HTML overlays.
+
+/** Left wing outline; reused as its stipple clip so the texture cannot bleed. */
+const LEFT_WING_PATH =
+  'M44,54 H286 Q300,54 300,74 V418 Q300,438 280,438 H44 Q8,438 8,402 V90 Q8,54 44,54 Z';
+/** Right wing outline; reused as its stipple clip. */
+const RIGHT_WING_PATH =
+  'M720,54 H956 Q992,54 992,90 V402 Q992,438 956,438 H720 Q700,438 700,418 V74 Q700,54 720,54 Z';
+
 const CASE_SVG = `
 <svg class="jf-body" viewBox="0 0 1000 460" preserveAspectRatio="xMidYMid meet"
      xmlns="${SVG_NS}" aria-hidden="true" focusable="false">
@@ -160,24 +200,41 @@ const CASE_SVG = `
       <stop offset="0.5" stop-color="#cf4926"/>
       <stop offset="1" stop-color="#a52d14"/>
     </linearGradient>
-    <radialGradient id="jf-panel-red" cx="0.5" cy="0.4" r="0.8">
-      <stop offset="0" stop-color="#a82f16"/>
-      <stop offset="1" stop-color="#6f1c0a"/>
-    </radialGradient>
+    <!-- Sticker blue sampled from assets/reference/device-front-gameplay.jpg
+         (the plate averages rgb(129,159,213) - a light cornflower, not navy). -->
     <linearGradient id="jf-label-blue" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#3a5bb0"/>
-      <stop offset="1" stop-color="#213c86"/>
+      <stop offset="0" stop-color="#8fabde"/>
+      <stop offset="1" stop-color="#7290ca"/>
     </linearGradient>
+    <linearGradient id="jf-tab-red" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e5794f"/>
+      <stop offset="1" stop-color="#b8451f"/>
+    </linearGradient>
+    <!-- Moulded shadow line where the plastic steps down to the glass. The real
+         unit has no dark frame around the scope, only this thin lip. -->
     <radialGradient id="jf-rim" cx="0.5" cy="0.42" r="0.62">
-      <stop offset="0.82" stop-color="#2a0f06"/>
-      <stop offset="0.9" stop-color="#5a1a0b"/>
-      <stop offset="1" stop-color="#932c15"/>
+      <stop offset="0.82" stop-color="#5d1d0c"/>
+      <stop offset="0.92" stop-color="#8b2c14"/>
+      <stop offset="1" stop-color="#c05a33"/>
     </radialGradient>
-    <pattern id="jf-ribs" width="13" height="13" patternTransform="rotate(38)"
-             patternUnits="userSpaceOnUse">
-      <line x1="0" y1="0" x2="0" y2="13" stroke="#000" stroke-opacity="0.13" stroke-width="4"/>
-      <line x1="6.5" y1="0" x2="6.5" y2="13" stroke="#fff" stroke-opacity="0.06" stroke-width="3"/>
-    </pattern>
+    <!-- Wing texture: the real wings carry a uniform fine stipple over the whole
+         face (clearest on the right wing in device-front-gameplay.jpg), not the
+         diagonal ribbing this case used to draw. fractalNoise gives grain that
+         scales with the case instead of tiling into a visible grid. -->
+    <filter id="jf-stipple-dark" x="0%" y="0%" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="11"
+                    stitchTiles="stitch" result="n"/>
+      <feColorMatrix in="n" type="matrix"
+                     values="0 0 0 0 0.16  0 0 0 0 0.05  0 0 0 0 0.02  1.2 0 0 0 -0.62"/>
+    </filter>
+    <filter id="jf-stipple-light" x="0%" y="0%" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="29"
+                    stitchTiles="stitch" result="n"/>
+      <feColorMatrix in="n" type="matrix"
+                     values="0 0 0 0 1  0 0 0 0 0.87  0 0 0 0 0.78  0 1.1 0 0 -0.60"/>
+    </filter>
+    <clipPath id="jf-left-wing-clip"><path d="${LEFT_WING_PATH}"/></clipPath>
+    <clipPath id="jf-right-wing-clip"><path d="${RIGHT_WING_PATH}"/></clipPath>
     <filter id="jf-soft" x="-20%" y="-20%" width="140%" height="140%">
       <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000" flood-opacity="0.35"/>
     </filter>
@@ -197,40 +254,51 @@ const CASE_SVG = `
            Q298,438 296,438 H44 Q8,438 8,402 V90 Q8,54 44,54 Z"/>
 
   <!-- Left wing (raised control block) -->
-  <path fill="url(#jf-wing-red)" stroke="#7c2010" stroke-width="1.5"
-        d="M44,54 H286 Q300,54 300,74 V418 Q300,438 280,438 H44 Q8,438 8,402 V90 Q8,54 44,54 Z"/>
+  <path fill="url(#jf-wing-red)" stroke="#7c2010" stroke-width="1.5" d="${LEFT_WING_PATH}"/>
+  <g clip-path="url(#jf-left-wing-clip)" opacity="0.5">
+    <rect x="8" y="54" width="292" height="384" fill="#000" filter="url(#jf-stipple-dark)"/>
+    <rect x="8" y="54" width="292" height="384" fill="#000" filter="url(#jf-stipple-light)"/>
+  </g>
   <path fill="#ffffff" fill-opacity="0.14" d="M44,54 H286 Q300,54 300,74 V96 H8 V90 Q8,54 44,54 Z"/>
-  <path fill="url(#jf-ribs)" d="M20,300 H300 V438 H44 Q8,438 8,402 V320 Q8,300 20,300 Z"/>
 
   <!-- Right wing (raised control block) -->
-  <path fill="url(#jf-wing-red)" stroke="#7c2010" stroke-width="1.5"
-        d="M720,54 H956 Q992,54 992,90 V402 Q992,438 956,438 H720 Q700,438 700,418 V74 Q700,54 720,54 Z"/>
+  <path fill="url(#jf-wing-red)" stroke="#7c2010" stroke-width="1.5" d="${RIGHT_WING_PATH}"/>
+  <g clip-path="url(#jf-right-wing-clip)" opacity="0.5">
+    <rect x="700" y="54" width="292" height="384" fill="#000" filter="url(#jf-stipple-dark)"/>
+    <rect x="700" y="54" width="292" height="384" fill="#000" filter="url(#jf-stipple-light)"/>
+  </g>
   <path fill="#ffffff" fill-opacity="0.14" d="M720,54 H956 Q992,54 992,90 V96 H700 V74 Q700,54 720,54 Z"/>
-  <path fill="url(#jf-ribs)" d="M700,300 H992 V402 Q992,438 956,438 H700 Z"/>
 
-  <!-- Central bezel block (dominant, raised, taller than the wings) -->
+  <!-- Central bezel block (dominant, raised, taller than the wings). Same orange
+       plastic as the wings: the real module is one moulding, framed only by the
+       shadow lines where it steps up from them. -->
   <path fill="url(#jf-block-red)" stroke="#7c2010" stroke-width="1.5"
         d="M316,38 H684 Q702,38 702,56 V426 Q702,446 682,446 H318 Q298,446 298,426 V56 Q298,38 316,38 Z"/>
   <path fill="#ffffff" fill-opacity="0.14" d="M316,38 H684 Q702,38 702,56 V74 H298 V56 Q298,38 316,38 Z"/>
-
-  <!-- Recessed dark panel that frames the scope window -->
-  <rect x="314" y="60" width="372" height="356" rx="24" fill="url(#jf-panel-red)"
-        stroke="#5c1808" stroke-width="1.5"/>
+  <!-- Moulded shadow lines down the inner faces of the module, replacing the
+       painted recessed panel that the real unit does not have. -->
+  <path fill="none" stroke="#000" stroke-opacity="0.16" stroke-width="3"
+        d="M303,60 V424 M697,60 V424"/>
+  <path fill="none" stroke="#ffffff" stroke-opacity="0.13" stroke-width="2"
+        d="M308,60 V424 M692,60 V424"/>
 
   <!-- Scope rim (bezel) + black window - circle + left rectangle union, drawn
        behind the canvas and generated from the shared scope geometry so the
        canvas paints precisely inside this shape. -->
   <g>${scopeWindowMarkup()}</g>
 
-  <!-- JET FIGHTERS label plate (bottom-left) -->
+  <!-- JET FIGHTERS sticker (bottom-left). Near-square, wordmark over the CGL
+       logo, proportions measured off device-front-gameplay.jpg. -->
   <g>
-    <rect x="40" y="316" width="188" height="96" rx="10" fill="url(#jf-label-blue)"
-          stroke="#16265c" stroke-width="2"/>
-    <rect x="47" y="323" width="174" height="82" rx="6" fill="none"
-          stroke="#ffffff" stroke-opacity="0.25" stroke-width="1.5"/>
-    <text x="134" y="360" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
-          font-weight="800" font-size="30" letter-spacing="1" fill="#ffffff">JET</text>
-    <text x="134" y="390" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
-          font-weight="800" font-size="26" letter-spacing="1" fill="#ffffff">FIGHTERS</text>
+    <rect x="27" y="331" width="110" height="92" rx="4" fill="#000" fill-opacity="0.18"/>
+    <rect x="30" y="334" width="104" height="86" rx="3" fill="url(#jf-label-blue)"
+          stroke="#3f5590" stroke-width="1.5"/>
+    <text x="82" y="366" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
+          font-weight="700" font-size="24" fill="#f4f6fb">JET</text>
+    <text x="82" y="390" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
+          font-weight="700" font-size="24" textLength="92" lengthAdjust="spacingAndGlyphs"
+          fill="#f4f6fb">FIGHTERS</text>
+    <text x="82" y="412" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
+          font-weight="700" font-size="15" letter-spacing="-2.5" fill="#f4f6fb">CGL</text>
   </g>
 </svg>`;
