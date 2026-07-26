@@ -1,13 +1,15 @@
-// Public surface of the input intent layer (PRD R5).
+// Public surface of the input layer.
 //
 // Every input path - keyboard, on-case controls, mobile screen taps - is
-// translated here into the pure game reducer's GameInput intents. Task 8 wires
-// these to the DOM; this module never auto-mounts anything.
+// translated here into a movement of one of the machine's four case controls.
+// main.ts applies those movements to the board's input matrix; this module
+// never auto-mounts anything and never touches machine state itself.
 
 export type {
   InputCallback,
   InputSystem,
   InputOptions,
+  MachineInput,
   ScreenTouchOptions,
   KeyAction,
   LaneDirection,

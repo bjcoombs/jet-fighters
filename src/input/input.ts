@@ -1,22 +1,39 @@
 /**
- * Input intent layer for Jet Fighters (PRD R5).
+ * Input layer: every way a hand reaches the machine, expressed as a movement of
+ * a case control.
  *
- * This module is the single source of truth that translates every input path -
- * physical keyboard, the on-case controls, and mobile screen taps - into the
- * {@link GameInput} intents the pure game reducer consumes. The game core stays
- * deterministic; the ONLY place randomness enters is the seed attached to a
- * `POWER_ON` intent (see {@link InputOptions.makeSeed}).
+ * There are only four controls on the real unit - the fire button, the
+ * three-position lane lever, the skill dial and the power switch - and this
+ * module translates the keyboard and screen taps into movements of exactly
+ * those. It emits no game concepts, because there are none outside the ROM: a
+ * {@link MachineInput} is "a contact moved", and what the game makes of it is
+ * the ROM's business, discovered on its next strobe of the input matrix.
+ *
+ * Fire is a *held* contact rather than an edge, so every path that presses it
+ * also releases it. The ROM samples the matrix on its own sweep; a press that
+ * was never released would read as a jammed button.
  *
  * The pure mapping helpers (key classification, spring-lever lane resolution,
  * touch-thirds math) are exported and unit-tested without a DOM. The DOM
  * listener wiring is intentionally thin.
  */
 
-import type { GameInput, Lane, SkillLevel } from '../game/types.js';
-import type { ControlsConfig } from '../ui/controls.js';
+import type { ControlsConfig, Lane, SkillLevel } from '../ui/controls.js';
 
-/** Consumer of translated game intents (typically the game reducer dispatch). */
-export type InputCallback = (input: GameInput) => void;
+/**
+ * A movement of one case control.
+ *
+ * `FIRE` carries the contact's new state rather than an event: the button is
+ * down, or it is up.
+ */
+export type MachineInput =
+  | { readonly type: 'FIRE'; readonly pressed: boolean }
+  | { readonly type: 'LANE'; readonly lane: Lane }
+  | { readonly type: 'SKILL'; readonly level: SkillLevel }
+  | { readonly type: 'POWER'; readonly on: boolean };
+
+/** Consumer of control movements (the frame driver in main.ts). */
+export type InputCallback = (input: MachineInput) => void;
 
 /** Handle returned by {@link createInputSystem}; tears down all listeners. */
 export interface InputSystem {
@@ -26,9 +43,8 @@ export interface InputSystem {
 // --- Pure mapping logic (no DOM; unit-tested) ------------------------------
 
 /**
- * A held lane direction. The physical lever is spring-loaded and snaps back to
- * centre when released, so "no direction held" always resolves to the centre
- * lane.
+ * A held lane direction. The keyboard stands in for a lever the player holds,
+ * so "no direction held" resolves to the centre lane.
  */
 export type LaneDirection = 'up' | 'down';
 
@@ -46,10 +62,11 @@ export type KeyAction =
  * - ArrowUp / W -> lane up (top)
  * - ArrowDown / S -> lane down (bottom)
  * - Space / Enter -> fire
- * - P -> power toggle
- * - 1 / 2 / 3 -> skill level
+ * - P -> power switch
+ * - 1 / 2 / 3 -> skill dial
  *
- * `M` is deliberately unbound - it is reserved for mute (task 8).
+ * `M` is deliberately unbound here: it toggles mute in main.ts, which is a
+ * property of the browser's speaker rather than of the machine.
  */
 export function classifyKey(key: string): KeyAction {
   switch (key) {
@@ -81,11 +98,11 @@ export function classifyKey(key: string): KeyAction {
 
 /**
  * Resolve the launcher lane from the ordered stack of currently-held lane
- * directions (spring-lever semantics).
+ * directions.
  *
- * An empty stack means nothing is held, so the lever springs back to the centre
- * lane (1). When several direction keys are held at once the most-recently
- * pressed one wins - it sits on top of the stack.
+ * An empty stack means nothing is held, so the lane returns to centre (1). When
+ * several direction keys are held at once the most-recently pressed one wins -
+ * it sits on top of the stack.
  */
 export function resolveLane(held: readonly LaneDirection[]): Lane {
   if (held.length === 0) return 1;
@@ -124,29 +141,18 @@ export function laneFromThirds(offsetY: number, height: number): Lane {
   return 2;
 }
 
-/**
- * Translate a boolean power state into the matching `GameInput`. Powering on
- * carries a fresh seed - the single entry point for randomness into the
- * otherwise-deterministic game core.
- */
-export function powerInput(on: boolean, makeSeed: () => number): GameInput {
-  return on ? { type: 'POWER_ON', seed: makeSeed() } : { type: 'POWER_OFF' };
+/** Translate a boolean power-switch position into its control movement. */
+export function powerInput(on: boolean): MachineInput {
+  return { type: 'POWER', on };
 }
 
 // --- Runtime wiring --------------------------------------------------------
-
-/** Default seed source. Randomness is confined to this one call. */
-function defaultSeed(): number {
-  return Date.now();
-}
 
 export interface InputOptions {
   /** Target for keyboard listeners. Defaults to the global `window`. */
   readonly keyboardTarget?: Pick<Window, 'addEventListener' | 'removeEventListener'>;
   /** Screen/canvas element to wire tap-to-move + double-tap-to-fire touch. */
   readonly screenElement?: HTMLElement;
-  /** Seed source for `POWER_ON`. Injectable for tests; defaults to `Date.now()`. */
-  readonly makeSeed?: () => number;
   /** Max gap (ms) between taps to count as a double-tap fire. Defaults to 300. */
   readonly doubleTapMs?: number;
 }
@@ -164,28 +170,35 @@ function isEditableTarget(target: EventTarget | null): boolean {
 }
 
 /**
- * Create the input system: attaches keyboard handling (spring-lever lane hold,
- * fire, power toggle, skill select) and, when a `screenElement` is supplied,
- * mobile touch controls. Returns a handle whose `destroy()` removes every
- * listener it added.
+ * Create the input system: attaches keyboard handling (lane hold, fire
+ * press/release, power switch, skill dial) and, when a `screenElement` is
+ * supplied, mobile touch controls. Returns a handle whose `destroy()` removes
+ * every listener it added.
  */
 export function createInputSystem(
   callback: InputCallback,
   options: InputOptions = {},
 ): InputSystem {
   const target = options.keyboardTarget ?? window;
-  const makeSeed = options.makeSeed ?? defaultSeed;
 
   let held: LaneDirection[] = [];
   let currentLane: Lane = 1;
   let powerOn = false;
+  let firing = false;
 
   const emitLane = (): void => {
     const lane = resolveLane(held);
     if (lane !== currentLane) {
       currentLane = lane;
-      callback({ type: 'MOVE_LANE', lane });
+      callback({ type: 'LANE', lane });
     }
+  };
+
+  const setFiring = (pressed: boolean): void => {
+    // Key-repeat re-fires keydown, and a keyup can arrive with nothing held.
+    if (pressed === firing) return;
+    firing = pressed;
+    callback({ type: 'FIRE', pressed });
   };
 
   const onKeyDown = (event: KeyboardEvent): void => {
@@ -196,36 +209,48 @@ export function createInputSystem(
 
     switch (action.type) {
       case 'lane':
-        // Key-repeat re-fires keydown; pushDirection dedupes so the stack and
-        // the resolved lane are stable while a key is held.
+        // pushDirection dedupes, so the stack and the resolved lane are stable
+        // while a key is held down.
         held = pushDirection(held, action.dir);
         emitLane();
         break;
       case 'fire':
-        if (event.repeat) return; // fire is edge-triggered, no auto-repeat
-        callback({ type: 'FIRE' });
+        setFiring(true);
         break;
       case 'power':
         if (event.repeat) return;
         powerOn = !powerOn;
-        callback(powerInput(powerOn, makeSeed));
+        callback(powerInput(powerOn));
         break;
       case 'skill':
         if (event.repeat) return;
-        callback({ type: 'SET_SKILL', level: action.level });
+        callback({ type: 'SKILL', level: action.level });
         break;
     }
   };
 
   const onKeyUp = (event: KeyboardEvent): void => {
     const action = classifyKey(event.key);
-    if (!action || action.type !== 'lane') return;
-    held = removeDirection(held, action.dir);
+    if (!action) return;
+    if (action.type === 'lane') {
+      held = removeDirection(held, action.dir);
+      emitLane();
+    } else if (action.type === 'fire') {
+      setFiring(false);
+    }
+  };
+
+  // A window that loses focus never delivers the keyup, so without this the
+  // contact would stay closed while the player is looking elsewhere.
+  const onBlur = (): void => {
+    held = [];
     emitLane();
+    setFiring(false);
   };
 
   target.addEventListener('keydown', onKeyDown as EventListener);
   target.addEventListener('keyup', onKeyUp as EventListener);
+  target.addEventListener('blur', onBlur);
 
   const detachTouch = options.screenElement
     ? attachScreenTouch(options.screenElement, callback, {
@@ -237,27 +262,22 @@ export function createInputSystem(
     destroy(): void {
       target.removeEventListener('keydown', onKeyDown as EventListener);
       target.removeEventListener('keyup', onKeyUp as EventListener);
+      target.removeEventListener('blur', onBlur);
       detachTouch?.();
     },
   };
 }
 
 /**
- * Adapter bridging the on-case controls to the same intent callback. Task 8
- * wires the DOM with `setupControls(container, createControlsAdapter(callback))`.
- * The physical power switch is authoritative about on/off, so its boolean is
- * translated directly (with a fresh seed on power-on).
+ * Adapter bridging the on-case controls to the same callback, so a pointer on
+ * the drawn fire button and the space bar reach the machine by one path.
  */
-export function createControlsAdapter(
-  callback: InputCallback,
-  options: Pick<InputOptions, 'makeSeed'> = {},
-): ControlsConfig {
-  const makeSeed = options.makeSeed ?? defaultSeed;
+export function createControlsAdapter(callback: InputCallback): ControlsConfig {
   return {
-    onFire: () => callback({ type: 'FIRE' }),
-    onLaneChange: (lane) => callback({ type: 'MOVE_LANE', lane }),
-    onSkillChange: (level) => callback({ type: 'SET_SKILL', level }),
-    onPowerToggle: (on) => callback(powerInput(on, makeSeed)),
+    onFire: (pressed) => callback({ type: 'FIRE', pressed }),
+    onLaneChange: (lane) => callback({ type: 'LANE', lane }),
+    onSkillChange: (level) => callback({ type: 'SKILL', level }),
+    onPowerToggle: (on) => callback(powerInput(on)),
   };
 }
 
@@ -272,10 +292,11 @@ export interface ScreenTouchOptions {
  *
  * - A single tap sets the launcher lane by vertical third: top -> lane 0,
  *   middle -> lane 1, bottom -> lane 2.
- * - A double-tap (two taps within `doubleTapMs`) fires.
+ * - A double-tap (two taps within `doubleTapMs`) presses fire; lifting the
+ *   finger releases it.
  *
- * Uses `event.timeStamp` for double-tap timing, so no clock/randomness leaks
- * in. Returns a detach function that removes the listener.
+ * Uses `event.timeStamp` for double-tap timing, so no clock leaks in. Returns a
+ * detach function that removes the listeners.
  */
 export function attachScreenTouch(
   element: HTMLElement,
@@ -284,15 +305,23 @@ export function attachScreenTouch(
 ): () => void {
   const doubleTapMs = options.doubleTapMs ?? 300;
   let lastTapAt = Number.NEGATIVE_INFINITY;
+  let firing = false;
+
+  const release = (): void => {
+    if (!firing) return;
+    firing = false;
+    callback({ type: 'FIRE', pressed: false });
+  };
 
   const onPointerDown = (event: PointerEvent): void => {
     event.preventDefault();
     const rect = element.getBoundingClientRect();
     const lane = laneFromThirds(event.clientY - rect.top, rect.height);
-    callback({ type: 'MOVE_LANE', lane });
+    callback({ type: 'LANE', lane });
 
     if (event.timeStamp - lastTapAt <= doubleTapMs) {
-      callback({ type: 'FIRE' });
+      firing = true;
+      callback({ type: 'FIRE', pressed: true });
       lastTapAt = Number.NEGATIVE_INFINITY; // consume, so a third tap restarts
     } else {
       lastTapAt = event.timeStamp;
@@ -300,21 +329,28 @@ export function attachScreenTouch(
   };
 
   element.addEventListener('pointerdown', onPointerDown as EventListener);
-  return () => element.removeEventListener('pointerdown', onPointerDown as EventListener);
+  element.addEventListener('pointerup', release);
+  element.addEventListener('pointercancel', release);
+  return () => {
+    element.removeEventListener('pointerdown', onPointerDown as EventListener);
+    element.removeEventListener('pointerup', release);
+    element.removeEventListener('pointercancel', release);
+  };
 }
 
 /** Keyboard control reference, shared by the help overlay. */
 const HELP_ROWS: ReadonlyArray<readonly [keys: string, action: string]> = [
-  ['↑ / W', 'Move up (hold)'],
-  ['↓ / S', 'Move down (hold)'],
-  ['Space / Enter', 'Fire missile'],
-  ['P', 'Power on / off'],
-  ['1 / 2 / 3', 'Skill level'],
+  ['↑ / W', 'Lane lever up (hold)'],
+  ['↓ / S', 'Lane lever down (hold)'],
+  ['Space / Enter', 'Fire button (hold)'],
+  ['P', 'Power switch'],
+  ['1 / 2 / 3', 'Skill dial'],
+  ['M', 'Mute'],
 ];
 
 /**
  * Build a small, dismissable help overlay: a floating "?" toggle that reveals a
- * panel listing the keyboard controls. Returns the root element for task 8 to
+ * panel listing the keyboard controls. Returns the root element for main.ts to
  * mount (typically over a corner of the case); nothing is auto-attached to the
  * document. Styling is inline so it stays self-contained and does not disturb
  * the case aesthetic.
