@@ -511,31 +511,68 @@ export class SpeakerDriver {
 
   /** Build the graph, preferring the worklet. */
   private async open(): Promise<SpeakerDriverMode> {
+    // A context constructed before the user gesture starts suspended, and a
+    // suspended context connects the graph and then never pulls a sample. A
+    // rejection means the gesture has not happened yet: build the graph anyway
+    // so no edges are lost, and let the caller start() again once it has.
+    try {
+      await this.context.resume?.();
+    } catch {
+      // Still suspended. Nothing is lost - the buffer holds the edges.
+    }
+
     const gain = this.context.createGain();
     gain.gain.value = this._muted ? 0 : this._volume;
     gain.connect(this.context.destination);
     this._gain = gain;
 
-    if (this._preferred !== 'fallback' && supportsWorklet(this.context, this._workletNodeCtor)) {
-      try {
-        await this.openWorklet(gain);
-        this._mode = 'worklet';
-        return this._mode;
-      } catch (error) {
-        // A blocked blob URL or a context that reports worklet support without
-        // honouring it must not leave the machine silent - the fallback path is
-        // deprecated, not broken.
-        if (this._preferred === 'worklet') {
-          gain.disconnect();
-          this._gain = null;
-          throw error;
+    const forced = this._preferred === 'worklet';
+    if (this._preferred !== 'fallback') {
+      if (supportsWorklet(this.context, this._workletNodeCtor)) {
+        try {
+          await this.openWorklet(gain);
+          this._mode = 'worklet';
+          return this._mode;
+        } catch (error) {
+          // A blocked blob URL or a context that reports worklet support without
+          // honouring it must not leave the machine silent - the fallback path is
+          // deprecated, not broken.
+          if (forced) {
+            this.abandon(gain);
+            throw error;
+          }
         }
+      } else if (forced) {
+        // Asking for the worklet and silently getting the deprecated node back
+        // is the one outcome a caller that forced the mode cannot detect.
+        this.abandon(gain);
+        throw new Error('AudioWorklet is not available in this context');
       }
     }
 
-    this.openFallback(gain);
+    try {
+      this.openFallback(gain);
+    } catch (error) {
+      this.abandon(gain);
+      throw error;
+    }
     this._mode = 'fallback';
     return this._mode;
+  }
+
+  /** Tear down a half-built graph so a failed start leaves nothing connected. */
+  private abandon(gain: GainNodeLike): void {
+    if (this._worklet) {
+      this._worklet.port.onmessage = null;
+      this._worklet.disconnect();
+      this._worklet = null;
+    }
+    gain.disconnect();
+    this._gain = null;
+    if (this._moduleUrl) {
+      this._revokeModuleUrl(this._moduleUrl);
+      this._moduleUrl = null;
+    }
   }
 
   private async openWorklet(gain: GainNodeLike): Promise<void> {
