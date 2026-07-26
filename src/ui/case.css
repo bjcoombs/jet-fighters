@@ -212,20 +212,34 @@
 .jf-lever[data-lane='1'] .jf-lever__knob { top: 40%; }
 .jf-lever[data-lane='2'] .jf-lever__knob { top: 62%; }
 
-/* --- Skill dial (right wing, bottom): blue rotary, 1/2/3 --------------- */
+/* --- Skill dial (right wing, bottom): blue rotary, 1/2/3 ---------------
+   Proportions from assets/reference/device-front-gameplay.jpg: the blue hub is
+   roughly half the diameter of the launcher housing above it, sits low in the
+   wing but clear of its bottom edge, and shares the launcher's vertical axis.
+
+   The box is square in the 1000 x 460 body space (120 x 120 units) and is
+   centred on (878, 366) - the same x as .jf-lever. 120/1000 = 12% wide,
+   120/460 = 26.087% tall; left = (878 - 60)/1000, top = (366 - 60)/460.
+   Keeping it square is what makes `inset` on the face resolve to a circle and
+   the printed marks land on a true arc. */
 .jf-dial {
   position: absolute;
-  left: 82%;
-  top: 60.9%;
-  width: 11.6%;
-  height: 25.2%;
+  left: 81.8%;
+  top: 66.52%;
+  width: 12%;
+  height: 26.087%;
+  /* Radius of the arc the printed 1/2/3 marks sit on. `.jf-case` is the inline
+     -size container, so 1cqw = 1% of the case width = 10 body units. 6.1cqw =
+     61 units, clear of both the 30-unit hub and the 44-unit pointer tip. */
+  --dial-ring: 6.1cqw;
   cursor: pointer;
   touch-action: none;
 }
 
 .jf-dial__face {
   position: absolute;
-  inset: 16%;
+  /* 25% of a 120-unit box leaves a 60-unit (30-unit radius) hub. */
+  inset: 25%;
   border-radius: 50%;
   background: radial-gradient(circle at 40% 30%, #6f8fe6 0%, #2f52b6 52%, #1a3078 100%);
   box-shadow:
@@ -243,29 +257,42 @@
   background: repeating-conic-gradient(rgba(255, 255, 255, 0.18) 0deg 12deg, rgba(0, 0, 0, 0.12) 12deg 24deg);
 }
 
-/* Pointer arm reaching out past the knob edge, like the reference lever. */
+/* Pointer arm reaching out past the knob edge, like the reference lever. It
+   runs from just past the hub centre out to 44 body units - clear of the hub
+   rim (30) and short of the printed arc (58) so it never sits on a number.
+   Percentages here are of the 60-unit face: -23.3% => tip at radius 44. */
 .jf-dial__pointer {
   position: absolute;
-  left: 44%;
-  top: -14%;
-  width: 12%;
-  height: 40%;
-  border-radius: 3px;
+  left: 43.3%;
+  top: -23.3%;
+  width: 13.4%;
+  height: 70%;
+  border-radius: 999px;
   background: linear-gradient(#7fa0ee, #274db0);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
 }
 
+/* The three printed marks sit on one arc at the angles the pointer actually
+   reaches: skillToAngle() in src/ui/controls.ts is (level - 2) * 50deg, so
+   1 = -50deg, 2 = 0deg (straight up), 3 = +50deg. Rotating out along the ring
+   and then counter-rotating by the same angle keeps each glyph upright. */
 .jf-dial__mark {
   position: absolute;
+  left: 50%;
+  top: 50%;
   font: 800 clamp(7px, 1.9cqw, 16px) / 1 Arial, Helvetica, sans-serif;
   color: rgba(255, 255, 255, 0.9);
-  transform: translate(-50%, -50%);
+  transform:
+    translate(-50%, -50%)
+    rotate(var(--mark-angle))
+    translateY(calc(-1 * var(--dial-ring)))
+    rotate(calc(-1 * var(--mark-angle)));
   cursor: pointer;
 }
 
-.jf-dial__mark--1 { left: 2%; top: 26%; }
-.jf-dial__mark--2 { left: 50%; top: -16%; }
-.jf-dial__mark--3 { left: 98%; top: 26%; }
+.jf-dial__mark--1 { --mark-angle: -50deg; }
+.jf-dial__mark--2 { --mark-angle: 0deg; }
+.jf-dial__mark--3 { --mark-angle: 50deg; }
 
 .jf-dial[data-level='1'] .jf-dial__mark--1,
 .jf-dial[data-level='2'] .jf-dial__mark--2,
