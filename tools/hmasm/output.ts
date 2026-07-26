@@ -13,9 +13,9 @@
 //
 // ## The listing's summary is machine-readable on purpose
 //
-// The three numbers at the head of a listing - words assembled, highest address,
-// RAM high-water mark - are the two hardware ceilings and the size of the ROM.
-// They are written as fixed `; Key: value` lines with the decimal value present
+// The numbers at the head of a listing - words assembled, highest program
+// address, pattern words, RAM high-water mark - are the two hardware ceilings
+// and the size of the ROM. They are written as fixed `; Key: value` lines with
 // in every one, so a CI check can read them out of the listing with a regular
 // expression rather than re-implementing the assembler to find them. The exact
 // spellings are the contract; `LISTING_KEYS` names them so a change here breaks
@@ -23,7 +23,12 @@
 //
 // Node-side tool: no DOM, no Web APIs, no runtime dependencies.
 
-import { RAM_SIZE, ROM_SIZE, WORD_MASK } from '../../src/machine/cpu/memory.js';
+import {
+  RAM_SIZE,
+  ROM_PROGRAM_SIZE,
+  ROM_SIZE,
+  WORD_MASK,
+} from '../../src/machine/cpu/memory.js';
 import {
   formatAddress,
   formatWord,
@@ -42,6 +47,7 @@ import {
 export const LISTING_KEYS = Object.freeze({
   words: 'Assembled words',
   highestAddress: 'Highest address',
+  patternWords: 'Pattern words',
   ramHighWater: 'RAM high-water mark',
 });
 
@@ -85,16 +91,33 @@ function summaryLine(key: string, value: string): string {
  *
  * Every number appears in decimal, addresses with their hexadecimal spelling
  * alongside, so both a reader and a regular expression get what they came for.
+ *
+ * `Highest address` is the highest address in the **program region**, and the
+ * pattern region is reported on its own line. The two are different questions:
+ * the program-region figure is the 2048-word ceiling a ROM can bust by growing,
+ * while the pattern words sit above it by construction - `.PATTERN` is the only
+ * way to reach them (memory.ts, assembler.ts) - so rolling them into one number
+ * would make every ROM with a pattern table look like it had overflowed.
  */
 export function formatSummary(result: AssemblyResult): string {
+  const programWords = result.words.filter((word) => word.address < ROM_PROGRAM_SIZE);
+  const patternWords = result.words.filter((word) => word.address >= ROM_PROGRAM_SIZE);
+  const highestProgram = programWords.at(-1)?.address ?? -1;
+  const highestPattern = patternWords.at(-1)?.address;
   const highest =
-    result.highestAddress < 0
-      ? 'none - nothing was assembled'
-      : `${result.highestAddress} (${formatAddress(result.highestAddress)})`;
+    highestProgram < 0
+      ? 'none - no program words were assembled'
+      : `${highestProgram} (${formatAddress(highestProgram)}) of ${ROM_PROGRAM_SIZE - 1}`;
   return [
     `${LISTING_COMMENT} hmasm listing for ${result.file}`,
-    summaryLine(LISTING_KEYS.words, String(result.words.length)),
+    summaryLine(LISTING_KEYS.words, `${programWords.length} in the program region`),
     summaryLine(LISTING_KEYS.highestAddress, highest),
+    summaryLine(
+      LISTING_KEYS.patternWords,
+      highestPattern === undefined
+        ? '0'
+        : `${patternWords.length} (highest ${highestPattern}, ${formatAddress(highestPattern)})`,
+    ),
     summaryLine(
       LISTING_KEYS.ramHighWater,
       `${result.ramHighWater} of ${RAM_SIZE} nibbles (static, from LXI and RAM_ constants)`,

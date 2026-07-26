@@ -59,16 +59,29 @@ describe('romImage', () => {
 describe('formatSummary - the numbers a build gate reads', () => {
   it('reports the word count, the highest address and the RAM high-water mark', () => {
     const summary = formatSummary(build('.EQU RAM_SCORE, 32\nLXI 1\nLAI 5\n'));
-    expect(summaryValue(summary, LISTING_KEYS.words)).toBe('2');
-    expect(summaryValue(summary, LISTING_KEYS.highestAddress)).toBe('1 ($001)');
+    expect(summaryValue(summary, LISTING_KEYS.words)).toBe('2 in the program region');
+    expect(summaryValue(summary, LISTING_KEYS.highestAddress)).toBe('1 ($001) of 2047');
+    expect(summaryValue(summary, LISTING_KEYS.patternWords)).toBe('0');
     expect(summaryValue(summary, LISTING_KEYS.ramHighWater)).toBe(
       `33 of ${RAM_SIZE} nibbles (static, from LXI and RAM_ constants)`,
     );
   });
 
-  it('gives the highest address in decimal first, so a regex can read it', () => {
+  it('gives every number in decimal first, so a regex can read it', () => {
     const summary = formatSummary(build('.ORG $7FF\nNOP\n'));
-    expect(/^; Highest address: (\d+) \(\$7FF\)$/m.exec(summary)?.[1]).toBe('2047');
+    expect(/^; Assembled words: (\d+)/m.exec(summary)?.[1]).toBe('1');
+    expect(/^; Highest address: (\d+) \(\$7FF\)/m.exec(summary)?.[1]).toBe('2047');
+    expect(/^; RAM high-water mark: (\d+) of/m.exec(summary)?.[1]).toBe('0');
+  });
+
+  it('keeps pattern words out of the program-region ceiling', () => {
+    // A pattern table sits above the 2048-word program region by construction,
+    // so counting it into the program figures would make every ROM with one
+    // look as though it had overflowed.
+    const summary = formatSummary(build('NOP\n.PATTERN 7\n.DW 1, 2\n'));
+    expect(summaryValue(summary, LISTING_KEYS.words)).toBe('1 in the program region');
+    expect(summaryValue(summary, LISTING_KEYS.highestAddress)).toBe('0 ($000) of 2047');
+    expect(summaryValue(summary, LISTING_KEYS.patternWords)).toBe('2 (highest 2161, $871)');
   });
 
   it('names the source file it assembled', () => {
@@ -77,8 +90,10 @@ describe('formatSummary - the numbers a build gate reads', () => {
 
   it('says so plainly when nothing was assembled', () => {
     const summary = formatSummary(build('; only a comment\n'));
-    expect(summaryValue(summary, LISTING_KEYS.words)).toBe('0');
-    expect(summaryValue(summary, LISTING_KEYS.highestAddress)).toBe('none - nothing was assembled');
+    expect(summaryValue(summary, LISTING_KEYS.words)).toBe('0 in the program region');
+    expect(summaryValue(summary, LISTING_KEYS.highestAddress)).toBe(
+      'none - no program words were assembled',
+    );
   });
 });
 
