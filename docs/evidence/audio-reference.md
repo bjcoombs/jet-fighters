@@ -42,7 +42,7 @@ Two techniques were used, per sound:
   spectrum to collapse harmonics onto the fundamental. Needed for the win jingle,
   because the piezo's fundamental is weak relative to its partials: the fundamentals
   were recovered from the partial series (partials 1500 and 2250 imply a 750 Hz
-  fundamental; 940 / 1880 / 2820 imply 940; 1240 and 2480 imply 1244).
+  fundamental; 940 / 1880 / 2820 imply 940; 1240 and 2480 imply 1240).
 
 The piezo speaker is driven as a square wave. All bands below are the fundamental
 unless stated as a partial or as a noise rolloff.
