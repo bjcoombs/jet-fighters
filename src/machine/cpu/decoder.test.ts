@@ -106,7 +106,7 @@ describe('decode - operand extraction', () => {
 
 describe('decode - unassigned patterns', () => {
   it('returns UNKNOWN rather than throwing for an unassigned opcode', () => {
-    for (const opcode of [0x029, 0x03f, 0x180, 0x1ff, 0x2c0, 0x300, 0x3ff]) {
+    for (const opcode of [0x1b0, 0x1ff, 0x240, 0x27f, 0x282, 0x2c0, 0x300, 0x3ff]) {
       expect(() => decode(opcode)).not.toThrow();
       expect(isUnknown(decode(opcode))).toBe(true);
     }
@@ -276,10 +276,21 @@ describe('OPCODE_TABLE - shape of the map', () => {
     expect(OPCODE_TABLE.some((spec) => spec.type === InstructionType.UNKNOWN)).toBe(false);
   });
 
-  it('costs one cycle per word for every entry', () => {
+  it('reports the cycle cost each entry states', () => {
     for (const spec of OPCODE_TABLE) {
       const opcode = spec.words === 1 ? encode(spec.type) : encodeLong(spec.type, 0)[0];
-      expect(decode(opcode).cycles).toBe(spec.words * CYCLES_PER_WORD);
+      expect(decode(opcode).cycles).toBe(spec.cycles);
+    }
+  });
+
+  it('costs one cycle per word everywhere but the pattern read', () => {
+    for (const spec of OPCODE_TABLE) {
+      if (spec.type === InstructionType.P) {
+        // The one documented exception: a second ROM access after its own fetch.
+        expect(spec.cycles).toBe(2 * CYCLES_PER_WORD);
+        continue;
+      }
+      expect(spec.cycles).toBe(spec.words * CYCLES_PER_WORD);
     }
   });
 

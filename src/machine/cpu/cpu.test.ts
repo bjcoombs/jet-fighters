@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { CYCLE_HZ, HMCS44CPU, OSCILLATOR_HZ } from './cpu.js';
-import { encode, encodeLong } from './decoder.js';
+import { CYCLE_HZ, HMCS44CPU, OSCILLATOR_HZ, STANDBY_CYCLE_COST } from './cpu.js';
+import { encode, encodeLong, OPCODE_TABLE } from './decoder.js';
 import { InstructionType } from './instruction.js';
 import {
   RAM_POWER_ON_FILL,
@@ -103,16 +103,25 @@ describe('HMCS44CPU - reset', () => {
     expect(cpu.ports.readRPort()).toBe(0);
   });
 
-  it('clears the illegal and unimplemented counters', () => {
-    const cpu = cpuRunning([0x3ff, encode(InstructionType.DAA)]);
+  it('clears the illegal opcode counter', () => {
+    const cpu = cpuRunning([0x3ff, 0x3fe]);
     steps(cpu, 2);
-    expect(cpu.illegalOpcodes).toBe(1);
-    expect(cpu.unimplementedOpcodes).toBe(1);
+    expect(cpu.illegalOpcodes).toBe(2);
 
     cpu.reset();
 
     expect(cpu.illegalOpcodes).toBe(0);
     expect(cpu.unimplementedOpcodes).toBe(0);
+  });
+
+  it('clears the timer', () => {
+    const cpu = cpuRunning([encode(InstructionType.LTI, 0x0f), encode(InstructionType.SETF)]);
+    steps(cpu, 2);
+    expect(cpu.timer.timerFlag).toBe(true);
+
+    cpu.reset();
+
+    expect(cpu.getState().timer).toEqual(new HMCS44CPU(rom([])).getState().timer);
   });
 });
 
@@ -496,32 +505,86 @@ describe('HMCS44CPU - unassigned and unimplemented opcodes', () => {
     expect(cpu.registers.status).toBe(1);
   });
 
-  it('counts a decoded instruction that has no handler yet', () => {
-    const cpu = cpuRunning([encode(InstructionType.DAA), encode(InstructionType.ROTL)]);
-    steps(cpu, 2);
-    expect(cpu.unimplementedOpcodes).toBe(2);
-    expect(cpu.illegalOpcodes).toBe(0);
+  it('has a handler for every instruction the architecture defines', () => {
+    for (const spec of OPCODE_TABLE) {
+      const words =
+        spec.words === 1
+          ? [encode(spec.type)]
+          : [...encodeLong(spec.type, romAddress(4, 0))];
+      const cpu = cpuRunning(words);
+      cpu.memory.clearRam();
+      cpu.step();
+
+      expect(cpu.unimplementedOpcodes, `${spec.type} has no handler`).toBe(0);
+      expect(cpu.illegalOpcodes, `${spec.type} decoded as illegal`).toBe(0);
+    }
   });
 
-  it('keeps the two counters distinct', () => {
+  it('counts only unassigned patterns as illegal', () => {
     const cpu = cpuRunning([0x3ff, encode(InstructionType.DAA)]);
     steps(cpu, 2);
     expect(cpu.illegalOpcodes).toBe(1);
-    expect(cpu.unimplementedOpcodes).toBe(1);
+    expect(cpu.unimplementedOpcodes).toBe(0);
   });
 });
 
-describe('HMCS44CPU - halt', () => {
+describe('HMCS44CPU - halt and standby', () => {
   it('halts on STOP', () => {
     const cpu = cpuRunning([encode(InstructionType.STOP)]);
     cpu.step();
     expect(cpu.running).toBe(false);
+    expect(cpu.standby).toBe(false);
   });
 
-  it('halts on SBY - the core models no timer to wake it', () => {
+  it('waits, still running, on SBY', () => {
+    const cpu = cpuRunning([encode(InstructionType.SBY), encode(InstructionType.LAI, 7)]);
+    cpu.step();
+
+    expect(cpu.standby).toBe(true);
+    expect(cpu.running).toBe(true);
+
+    // The CPU clock has stopped: the next instruction does not execute.
+    expect(cpu.step()).toBe(STANDBY_CYCLE_COST);
+    expect(cpu.registers.a).toBe(0);
+  });
+
+  it('keeps the timer running through standby and wakes on its overflow', () => {
+    const cpu = cpuRunning([
+      encode(InstructionType.LTI, 0x0f),
+      encode(InstructionType.SBY),
+      encode(InstructionType.LAI, 7),
+    ]);
+    steps(cpu, 2);
+    expect(cpu.standby).toBe(true);
+
+    // One prescaler tick per cycle at reset, so the counter wraps on the next.
+    cpu.step();
+    expect(cpu.timer.timerFlag).toBe(true);
+    expect(cpu.standby).toBe(false);
+
+    cpu.step();
+    expect(cpu.registers.a).toBe(7);
+  });
+
+  it('wakes from standby on an interrupt request', () => {
+    const cpu = cpuRunning([encode(InstructionType.SBY), encode(InstructionType.LAI, 3)]);
+    cpu.step();
+    steps(cpu, 5);
+    expect(cpu.standby).toBe(true);
+
+    cpu.setInterruptLine(1, 0);
+    cpu.step();
+
+    expect(cpu.standby).toBe(false);
+    expect(cpu.timer.interruptFlag(1)).toBe(true);
+  });
+
+  it('accumulates emulated time while in standby', () => {
     const cpu = cpuRunning([encode(InstructionType.SBY)]);
     cpu.step();
-    expect(cpu.running).toBe(false);
+    const before = cpu.cycles;
+    steps(cpu, 4);
+    expect(cpu.cycles).toBe(before + 4 * STANDBY_CYCLE_COST);
   });
 
   it('resumes on start() without losing state', () => {
