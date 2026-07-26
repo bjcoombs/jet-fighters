@@ -2107,6 +2107,15 @@ fire_missile:
 ; jet reaching the G line and the third launcher being destroyed both stop the
 ; game and play the same sound. They keep separate labels so the two callers
 ; read as the two rules they implement.
+;
+; What an ending looks like from tools/probe/machine-probe.ts, which is worth
+; knowing before a long run gets read as a fault: the sweep goes on turning and
+; `tick` returns at its first test, so the machine keeps refreshing a picture
+; that no longer changes and never touches the speaker again. An unattended
+; probe run therefore reports its last edge a few seconds in and identical lit
+; segments from there to the end of the run - which reads exactly like a delay
+; loop that stopped terminating, and is not one. The distinction is held down by
+; tools/probe/game-lifetime.test.ts.
 
 .PAGE
 game_capture:
