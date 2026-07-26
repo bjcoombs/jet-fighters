@@ -56,8 +56,11 @@ const GRID_SCORE_T = 7;
 const GRID_SCORE_U = 8;
 const GRID_STATUS = 9;
 
-/** Six jets, two ranks of three (the ROM's JET_COUNT). */
+/** Six jets to a wave (the ROM's JET_COUNT), released a few at a time. */
 const JET_COUNT = 6;
+
+/** Three lanes, and at most one jet flying in each of them (the ROM's LANE_COUNT). */
+const LANE_COUNT = 3;
 
 /** Segments the PAT_DIGIT entry for zero lights: a b c d e f, and not g. */
 const DIGIT_ZERO_PLATES = [0, 1, 2, 3, 4, 5];
@@ -107,9 +110,14 @@ function jetColumns(board: Board): number[] {
   return gridsShowing(board, PLATE_JET).filter((grid) => grid <= GRID_COLUMN_LAST);
 }
 
+/** The distance columns showing a jet in one lane, as grids. */
+function laneColumns(board: Board, lane: number): number[] {
+  return gridsShowing(board, [PLATE_JET[lane]!]).filter((grid) => grid <= GRID_COLUMN_LAST);
+}
+
 /** How many columns of one lane are showing a jet. */
 function columnsLitInLane(board: Board, lane: number): number {
-  return gridsShowing(board, [PLATE_JET[lane]!]).filter((grid) => grid <= GRID_COLUMN_LAST).length;
+  return laneColumns(board, lane).length;
 }
 
 /** Every jet segment lit anywhere on the playfield. */
@@ -210,6 +218,63 @@ describe('the field the ROM puts up at power-on', () => {
     expect(platesUnder(board, GRID_SCORE_U)).toEqual(DIGIT_ZERO_PLATES);
     expect(platesUnder(board, GRID_SCORE_T)).toEqual(DIGIT_ZERO_PLATES);
     expect(platesUnder(board, GRID_SCORE_H)).toEqual([]);
+  });
+});
+
+describe('the squadron is sparse and staggered, not a rank in every lane', () => {
+  // The regression this block exists to stop coming back. The ROM used to hold
+  // the squadron as a rigid two-rank block: three jets in the leading column and
+  // three one further out, every lane occupied, the whole grid stepping on one
+  // countdown. What the owner saw on the deployed build - and reported against
+  // his own CGL unit - was every lane advancing in lockstep. The reference
+  // photograph, assets/reference/device-front-gameplay.jpg, is the authority on
+  // the formation: two jets, in different lanes, at different distances.
+
+  /** Every lane's lit columns, as a comparable key per lane. */
+  function laneKeys(board: Board): string[] {
+    return [0, 1, 2].map((lane) => laneColumns(board, lane).join(','));
+  }
+
+  it('puts one jet on the field at power-on, not a rank in every lane', () => {
+    const board = romBoard();
+    board.runFrames(3);
+    expect(jetSegmentCount(board)).toBe(1);
+  });
+
+  it('never flies more jets at once than there are lanes', () => {
+    const board = romBoard();
+    for (let sample = 0; sample < 20; sample += 1) {
+      board.runFrames(10);
+      expect(jetSegmentCount(board)).toBeLessThanOrEqual(LANE_COUNT);
+    }
+  });
+
+  it('never has all three lanes showing the same thing', () => {
+    // A block formation makes the three lanes identical by construction, which
+    // is what "all three rows travel to the right at the same time" looks like
+    // from the player's seat.
+    const board = romBoard();
+    for (let sample = 0; sample < 20; sample += 1) {
+      board.runFrames(10);
+      const lanes = laneKeys(board);
+      const identical = lanes.every((lane) => lane !== '' && lane === lanes[0]);
+      expect(identical).toBe(false);
+    }
+  });
+
+  it('gets two jets airborne at different distances', () => {
+    // The other half of the photograph: sparse is not the same as empty, and
+    // the survivors must be spread down the field rather than abreast.
+    const board = romBoard();
+    let staggered = false;
+    for (let sample = 0; sample < 30; sample += 1) {
+      board.runFrames(10);
+      const columns = jetColumns(board);
+      if (jetSegmentCount(board) >= 2 && columns.length >= 2) {
+        staggered = true;
+      }
+    }
+    expect(staggered).toBe(true);
   });
 });
 
