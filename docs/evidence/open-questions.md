@@ -99,6 +99,29 @@ seventh jet column rather than a battleship-only zone - which is exactly the
 question section 2a says the angled-light photograph would settle. **Do not change
 `COLUMN_COUNT` before that photograph exists.**
 
+**The face's absolute scale is unresolved by about 6%, though its shape is not.**
+Two independent measurements agree closely on the printed frame's *aspect* -
+2.701, 2.687 and the 2.669 that shipped, all within 1.2%, and all making v1's
+3.384 about 25% too flat. They disagree on *size*: 298 x 110 atlas units against
+the 272 x 102 that shipped. That is purely the px-per-atlas-unit calibration, not
+a reshape.
+
+The tiebreak used was the atlas's own bounding box, which needs no circle fit:
+
+| Calibration | Glass spans | Left edge vs `RECT.x` = 0 | Right vs `VIEWBOX.width` = 363 |
+| --- | --- | --- | --- |
+| 2.70 px/unit (bezel fit, r = 405) | 389.6 units | -16.9 | 372.8 - overshoots 7.3% |
+| 2.867 px/unit (glass-arc fit, r = 430) | 367.0 units | -3.5 | 363.5 - within 1.1% |
+
+The 2.70 figure is inconsistent with the coordinate space it was quoted in, which
+is why the smaller size shipped. **If the owner prefers the larger calibration the
+fix is a single uniform scale-up of the whole face, roughly 1.09x - not a reshape**,
+because the aspect is already agreed. Worth deciding once rather than re-arguing.
+
+**`BOTTOM_RAIL_OVERHANG` is still 9.5 and has nothing honest behind it.** The two
+photographs disagree outright - 10.2 and 26.9 units past the right rail - so there
+is no value to pin it to. Needs a cleaner photograph or the owner's eye.
+
 **`ZONE_INNER_RISE` is 0.115; the photographs put it at 0.158.** Left alone because
 it is not a fitted constant - it belongs to the bracket topology introduced in PR
 #49, and the same photographs show the outer drops turning inward at the arms' top
