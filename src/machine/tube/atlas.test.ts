@@ -176,6 +176,88 @@ describe('geometry invariants', () => {
   });
 });
 
+describe('sprite proportions', () => {
+  // The distance-column cell the playfield sprites live in: the field is 80% of
+  // the printed playfield width split six ways, its height split three ways.
+  // See ATLAS-COORDINATES.md, "Relationship to src/render/layout.ts".
+  const CELL = { width: 43.318, height: 32 };
+
+  const boundsOf = (id: string) => getSegmentById(id as SegmentId).bounds;
+  const jetIds = Array.from({ length: 3 }, (_, lane) =>
+    Array.from({ length: 6 }, (_, col) => `jet_lane${lane}_col${col}`),
+  ).flat();
+
+  // The v2.11 render showed the jets as chunky chevrons filling over half their
+  // cell and the launcher as a triangle filling four fifths of one. Measured off
+  // device-front-gameplay.jpg (sprite width over printed cell width, sprite
+  // height over lane pitch, so perspective cancels on each axis) a jet is
+  // ~0.37-0.42 x ~0.52-0.63 of a cell and a launcher ~0.34 x ~0.54.
+  it('keeps every jet small against its lane cell', () => {
+    for (const id of jetIds) {
+      const b = boundsOf(id);
+      expect(b.width / CELL.width, `${id} width`).toBeLessThanOrEqual(0.45);
+      expect(b.height / CELL.height, `${id} height`).toBeLessThanOrEqual(0.4);
+    }
+  });
+
+  it('draws every jet as one aircraft plan-form: wider along the flight axis', () => {
+    for (const id of jetIds) {
+      const b = boundsOf(id);
+      // Nose points along +x, so a fighter silhouette is longer than its span.
+      expect(b.width, `${id}`).toBeGreaterThan(b.height);
+    }
+  });
+
+  it('gives all 18 jets the same silhouette', () => {
+    const first = boundsOf(jetIds[0]);
+    for (const id of jetIds) {
+      const b = boundsOf(id);
+      expect(b.width, `${id} width`).toBeCloseTo(first.width, 6);
+      expect(b.height, `${id} height`).toBeCloseTo(first.height, 6);
+      // Same outline, translated onto the lattice: normalising by the bounds
+      // origin must give byte-identical path data.
+      const norm = (s: string, ox: number, oy: number) =>
+        s.replace(/(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/g, (_m, x: string, y: string) =>
+          `${(Number(x) - ox).toFixed(3)},${(Number(y) - oy).toFixed(3)}`,
+        );
+      expect(norm(getSegmentById(id as SegmentId).path, b.x, b.y), id).toBe(
+        norm(getSegmentById(jetIds[0] as SegmentId).path, first.x, first.y),
+      );
+    }
+  });
+
+  it('keeps each launcher a small marker at the G line, not a cell-filling block', () => {
+    const jet = boundsOf('jet_lane0_col5');
+    for (let lane = 0; lane < 3; lane += 1) {
+      const b = boundsOf(`launcher_lane${lane}`);
+      expect(b.width / CELL.width, `launcher_lane${lane} width`).toBeLessThanOrEqual(0.4);
+      expect(b.height / CELL.height, `launcher_lane${lane} height`).toBeLessThanOrEqual(0.4);
+      // It sits behind a jet that has reached the capture line, so it must not
+      // out-mass one.
+      expect(b.width * b.height, `launcher_lane${lane} area`).toBeLessThan(jet.width * jet.height);
+    }
+  });
+
+  it('draws the launcher as separate rails rather than one filled body', () => {
+    for (let lane = 0; lane < 3; lane += 1) {
+      const path = getSegmentById(`launcher_lane${lane}` as SegmentId).path;
+      const subpaths = path.match(/M/g) ?? [];
+      expect(subpaths.length, `launcher_lane${lane}`).toBeGreaterThan(1);
+    }
+  });
+
+  it('keeps a jet rocket dot subordinate to the jet that fires it', () => {
+    for (let lane = 0; lane < 3; lane += 1) {
+      for (let col = 0; col < 6; col += 1) {
+        const rocket = boundsOf(`rocket_lane${lane}_col${col}`);
+        const jet = boundsOf(`jet_lane${lane}_col${col}`);
+        expect(rocket.height, `rocket_lane${lane}_col${col}`).toBeLessThan(jet.height * 0.6);
+        expect(rocket.width, `rocket_lane${lane}_col${col}`).toBeCloseTo(rocket.height, 6);
+      }
+    }
+  });
+});
+
 describe('semantic segment coverage', () => {
   const ids = new Set<string>(listAllIds());
   const countMatching = (re: RegExp) => atlas.segments.filter((s) => re.test(s.id)).length;

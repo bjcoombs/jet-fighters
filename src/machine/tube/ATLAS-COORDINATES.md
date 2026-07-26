@@ -87,7 +87,7 @@ Reference material lives in `assets/reference/`. All four photos are 1422 x 800
 | Photo | What it established |
 | --- | --- |
 | `device-front-lit.jpg` | Lit SCORE label and digit shapes; lit segment colours; the three reserve-launcher marks outside the right border; faint ghost-phosphor matrix confirming a cell grid |
-| `device-front-gameplay.jpg` | The printed border geometry: outer rectangle, inner vertical rule, ruler and lane dashes starting at that rule; the SCORE box occupying the region left of it |
+| `device-front-gameplay.jpg` | The printed border geometry: outer rectangle, inner vertical rule, ruler and lane dashes starting at that rule; the SCORE box occupying the region left of it. Also the clearest lit jet on any frame, and the reserve-launcher marks against the right border |
 | `screen-closeup-gameplay.jpg` | Jet silhouettes in flight; lane spacing; the 10/3/2/1/G ruler against the playfield |
 | `screen-overlay-closeup.jpg` | Silkscreen detail of the ruler and the top-left corner; unlit tube showing the segment matrix |
 
@@ -115,25 +115,73 @@ Every vertical proportion comes from v1's already-tuned layout instead.
 
 ### Shapes
 
-Segment outlines are the v1 shape tables from `src/render/sprites.ts`
-(`JET_SHAPE`, `BATTLESHIP_SHAPE`, `LAUNCHER_SHAPE`, `LIFE_DART_SHAPE`, the
-seven-segment rectangle map in `drawSevenSegment`), which were themselves traced
-from these photos. They are normalised point arrays in a unit box about the
-origin; the generator scaled and translated them into atlas units and emitted SVG
-path data. Sizes are v1's too (`jetSize = min(cellW, cellH) * 0.7`,
-`rocketR = jetSize * 0.18`, `missileR = jetSize * 0.14`, digit height
-`cellH * 0.6`), recomputed against the narrower atlas cell.
+The score digits and the battleship are still the v1 shape tables from
+`src/render/sprites.ts` (`BATTLESHIP_SHAPE` and the seven-segment rectangle map
+in `drawSevenSegment`), scaled and translated into atlas units. Digit height is
+v1's `cellH * 0.6`.
 
-Two shape changes were made against the photos:
+**The jets, the launcher, the rocket dots and the reserve-launcher marks were
+re-traced directly from the photographs**, replacing v1's `JET_SHAPE`,
+`LAUNCHER_SHAPE` and `LIFE_DART_SHAPE`. The v1 tables rendered the jets as
+eight-point chevrons and the launcher as a filled right triangle; neither is what
+the unit shows, and the owner rejected the v2.11 build on exactly that. See
+"Sprite silhouettes" below for the method and the numbers.
 
+### Sprite silhouettes
+
+Sizes were measured off `device-front-gameplay.jpg` and `device-front-lit.jpg`.
+Both are handheld frames, so no absolute pixel measurement is trustworthy;
+instead **each axis is expressed as a ratio against a printed feature on that
+same axis**, which cancels the foreshortening:
+
+| Axis | Sprite measurement | Divided by |
+| --- | --- | --- |
+| Horizontal | Sprite bounding width | Printed distance-column width (`(right border - inner rule) / 6`) |
+| Vertical | Sprite bounding height | Lane pitch (spacing of the three border ticks / two lit jets two lanes apart) |
+
+Sprites were isolated before measuring rather than eyeballed: the red phosphor
+separates cleanly on an `R - B` channel difference, and the bounding box was read
+off a threshold sweep (25%-45%) so the bloom halo could be bracketed rather than
+guessed.
+
+| Sprite | Photo, cell fractions | v2.11 atlas | Now |
+| --- | --- | --- | --- |
+| Jet | 0.37-0.42 w x 0.52-0.63 h | 0.52 x 0.63 | 0.42 x 0.38 (18 x 12 units) |
+| Launcher | 0.34 x 0.54 | 0.55 x 0.80 | 0.33 x 0.34 (14.5 x 11 units) |
+
+The jet is drawn at its photographed **aspect ratio** (~1.5:1) rather than at its
+photographed cell-fractions on both axes, deliberately. The atlas lane cell is
+1.35:1 while the photographed cell is closer to 2:1 - the atlas spreads the three
+lanes further apart than the unit does - so honouring the vertical cell-fraction
+would flatten the aircraft into something that no longer reads as one. Lane
+centres are layout, not sprite geometry, and were not touched here.
+
+What the photographs show, and what the paths now draw:
+
+- **Jets** are plan-view fighter silhouettes with the nose at +x (flying toward
+  the missile station). A needle nose and slim forward fuselage, main wings whose
+  leading edge sweeps back to maximum span about a third of the length from the
+  tail, a waisted rear fuselage, and stepped tailplanes at roughly 0.7 of the
+  wing span. Traced from the lit jets in `device-front-gameplay.jpg`; the
+  clearest is the lane-2 aircraft at approximately (765, 443).
+- **The launcher** is a rail launcher, not a solid body: a short vertical spine
+  standing on the G line at the right-hand edge of the field with three thin
+  rails projecting left into the field, each tapering to a point. Drawn as four
+  subpaths in one `path` string. The lit launcher in `device-front-lit.jpg` is
+  bloomed, but level-stretching the core (`-level 45%,88%`) resolves the stacked
+  bright bars separated by dark gaps.
 - **The reserve-launcher marks point left**, not right. `LIFE_DART_SHAPE` in v1
   has its tip at +x; `device-front-lit.jpg` and `screen-closeup-gameplay.jpg`
   both show blunt-right, tapered-left marks - reserve missiles aimed into the
-  field, consistent with missiles travelling leftward. The atlas mirrors the
-  shape.
-- **The launcher is narrower** (`cellW * 0.55`, was `cellW * 0.7`). The atlas
-  cell is narrower than v1's, and at 0.7 the launcher collided with the column-5
-  rocket dot.
+  field, consistent with missiles travelling leftward. They are solid bars with a
+  flat right end tapering to a blunt left tip, not the notched arrowheads v1
+  drew. Their bounds are unchanged; only the outline was re-cut.
+
+`atlas.test.ts` pins the proportions that went wrong (`describe('sprite
+proportions')`): jets bounded to 0.45 x 0.40 of a cell, launchers to 0.40 x 0.40
+and to less area than a jet, all 18 jets sharing one translated outline, the
+launcher having more than one subpath, and a rocket dot staying under 0.6 of the
+jet's height. All three of the shape assertions fail against the v2.11 atlas.
 
 ## Colour regions
 
@@ -222,8 +270,11 @@ arrives.
    this six-segment inventory cannot express. This is the atlas's most likely
    omission, and task 6 or the ROM work will hit it first.
 6. **Rocket dots sit at `cellW * 0.38` right of their jet.** Photos cannot
-   resolve dot positions. The offset was chosen to clear the jet nose while
-   staying inside the cell.
+   resolve dot positions, and no reference frame shows a rocket in flight at
+   all. The offset was chosen to clear the jet nose while staying inside the
+   cell. The radius (2.8 units) is likewise unevidenced: it preserves v1's
+   `rocketR = jetSize * 0.18` proportion against the re-traced aircraft, so that
+   shrinking the jets did not leave the dots looking like the larger object.
 7. **The reserve-launcher marks may be silkscreen, not phosphor.** They read
    white in every photo, including frames where the tube is showing little else,
    which is what printed silkscreen looks like. They are modelled as cyan
@@ -256,15 +307,29 @@ arrives:
 1. Read the photo at full resolution. For faint ghost phosphor, level-stretch the
    dark end rather than raising brightness, which blows out the lit segments:
    `magick <photo> -crop WxH+X+Y +repage -colorspace gray -level 8%,28% -resize 350% out.png`
-2. Measure only along the horizontal centre line unless the photo is square on.
-   Express every measurement as a fraction of a printed feature that also exists
-   in `src/ui/geometry.ts` or `src/render/layout.ts`, never in raw pixels.
-3. Convert to atlas units: `units = fraction * 363` horizontally,
-   `fraction * 300` vertically.
-4. Edit `atlas.json` directly. Keep `bounds` consistent with `path` - it is the
+2. Express every measurement as a fraction of a printed feature that also exists
+   in `src/ui/geometry.ts` or `src/render/layout.ts`, never in raw pixels. For
+   *positions* on the printed layout, measure only along the horizontal centre
+   line unless the photo is square on. For *sprite sizes*, compare each axis
+   against a printed feature on that same axis (column width horizontally, lane
+   pitch vertically) - the foreshortening then cancels and both frames agree.
+3. Isolate a lit sprite before measuring it rather than eyeballing the glow. Red
+   phosphor separates on an `R - B` channel difference, and sweeping the
+   threshold brackets the bloom instead of guessing it:
+
+   ```bash
+   magick <photo> -crop WxH+X+Y +repage -separate -channel R,B +channel null: \
+     -compose MinusSrc -composite -threshold 35% -format "%@\n" info:
+   ```
+
+4. Convert to atlas units: `units = fraction * 363` horizontally,
+   `fraction * 300` vertically. Where a sprite's photographed cell-fractions and
+   its photographed aspect ratio disagree - they do, because the atlas lane cell
+   is taller than the unit's - keep the aspect ratio and say so.
+5. Edit `atlas.json` directly. Keep `bounds` consistent with `path` - it is the
    axis-aligned bounding box of the path, and consumers trust it rather than
    parsing the path.
-5. Run `npm test` (`src/machine/tube/atlas.test.ts` checks the schema, the
+6. Run `npm test` (`src/machine/tube/atlas.test.ts` checks the schema, the
    counts, address uniqueness, and that every segment stays inside the viewBox)
    and re-render a preview to eyeball it against the photo:
 
@@ -274,7 +339,7 @@ arrives:
    require('fs').writeFileSync('/tmp/atlas.svg','<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 363 300\"><rect width=\"363\" height=\"300\" fill=\"#050505\"/>'+p+'</svg>')"
    ```
 
-6. If the segment inventory changes, update `EXPECTED_SEGMENT_COUNTS` and the id
+7. If the segment inventory changes, update `EXPECTED_SEGMENT_COUNTS` and the id
    unions in `atlas-schema.ts`. The id unions are template-literal types, so a
    mistyped id is a compile error and `validateAtlas` rejects any id that matches
    no documented family.
