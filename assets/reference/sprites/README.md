@@ -50,6 +50,14 @@ is unresolved - and the ROM's own comment concedes the point:
 The overlay photograph has never been column-counted against the ruler bands. That is
 worth doing before trusting either reading.
 
+**One piece of evidence leans toward the seventh-jet-column reading.** Every one of the
+seven printed cells carries three jet ghosts - including the far-left one. A cell that
+existed only to hold a battleship would not be printed with a jet in each of its three
+lanes. That is suggestive rather than conclusive: the ghost field is legible in these
+photographs but not crisp, and a shared print pattern across all seven cells could be a
+manufacturing convenience rather than a statement about what occupies them. It is the
+thread to pull first when an angled-light photograph of the dark tube arrives.
+
 ### 2. Every cell carries a ghost jet
 
 Unlit phosphor is visible in all 21 cells as a pale grey jet silhouette. The ghost is
