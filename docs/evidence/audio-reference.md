@@ -27,9 +27,19 @@ nothing here is invented.
 | Measured | Read directly off the reference recording by FFT / HPS analysis. |
 | Synthesized (v1) | The value v1 chose inside the measured band to drive its oscillator. Reproducible target, not itself a measurement. |
 | Test bound (v1) | The tolerance window v1's CI asserted against, wider than the measured band by design. |
+| Note label | A musical note name attached to a measured frequency afterwards. Never the source of a number. |
 
 Where the v1 source comment and the v1 test constant disagree, both are recorded and
 the discrepancy is flagged. The wider of the two is the safe acceptance window.
+
+**Rule: measured values are recorded as measured; note names are labels applied
+afterwards.** A note name like "D#6" carries an equal-tempered frequency (1244.5 Hz)
+that has no connection to what the piezo actually emitted - the unit was never tuned
+to concert pitch. Where a note name and a measurement disagree, the measurement wins
+and both are written down. Never let a note name overwrite a reading: the
+substitution is invisible once made, and it is the exact failure mode this document
+exists to prevent. The v1 codebase made that substitution once, for D#6 - see the
+[win](#win) section for the arithmetic that exposed it.
 
 ## Method
 
@@ -142,15 +152,26 @@ The melodic jingle played at 199 points, at the tail of the gameplay recording.
 | `win.timestampRangeSec` | 120.5 - 122.4 | - |
 | `win.method` | Harmonic product spectrum (fundamentals weak; recovered from partials) | - |
 
-**On the D#6 figure and the note names.** The partial pair 1240 / 2480 implies a
-1240 Hz fundamental; v1 recorded and synthesized this note as 1244 Hz, the
-equal-tempered pitch of D#6 (1244.5 Hz). The 4 Hz difference is 0.3% - inside the
-FFT bin resolution of the measurement - but it is an adjustment, not a reading, so
-the measured and synthesized values are listed separately above. Note that v1 did
-*not* apply the same adjustment to the other two notes: measured 750 and 940 Hz were
-kept as-is even though equal-tempered F#5 and A#5 are 740.0 and 932.3 Hz. **The note
-names are nearest-note labels for a piezo that is not tuned to concert pitch.** The
-ROM should target the measured fundamentals, not the tempered ones.
+### Which of these three numbers are measurements
+
+Each fundamental was checked against its own observed partials. A genuine fundamental
+divides its partials as exact integer multiples; a note-snapped value does not.
+
+| Note | Partials observed | Implied fundamental | Equal-tempered pitch | Verdict |
+| --- | --- | --- | --- | --- |
+| F#5 | 1500, 2250 | 750 (1500 = 2x750, 2250 = 3x750) | 739.99 Hz | **Measured.** Tempering would put the partials at 1480 / 2220, which is not what was seen. |
+| A#5 | 940, 1880, 2820 | 940 (1x, 2x, 3x) | 932.33 Hz | **Measured.** Tempering would put the partials at 1864.7 / 2797. |
+| D#6 | 1240, 2480 | 1240 (2480 = 2x1240) | 1244.5 Hz | **Note-snapped.** 2 x 1244 = 2488, not the observed 2480. |
+
+So two of the three are real readings and only D#6 was substituted. That asymmetry is
+itself the evidence: had the v1 author measured 1244 Hz, the second partial would have
+read 2488 Hz. It read 2480.
+
+The 4 Hz difference is 0.3%, likely inside the FFT bin resolution, so v1's audio was
+not audibly wrong - but it is an adjustment rather than a reading, and the two are
+listed separately above. **The note names are nearest-note labels for a piezo that
+was never tuned to concert pitch** - 750 Hz is 23 cents sharp of F#5 and 940 Hz is 14
+cents sharp of A#5. The ROM targets the measured fundamentals, not the tempered ones.
 
 Note sequence as transcribed, legato throughout (the piezo glides between notes, no
 inter-note gaps were observed):
