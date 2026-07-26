@@ -196,14 +196,31 @@ describe("the unattended machine reaches an ending rather than wedging", () => {
       expect(board.cpu.illegalOpcodes).toBe(0);
       expect(board.cycles).toBeGreaterThanOrEqual(seconds(60));
 
-      // The clinching one: the display sweep is still turning over. A ROM stuck
-      // inside `dwell` would hold one grid up and never close another PWM frame.
-      const framesAtSilence = board.display.frameCount;
-      run(board, seconds(5));
-      expect(board.display.frameCount).toBeGreaterThan(framesAtSilence);
+      // The clinching one: whole display sweeps are still being run, measured
+      // over a window that begins *after* the machine went quiet.
+      //
+      // Both `getStrobedGrids()` and `frameCount` count from the display's last
+      // `clear()`, which nothing but the power switch calls - so read straight
+      // off a sixty-second board they answer "at some point since power-on",
+      // and a ROM that wedged at 5.66 s in a loop touching one grid would still
+      // report all ten from the gameplay that preceded it. Clearing here is
+      // what makes the next five seconds the thing being observed. It resets
+      // the display's own bookkeeping and blanks its grid and plate masks;
+      // it does not touch the CPU, and the next grid the ROM raises restores
+      // the masks.
+      board.display.clear(board.cycles);
+      expect(board.display.frameCount).toBe(0);
+      expect(board.getStrobedGrids()).toEqual([]);
 
-      // All ten grids, so it is the whole sweep running and not a fragment of it.
+      run(board, seconds(5));
+
+      // All ten grids inside that window, so it is the whole sweep running and
+      // not a fragment of it - and enough completed PWM frames to be sweeps
+      // rather than one stalled grid. Five seconds is around 320 frames at the
+      // sweep period the ROM's header derives; a hundred is a floor with room
+      // for the cadence constants to move.
       expect(board.getStrobedGrids()).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+      expect(board.display.frameCount).toBeGreaterThan(100);
     },
     LONG_RUN_TIMEOUT_MS,
   );
