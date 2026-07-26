@@ -276,7 +276,7 @@ describe('OPCODE_TABLE - shape of the map', () => {
     expect(OPCODE_TABLE.some((spec) => spec.type === InstructionType.UNKNOWN)).toBe(false);
   });
 
-  it('reports each entry’s own cycle cost', () => {
+  it('reports the cycle cost each entry states', () => {
     for (const spec of OPCODE_TABLE) {
       const opcode = spec.words === 1 ? encode(spec.type) : encodeLong(spec.type, 0)[0];
       expect(decode(opcode).cycles).toBe(spec.cycles);

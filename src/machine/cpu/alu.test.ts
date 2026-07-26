@@ -71,7 +71,7 @@ describe('alu - subtract', () => {
     expect(subtract(0, 0, false)).toEqual({ value: 0x0f, carry: false });
   });
 
-  it('agrees with two’s complement arithmetic for every input pair', () => {
+  it('agrees with exact arithmetic for every input pair', () => {
     for (const a of NIBBLES) {
       for (const b of NIBBLES) {
         for (const carryIn of [false, true]) {
@@ -220,7 +220,7 @@ describe('alu - BCD adjust', () => {
   });
 
   it('carries a three-digit BCD score across its digits', () => {
-    // 199 + 1 = 200, the PRD’s score cap arithmetic, least significant first.
+    // 199 + 1 = 200, the PRD score cap arithmetic, least significant first.
     const score = [9, 9, 1];
     const addend = [1, 0, 0];
     let carry = false;

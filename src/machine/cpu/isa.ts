@@ -249,7 +249,7 @@ export const ISA: readonly IsaEntry[] = Object.freeze([
   fixed(
     InstructionType.NEGA,
     0x00d,
-    'A <- 0 - A (two’s complement).',
+    'A <- 0 - A (negate).',
     'Leaves carry alone: no carry effect for NEGA appears in our source material.',
   ),
   fixed(InstructionType.COMB, 0x00e, 'B <- ~B.'),
@@ -287,8 +287,8 @@ export const ISA: readonly IsaEntry[] = Object.freeze([
     0x02c,
     'A <- timer/counter.',
     'Our source material names the timer *load* instructions but not a read-back. ' +
-      'LAT is this repo’s, so the ROM can read the free-running counter - the PRD’s ' +
-      'randomness source (R3) needs it.',
+      'LAT belongs to this repo, so the ROM can read the free-running counter - the ' +
+      'randomness source in PRD R3 needs it.',
   ),
   fixed(InstructionType.TTF, 0x02d, 'ST <- timer overflow flag TF.'),
   fixed(InstructionType.SEIE, 0x02e, 'IE <- 1.'),
@@ -304,7 +304,7 @@ export const ISA: readonly IsaEntry[] = Object.freeze([
     0x036,
     'CF <- 1: the timer counts INT0 falling edges (event counter mode).',
     'The family documents a timer/counter mode select; which edge and which pin ' +
-      'it counts is this repo’s stated model (timer.ts).',
+      'it counts is the stated model of this repo (timer.ts).',
   ),
   fixed(InstructionType.RECF, 0x037, 'CF <- 0: the timer counts prescaler ticks (timer mode).'),
   fixed(InstructionType.TI0, 0x038, 'ST <- level of the INT0 pin.'),
@@ -315,7 +315,7 @@ export const ISA: readonly IsaEntry[] = Object.freeze([
     InstructionType.TBR,
     0x03c,
     'Computed branch: PC <- current page, offset ((B & 1) << 4) | A, when ST is 1.',
-    'The offset composition is this repo’s: a 5-bit page offset does not fit in ' +
+    'The offset composition belongs to this repo: a 5-bit page offset does not fit in ' +
       'one 4-bit accumulator, so bit 0 of B supplies the top bit.',
   ),
   fixed(InstructionType.SEDY, 0x03d, 'D pin (Y & 15) <- 1.'),
@@ -358,7 +358,7 @@ export const ISA: readonly IsaEntry[] = Object.freeze([
     'Prescaler divide ratio <- 2^i machine cycles per timer tick.',
     'The prescaler ratio is configurable on the family but our source material does ' +
       'not name the instruction that configures it, so LPI - mnemonic, encoding and ' +
-      'the 2^i ratio ladder in timer.ts - is this repo’s.',
+      'the 2^i ratio ladder in timer.ts - belongs to this repo.',
   ),
   entry({
     type: InstructionType.P,
@@ -475,7 +475,7 @@ export const UNASSIGNED_REGIONS: readonly UnassignedRegion[] = Object.freeze([
     first: 0x282,
     last: 0x29f,
     reason:
-      'Tail of the JMPL block. JMPL’s first word carries only bit 10 of the ' +
+      'Tail of the JMPL block. The first word of JMPL carries only bit 10 of the ' +
       'target - the other ten bits are the second word - so it needs two patterns ' +
       'of the 32 the block is aligned to.',
   },
