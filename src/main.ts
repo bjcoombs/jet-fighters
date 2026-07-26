@@ -183,6 +183,13 @@ function start(mount: HTMLElement): void {
     (globalThis as { jetFighters?: unknown }).jetFighters = {
       board,
       renderer,
+      // Null until the first input builds it. `speaker.stats` is how a silent
+      // machine is told apart from a silenced one: edges consumed says the ROM
+      // is toggling the pin, realignments and underruns say what the transport
+      // then did with them.
+      get speaker() {
+        return speaker;
+      },
       rom: { words: rom.length, highestAddress, ramHighWater, symbols },
     };
   }

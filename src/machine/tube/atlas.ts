@@ -34,7 +34,7 @@ const ID_FAMILIES: readonly {
   { name: 'missile', pattern: /^missile_lane[0-2]_dot[01]$/ },
   { name: 'launcher', pattern: /^launcher_lane[0-2]$/ },
   { name: 'score', pattern: /^score_digit[0-2]_seg[a-g]$/ },
-  { name: 'life', pattern: /^life_[0-2]$/ },
+  { name: 'explosion', pattern: /^explosion_lane[0-2]$/ },
   { name: 'battleship', pattern: /^battleship$/ },
   { name: 'scoreLabel', pattern: /^score_label$/ },
 ];

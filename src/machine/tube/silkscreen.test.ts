@@ -58,6 +58,50 @@ describe('drawSilkscreen', () => {
     expect(callsOf(recorder, 'rotate').length).toBe(title.length);
   });
 
+  it('sets the arc title to the photographed radius, sweep and glyph size', () => {
+    // Measured off assets/reference/tube-closeup-score0.webp and
+    // tube-closeup-score10.webp; see the constants in silkscreen.ts for the
+    // method and the per-photo figures. Guarding all three together matters
+    // because drawArcText derives the angular step from the font size, so one
+    // wrong constant moves the glyphs and the sweep at once - which is exactly
+    // how the legend came to wrap a third of the way down both sides.
+    const title = 'COAST SIDE MISSILE STATION RADAR SIGHT SCREEN';
+    const spots = callsOf(draw(), 'translate').map((call) => ({
+      radius: Math.hypot(call.args[0] - CIRCLE.cx, call.args[1] - CIRCLE.cy),
+      angle: Math.atan2(call.args[1] - CIRCLE.cy, call.args[0] - CIRCLE.cx),
+    }));
+    expect(spots.length).toBe(title.length);
+
+    // Every character rides one circle, between 0.92 and 0.93 of the scope
+    // radius (photographs: 0.932 and 0.920).
+    for (const spot of spots) {
+      expect(spot.radius / CIRCLE.r).toBeGreaterThan(0.92);
+      expect(spot.radius / CIRCLE.r).toBeLessThan(0.93);
+    }
+
+    // The swept angle between the first and last character centres. The
+    // photographs measure 67.7 and 66.0 degrees from first ink to last, which
+    // is about one character advance wider than the centre-to-centre sweep.
+    const angles = spots.map((spot) => spot.angle);
+    const sweep = ((Math.max(...angles) - Math.min(...angles)) * 180) / Math.PI;
+    expect(sweep).toBeGreaterThan(58);
+    expect(sweep).toBeLessThan(68);
+
+    // Centred on straight up, not drifting to one side (photographs: -88.5 and
+    // -88.1 degrees, where -90 is straight up).
+    const midpoint = ((Math.max(...angles) + Math.min(...angles)) / 2) * (180 / Math.PI);
+    expect(midpoint).toBeCloseTo(-90, 6);
+
+    // Glyph size, as the character pitch along the arc over the scope radius.
+    // Measuring the pitch rather than the font size keeps this independent of
+    // the advance factor drawArcText happens to use, and the pitch is what the
+    // photographs give directly: 0.0246 and 0.0237 of the scope radius.
+    const sorted = [...angles].sort((a, b) => a - b);
+    const pitch = ((sorted[sorted.length - 1] - sorted[0]) / (sorted.length - 1)) * spots[0].radius;
+    expect(pitch / CIRCLE.r).toBeGreaterThan(0.022);
+    expect(pitch / CIRCLE.r).toBeLessThan(0.026);
+  });
+
   it('dots the distance ruler along the top border, right of the inner rule', () => {
     const dots = callsOf(draw(), 'arc');
     expect(dots.length).toBeGreaterThan(5);

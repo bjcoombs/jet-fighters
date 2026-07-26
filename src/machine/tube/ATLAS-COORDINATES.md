@@ -81,13 +81,20 @@ that deleting the v1 modules cannot break the machine.
 
 ## Provenance
 
-Reference material lives in `assets/reference/`. All four photos are 1422 x 800
-(the two device-front shots are video frames of the same unit).
+Reference material lives in `assets/reference/`. The four earlier photos are
+1422 x 800 (the two device-front shots are video frames of the same unit). The
+two `tube-closeup-*.webp` frames are 1600 x 1200 close-ups of a real CGL unit
+powered on, supplied by the owner; they are the first material showing the tube
+**lit during play** at a readable scale and they supersede earlier guesses.
+`assets/reference/sprites/README.md` is the written record of what they
+establish, including the identifications the owner confirmed.
 
 | Photo | What it established |
 | --- | --- |
-| `device-front-lit.jpg` | Lit SCORE label and digit shapes; lit segment colours; the three reserve-launcher marks outside the right border; faint ghost-phosphor matrix confirming a cell grid |
-| `device-front-gameplay.jpg` | The printed border geometry: outer rectangle, inner vertical rule, ruler and lane dashes starting at that rule; the SCORE box occupying the region left of it. Also the clearest lit jet on any frame, and the reserve-launcher marks against the right border |
+| `tube-closeup-score0.webp` | Three lit jets against the whole unlit ghost field: lit jet size against the printed cell, and that every cell carries a ghost |
+| `tube-closeup-score10.webp` | The player's ship, a missile in flight, an explosion, and the three white marks at the right edge |
+| `device-front-lit.jpg` | Lit SCORE label and digit shapes; lit segment colours; the three white marks outside the right border (printed paint, not phosphor); faint ghost-phosphor matrix confirming a cell grid |
+| `device-front-gameplay.jpg` | The printed border geometry: outer rectangle, inner vertical rule, ruler and lane dashes starting at that rule; the SCORE box occupying the region left of it. Also the clearest lit jet on any frame, and the white marks against the right border |
 | `screen-closeup-gameplay.jpg` | Jet silhouettes in flight; lane spacing; the 10/3/2/1/G ruler against the playfield |
 | `screen-overlay-closeup.jpg` | Silkscreen detail of the ruler and the top-left corner; unlit tube showing the segment matrix |
 
@@ -120,17 +127,21 @@ The score digits and the battleship are still the v1 shape tables from
 in `drawSevenSegment`), scaled and translated into atlas units. Digit height is
 v1's `cellH * 0.6`.
 
-**The jets, the launcher, the rocket dots and the reserve-launcher marks were
-re-traced directly from the photographs**, replacing v1's `JET_SHAPE`,
+**The jets, the player's ship, the missile bursts, the explosion and the rocket
+dots were traced from the photographs**, replacing v1's `JET_SHAPE`,
 `LAUNCHER_SHAPE` and `LIFE_DART_SHAPE`. The v1 tables rendered the jets as
 eight-point chevrons and the launcher as a filled right triangle; neither is what
-the unit shows, and the owner rejected the v2.11 build on exactly that. See
+the unit shows, and the owner rejected the v2.11 build on exactly that. The
+v2.12 atlas then drew the jets too small, the launcher as a rack of rails at the
+field's right-hand edge, the missile as two dots side by side, and the printed
+white marks as lit phosphor; the two lit close-ups corrected all four. See
 "Sprite silhouettes" below for the method and the numbers.
 
 ### Sprite silhouettes
 
-Sizes were measured off `device-front-gameplay.jpg` and `device-front-lit.jpg`.
-Both are handheld frames, so no absolute pixel measurement is trustworthy;
+Sizes were measured off `tube-closeup-score0.webp` and `tube-closeup-score10.webp`,
+the two lit close-ups; the earlier `device-front-*.jpg` frames set the outlines.
+All are handheld frames, so no absolute pixel measurement is trustworthy;
 instead **each axis is expressed as a ratio against a printed feature on that
 same axis**, which cancels the foreshortening:
 
@@ -144,17 +155,23 @@ separates cleanly on an `R - B` channel difference, and the bounding box was rea
 off a threshold sweep (25%-45%) so the bloom halo could be bracketed rather than
 guessed.
 
-| Sprite | Photo, cell fractions | v2.11 atlas | Now |
+| Sprite | Photo, cell fractions | v2.12 atlas | Now |
 | --- | --- | --- | --- |
-| Jet | 0.37-0.42 w x 0.52-0.63 h | 0.52 x 0.63 | 0.42 x 0.38 (18 x 12 units) |
-| Launcher | 0.34 x 0.54 | 0.55 x 0.80 | 0.33 x 0.34 (14.5 x 11 units) |
+| Jet | 0.54 w x 0.61 h | 0.42 x 0.38 (18 x 12) | 0.60 x 0.54 (26.1 x 17.4) |
+| Player's ship | 0.44 x 0.54 | 0.33 x 0.34 (14.5 x 11) | 0.46 x 0.41 (20 x 13) |
+| Missile upper burst | 0.48 x 0.44 | 0.14 x 0.20 (6.3 dia) | 0.38 x 0.27 (16.5 x 8.5) |
+| Missile lower burst | 0.38 x 0.44 | 0.10 x 0.14 (4.4 dia) | 0.30 x 0.27 (13.2 x 8.5) |
+| Explosion | 0.54 x 0.57 | absent | 0.53 x 0.41 (23 x 13) |
 
-The jet is drawn at its photographed **aspect ratio** (~1.5:1) rather than at its
-photographed cell-fractions on both axes, deliberately. The atlas lane cell is
-1.35:1 while the photographed cell is closer to 2:1 - the atlas spreads the three
-lanes further apart than the unit does - so honouring the vertical cell-fraction
-would flatten the aircraft into something that no longer reads as one. Lane
-centres are layout, not sprite geometry, and were not touched here.
+Widths are fractions of a printed cell; the "photo" heights are fractions of the
+lane pitch and the "now" heights are fractions of the atlas cell height, which
+are not the same denominator. The atlas lane cell is 1.35:1 while the
+photographed cell is closer to 2:1 - the atlas spreads the three lanes further
+apart than the unit does - so every sprite is drawn at its **photographed aspect
+ratio** rather than at its photographed cell-fraction on both axes. Honouring
+the vertical cell-fraction would flatten the aircraft into something that no
+longer reads as one. Lane centres are layout, not sprite geometry, and were not
+touched.
 
 What the photographs show, and what the paths now draw:
 
@@ -162,26 +179,68 @@ What the photographs show, and what the paths now draw:
   the missile station). A needle nose and slim forward fuselage, main wings whose
   leading edge sweeps back to maximum span about a third of the length from the
   tail, a waisted rear fuselage, and stepped tailplanes at roughly 0.7 of the
-  wing span. Traced from the lit jets in `device-front-gameplay.jpg`; the
-  clearest is the lane-2 aircraft at approximately (765, 443).
-- **The launcher** is a rail launcher, not a solid body: a short vertical spine
-  standing on the G line at the right-hand edge of the field with three thin
-  rails projecting left into the field, each tapering to a point. Drawn as four
-  subpaths in one `path` string. The lit launcher in `device-front-lit.jpg` is
-  bloomed, but level-stretching the core (`-level 45%,88%`) resolves the stacked
-  bright bars separated by dark gaps.
-- **The reserve-launcher marks point left**, not right. `LIFE_DART_SHAPE` in v1
-  has its tip at +x; `device-front-lit.jpg` and `screen-closeup-gameplay.jpg`
-  both show blunt-right, tapered-left marks - reserve missiles aimed into the
-  field, consistent with missiles travelling leftward. They are solid bars with a
-  flat right end tapering to a blunt left tip, not the notched arrowheads v1
-  drew. Their bounds are unchanged; only the outline was re-cut.
+  wing span. The outline is unchanged from the trace off
+  `device-front-gameplay.jpg`; what changed is its **size**. A lit jet in
+  `tube-closeup-score0.webp` measures ~0.54 of a printed cell wide and the unlit
+  ghost in every cell reads wider still, against the 0.42 the v2.12 atlas drew,
+  which left the field reading as mostly bare glass rather than the woven
+  tapestry of nearly-touching shapes the real tube shows. The outline is scaled
+  1.45x and stays centred on the printed column centre, because `layout.ts`
+  `columnCenterX` drives the silkscreen and the phosphor has to line up with it.
+- **The jet silhouette varies by column.** Owner-confirmed: the jet is not one
+  shape repeated across the field. It **changes from column to column** so that a
+  jet stepping toward the missile station appears to beat its wings, and the
+  animation is a property of the physical phosphor, not of the program. Adjacent
+  ghost cells carry perceptibly different outlines - some flatter and wider in
+  the wing, others more swept. **The two action photographs prove the variation
+  exists without being sharp enough to recover the six shapes**, so the atlas
+  still holds one outline translated across the lattice. That is a known gap, not
+  a claim: `atlas.test.ts` permits up to one distinct outline per column and only
+  requires the three lanes of a column to agree, which is the part that stays
+  true once the variants are traced. The test that asserted all 18 jets share one
+  outline has been removed - it encoded the misunderstanding this paragraph
+  corrects. Recovering the variants needs the angled-light photograph of the dark
+  tube listed under "Reference material still wanted" in
+  `assets/reference/sprites/README.md`.
+- **The player's ship** is the cyan shape inside the playfield near the G line,
+  at one of three lane positions, and it is what fires the missile. Owner-
+  confirmed. It is a ship-like silhouette - a long hull with a raked bow
+  projecting left, a raised superstructure above it and a keel band below,
+  three bands separated by dark glass - not the rack of pointed rails plus a
+  vertical spine the v2.12 atlas drew, which read as a gun battery. The ids keep
+  the `launcher_` prefix so the ROM's plate map does not move.
+- **The missile is two bursts stacked vertically**, not two dots side by side.
+  Owner-reported and confirmed in `tube-closeup-score10.webp`: two cyan
+  starbursts, one directly above the other in the same column, spiky rather than
+  round, and **not identical** - the upper is broader than the lower. `dot0` is
+  now the upper burst and `dot1` the lower; the "head / trail" reading the ids
+  were named for is what the horizontal layout implied and is wrong.
+- **The explosion** is a red-orange starburst thrown up where the player's ship
+  is hit (`sprites/explosion-red-lit.png`). It is centred on the ship's own lane
+  position and drawn wider than the ship, on the assumption that the ship segment
+  goes out as the burst comes on - which is what the photograph catches, the
+  ship being lit at a different lane from the burst.
+- **The three marks at the right-hand edge are white paint, not phosphor.**
+  Owner-confirmed. They are bullet shapes, **nose up**, sitting between the right
+  rail and the glass edge at each lane. They were modelled as lit cyan segments
+  lying horizontal (`life_0..2`); they have left the atlas entirely and are
+  `silkscreen.ts`'s to draw. Their measured place is x 346.4-359.4 in atlas
+  units, one at each lane centre, about 13 wide by 8 tall.
+- **There is no lives display.** Owner-confirmed and important: the unit has no
+  way to show remaining lives. Damage is signalled **only by sound**, the two-
+  and three-beep warnings between hits, which is why that sequence carries so
+  much weight in `docs/evidence/audio-reference.md`. `life_0..2` were phantom
+  segments - the tube has no such phosphor - the same class of fault as the
+  phantom ground line fixed in #32.
 
-`atlas.test.ts` pins the proportions that went wrong (`describe('sprite
-proportions')`): jets bounded to 0.45 x 0.40 of a cell, launchers to 0.40 x 0.40
-and to less area than a jet, all 18 jets sharing one translated outline, the
-launcher having more than one subpath, and a rocket dot staying under 0.6 of the
-jet's height. All three of the shape assertions fail against the v2.11 atlas.
+### Still unresolved: the battleship's width
+
+The atlas draws the battleship 43.3 units wide against a jet's 26.1, but the
+seven printed cells read as roughly equal width and every one of them carries
+three ghost jets. Neither close-up catches a battleship crossing, so its sprite
+is still untraced and its size unevidenced; it was left alone rather than
+changed on a guess. It is the second item on the reference wish-list in
+`assets/reference/sprites/README.md`.
 
 ## Colour regions
 
@@ -206,8 +265,8 @@ two phosphor regions a segment sits in.
 
 | Region | Segments |
 | --- | --- |
-| `red` | jets (18), jet rockets (18), battleship (1) - everything the machine attacks with |
-| `cyan` | player missile dots (6), launchers (3), score digits (21), SCORE label (1), reserve-launcher marks (3) |
+| `red` | jets (18), jet rockets (18), battleship (1), explosions (3) - everything the machine attacks with, plus the burst it makes of the player |
+| `cyan` | player missile bursts (6), the player's ship (3), score digits (21), SCORE label (1) |
 
 ## Grid and plate mapping
 
@@ -227,12 +286,12 @@ expect:
 | D1 | Distance column 1 | 0-2 jets, 3-5 rockets |
 | D2 | Distance column 2 | 0-2 jets, 3-5 rockets |
 | D3 | Distance column 3 | 0-2 jets, 3-5 rockets |
-| D4 | Distance column 4 | 0-2 jets, 3-5 rockets, 6-11 missile dots (lane 0 head/trail, lane 1, lane 2) |
-| D5 | Distance column 5 (the G / capture line) | 0-2 jets, 3-5 rockets, 6-8 launcher lanes 0-2 |
+| D4 | Distance column 4 | 0-2 jets, 3-5 rockets, 6-11 missile bursts (lane 0 upper/lower, lane 1, lane 2) |
+| D5 | Distance column 5 (the G / capture line) | 0-2 jets, 3-5 rockets, 6-8 the player's ship at lanes 0-2, 9-11 the explosion at lanes 0-2 |
 | D6 | SCORE digit 0 (hundreds) | 0-6 = seven-segment a-g |
 | D7 | SCORE digit 1 (tens) | 0-6 = seven-segment a-g |
 | D8 | SCORE digit 2 (units) | 0-6 = seven-segment a-g |
-| D9 | Status | 0 SCORE label, 1-3 reserve-launcher marks |
+| D9 | Status | 0 SCORE label |
 
 The plate assignment is deliberately regular: **on every playfield grid, plate
 `n` is the jet in lane `n` and plate `n + 3` is that lane's rocket dot**. A ROM
@@ -275,11 +334,19 @@ arrives.
    cell. The radius (2.8 units) is likewise unevidenced: it preserves v1's
    `rocketR = jetSize * 0.18` proportion against the re-traced aircraft, so that
    shrinking the jets did not leave the dots looking like the larger object.
-7. **The reserve-launcher marks may be silkscreen, not phosphor.** They read
-   white in every photo, including frames where the tube is showing little else,
-   which is what printed silkscreen looks like. They are modelled as cyan
-   segments (`life_0..2`) because the game has to decrement them; if the teardown
-   shows them printed, they leave the atlas and the count drops to 68.
+7. **The explosion's address.** The three `explosion_lane{0-2}` segments are
+   placed on grid 5 - the grid that already carries the player's ship, which is
+   what they mark the destruction of - at plates 9-11, the first free plates
+   there. The photographs show the burst; nothing shows where the MCU drives it
+   from, and the ROM does not drive it at all yet.
+
+   The `life_0..2` segments this assumption used to hedge about are **gone**:
+   the marks they modelled are printed paint, and the unit has no lives display
+   to drive. **The ROM has not caught up** - it still writes a launcher tally
+   into grid 9's R0 nibble (`LIFEP_BASE` in `asm/jetfighter.asm`), so it drives
+   addresses 9-1, 9-2 and 9-3 into thin air. `tools/probe/jetfighter-rom.test.ts`
+   pins exactly those three as a named allowance that fails once the ROM stops
+   writing them; removing the write is ROM work in its own change.
 8. **`score_label` is an extra segment beyond this task's brief.**
    `device-front-lit.jpg` clearly shows the word SCORE lit in cyan, so it is a
    phosphor segment and it is in the atlas as a single block on D9 plate 0. Its
@@ -288,16 +355,21 @@ arrives.
 
 ### Known segment overlaps
 
-Five pairs of segments have overlapping bounding boxes. Each is a case where the
-game can never light both meaningfully, so they are accepted rather than nudged
-apart:
+Seventeen pairs of segments have overlapping bounding boxes. Each is a case
+where the game can never light both meaningfully, so they are accepted rather
+than nudged apart:
 
 | Pair | Why |
 | --- | --- |
 | `battleship` <-> `jet_lane1_col0`, `rocket_lane1_col0` | Both occupy the far zone's centre lane |
-| `launcher_lane{0,1,2}` <-> `jet_lane{0,1,2}_col5` | A jet reaching the G line has captured the launcher - game over |
+| `launcher_lane{0,1,2}` <-> `jet_lane{0,1,2}_col5` | A jet reaching the G line has taken the player's ship - game over |
+| `explosion_lane{0,1,2}` <-> `jet_lane{0,1,2}_col5` | Same glass, same reason |
+| `explosion_lane{0,1,2}` <-> `launcher_lane{0,1,2}` | The burst marks where the ship was: the ship goes out as the burst comes on |
+| `missile_lane{0,1,2}_dot{0,1}` <-> `jet_lane{0,1,2}_col4` | A missile crossing a column a jet is flying in is the hit that removes the jet |
 
 Bounding boxes overlap; the drawn paths overlap less. No other pair touches.
+`atlas.test.ts` pins the list, so a geometry change that creates an eighteenth
+fails rather than passing silently.
 
 ## Tracing workflow
 

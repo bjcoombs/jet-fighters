@@ -32,10 +32,15 @@ export interface Rgb {
  * One phosphor region's appearance.
  *
  * A driven VFD segment does not simply get more opaque as it brightens: the
- * emission washes toward the phosphor's white point, which is why the lit
- * segments in device-front-lit.jpg have pale centres inside a saturated halo.
- * `dim` is the colour just above the noise floor, `hot` the colour at full
- * drive, and the renderer interpolates between them by brightness.
+ * emission washes a little toward the phosphor's white point. `dim` is the
+ * colour just above the noise floor, `hot` the colour at full drive, and the
+ * renderer interpolates between them by brightness.
+ *
+ * The wash is small. It was previously read off device-front-lit.jpg as "pale
+ * centres inside a saturated halo" and `hot` was set nearly white for both
+ * regions; the close-up photographs of the lit tube show no such centre on
+ * either phosphor, so `hot` stays saturated and the pale reading is treated as
+ * that photograph's exposure rather than a property of the tube.
  */
 export interface PhosphorColors {
   /** Emission colour at low brightness - the saturated phosphor hue. */
@@ -56,29 +61,59 @@ export interface PhosphorColors {
 
 /**
  * Cyan region: player missile, launchers, SCORE readout and label, reserve
- * marks. `dim` and `glow` are v1's PALETTE.cyan / cyanGlow (#5fe0ec / #22c8de),
- * traced from the reference photos; `glowScale` is v1's GLOW.cyan.
+ * marks.
+ *
+ * v1's values (#5fe0ec dim / #22c8de glow) were traced by eye and put **blue
+ * above green** in all of them. Measuring the lit unit says the opposite: across
+ * `assets/reference/sprites/{score-lives,missile-lit,battleship-cyan-lit}.png`
+ * and both `tube-closeup-*.webp`, every hue-filtered phosphor band has **G > B**
+ * - by +5 at the clipped highlights and by +14 to +17 through the mid-tones.
+ * That is the classic VFD blue-green, and the SCORE label reads mint in the
+ * photographs rather than the ice-blue v1 produced.
+ *
+ * The channel *ordering* is the finding worth pinning. The photographs are
+ * hand-held webp with a warm cast, so their absolute values are not a target,
+ * but no colour cast reorders G and B. Ratios are taken from the unclipped
+ * mid-tone bands (R/G ~= 0.45, B/G ~= 0.88), not the blown highlights.
+ *
+ * `glowScale` was v1's GLOW.cyan of 0.5. See RED below for why it was cut.
  */
 const CYAN: PhosphorColors = {
-  dim: { r: 0x5f, g: 0xe0, b: 0xec },
-  hot: { r: 0xdf, g: 0xfc, b: 0xff },
-  glow: { r: 0x22, g: 0xc8, b: 0xde },
-  ghost: { r: 0x7a, g: 0xa8, b: 0xac },
-  glowScale: 0.5,
+  dim: { r: 0x5f, g: 0xe0, b: 0xc8 },
+  hot: { r: 0xa8, g: 0xff, b: 0xe6 },
+  glow: { r: 0x22, g: 0xd6, b: 0xb2 },
+  ghost: { r: 0x76, g: 0xaa, b: 0x98 },
+  glowScale: 0.14,
 };
 
 /**
  * Red region: jets, jet rockets, battleship - everything the machine attacks
  * with. `dim` is #ff5a3c, the red used in ATLAS-COORDINATES.md's atlas preview
- * snippet; `glowScale` is v1's GLOW.amber (the attacker colour reads dimmer than
- * cyan on the real tube, so it blooms less).
+ * snippet.
+ *
+ * `hot` was #ffc9a8 - only 0.34 saturated, so a full-duty segment washed out to
+ * a pale cream. The photographed phosphor never leaves saturation: the hottest
+ * 1% of `sprites/jet-lit.png` measures rgb(230,118,110) at 0.52 saturation and
+ * `sprites/explosion-red-lit.png` rgb(203,96,87) at 0.57. **No white centre
+ * appears in any photograph.** Normalising that jet core to R=255 gives
+ * rgb(255,131,122); `hot` is rgb(255,132,120), which also carries the small
+ * positive G-B (+8 to +10 measured) that makes the red read as brick red-salmon
+ * rather than orange.
+ *
+ * `glowScale` was v1's GLOW.amber of 0.35. Both regions' scales are cut ~3.5x
+ * because the photographs show essentially no bloom past a segment edge - crisp
+ * shapes with at most a 1-2px fringe - where v1's halo was wider than the jet
+ * sprite and filled the gaps between the score digits' segments. Cyan still
+ * blooms harder as a fraction because its segments are much smaller (median
+ * extent 4.9 atlas units against red's 10.8), so the absolute fringe lands in
+ * the same 1-2px band for both.
  */
 const RED: PhosphorColors = {
   dim: { r: 0xff, g: 0x5a, b: 0x3c },
-  hot: { r: 0xff, g: 0xc9, b: 0xa8 },
+  hot: { r: 0xff, g: 0x84, b: 0x78 },
   glow: { r: 0xff, g: 0x2d, b: 0x10 },
   ghost: { r: 0x96, g: 0x60, b: 0x50 },
-  glowScale: 0.35,
+  glowScale: 0.1,
 };
 
 /** The two phosphor regions of the tube. */

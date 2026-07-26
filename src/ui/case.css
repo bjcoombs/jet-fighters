@@ -4,7 +4,11 @@
    aspect-ratio guarantees the round scope window stays circular at any size.
 
    Wings hold the controls: LEFT = fire button (top), power switch (right of
-   it), label (bottom); RIGHT = launcher lever (top), skill dial (bottom). */
+   it), label (bottom); RIGHT = launcher lever (top), skill lever (bottom).
+
+   Colour rule for the case: it is one orange moulding. Recesses are body-colour
+   countersinks shaded by their lip, lettering is moulded orange-on-orange, and
+   the only printed white is the JET FIGHTERS sticker. */
 
 .jf-stage {
   width: 100%;
@@ -67,6 +71,43 @@
   pointer-events: none;
 }
 
+/* --- Bezel tab (12 o'clock) --------------------------------------------
+   A moulded tag on the module's top edge that hangs over the glass. Body units
+   x 520..546, y 38..91 of the 1000 x 460 viewBox, as percentages of the case.
+   It sits above `.jf-screen` in DOM order because it overlaps the window. */
+.jf-tab {
+  position: absolute;
+  left: 52%;
+  top: 8.2609%;
+  width: 2.6%;
+  height: 11.5217%;
+  border-radius: 0 0 46% 46% / 0 0 26% 26%;
+  background: linear-gradient(180deg, #e5794f 0%, #cb5a30 55%, #b04520 100%);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+
+/* The two moulding creases running down the face of the tab. */
+.jf-tab::before,
+.jf-tab::after {
+  content: '';
+  position: absolute;
+  top: 6%;
+  height: 84%;
+  width: 18%;
+  border-radius: 0 0 50% 50% / 0 0 16% 16%;
+}
+
+.jf-tab::before {
+  left: 22%;
+  background: rgba(255, 226, 205, 0.42);
+}
+
+.jf-tab::after {
+  right: 22%;
+  background: rgba(70, 18, 4, 0.32);
+}
+
 /* --- Fire button (left wing, top) -------------------------------------- */
 .jf-fire {
   position: absolute;
@@ -79,12 +120,18 @@
   touch-action: none;
 }
 
+/* Shallow countersink in body-colour plastic, not a black donut: the real
+   recess (assets/reference/device-front-gameplay.jpg) is the same orange as the
+   wing, shaded only by the lip that overhangs its top edge. */
 .jf-fire__ring {
   position: absolute;
   inset: -9%;
   border-radius: 50%;
-  background: radial-gradient(circle at 50% 35%, #7c1e0d, #4d1206 70%);
-  box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.2), inset 0 -3px 6px rgba(0, 0, 0, 0.6);
+  background: radial-gradient(circle at 50% 78%, #d9683f 0%, #c25b36 55%, #ab4c2c 100%);
+  box-shadow:
+    inset 0 4px 7px rgba(60, 12, 2, 0.45),
+    inset 0 -3px 5px rgba(255, 205, 175, 0.22),
+    0 1px 0 rgba(255, 200, 170, 0.18);
 }
 
 .jf-fire__cap {
@@ -122,10 +169,14 @@
   touch-action: none;
 }
 
+/* ON / OFF are moulded into the orange plastic beside the slot on the real unit
+   - orange on orange, legible only by the shadow the letters cast. Nothing on
+   this case is printed white except the JET FIGHTERS sticker. */
 .jf-switch__label {
-  font: 700 clamp(6px, 1.4cqw, 12px) / 1 Arial, Helvetica, sans-serif;
-  color: rgba(255, 255, 255, 0.85);
-  letter-spacing: 0.04em;
+  font: 700 clamp(5px, 1.15cqw, 10px) / 1 Arial, Helvetica, sans-serif;
+  color: rgba(112, 38, 16, 0.62);
+  text-shadow: 0 1px 0 rgba(255, 196, 158, 0.42);
+  letter-spacing: 0.08em;
   flex: 0 0 auto;
 }
 
@@ -155,9 +206,11 @@
   bottom: 54%;
 }
 
+/* No indicator lamp exists on the real case - the tube lighting is the feedback.
+   The active label just gains a little emboss contrast. */
 .jf-switch[data-on='true'] .jf-switch__label--on {
-  color: #7dff9a;
-  text-shadow: 0 0 6px rgba(90, 255, 130, 0.6);
+  color: rgba(92, 28, 10, 0.78);
+  text-shadow: 0 1px 0 rgba(255, 214, 182, 0.6);
 }
 
 /* --- Launcher lever (right wing, top): light knob in a vertical slot ---- */
@@ -175,137 +228,192 @@
   cursor: grabbing;
 }
 
+/* Body-colour countersink again, with the two moulded lobes that flank the slot
+   on the real unit rendered as the ::before/::after highlights. */
 .jf-lever__housing {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  background: radial-gradient(circle at 42% 32%, #7d2513 0%, #571707 70%, #3a0f04 100%);
-  box-shadow: inset 0 3px 7px rgba(0, 0, 0, 0.6), inset 0 -3px 6px rgba(255, 255, 255, 0.12);
+  background: radial-gradient(circle at 50% 76%, #d4653c 0%, #bd5734 55%, #a4482a 100%);
+  box-shadow:
+    inset 0 5px 9px rgba(60, 12, 2, 0.5),
+    inset 0 -4px 7px rgba(255, 205, 175, 0.24),
+    0 1px 0 rgba(255, 200, 170, 0.18);
 }
+
+.jf-lever__housing::before,
+.jf-lever__housing::after {
+  content: '';
+  position: absolute;
+  top: 11%;
+  height: 78%;
+  width: 34%;
+  border-radius: 50% / 46%;
+  background: linear-gradient(170deg, rgba(255, 214, 186, 0.30) 0%, rgba(255, 190, 158, 0.12) 45%, rgba(120, 40, 16, 0.2) 100%);
+}
+
+.jf-lever__housing::before { left: 10%; }
+.jf-lever__housing::after { right: 10%; }
 
 .jf-lever__slot {
   position: absolute;
-  left: 42%;
-  top: 16%;
-  width: 16%;
-  height: 68%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #180702, #35100a, #180702);
-  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.85);
+  left: 44.5%;
+  top: 13%;
+  width: 11%;
+  height: 74%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #170601, #2c0c04, #170601);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.9);
 }
 
+/* Round cream cap with the centre screw the real slider carries. */
 .jf-lever__knob {
   position: absolute;
-  left: 34%;
-  width: 32%;
-  height: 20%;
-  border-radius: 4px;
-  background: linear-gradient(#fdfdfb, #c7c4bb);
+  left: 41.5%;
+  width: 17%;
+  height: 17%;
+  border-radius: 50%;
+  z-index: 1;
+  background: radial-gradient(circle at 40% 32%, #fffefa 0%, #e6e2d6 55%, #b8b3a6 100%);
   box-shadow:
-    inset 0 2px 2px rgba(255, 255, 255, 0.9),
-    inset 0 -2px 3px rgba(0, 0, 0, 0.35),
-    0 3px 5px rgba(0, 0, 0, 0.55);
+    inset 0 -1px 2px rgba(0, 0, 0, 0.3),
+    0 2px 4px rgba(0, 0, 0, 0.6);
   transition: top 130ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.jf-lever[data-lane='0'] .jf-lever__knob { top: 18%; }
-.jf-lever[data-lane='1'] .jf-lever__knob { top: 40%; }
-.jf-lever[data-lane='2'] .jf-lever__knob { top: 62%; }
+/* The stub of arm that carries the cap across the slot. */
+.jf-lever__knob::before {
+  content: '';
+  position: absolute;
+  left: -34%;
+  top: 33%;
+  width: 168%;
+  height: 34%;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #7c3a1f, #4a1c0d);
+  z-index: -1;
+}
 
-/* --- Skill dial (right wing, bottom): blue rotary, 1/2/3 ---------------
-   Proportions from assets/reference/device-front-gameplay.jpg: the blue hub is
-   roughly half the diameter of the launcher housing above it, sits low in the
-   wing but clear of its bottom edge, and shares the launcher's vertical axis.
+.jf-lever__knob::after {
+  content: '';
+  position: absolute;
+  inset: 34%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 34%, #9a958a, #5c5850);
+}
+
+.jf-lever[data-lane='0'] .jf-lever__knob { top: 19.5%; }
+.jf-lever[data-lane='1'] .jf-lever__knob { top: 41.5%; }
+.jf-lever[data-lane='2'] .jf-lever__knob { top: 63.5%; }
+
+/* --- Skill lever (right wing, bottom) ----------------------------------
+   The real part is not a rotary knob: it is a blue flag-shaped lever on a
+   screwed pivot at the wing's bottom corner, with three faint moulded numerals
+   on the arc above it (assets/reference/device-front-gameplay.jpg and
+   device-front-lit.jpg). The flag HANGS BELOW the pivot and the level it
+   selects is the direction opposite the flag - which is why the marks sit above
+   while the handle points down and out.
 
    The box is square in the 1000 x 460 body space (120 x 120 units) and is
    centred on (878, 366) - the same x as .jf-lever. 120/1000 = 12% wide,
    120/460 = 26.087% tall; left = (878 - 60)/1000, top = (366 - 60)/460.
-   Keeping it square is what makes `inset` on the face resolve to a circle and
-   the printed marks land on a true arc. */
-.jf-dial {
+   Keeping it square is what makes `inset` on the hub resolve to a circle and
+   the moulded marks land on a true arc. */
+.jf-skill {
   position: absolute;
   left: 81.8%;
   top: 66.52%;
   width: 12%;
   height: 26.087%;
-  /* Radius of the arc the printed 1/2/3 marks sit on. `.jf-case` is the inline
-     -size container, so 1cqw = 1% of the case width = 10 body units. 6.1cqw =
-     61 units, clear of both the 30-unit hub and the 44-unit pointer tip. */
-  --dial-ring: 6.1cqw;
+  /* Radius of the arc the moulded 1/2/3 marks sit on. `.jf-case` is the inline
+     -size container, so 1cqw = 1% of the case width = 10 body units. 4.9cqw =
+     49 units - just clear of the 30-unit hub, as measured on the real unit. */
+  --skill-ring: 4.9cqw;
   cursor: pointer;
   touch-action: none;
 }
 
-.jf-dial__face {
+/* Everything that turns with the level. */
+.jf-skill__lever {
+  position: absolute;
+  inset: 0;
+  transform: rotate(var(--skill-angle, -50deg));
+  transition: transform 150ms cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+/* Tapered flag hanging from the pivot: 70 units long, 31 units at the shoulder
+   narrowing to ~15 at the tip, matching the handle in the reference photos. */
+.jf-skill__flag {
+  position: absolute;
+  left: 37%;
+  top: 46%;
+  width: 26%;
+  height: 58%;
+  clip-path: polygon(4% 0%, 96% 0%, 82% 88%, 70% 100%, 30% 100%, 18% 88%);
+  background: linear-gradient(100deg, #4d5cae 0%, #38449a 42%, #232d75 100%);
+}
+
+.jf-skill__hub {
   position: absolute;
   /* 25% of a 120-unit box leaves a 60-unit (30-unit radius) hub. */
   inset: 25%;
   border-radius: 50%;
-  background: radial-gradient(circle at 40% 30%, #6f8fe6 0%, #2f52b6 52%, #1a3078 100%);
+  background: radial-gradient(circle at 38% 28%, #6675c6 0%, #3d4aa2 52%, #232c74 100%);
   box-shadow:
-    inset 0 3px 7px rgba(255, 255, 255, 0.5),
-    inset 0 -5px 10px rgba(0, 0, 0, 0.4),
-    0 4px 8px rgba(0, 0, 0, 0.5);
-  transform: rotate(var(--dial-angle, -50deg));
-  transition: transform 150ms cubic-bezier(0.34, 1.4, 0.64, 1);
+    inset 0 2px 5px rgba(255, 255, 255, 0.35),
+    inset 0 -4px 8px rgba(0, 0, 0, 0.4),
+    0 3px 6px rgba(0, 0, 0, 0.5);
 }
 
-.jf-dial__grip {
+/* Cross-head pivot screw, clearly visible dead centre on the real lever. */
+.jf-skill__screw {
   position: absolute;
-  inset: 32%;
+  inset: 42.5%;
   border-radius: 50%;
-  background: repeating-conic-gradient(rgba(255, 255, 255, 0.18) 0deg 12deg, rgba(0, 0, 0, 0.12) 12deg 24deg);
+  background:
+    linear-gradient(0deg, transparent 45%, rgba(18, 16, 12, 0.85) 45% 55%, transparent 55%),
+    linear-gradient(90deg, transparent 45%, rgba(18, 16, 12, 0.85) 45% 55%, transparent 55%),
+    radial-gradient(circle at 38% 32%, #8d856f 0%, #665f4f 60%, #3b372c 100%);
+  box-shadow: 0 0 0 1.5px rgba(12, 10, 8, 0.8), inset 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
-/* Pointer arm reaching out past the knob edge, like the reference lever. It
-   runs from just past the hub centre out to 44 body units - clear of the hub
-   rim (30) and short of the printed arc (58) so it never sits on a number.
-   Percentages here are of the 60-unit face: -23.3% => tip at radius 44. */
-.jf-dial__pointer {
-  position: absolute;
-  left: 43.3%;
-  top: -23.3%;
-  width: 13.4%;
-  height: 70%;
-  border-radius: 999px;
-  background: linear-gradient(#7fa0ee, #274db0);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
-}
-
-/* The three printed marks sit on one arc at the angles the pointer actually
-   reaches: skillToAngle() in src/ui/controls.ts is (level - 2) * 50deg, so
-   1 = -50deg, 2 = 0deg (straight up), 3 = +50deg. Rotating out along the ring
-   and then counter-rotating by the same angle keeps each glyph upright. */
-.jf-dial__mark {
+/* Three marks on one arc at the angles the lever actually indexes:
+   skillToAngle() in src/ui/controls.ts is (level - 2) * 50deg, so 1 = -50deg,
+   2 = 0deg (straight up), 3 = +50deg. Rotating out along the ring and then
+   counter-rotating by the same angle keeps each glyph upright. They are moulded
+   into the orange, not printed white - just a shadow and a lit edge. */
+.jf-skill__mark {
   position: absolute;
   left: 50%;
   top: 50%;
-  font: 800 clamp(7px, 1.9cqw, 16px) / 1 Arial, Helvetica, sans-serif;
-  color: rgba(255, 255, 255, 0.9);
+  padding: 0.4cqw;
+  font: 700 clamp(5px, 1.25cqw, 11px) / 1 Arial, Helvetica, sans-serif;
+  color: rgba(112, 38, 16, 0.55);
+  text-shadow: 0 1px 0 rgba(255, 196, 158, 0.4);
   transform:
     translate(-50%, -50%)
     rotate(var(--mark-angle))
-    translateY(calc(-1 * var(--dial-ring)))
+    translateY(calc(-1 * var(--skill-ring)))
     rotate(calc(-1 * var(--mark-angle)));
   cursor: pointer;
 }
 
-.jf-dial__mark--1 { --mark-angle: -50deg; }
-.jf-dial__mark--2 { --mark-angle: 0deg; }
-.jf-dial__mark--3 { --mark-angle: 50deg; }
+.jf-skill__mark--1 { --mark-angle: -50deg; }
+.jf-skill__mark--2 { --mark-angle: 0deg; }
+.jf-skill__mark--3 { --mark-angle: 50deg; }
 
-.jf-dial[data-level='1'] .jf-dial__mark--1,
-.jf-dial[data-level='2'] .jf-dial__mark--2,
-.jf-dial[data-level='3'] .jf-dial__mark--3 {
-  color: #ffd36b;
-  text-shadow: 0 0 6px rgba(255, 200, 90, 0.7);
+.jf-skill[data-level='1'] .jf-skill__mark--1,
+.jf-skill[data-level='2'] .jf-skill__mark--2,
+.jf-skill[data-level='3'] .jf-skill__mark--3 {
+  color: rgba(88, 26, 8, 0.85);
+  text-shadow: 0 1px 0 rgba(255, 214, 182, 0.62);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .jf-fire__cap,
   .jf-switch__thumb,
   .jf-lever__knob,
-  .jf-dial__face {
+  .jf-skill__lever {
     transition: none;
   }
 }

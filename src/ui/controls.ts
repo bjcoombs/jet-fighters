@@ -43,13 +43,13 @@ export function laneToFraction(lane: Lane): number {
   return (lane * 2 + 1) / 6;
 }
 
-/** Advance the skill dial 1 -> 2 -> 3 -> 1. */
+/** Advance the skill lever 1 -> 2 -> 3 -> 1. */
 export function cycleSkill(level: SkillLevel): SkillLevel {
   return level === 3 ? 1 : ((level + 1) as SkillLevel);
 }
 
 /**
- * Rotation (degrees) of the dial pointer for a skill level. The dial sweeps a
+ * Rotation (degrees) of the skill lever for a skill level. The lever sweeps a
  * 100-degree arc: level 1 at -50deg, level 2 centred, level 3 at +50deg.
  */
 export function skillToAngle(level: SkillLevel): number {
@@ -173,7 +173,7 @@ function wireDial(container: HTMLElement, onSkillChange: (level: SkillLevel) => 
 
   const render = (level: SkillLevel): void => {
     dial.dataset.level = String(level);
-    dial.style.setProperty('--dial-angle', `${skillToAngle(level)}deg`);
+    dial.style.setProperty('--skill-angle', `${skillToAngle(level)}deg`);
     dial.setAttribute('aria-valuenow', String(level));
   };
   const set = (level: SkillLevel): void => {
@@ -184,7 +184,7 @@ function wireDial(container: HTMLElement, onSkillChange: (level: SkillLevel) => 
     }
   };
 
-  // Clicking a printed number jumps to it; clicking the dial face cycles.
+  // Clicking a moulded number jumps to it; clicking the lever cycles.
   dial.querySelectorAll<HTMLElement>('[data-level]').forEach((tick) => {
     tick.addEventListener('pointerdown', (e) => {
       e.preventDefault();

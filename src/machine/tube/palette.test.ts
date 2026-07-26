@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { loadAtlas } from './atlas.js';
+import type { Rgb } from './palette.js';
 import {
   GHOST_ALPHA,
   MIN_VISIBLE_BRIGHTNESS,
@@ -56,6 +57,119 @@ describe('TUBE_PALETTE', () => {
 
   it('blooms cyan harder than red, as the reference photos show', () => {
     expect(TUBE_PALETTE.cyan.glowScale).toBeGreaterThan(TUBE_PALETTE.red.glowScale);
+  });
+});
+
+/**
+ * The three faults a critique found by comparing our render against photographs
+ * of the lit unit: the full-drive endpoint washed almost to white, cyan rendered
+ * ice-blue where the real phosphor is blue-green, and a bloom wider than the
+ * sprite casting it.
+ *
+ * Each is pinned below as an invariant rather than as a literal colour, so the
+ * palette can still be tuned by eye but cannot drift back. The photographs are
+ * hand-held webp with a warm cast, so absolute RGB is not a reliable target and
+ * nothing here asserts one - channel *ordering* and *relative saturation* are
+ * what survive a colour cast, and those are what is asserted.
+ */
+describe('phosphor invariants measured from the lit unit', () => {
+  /** Saturation as HSV defines it: how far the colour is from grey. White is 0. */
+  function saturation(c: Rgb): number {
+    const max = Math.max(c.r, c.g, c.b);
+    const min = Math.min(c.r, c.g, c.b);
+    return max === 0 ? 0 : (max - min) / max;
+  }
+
+  function channelsAt(region: 'cyan' | 'red', brightness: number): Rgb {
+    const [r, g, b] = channelsOf(segmentFill(region, brightness));
+    return { r, g, b };
+  }
+
+  /** 0, 0.05 ... 1 - the whole ramp segmentFill can be asked for. */
+  const RAMP = Array.from({ length: 21 }, (_, i) => i / 20);
+
+  // The hottest 1% of the hue-filtered phosphor in the sprite crops measures
+  // 0.52 saturation (jet-lit.png) and 0.57 (explosion-red-lit.png) for red, and
+  // 0.29 for cyan even where the photograph's green channel is clipped at 255.
+  // Those are floors on the real thing, so the floor asserted here sits below
+  // them: the claim is that a lit segment is a saturated colour, not a pale one.
+  const MIN_SATURATION = 0.25;
+
+  it('keeps the full-drive endpoint saturated rather than washing it to white', () => {
+    // The original fault: hot was #dffcff (0.125 saturation) and #ffc9a8
+    // (0.341), so a full-duty segment rendered pale cream or near-white. No
+    // white centre appears in any photograph of the lit tube.
+    const washedOut = (['cyan', 'red'] as const).filter(
+      (region) => saturation(TUBE_PALETTE[region].hot) <= MIN_SATURATION,
+    );
+    expect(washedOut).toEqual([]);
+  });
+
+  it('never renders a lit segment as near-white at any brightness', () => {
+    // segmentFill walks dim -> hot, so the whole ramp has to stay off white, not
+    // just the endpoint - a segment at 0.9 duty is on screen as often as one at 1.
+    for (const region of ['cyan', 'red'] as const) {
+      const pale = RAMP.filter((b) => saturation(channelsAt(region, b)) <= MIN_SATURATION);
+      expect(pale).toEqual([]);
+    }
+  });
+
+  it('keeps red the more saturated phosphor, as it measures in every band', () => {
+    expect(saturation(TUBE_PALETTE.red.hot)).toBeGreaterThan(saturation(TUBE_PALETTE.cyan.hot));
+  });
+
+  it('renders cyan as blue-green (G > B), not ice-blue', () => {
+    // The second fault: every v1 cyan value had B > G. Every hue-filtered
+    // phosphor band in assets/reference/sprites/{score-lives,missile-lit,
+    // battleship-cyan-lit}.png and in both tube-closeup-*.webp has G > B - by +5
+    // at the clipped highlights and +14 to +17 through the mid-tones. A warm
+    // colour cast cannot reorder two channels, so this ordering is the reliable
+    // target where the absolute values are not.
+    const { dim, hot, glow, ghost } = TUBE_PALETTE.cyan;
+    const shades = { dim, hot, glow, ghost };
+    expect(Object.entries(shades).filter(([, c]) => c.b >= c.g).map(([name]) => name)).toEqual([]);
+    // Green also leads red - it is the dominant channel of the pair.
+    expect(Object.entries(shades).filter(([, c]) => c.g <= c.r).map(([name]) => name)).toEqual([]);
+  });
+
+  it('holds G > B across the whole cyan brightness ramp', () => {
+    const iceBlue = RAMP.filter((b) => {
+      const c = channelsAt('cyan', b);
+      return c.g <= c.b || c.g <= c.r;
+    });
+    expect(iceBlue).toEqual([]);
+  });
+
+  it('gives red the small positive G-B that reads as brick red-salmon', () => {
+    // Measured G-B is +8 to +10 in the lit sprite crops. A negative G-B would
+    // push the attackers toward magenta; a large one toward orange.
+    const hot = TUBE_PALETTE.red.hot;
+    expect(hot.g).toBeGreaterThan(hot.b);
+    expect(hot.g - hot.b).toBeLessThan(40);
+  });
+
+  it('blooms as a fringe at the segment edge, not a halo around the sprite', () => {
+    // The third fault: glowScale was 0.5 cyan / 0.35 red, so the largest red
+    // segment (extent 22.2 atlas units) bloomed 7.8 units - wider than the jet
+    // casting it - and the score digits' bloom filled the gaps between their
+    // segments, rendering them as fat continuous rectangles. The photographs
+    // show crisp shapes with at most a 1-2px fringe.
+    //
+    // The tube is 363 atlas units wide and renders at roughly 1.33 device px per
+    // unit on a 2x display, so ~2 atlas units of bloom is already the top of that
+    // 1-2px band. Extents are the largest each region has in atlas.json.
+    const largestExtent = { cyan: 12.07, red: 22.21 };
+    for (const region of ['cyan', 'red'] as const) {
+      expect(glowRadius(region, 1, largestExtent[region])).toBeLessThan(2.5);
+    }
+  });
+
+  it('keeps the bloom small against the segment casting it, whatever its size', () => {
+    // As a fraction, so it holds if the atlas geometry changes: the halo stays a
+    // rim on the segment and never becomes a second sprite.
+    for (const region of ['cyan', 'red'] as const) {
+      expect(glowRadius(region, 1, 100)).toBeLessThan(20);
+    }
   });
 });
 

@@ -42,9 +42,24 @@ const PLATE_MISSILE_PAIR = [
 ];
 /** Grid 5 only. */
 const PLATE_LAUNCHER = [6, 7, 8];
-/** Grid 9 only: the lit SCORE label, then the three reserve-launcher marks. */
+/** Grid 9 only: the lit SCORE label. */
 const PLATE_SCORE_LABEL = 0;
-const PLATE_LIFE = [1, 2, 3];
+
+/**
+ * Addresses the ROM still drives that the tube has no segment at.
+ *
+ * The unit has **no lives display** - owner-confirmed against his own CGL
+ * machine; damage is signalled only by the two- and three-beep warnings. The
+ * three white marks at the right-hand edge that `life_0..2` were traced from
+ * are printed paint on the overlay, not phosphor, so they left the atlas. The
+ * ROM has not caught up: it still writes a launcher tally into grid 9's R0
+ * nibble (`LIFEP_BASE` in asm/jetfighter.asm). Removing that write is ROM work
+ * and belongs in its own change.
+ *
+ * This is an allowance, not a permission: the assertion below fails the moment
+ * the ROM stops driving these, so the list cannot outlive the defect.
+ */
+const ROM_PHANTOM_ADDRESSES = ['9-1', '9-2', '9-3'];
 
 /** Playfield geometry, mirroring the ROM's "Playfield geometry" block. */
 const GRID_COLUMN_LAST = 5;
@@ -66,6 +81,10 @@ const AIRBORNE_MAX = 2;
 
 /** Segments the PAT_DIGIT entry for zero lights: a b c d e f, and not g. */
 const DIGIT_ZERO_PLATES = [0, 1, 2, 3, 4, 5];
+/** Segments the PAT_DIGIT entry for one lights: b c. */
+const DIGIT_ONE_PLATES = [1, 2];
+/** A blanked digit column drives no plate at all. */
+const DIGIT_BLANK_PLATES: number[] = [];
 
 /** Silence that separates two sounds, in machine cycles. See machine-probe.test.ts. */
 const BURST_GAP_CYCLES = 8000;
@@ -178,7 +197,10 @@ describe('the field the ROM puts up at power-on', () => {
       .filter((segment) => segment.duty > 0)
       .filter((segment) => getSegmentByAddress(segment.grid, segment.plate) === undefined)
       .map((segment) => `${segment.grid}-${segment.plate}`);
-    expect(unmapped).toEqual([]);
+    // The known lives-tally writes, and nothing else. Asserting equality rather
+    // than filtering them out means this test starts failing - correctly - when
+    // the ROM is fixed, and the allowance gets deleted with the defect.
+    expect(unmapped.sort()).toEqual([...ROM_PHANTOM_ADDRESSES].sort());
   });
 
   it('holds a squadron in the jet lanes, not a saturated row', () => {
@@ -196,8 +218,10 @@ describe('the field the ROM puts up at power-on', () => {
     expect(platesUnder(board, GRID_LAUNCH)).not.toContain(PLATE_LAUNCHER[0]);
   });
 
-  it('shows three standing launchers, beside the lit SCORE label', () => {
-    expect(platesUnder(board, GRID_STATUS)).toEqual([PLATE_SCORE_LABEL, ...PLATE_LIFE]);
+  it('lights the SCORE label on the status grid', () => {
+    // The tube has nothing else on this grid. The ROM's launcher tally in the
+    // rest of the nibble reaches no phosphor - see ROM_PHANTOM_ADDRESSES.
+    expect(platesUnder(board, GRID_STATUS)).toContain(PLATE_SCORE_LABEL);
   });
 
   it('brings the first jet in at the far column, in one lane only', () => {
@@ -215,10 +239,65 @@ describe('the field the ROM puts up at power-on', () => {
     expect(gridsShowing(board, PLATE_ROCKET).filter((grid) => grid <= GRID_COLUMN_LAST)).toEqual([]);
   });
 
-  it('reads zero with the leading zero blanked', () => {
+  it('reads a single 0 at zero, with both leading columns blanked', () => {
+    // assets/reference/tube-closeup-score0.webp: the lit unit at a zero score
+    // shows one `0`, in the units column, with the tens and hundreds columns
+    // dark. This ROM used to light the tens as well and read `00`, because only
+    // the hundreds consulted its own digit before drawing. A leading digit is
+    // blanked when it and every digit above it is zero; the units digit is not a
+    // leading digit, so zero is a lit `0` and never a blank readout.
     expect(platesUnder(board, GRID_SCORE_U)).toEqual(DIGIT_ZERO_PLATES);
-    expect(platesUnder(board, GRID_SCORE_T)).toEqual(DIGIT_ZERO_PLATES);
-    expect(platesUnder(board, GRID_SCORE_H)).toEqual([]);
+    expect(platesUnder(board, GRID_SCORE_T)).toEqual(DIGIT_BLANK_PLATES);
+    expect(platesUnder(board, GRID_SCORE_H)).toEqual(DIGIT_BLANK_PLATES);
+  });
+});
+
+describe('the score readout blanks leading digits, and only leading digits', () => {
+  /**
+   * The board at the first sweep on which the tens column lights.
+   *
+   * Reaching a two-digit score means actually scoring: the lever rests in the
+   * centre lane, which is the lane the battleship crosses, and a battleship is
+   * ten points (the printed ruler's "10" over its zone). Firing on alternate
+   * sweeps re-triggers the edge-triggered launch each time a shot is spent, so
+   * the run lands one on the ship within a few dozen sweeps. Nothing here is
+   * timed to a frame number - the loop stops on what the tube shows - so a
+   * cadence change moves when this happens without breaking the assertion.
+   */
+  function boardAtFirstTensDigit(): Board {
+    const board = romBoard();
+    for (let frame = 0; frame < 400; frame += 1) {
+      board.setFire(frame % 2 === 0);
+      board.runFrames(1);
+      if (platesUnder(board, GRID_SCORE_T).length > 0) {
+        return board;
+      }
+    }
+    throw new Error('the tens column never lit: the run never reached ten points');
+  }
+
+  it('lights the tens column once the score reaches ten', () => {
+    // assets/reference/tube-closeup-score10.webp: at ten the readout is `10`,
+    // so the tens column is a blanked leading zero and not a dark column. The
+    // first ten points on this ROM come from the battleship, in one hit, which
+    // is the photograph's own reading.
+    const board = boardAtFirstTensDigit();
+    expect(platesUnder(board, GRID_SCORE_T)).toEqual(DIGIT_ONE_PLATES);
+    expect(platesUnder(board, GRID_SCORE_U)).toEqual(DIGIT_ZERO_PLATES);
+    expect(platesUnder(board, GRID_SCORE_H)).toEqual(DIGIT_BLANK_PLATES);
+  });
+
+  it('never blanks the units column, at any score it reaches', () => {
+    // The units digit is never a leading digit. Whatever the score, and however
+    // the game ends, something is always lit under grid 8 once the ROM has drawn
+    // a field - a blank readout is not a state the real unit has.
+    const board = romBoard();
+    board.runFrames(3); // the first sweeps of a power-on, before the field exists
+    for (let frame = 0; frame < 400; frame += 1) {
+      board.setFire(frame % 2 === 0);
+      board.runFrames(1);
+      expect(platesUnder(board, GRID_SCORE_U).length).toBeGreaterThan(0);
+    }
   });
 });
 
