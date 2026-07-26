@@ -539,6 +539,96 @@ describe('SpeakerDriver - rendering', () => {
   });
 });
 
+// The wiring between the machine's clock and the browser's, which is where the
+// silent-speaker bug lived. Everything either side of it - the ROM's edges, the
+// band-limited reconstruction - was correct and tested; what was not tested was
+// that the two clocks ever meet. The output pulls samples from the moment the
+// graph is connected, and a cold machine runs the best part of a second before
+// the ROM first touches D14, so by the time an edge exists the playhead is tens
+// of thousands of samples past where the edge timeline anchors it.
+describe('SpeakerDriver - keeping the machine in step with the output', () => {
+  /** Samples the output pulls before the ROM's first D14 edge, on a cold machine. */
+  const SILENT_BLOCKS = 293; // 37,504 frames: 0.78 s at 48 kHz
+
+  /** Peak-to-peak swing of a block. Zero is a pin that never moved. */
+  function swing(samples: Float32Array): number {
+    let min = Infinity;
+    let max = -Infinity;
+    for (const value of samples) {
+      if (value < min) min = value;
+      if (value > max) max = value;
+    }
+    return max - min;
+  }
+
+  /** `toneEdges`, shifted to the cycle the machine actually reached. */
+  function toneAt(cycle: number, hz: number, ms: number): SpeakerEdgePair[] {
+    return toneEdges(hz, ms).map(([at, level]) => [at + cycle, level] as SpeakerEdgePair);
+  }
+
+  /** Render `blocks` blocks and return the loudest swing any of them had. */
+  function play(driver: SpeakerDriver, blocks: number): number {
+    let loudest = 0;
+    for (let i = 0; i < blocks; i += 1) {
+      loudest = Math.max(loudest, swing(driver.render(DEFAULT_BLOCK_FRAMES)));
+    }
+    return loudest;
+  }
+
+  it('plays a sound the ROM makes after the output has been running for a while', () => {
+    const { driver, source } = setup();
+
+    // The machine is powered but quiet: the output pulls, and the pin holds.
+    expect(play(driver, SILENT_BLOCKS)).toBe(0);
+
+    // The ROM finally toggles D14 - a blip shorter than the buffer's own depth,
+    // so this also holds the cushion refill to something a blip can survive.
+    source.push(toneAt(311_893, 1520, 20));
+
+    expect(play(driver, 64)).toBeGreaterThan(DEFAULT_AMPLITUDE);
+    expect(driver.stats.realignments).toBe(1);
+  });
+
+  it('re-anchors once and then stays anchored while the machine keeps playing', () => {
+    // Guards the fix against degenerating into a re-anchor per frame, which
+    // would drop a sliver of waveform 60 times a second and buzz.
+    const { driver, source } = setup();
+    play(driver, SILENT_BLOCKS);
+
+    // The frame driver's cadence: one animation frame of edges, then one
+    // animation frame of samples, for a second of continuous tone.
+    const FRAME_MS = 16;
+    const FRAME_CYCLES = (FRAME_MS / 1000) * CYCLE_HZ;
+    const FRAME_BLOCKS = Math.round(((FRAME_MS / 1000) * SAMPLE_RATE) / DEFAULT_BLOCK_FRAMES);
+    let loudest = 0;
+    for (let frame = 0; frame < 60; frame += 1) {
+      source.push(toneAt(311_893 + frame * FRAME_CYCLES, 1520, FRAME_MS));
+      loudest = Math.max(loudest, play(driver, FRAME_BLOCKS));
+    }
+
+    expect(loudest).toBeGreaterThan(DEFAULT_AMPLITUDE);
+    expect(driver.stats.realignments).toBe(1);
+  });
+
+  it('recovers when the emulation loses enough time to fall behind the output', () => {
+    // A backgrounded tab, or a frame the machine could not afford to simulate:
+    // main.ts drops the time rather than sprinting, so the ROM's cycle stamps
+    // come back behind the playhead. The speaker has to find them again.
+    const { driver, source } = setup();
+    play(driver, SILENT_BLOCKS);
+    source.push(toneAt(311_893, 1520, 20));
+    play(driver, 64);
+    expect(driver.stats.realignments).toBe(1);
+
+    // Half a second of output with the machine stalled, then it resumes.
+    play(driver, 188);
+    source.push(toneAt(400_000, 1520, 20));
+
+    expect(play(driver, 64)).toBeGreaterThan(DEFAULT_AMPLITUDE);
+    expect(driver.stats.realignments).toBe(2);
+  });
+});
+
 describe('SpeakerDriver - worklet transport', () => {
   it('primes the ring in block-sized chunks before the first process call', async () => {
     const { driver } = setup();
