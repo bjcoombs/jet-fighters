@@ -50,7 +50,7 @@ gets its own measurement at **each of skill 1, 2, and 3** unless marked otherwis
 | T7 | Missile travel time | Frames from fire to the missile reaching the far zone, and per-column dwell | Skill-independent if the missile speed is fixed; verify that against all three levels rather than assuming it. |
 | T8 | Rocket travel time | Frames from a jet firing to the rocket reaching the launcher row, and per-column dwell | Same skill-independence check as T7. |
 | T9 | Rocket fire rate | Frames between successive rocket launches, per skill level | Random like T6; record the observed intervals. |
-| T10 | Warning-beep to playable | Frames from a launcher hit to the player regaining control | Cross-check against `launcherHitWarning` timings in `audio-reference.md`. |
+| T10 | Warning-beep to playable | Frames from a launcher hit to the player regaining control | Video-only. `audio-reference.md` measures the warning beeps themselves (count, duration, gaps) but not the recovery interval that follows them, so it cannot supply this figure. |
 
 ### Method
 

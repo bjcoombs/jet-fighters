@@ -131,8 +131,9 @@ The melodic jingle played at 199 points, at the tail of the gameplay recording.
 
 | Field | Value | Source |
 | --- | --- | --- |
-| `win.fundamentalsHz` | 750 (F#5), 940 (A#5), 1244 (D#6) | Measured via HPS |
-| `win.partialsObserved` | 1500 & 2250 -> 750; 940 / 1880 / 2820 -> 940; 1240 & 2480 -> 1244 | Measured |
+| `win.fundamentalsHz` | 750 (F#5), 940 (A#5), 1240 (D#6) | Measured via HPS |
+| `win.partialsObserved` | 1500 & 2250 -> 750; 940 / 1880 / 2820 -> 940; 1240 & 2480 -> 1240 | Measured |
+| `win.thirdNoteSynthesizedHz` | 1244 | Synthesized (v1) |
 | `win.arpeggio` | [F#5, A#5, D#6] | Measured (note order) |
 | `win.repeats` | 3 | Measured |
 | `win.resolutionHz` | 940 (long A#5) | Measured |
@@ -141,21 +142,31 @@ The melodic jingle played at 199 points, at the tail of the gameplay recording.
 | `win.timestampRangeSec` | 120.5 - 122.4 | - |
 | `win.method` | Harmonic product spectrum (fundamentals weak; recovered from partials) | - |
 
+**On the D#6 figure and the note names.** The partial pair 1240 / 2480 implies a
+1240 Hz fundamental; v1 recorded and synthesized this note as 1244 Hz, the
+equal-tempered pitch of D#6 (1244.5 Hz). The 4 Hz difference is 0.3% - inside the
+FFT bin resolution of the measurement - but it is an adjustment, not a reading, so
+the measured and synthesized values are listed separately above. Note that v1 did
+*not* apply the same adjustment to the other two notes: measured 750 and 940 Hz were
+kept as-is even though equal-tempered F#5 and A#5 are 740.0 and 932.3 Hz. **The note
+names are nearest-note labels for a piezo that is not tuned to concert pitch.** The
+ROM should target the measured fundamentals, not the tempered ones.
+
 Note sequence as transcribed, legato throughout (the piezo glides between notes, no
 inter-note gaps were observed):
 
-| # | Note | Hz | Duration (ms) |
-| --- | --- | --- | --- |
-| 1 | F#5 | 750 | 200 |
-| 2 | A#5 | 940 | 150 |
-| 3 | D#6 | 1244 | 150 |
-| 4 | F#5 | 750 | 200 |
-| 5 | A#5 | 940 | 150 |
-| 6 | D#6 | 1244 | 150 |
-| 7 | F#5 | 750 | 200 |
-| 8 | A#5 | 940 | 150 |
-| 9 | D#6 | 1244 | 150 |
-| 10 | A#5 | 940 | 330 |
+| # | Note | Measured Hz | v1 synthesized Hz | Duration (ms) |
+| --- | --- | --- | --- | --- |
+| 1 | F#5 | 750 | 750 | 200 |
+| 2 | A#5 | 940 | 940 | 150 |
+| 3 | D#6 | 1240 | 1244 | 150 |
+| 4 | F#5 | 750 | 750 | 200 |
+| 5 | A#5 | 940 | 940 | 150 |
+| 6 | D#6 | 1240 | 1244 | 150 |
+| 7 | F#5 | 750 | 750 | 200 |
+| 8 | A#5 | 940 | 940 | 150 |
+| 9 | D#6 | 1240 | 1244 | 150 |
+| 10 | A#5 | 940 | 940 | 330 |
 
 Total 1830 ms, matching the measured ~1.83 s.
 
@@ -242,7 +253,7 @@ The bands the v2 machine's reconstructed speaker output must land inside:
 | `missileFire` | 1480-1632 Hz | < 150 ms (measured ~20 ms) |
 | `jetMarch` | 600-650 Hz | ~70 ms per step |
 | `battleshipBuzz` | 230-300 Hz, and below `jetMarch` | sustained |
-| `win` | 750 / 940 / 1244 Hz | ~1.83 s |
+| `win` | 750 / 940 / 1240 Hz (v1 played the third note at 1244) | ~1.83 s |
 | `gameOver` | 455-545 -> 80-97 -> 200-280 -> ~147 Hz | ~1.13 s |
 | `launcherHitWarning` | 455-545 Hz | ~10 ms per beep, 25-28 ms gaps |
 
