@@ -29,6 +29,14 @@ export interface PoweredMachine {
   readonly cpu: HMCS44CPU;
   readonly display: Display;
   readonly speaker: Speaker;
+  /**
+   * Called after the switch has moved, before control returns to the caller.
+   *
+   * The board uses it to re-drive the input matrix read line: a port reset
+   * releases every pin, so without this the ROM's first read of D15 after
+   * power-on would see a floating 1 and think a button was held.
+   */
+  readonly onPowerChange?: (state: PowerState) => void;
 }
 
 /**
@@ -100,6 +108,7 @@ export class PowerSwitch {
     display.clear();
     speaker.reset();
     this._state = 'on';
+    this.machine.onPowerChange?.('on');
   }
 
   /** Throw the switch off: everything stops, RAM dies, the tube goes dark. */
@@ -120,5 +129,6 @@ export class PowerSwitch {
     display.clear();
     speaker.reset();
     this._state = 'off';
+    this.machine.onPowerChange?.('off');
   }
 }
