@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import type { FakeCanvasContext, RecordedCall } from './fake-canvas.js';
 import { callsOf, createFakeContext } from './fake-canvas.js';
 import {
   CELL,
@@ -10,6 +11,7 @@ import {
   PLAYFIELD,
   RULER_TICKS,
   VIEWBOX,
+  columnCenterX,
   laneCenterY,
 } from './layout.js';
 import { SILKSCREEN } from './palette.js';
@@ -21,31 +23,329 @@ function draw() {
   return recorder;
 }
 
+/** Two coordinates that are the same coordinate. */
+function near(a: number, b: number): boolean {
+  return Math.abs(a - b) < 1e-6;
+}
+
+/**
+ * The largest radius a ruler dot may have.
+ *
+ * Separates the dot run from the crosshair rings, which are drawn with the same
+ * `arc` op on the same rail.
+ */
+const RULER_DOT_RADIUS_MAX = 2.5;
+
+/**
+ * How far an elbow bracket reaches sideways, as a fraction of a cell.
+ *
+ * Short of the half cell that would land it on a column-boundary tick, because
+ * RULER_TICKS labels two adjacent columns - see the constant in silkscreen.ts.
+ */
+const ELBOW_REACH = 0.38;
+
+/** One straight stroked segment, with the pen width and alpha it was drawn at. */
+interface Segment {
+  readonly x0: number;
+  readonly y0: number;
+  readonly x1: number;
+  readonly y1: number;
+  readonly lineWidth: number;
+  readonly alpha: number;
+}
+
+/**
+ * Draw once, and read back both the call log and every straight stroked segment
+ * with the pen width in force when its `stroke` landed.
+ *
+ * `FakeCanvasContext` snapshots colour and alpha per call but not `lineWidth`,
+ * and line weight is half of what the photographs pin here: the bottom rail is
+ * the heaviest ink on the face and the lattice the lightest. Rather than change
+ * the shared recorder, this drives it through a proxy that samples `lineWidth`
+ * alongside each call.
+ */
+function trace(): {
+  readonly calls: readonly RecordedCall[];
+  readonly segments: readonly Segment[];
+} {
+  const { recorder } = createFakeContext();
+  const widths: number[] = [];
+  const target = recorder as unknown as FakeCanvasContext & Record<string, unknown>;
+  const proxy = new Proxy(target, {
+    get(object, property) {
+      const value = Reflect.get(object, property);
+      if (typeof value === 'function') {
+        return (...args: unknown[]) => {
+          widths[object.calls.length] = object.lineWidth;
+          return (value as (...rest: unknown[]) => unknown).apply(object, args);
+        };
+      }
+      return value;
+    },
+  });
+  drawSilkscreen(proxy as unknown as CanvasRenderingContext2D);
+
+  const segments: Segment[] = [];
+  let open: { x: number; y: number } | null = null;
+  let runs: { x0: number; y0: number; x1: number; y1: number; alpha: number }[] = [];
+  for (let index = 0; index < recorder.calls.length; index += 1) {
+    const call = recorder.calls[index];
+    if (call.op === 'moveTo') {
+      open = { x: call.args[0], y: call.args[1] };
+    } else if (call.op === 'lineTo' && open) {
+      runs.push({
+        x0: open.x,
+        y0: open.y,
+        x1: call.args[0],
+        y1: call.args[1],
+        alpha: call.globalAlpha,
+      });
+      open = { x: call.args[0], y: call.args[1] };
+    } else if (call.op === 'quadraticCurveTo') {
+      // Rounded corners move the pen without contributing a straight segment.
+      open = { x: call.args[2], y: call.args[3] };
+    } else if (call.op === 'stroke') {
+      for (const run of runs) {
+        // Normalised so callers can reason about x0 <= x1 and y0 <= y1.
+        const flip = run.x1 < run.x0 || (near(run.x0, run.x1) && run.y1 < run.y0);
+        segments.push({
+          x0: flip ? run.x1 : run.x0,
+          y0: flip ? run.y1 : run.y0,
+          x1: flip ? run.x0 : run.x1,
+          y1: flip ? run.y0 : run.y1,
+          lineWidth: widths[index],
+          alpha: run.alpha,
+        });
+      }
+      runs = [];
+      open = null;
+    }
+  }
+  return { calls: recorder.calls, segments };
+}
+
+/** Every call of one kind in a {@link trace} log. */
+function ops(calls: readonly RecordedCall[], op: string): readonly RecordedCall[] {
+  return calls.filter((call) => call.op === op);
+}
+
 describe('drawSilkscreen', () => {
-  it('draws the playfield border at the printed rectangle', () => {
-    const [border] = callsOf(draw(), 'strokeRect').filter((call) => call.globalAlpha === 1);
-    expect(border.args).toEqual([
-      PLAYFIELD.x,
-      PLAYFIELD.y,
-      PLAYFIELD.width,
-      PLAYFIELD.height,
-    ]);
-    expect(border.strokeStyle).toBe(SILKSCREEN);
+  it('draws the frame as edges, not a rectangle - the top rail carries no line under the dots', () => {
+    // The real top rail is solid only as far as the field's left edge; right of
+    // the crosshair it is dots on bare glass. A strokeRect would run a line the
+    // whole way, which is what this layer used to do.
+    const drawn = trace();
+    const right = PLAYFIELD.x + PLAYFIELD.width;
+    const bottom = PLAYFIELD.y + PLAYFIELD.height;
+
+    expect(ops(drawn.calls, 'strokeRect').filter((c) => c.globalAlpha === 1)).toEqual([]);
+
+    const segments = drawn.segments.filter((seg) => seg.alpha === 1);
+    // Top rail: solid from the field edge back to the rounded left corner only.
+    expect(
+      segments.some(
+        (seg) =>
+          near(seg.y0, PLAYFIELD.y) &&
+          near(seg.y1, PLAYFIELD.y) &&
+          near(seg.x1, FIELD.x) &&
+          seg.x0 < FIELD.x,
+      ),
+      'solid top rail from the field edge leftward',
+    ).toBe(true);
+    // and nothing solid along the top rail right of the field edge.
+    expect(
+      segments.filter(
+        (seg) =>
+          near(seg.y0, PLAYFIELD.y) &&
+          near(seg.y1, PLAYFIELD.y) &&
+          seg.x0 > FIELD.x + 1 &&
+          // The right crosshair's arm reaches outward past the rail; anything
+          // inside the field span would be a rail under the dots.
+          seg.x1 <= right + 1e-9 &&
+          Math.abs(seg.x1 - seg.x0) > CELL.width * 0.2,
+      ),
+      'no line under the dotted stretch of the top rail',
+    ).toEqual([]);
+    // Left rail, full height.
+    expect(
+      segments.some(
+        (seg) => near(seg.x0, PLAYFIELD.x) && near(seg.x1, PLAYFIELD.x) && seg.y1 - seg.y0 > 50,
+      ),
+      'left rail',
+    ).toBe(true);
+    // Right rail, running past the top rail and down to at least the bottom.
+    expect(
+      segments.some(
+        (seg) =>
+          near(seg.x0, right) && near(seg.x1, right) && seg.y0 < PLAYFIELD.y && seg.y1 >= bottom,
+      ),
+      'right rail overrunning both rails',
+    ).toBe(true);
   });
 
   it('draws no full-height rule between the SCORE box and the field', () => {
-    // The bright inner rule this layer used to draw is not on the real face -
-    // the separation is the faint lattice plus the three row marks. Nothing may
-    // run the playfield's full height at the field boundary.
-    const recorder = draw();
-    const full = recorder.calls.filter(
-      (call) =>
-        (call.op === 'moveTo' || call.op === 'lineTo') &&
-        Math.abs(call.args[0] - FIELD.x) < 1e-9 &&
-        Math.abs(call.args[1] - PLAYFIELD.y) < 1e-9 &&
-        call.globalAlpha === 1,
+    // The bright inner rule this layer used to draw is not on the real face - the
+    // separation is the faint lattice plus the three row marks.
+    const rules = trace().segments.filter(
+      (seg) =>
+        seg.alpha === 1 &&
+        near(seg.x0, FIELD.x) &&
+        near(seg.x1, FIELD.x) &&
+        seg.y1 - seg.y0 > PLAYFIELD.height * 0.5,
     );
-    expect(full, 'a full-strength rule starting at the field boundary').toEqual([]);
+    expect(rules, 'a full-strength rule down the field boundary').toEqual([]);
+  });
+
+  it('makes the bottom rail long heavy dashes, heavier than every other line', () => {
+    const bottom = PLAYFIELD.y + PLAYFIELD.height;
+    const right = PLAYFIELD.x + PLAYFIELD.width;
+    const all = trace().segments.filter((seg) => seg.alpha === 1);
+    const dashes = all.filter(
+      (seg) => near(seg.y0, bottom) && near(seg.y1, bottom) && seg.x0 >= FIELD.x - 1e-9,
+    );
+
+    // Eight dashes: seven spanning the distance field, and one starting on the
+    // right rail that the glass cuts short.
+    expect(dashes.length).toBe(8);
+    const pitch = FIELD.width / 7;
+    for (let dash = 0; dash < 8; dash += 1) {
+      expect(dashes[dash].x0).toBeCloseTo(FIELD.x + dash * pitch, 6);
+    }
+    // Long: each full dash covers most of its pitch.
+    for (const dash of dashes.slice(0, 7)) {
+      expect(dash.x1 - dash.x0).toBeCloseTo(pitch * 0.9, 6);
+    }
+    // The run overhangs the right rail, and stays on the glass.
+    const last = dashes[dashes.length - 1];
+    expect(last.x1).toBeGreaterThan(right);
+    expect(last.x1).toBeLessThan(right + CELL.width * 0.3);
+
+    // Heavier than every other printed line, and the stretch under the SCORE box
+    // stays at the normal weight.
+    const dashWidth = dashes[0].lineWidth;
+    for (const seg of all) {
+      const isDash = dashes.includes(seg);
+      if (!isDash) expect(seg.lineWidth).toBeLessThan(dashWidth);
+    }
+    const solid = all.find(
+      (seg) => near(seg.y0, bottom) && near(seg.y1, bottom) && seg.x0 < FIELD.x - 1e-9,
+    );
+    expect(solid, 'solid bottom rail under the SCORE box').toBeDefined();
+    expect(solid!.lineWidth).toBeLessThan(dashWidth);
+  });
+
+  it('crosshairs both ends of the dotted ruler', () => {
+    // A ring with a bar running well above and below the rail, like a surveyor's
+    // mark. One where the solid rail hands over to the dots, one on the right rail.
+    const drawn = trace();
+    const right = PLAYFIELD.x + PLAYFIELD.width;
+    const rings = ops(drawn.calls, 'arc').filter(
+      (call) => near(call.args[1], PLAYFIELD.y) && call.args[2] > RULER_DOT_RADIUS_MAX,
+    );
+    expect(rings.map((call) => call.args[0]).sort((a, b) => a - b)).toEqual([FIELD.x, right]);
+
+    const bars = drawn.segments.filter(
+      (seg) =>
+        seg.alpha === 1 &&
+        near(seg.x0, seg.x1) &&
+        seg.y0 < PLAYFIELD.y - 1 &&
+        seg.y1 > PLAYFIELD.y + 1,
+    );
+    for (const x of [FIELD.x, right]) {
+      expect(bars.some((seg) => near(seg.x0, x)), `crosshair bar at x=${x}`).toBe(true);
+    }
+  });
+
+  it('groups the ruler dots in fours, separated by a tick at every column boundary', () => {
+    const drawn = trace();
+    const dots = ops(drawn.calls, 'arc')
+      .filter((call) => near(call.args[1], PLAYFIELD.y) && call.args[2] <= RULER_DOT_RADIUS_MAX)
+      .map((call) => call.args[0]);
+    const ticks = ops(drawn.calls, 'fillRect')
+      .filter((call) => Math.abs(call.args[1] + call.args[3] / 2 - PLAYFIELD.y) < 1e-9)
+      .map((call) => call.args[0] + call.args[2] / 2);
+
+    // One tick per interior column boundary.
+    expect(ticks.length).toBe(COLUMN_COUNT - 1);
+    for (let column = 1; column < COLUMN_COUNT; column += 1) {
+      const boundary = FIELD.x + column * CELL.width;
+      expect(ticks.some((x) => Math.abs(x - boundary) < 1e-9), `tick at column ${column}`).toBe(
+        true,
+      );
+    }
+    // Four dots between consecutive ticks, and four leading the first tick.
+    expect(dots.length).toBe(COLUMN_COUNT * 4);
+    const bounds = [FIELD.x, ...ticks, FIELD.x + FIELD.width];
+    for (let group = 0; group + 1 < bounds.length; group += 1) {
+      const inGroup = dots.filter((x) => x > bounds[group] && x < bounds[group + 1]);
+      expect(inGroup.length, `dots in group ${group}`).toBe(4);
+    }
+    // Chunky: a dot is wider than a printed line.
+    const radii = ops(drawn.calls, 'arc')
+      .filter((call) => near(call.args[1], PLAYFIELD.y) && call.args[2] <= RULER_DOT_RADIUS_MAX)
+      .map((call) => call.args[2]);
+    const frameWidth = Math.min(
+      ...drawn.segments.filter((seg) => seg.alpha === 1).map((seg) => seg.lineWidth),
+    );
+    for (const radius of radii) expect(radius * 2).toBeGreaterThan(frameWidth);
+  });
+
+  it('hangs an elbow bracket off every ruler numeral', () => {
+    // Each numeral carries a horizontal arm off its shoulder that turns down and
+    // drops toward the rail - `10` reads as `10⌐`. The last label's bracket
+    // mirrors, because its own column boundary is the right rail.
+    const drawn = trace();
+    // 'G' also occurs in the arc title (SIGHT), whose characters are drawn at the
+    // origin under a translate - match on the rail position, not the text alone.
+    const numerals = ops(drawn.calls, 'fillText').filter(
+      (call) =>
+        call.args[1] < PLAYFIELD.y &&
+        call.args[1] > PLAYFIELD.y - PLAYFIELD.height * 0.5 &&
+        RULER_TICKS.some((tick) => tick.label === call.text),
+    );
+    const segments = drawn.segments.filter((seg) => seg.alpha === 1);
+    const drops: number[] = [];
+
+    for (let index = 0; index < RULER_TICKS.length; index += 1) {
+      const tick = RULER_TICKS[index];
+      const side = index === RULER_TICKS.length - 1 ? -1 : 1;
+      const centre = columnCenterX(tick.column);
+      const dropX = centre + side * CELL.width * ELBOW_REACH;
+      const numeral = numerals.find(
+        (call) => call.text === tick.label && near(call.args[0], centre),
+      );
+      expect(numeral, `numeral ${tick.label}`).toBeDefined();
+
+      // The numeral sits well clear of the rail - a seventh of the playfield
+      // height, not a twelfth.
+      expect(PLAYFIELD.y - numeral!.args[1]).toBeGreaterThan(PLAYFIELD.height * 0.12);
+
+      const arm = segments.find(
+        (seg) =>
+          near(seg.y0, seg.y1) &&
+          seg.y0 < PLAYFIELD.y &&
+          (near(seg.x0, dropX) || near(seg.x1, dropX)) &&
+          Math.abs(seg.x1 - seg.x0) > 1,
+      );
+      expect(arm, `elbow arm for ${tick.label}`).toBeDefined();
+      const drop = segments.find(
+        (seg) => near(seg.x0, dropX) && near(seg.x1, dropX) && seg.y1 < PLAYFIELD.y,
+      );
+      expect(drop, `elbow drop for ${tick.label}`).toBeDefined();
+      // The arm leaves the numeral's shoulder and the drop heads for the rail.
+      expect(drop!.y0).toBeLessThan(numeral!.args[1]);
+      expect(drop!.y1).toBeGreaterThan(numeral!.args[1]);
+      drops.push(dropX);
+    }
+
+    // No two brackets share a drop line: `1` and `G` sit in adjacent ruler
+    // columns, and at a half-cell reach they would land on the same line and read
+    // as a single T.
+    expect(new Set(drops).size).toBe(RULER_TICKS.length);
+    const sorted = [...drops].sort((a, b) => a - b);
+    for (let index = 1; index < sorted.length; index += 1) {
+      expect(sorted[index] - sorted[index - 1]).toBeGreaterThan(CELL.width * 0.2);
+    }
   });
 
   it('divides the playfield into seven countable cells per row, three rows deep', () => {
