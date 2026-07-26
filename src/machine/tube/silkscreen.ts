@@ -143,15 +143,19 @@ const ROW_MARK_WIDTH = 3.3;
  * The three-digit SCORE readout's printed boxes, in atlas units.
  *
  * Copied with citation rather than imported, per the layer rule: the
- * `score_digit0_*`..`score_digit2_*` segments in atlas.json span x 31.718-43.238,
- * 46.694-58.214 and 61.670-73.190 over y 131.760-150.960. The printed box around
+ * `score_digit0_*`..`score_digit2_*` segments in atlas.json span x 51.231-60.885,
+ * 63.781-73.435 and 76.330-85.984 over y 130.202-140.810. The printed box around
  * each digit clears the segments by a little under a line width.
+ *
+ * These moved with the atlas when layout.ts took the frame and the cell band off
+ * the photographs; the box has to keep framing the segments it is drawn around,
+ * so the citation is re-read rather than left pointing at the old coordinates.
  */
-const SCORE_DIGIT_LEFTS = [31.718, 46.694, 61.67] as const;
-const SCORE_DIGIT_WIDTH = 11.52;
-const SCORE_DIGIT_TOP = 131.76;
-const SCORE_DIGIT_HEIGHT = 19.2;
-const SCORE_DIGIT_PAD = 1.8;
+const SCORE_DIGIT_LEFTS = [51.231, 63.781, 76.33] as const;
+const SCORE_DIGIT_WIDTH = 9.654;
+const SCORE_DIGIT_TOP = 130.202;
+const SCORE_DIGIT_HEIGHT = 10.608;
+const SCORE_DIGIT_PAD = 1.5;
 
 /**
  * The printed cell lattice: the countable rectangles the field is divided into.
@@ -307,19 +311,43 @@ const RULER_ELBOW_GAP_FRACTION = 0.06;
  *   hangs from the right outer run and is joined on its right, its bracket
  *   turning back up to the rail.
  *
- * Depths are fractions of the playfield height. The photographs put the middle
- * line 0.33 of the playfield height below the rail and the lower line at 0.58,
- * but at those depths on our flatter playfield the outer drops and the lower
- * brackets fall outside the scope circle and would be clipped; 0.235 and 0.45 are
- * as deep as the window allows. Likewise the lower row's bracket columns are
- * pulled in from the photographed 0.245 and 0.955 of the playfield width.
+ * Depths are fractions of the playfield height and columns are fractions of its
+ * width. These were previously fitted rather than measured: the inherited
+ * playfield rectangle was too tall and too wide for the scope circle, so at the
+ * photographed depths the outer drops and the lower brackets fell outside the
+ * glass. layout.ts now takes the frame off the photographs, and these are the
+ * measured figures - read off both close-ups after registering each to the scope
+ * circle, and agreeing between them to better than a percent:
+ *
+ * | Feature                    | score0 | score10 | used  | was fitted to |
+ * | -------------------------- | ------ | ------- | ----- | ------------- |
+ * | middle line, depth         | 0.334  | 0.332   | 0.33  | 0.235         |
+ * | lower line, depth          | 0.559  | 0.568   | 0.57  | 0.45          |
+ * | outer bracket arm, left    | 0.283  | 0.282   | 0.283 | 0.3           |
+ * | inner bracket arm, left    | 0.299  | 0.298   | 0.298 | 0.315         |
+ * | inner bracket arm, right   | 0.862  | 0.861   | 0.861 | 0.845         |
+ * | outer bracket arm, right   | 0.878  | 0.877   | 0.877 | 0.86          |
+ * | lower bracket column, left | 0.231  | 0.232   | 0.232 | 0.28          |
+ * | lower bracket column, right| 0.961  | 0.962   | 0.961 | 0.9           |
+ *
+ * The deepest ink is the lower row, and it now clears the glass with room to
+ * spare: its left column lands 144 units from the circle's centre and its right
+ * column 131, against a radius of 150. On the inherited rectangle the same two
+ * measured fractions would have landed at 151 and 153 - outside the glass, which
+ * is why they had been pulled in.
+ *
+ * {@link ZONE_INNER_RISE} is left as it was. The photographs put the arms' rise at
+ * 0.158 of the frame height (they run from y 205.2 to the middle line at 221.3 in
+ * both), and they also show the outer drops turning inward at the arms' top rather
+ * than at the middle line as drawn here - but neither is a fitted constant and the
+ * bracket's topology is not this change's business.
  */
-const ZONE_MID_DEPTH = 0.235;
-const ZONE_LOW_DEPTH = 0.45;
+const ZONE_MID_DEPTH = 0.33;
+const ZONE_LOW_DEPTH = 0.57;
 const ZONE_INNER_RISE = 0.115;
-const ZONE_BRACKET_INNER = [0.3, 0.315, 0.845, 0.86] as const;
-const ZONE_LOW_LEFT_FRACTION = 0.28;
-const ZONE_LOW_RIGHT_FRACTION = 0.9;
+const ZONE_BRACKET_INNER = [0.283, 0.298, 0.861, 0.877] as const;
+const ZONE_LOW_LEFT_FRACTION = 0.232;
+const ZONE_LOW_RIGHT_FRACTION = 0.961;
 const ZONE_LABEL_SIZE = 8;
 const ZONE_LABEL_ADVANCE = 0.6;
 const ZONE_DASH_GAP = 3;
@@ -339,22 +367,22 @@ const ZONE_DASH_GAP = 3;
  * over `13 x 8` is itself wider than it is tall, so it agrees with the
  * photographs and only the word disagrees. Drawn horizontal, nose left.
  *
- * **Height.** At 8 tall the outer two missiles do not fit: a tail corner at
- * x 359.4, y 114 is 150.8 from the scope circle's centre against a radius of 150,
- * so the top and bottom missiles would be clipped by the glass. Trimming the
- * length until 8 fits gives 12.2 x 8, an aspect of 1.5 against the photographed
- * 2.6, at which point it stops reading as a bullet and reads as a blob. Height 6
- * on a length of 12.1 keeps the photographed proportion (2.0) and the furthest
- * corner 0.35 units inside the glass. The scope-window test covers this.
+ * **These four constants have gone back to scale**, which #51 asked for: "the
+ * inherited playfield is about 27 units wider than the photographed one and so
+ * reaches much closer to the bezel. If that geometry is corrected upstream, these
+ * four constants should go back to scale." layout.ts has now corrected it - the
+ * right rail is at the measured 313.6 rather than 344.85 - so there are 49 atlas
+ * units of glass outboard of the rail instead of 15, and the squeeze is gone.
  *
- * The squeeze is not the missiles' fault. The real unit has about 89 px of glass
- * outboard of the right rail here - more than a whole cell's width - where ours
- * has 15 atlas units, because the inherited playfield is about 27 units wider
- * than the photographed one and so reaches much closer to the bezel. If that
- * geometry is corrected upstream, these four constants should go back to scale.
+ * At the photograph scale 49 x 19 px is 15.4 x 6.0 atlas units (score10) or
+ * 17.1 x 6.6 (score0); 15.4 x 6 is taken, an aspect of 2.6 against the
+ * photographed 2.6 - #51 could only reach 2.0. The nose lands at x 331.6, which is
+ * where the bullets' noses register in the photographs: x 331.4 and 331.7. The
+ * furthest corner is now 137 units from the scope circle's centre against a radius
+ * of 150, where before the same figures would not have fitted at all.
  */
-const MISSILE_GAP = 1.55;
-const MISSILE_LENGTH = 12.1;
+const MISSILE_GAP = 18;
+const MISSILE_LENGTH = 15.4;
 const MISSILE_HEIGHT = 6;
 const MISSILE_NOSE_FRACTION = 0.5;
 

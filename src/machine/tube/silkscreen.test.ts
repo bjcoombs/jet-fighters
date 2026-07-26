@@ -507,8 +507,13 @@ describe('drawSilkscreen', () => {
       expect(tail, `missile tail at lane ${lane}`).toBeDefined();
       // Nose left of tail: the bullet points into the field.
       expect(apex!.args[2]).toBeLessThan(tail!.args[0]);
-      // The nose starts at the x origin measured for this item.
-      expect(apex!.args[2]).toBeCloseTo(346.4, 6);
+      // The nose starts where the photographs put it. #51 pinned this to 346.4,
+      // which was the inherited right rail (344.85) plus the squeezed gap it had
+      // to use, not a figure off the glass. With layout.ts taking the rail off the
+      // photographs the nose lands at 331.6, and the bullets' noses register at
+      // x 331.4 and 331.7 in the two close-ups - so this is now measured rather
+      // than derived from a rail in the wrong place.
+      expect(apex!.args[2]).toBeCloseTo(331.632, 3);
       // Near the photographed 2.6:1, so it reads as a bullet and not a blob. The
       // height handed over with this item was 8, which gives 1.5:1 once the length
       // is trimmed enough to keep the outer two inside the glass; that fails here.

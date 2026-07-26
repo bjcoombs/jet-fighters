@@ -90,8 +90,8 @@ describe('geometry invariants', () => {
     (x - CIRCLE.cx) ** 2 + (y - CIRCLE.cy) ** 2 <= CIRCLE.r ** 2 ||
     (x >= TAB.x && x <= TAB.x + TAB.width && y >= TAB.y && y <= TAB.y + TAB.height);
 
-  // src/render/layout.ts PLAYFIELD_FRACTION applied to the 363 x 300 viewBox.
-  const PLAYFIELD = { x: 19.965, y: 102, width: 324.885, height: 96 };
+  // layout.ts PLAYFIELD_FRACTION applied to the 363 x 300 viewBox.
+  const PLAYFIELD = { x: 41.382, y: 85.2, width: 272.25, height: 102 };
 
   it('keeps every segment inside the round scope window, not just its bounding box', () => {
     for (const s of atlas.segments) {
@@ -193,7 +193,10 @@ describe('sprite proportions', () => {
   // The distance-column cell the playfield sprites live in: the field is 80% of
   // the printed playfield width split six ways, its height split three ways.
   // See ATLAS-COORDINATES.md, "Relationship to src/render/layout.ts".
-  const CELL = { width: 43.318, height: 32 };
+  // layout.ts CELL: the field's width over COLUMN_COUNT, and the cell band's
+  // height over LANE_COUNT. The band is FIELD_BAND_FRACTION of the frame, not the
+  // whole frame, so the cell is far shorter than the rectangle v1 handed down.
+  const CELL = { width: 36.3, height: 17.68 };
 
   const boundsOf = (id: string) => getSegmentById(id as SegmentId).bounds;
   const jetIds = Array.from({ length: 3 }, (_, lane) =>
