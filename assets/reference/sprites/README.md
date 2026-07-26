@@ -48,6 +48,31 @@ It is a detailed aircraft silhouette, not a chevron or arrow.
 
 Lit colour is a saturated red-orange. The unlit ghost is the same outline in pale grey.
 
+### 3b. The jet sprite CHANGES between columns to imply flight
+
+`ghost-row-variation.png`.
+
+**Owner-confirmed:** the jet is not one shape repeated across the field. The silhouette
+**changes from column to column** so that a jet stepping toward the missile station
+appears to beat its wings - the animation is built into the physical phosphor segments,
+not produced by the program. The ROM lights a different *shape* at each column; the
+motion is a property of the tube.
+
+This is visible in the ghost field: adjacent cells carry perceptibly different
+outlines, some with flatter, wider wings and others more swept.
+
+Two consequences:
+
+1. The atlas needs **per-column jet outlines** - up to 21 distinct paths - not one
+   outline translated across a row.
+2. The `sprite proportions` test added in #31 asserts *"all 18 jets sharing one
+   translated outline"*. That assertion is now known to be wrong and must be replaced,
+   not merely re-tuned. It encodes exactly the misunderstanding this section corrects.
+
+**These photographs cannot support tracing all 21 variants.** The ghosts are legible
+enough to prove the variation exists, not to recover each outline faithfully. See
+"Reference material still wanted" below.
+
 ### 4. The missile is two vertically-stacked bursts
 
 `missile-lit.png`.
@@ -56,7 +81,8 @@ Lit colour is a saturated red-orange. The unlit ghost is the same outline in pal
 starbursts, one directly above the other in the same column** - not two dots side by
 side horizontally, which is what the current atlas models.
 
-They are spiky burst shapes rather than round dots.
+They are spiky burst shapes rather than round dots, and **the two are not identical** -
+the upper burst is broader than the lower one.
 
 ### 5. The cyan shape near G is the player's ship
 
@@ -134,6 +160,18 @@ drawn bracket lines that drop from the field and turn inward, and the three labe
 on two separate lines with the brackets nesting between them. The ruler numbers each
 carry a small right-angle tick. Compare our render against the photographs before
 adjusting - the wording is right, the geometry and spacing are not.
+
+## Reference material still wanted
+
+To finish the atlas faithfully, the most valuable additions would be, in order:
+
+1. **A straight-on, well-lit photograph of the dark tube at an angle that catches every
+   phosphor segment** - the standard way to recover a complete segment atlas in one
+   shot. This would settle all 21 jet variants, the battleship, and every segment the
+   two action photographs happen not to light.
+2. **A photograph of a battleship crossing** - its sprite is entirely untraced.
+3. Anything showing the field with **many jets lit at once**, which would confirm the
+   per-column variation directly rather than through the ghosts.
 
 ## What these photographs do not settle
 
