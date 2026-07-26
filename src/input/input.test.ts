@@ -8,8 +8,8 @@ import {
   powerInput,
   createControlsAdapter,
   type LaneDirection,
+  type MachineInput,
 } from './input.js';
-import type { GameInput } from '../game/types.js';
 
 describe('classifyKey', () => {
   it('maps up-lane keys', () => {
@@ -41,7 +41,7 @@ describe('classifyKey', () => {
     expect(classifyKey('3')).toEqual({ type: 'skill', level: 3 });
   });
 
-  it('leaves M unbound (reserved for mute in task 8)', () => {
+  it('leaves M unbound (mute is a browser control, not a machine one)', () => {
     expect(classifyKey('m')).toBeNull();
     expect(classifyKey('M')).toBeNull();
   });
@@ -53,8 +53,8 @@ describe('classifyKey', () => {
   });
 });
 
-describe('resolveLane (spring-lever semantics)', () => {
-  it('springs to the centre lane when nothing is held', () => {
+describe('resolveLane (held-key semantics)', () => {
+  it('returns to the centre lane when nothing is held', () => {
     expect(resolveLane([])).toBe(1);
   });
 
@@ -98,7 +98,7 @@ describe('pushDirection / removeDirection', () => {
     expect(resolveLane(held)).toBe(2);
     held = removeDirection(held, 'down'); // release down -> back to up
     expect(resolveLane(held)).toBe(0);
-    held = removeDirection(held, 'up'); // release up -> spring to centre
+    held = removeDirection(held, 'up'); // release up -> back to centre
     expect(resolveLane(held)).toBe(1);
   });
 });
@@ -126,41 +126,31 @@ describe('laneFromThirds', () => {
 });
 
 describe('powerInput', () => {
-  it('emits POWER_ON with a fresh seed when turning on', () => {
-    expect(powerInput(true, () => 42)).toEqual({ type: 'POWER_ON', seed: 42 });
-  });
-
-  it('emits POWER_OFF (no seed) when turning off', () => {
-    expect(powerInput(false, () => 42)).toEqual({ type: 'POWER_OFF' });
-  });
-
-  it('only calls the seed source when powering on', () => {
-    let calls = 0;
-    const seed = () => (calls++, 7);
-    powerInput(false, seed);
-    expect(calls).toBe(0);
-    powerInput(true, seed);
-    expect(calls).toBe(1);
+  it('carries the switch position, with no other state attached', () => {
+    expect(powerInput(true)).toEqual({ type: 'POWER', on: true });
+    expect(powerInput(false)).toEqual({ type: 'POWER', on: false });
   });
 });
 
 describe('createControlsAdapter', () => {
-  it('bridges on-case controls to matching GameInputs', () => {
-    const emitted: GameInput[] = [];
-    const adapter = createControlsAdapter((i) => emitted.push(i), { makeSeed: () => 99 });
+  it('bridges on-case controls to control movements', () => {
+    const emitted: MachineInput[] = [];
+    const adapter = createControlsAdapter((i) => emitted.push(i));
 
-    adapter.onFire();
+    adapter.onFire(true);
+    adapter.onFire(false);
     adapter.onLaneChange(2);
     adapter.onSkillChange(3);
     adapter.onPowerToggle(true);
     adapter.onPowerToggle(false);
 
     expect(emitted).toEqual([
-      { type: 'FIRE' },
-      { type: 'MOVE_LANE', lane: 2 },
-      { type: 'SET_SKILL', level: 3 },
-      { type: 'POWER_ON', seed: 99 },
-      { type: 'POWER_OFF' },
+      { type: 'FIRE', pressed: true },
+      { type: 'FIRE', pressed: false },
+      { type: 'LANE', lane: 2 },
+      { type: 'SKILL', level: 3 },
+      { type: 'POWER', on: true },
+      { type: 'POWER', on: false },
     ]);
   });
 });

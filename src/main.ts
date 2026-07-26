@@ -1,47 +1,201 @@
-// Game loop integration and state machine (PRD R7).
+// The frame driver: the browser end of the machine, and the only clock in the
+// program.
 //
-// This is the thin DOM/timing shell that wires the four pure subsystems -
-// game logic, renderer, audio, input - into a playable unit. It owns only:
-//   - a single GameState, mutated through `commit` (which diffs audio events);
-//   - the fixed-timestep rAF loop (accumulator math lives in ./integration/loop);
-//   - the DOM elements (case, canvas, help hint, mute toggle) and their listeners.
-// Every rule, sound recipe, sprite, and input mapping lives in its module; nothing
-// game-specific is reinvented here.
+// Everything below this file is a device. `Board` is the CPU, the tube, the
+// speaker and the case contacts wired together, and it advances only when it is
+// stepped; `createTubeRenderer` paints whatever PWM duty the tube reached;
+// `SpeakerDriver` plays whatever the ROM did to pin D14. None of them owns a
+// timer. This file supplies the one thing they lack - elapsed wall-clock time -
+// and does nothing else:
+//
+//   1. read how long the last frame took;
+//   2. run the board for that many machine cycles;
+//   3. draw the tube's PWM state, with the same elapsed time for the phosphor;
+//   4. hand the drained D14 edges to the speaker.
+//
+// There is no game state here, and there is nowhere for any to hide. The score,
+// the jets, the lives and the skill level exist only as nibbles in the emulated
+// RAM, put there by the ROM in `asm/jetfighter.asm`. A control movement reaches
+// the game the way a player's hand does: it closes a contact on the input
+// matrix, and the ROM finds out on its next strobe.
+//
+// The power switch is the whole reset story. Powering on resets the core and
+// leaves RAM undefined until the ROM's own clear loop runs; powering off halts
+// the core and invalidates RAM. The real unit has no reset button, so neither
+// does this.
 
-import { createAudioSystem, type AudioSystem } from './audio/index.js';
-import {
-  applyInput,
-  createOffState,
-  tick,
-  type GameInput,
-  type GameState,
-} from './game/index.js';
+import { highestAddress, ramHighWater, rom, symbols } from '../asm/jetfighter.asm';
+import { SpeakerDriver, type AudioContextLike } from './machine/audio/driver.js';
+import { Board } from './machine/board/board.js';
+import { createTubeRenderer, type TubeRenderer } from './machine/tube/renderer.js';
 import {
   attachScreenTouch,
   createControlsAdapter,
   createHelpOverlay,
   createInputSystem,
+  type MachineInput,
 } from './input/index.js';
-import { createRenderer } from './render/index.js';
 import { buildCase } from './ui/case.js';
 import { setupControls } from './ui/controls.js';
-import { diffAudioEvents, playAudioEvents } from './integration/audio-events.js';
-import { drainAccumulator } from './integration/loop.js';
+
+/**
+ * Longest frame the driver will simulate in one go.
+ *
+ * A backgrounded tab delivers one enormous frame when it returns. Simulating it
+ * honestly would run the machine for minutes inside a single rAF callback and
+ * hang the page; the machine simply loses that time, as an unpowered device
+ * does.
+ */
+const MAX_FRAME_MS = 100;
 
 const app = document.querySelector<HTMLElement>('#app');
 if (app) {
-  void start(app);
+  start(app);
 }
 
-async function start(mount: HTMLElement): Promise<void> {
+function start(mount: HTMLElement): void {
   const { root, canvas } = buildCase(mount);
-  const renderer = createRenderer(canvas);
-  const render = (state: GameState): void => renderer.draw(state);
+  const renderer = createTubeRenderer(canvas);
+  attachCanvasSizing(canvas, renderer);
 
-  // Size the backing store to the canvas's CSS box x devicePixelRatio and
-  // re-derive the scope layout. Runs now, on every viewport resize, and when
-  // the devicePixelRatio changes (e.g. dragging the window between monitors) so
-  // the render stays crisp and uniformly scaled.
+  // The machine, dark. A real unit on a shelf is switched off, and the power
+  // switch is the only thing that starts it.
+  const board = new Board(rom, { power: 'off' });
+  const cyclesPerSecond = board.cpu.getCyclesPerSecond();
+
+  // Audio is built on the first deliberate input, because a browser will not
+  // let an AudioContext produce sound before a user gesture. Until then the
+  // board still buffers its D14 edges; nothing is lost, it is merely unheard.
+  let speaker: SpeakerDriver | null = null;
+  let muted = false;
+
+  const ensureSpeaker = (): SpeakerDriver | null => {
+    if (speaker) return speaker;
+    const Ctor = window.AudioContext;
+    if (!Ctor) return null;
+    // The driver declares the slice of Web Audio it uses so it can be tested
+    // without a browser. `ScriptProcessorNode.onaudioprocess` is a property and
+    // therefore invariant, so a real `AudioContext` does not structurally
+    // satisfy that slice even though it does everything the slice asks for;
+    // the cast asserts what the driver's own interface documents.
+    speaker = new SpeakerDriver({
+      context: new Ctor() as unknown as AudioContextLike,
+      source: board,
+      cyclesPerSecond,
+      muted,
+    });
+    void speaker.start();
+    return speaker;
+  };
+
+  /**
+   * Throw the power switch.
+   *
+   * Power-on rewinds the cycle counter, so the speaker's timeline - which is
+   * anchored on cycle stamps - has to be dropped with it, and the phosphor is
+   * blanked rather than faded because the supply has gone.
+   */
+  const setPower = (on: boolean): void => {
+    if (on) {
+      board.powerOn();
+    } else {
+      board.powerOff();
+    }
+    renderer.blank();
+    speaker?.reset();
+  };
+
+  /** Apply one control movement to the machine. The ROM reads it on its next strobe. */
+  const apply = (input: MachineInput): void => {
+    // Every one of these arrives inside a pointer or key handler, which is the
+    // user gesture the audio context has been waiting for.
+    ensureSpeaker();
+    switch (input.type) {
+      case 'FIRE':
+        board.setFire(input.pressed);
+        break;
+      case 'LANE':
+        board.setLever(input.lane);
+        break;
+      case 'SKILL':
+        board.setSkill(input.level);
+        break;
+      case 'POWER':
+        setPower(input.on);
+        break;
+    }
+  };
+
+  // Three paths to the same four contacts: the drawn case controls, the
+  // keyboard, and a tap on the scope glass for touch devices.
+  setupControls(root, createControlsAdapter(apply));
+  createInputSystem(apply, { screenElement: canvas });
+  attachScreenTouch(canvas, apply);
+
+  root.appendChild(createHelpOverlay());
+  root.appendChild(
+    buildMuteToggle({
+      isMuted: () => muted,
+      setMuted: (next) => {
+        muted = next;
+        ensureSpeaker()?.setMuted(next);
+      },
+    }),
+  );
+
+  // Cycles owed to the machine, carried across frames as a fraction. The board
+  // executes whole instructions, so a frame overshoots its budget slightly and
+  // the overshoot is repaid out of the next one rather than accumulating.
+  let owed = 0;
+  let lastFrame: number | null = null;
+
+  const frame = (now: number): void => {
+    const elapsedMs = lastFrame === null ? 0 : Math.min(now - lastFrame, MAX_FRAME_MS);
+    lastFrame = now;
+
+    if (board.power.state === 'on' && board.running) {
+      owed += (elapsedMs / 1000) * cyclesPerSecond;
+      const budget = Math.floor(owed);
+      if (budget > 0) {
+        const executed = board.step(budget);
+        // A halted core executes nothing; banking the debt would make it sprint
+        // when it came back.
+        owed = executed === 0 ? 0 : owed - executed;
+      }
+    } else {
+      owed = 0;
+    }
+
+    // Drain D14 before drawing, so a burst produced this frame is queued at the
+    // cycle stamps it actually happened at.
+    speaker?.pump();
+    renderer.draw(board.getLitSegments(), elapsedMs);
+
+    requestAnimationFrame(frame);
+  };
+
+  requestAnimationFrame(frame);
+
+  if (import.meta.env.DEV) {
+    // A console handle on the machine: step it, read its RAM, name an address
+    // from the assembler's symbol table. The debugging surface a contributor
+    // editing the ROM needs, and dev-only so it is not part of the product.
+    (globalThis as { jetFighters?: unknown }).jetFighters = {
+      board,
+      renderer,
+      rom: { words: rom.length, highestAddress, ramHighWater, symbols },
+    };
+  }
+}
+
+/**
+ * Keep the canvas backing store matched to its CSS box.
+ *
+ * Sized to the box x devicePixelRatio, now and on every viewport resize or
+ * devicePixelRatio change (dragging the window between monitors, browser zoom),
+ * so the tube stays crisp and uniformly scaled.
+ */
+function attachCanvasSizing(canvas: HTMLCanvasElement, renderer: TubeRenderer): void {
   const applyCanvasSize = (): void => {
     const rect = canvas.getBoundingClientRect();
     if (rect.width > 0 && rect.height > 0) {
@@ -54,74 +208,6 @@ async function start(mount: HTMLElement): Promise<void> {
     new ResizeObserver(applyCanvasSize).observe(canvas);
   }
   watchDevicePixelRatio(applyCanvasSize);
-
-  const audio = await createAudioSystem();
-
-  // The single source of truth. Start powered off: the screen shows only the
-  // printed silkscreen until the power switch (or P) turns it on.
-  let state: GameState = createOffState(1);
-
-  /**
-   * The only path that changes state. Diffs the transition for audio events and
-   * plays them, so every sound (fire, kill, march, buzz, launcher hit, win,
-   * game over) is driven purely by the before/after GameState.
-   */
-  const commit = (next: GameState): void => {
-    const events = diffAudioEvents(state, next);
-    state = next;
-    if (events.length > 0) {
-      playAudioEvents(audio, events);
-      if (import.meta.env.DEV) {
-        // Console assertion surface for end-to-end verification.
-        console.debug(
-          `[jf-audio] ${events.map((e) => e.type).join(',')} ` +
-            `(phase=${next.phase} score=${next.score} lives=${next.launcher.lives})`,
-        );
-      }
-    }
-  };
-
-  const dispatch = (input: GameInput): void => {
-    commit(applyInput(state, input));
-  };
-
-  // Input: on-case controls, keyboard (+ spring-lever hold), and screen touch.
-  setupControls(root, createControlsAdapter(dispatch));
-  createInputSystem(dispatch, { screenElement: canvas });
-  // The on-case controls own their own pointer handling; also let a tap directly
-  // on the scope glass move/fire on touch devices.
-  attachScreenTouch(canvas, dispatch);
-
-  // Help hint (keyboard reference) and the audio mute toggle, mounted on the case.
-  root.appendChild(createHelpOverlay());
-  root.appendChild(buildMuteToggle(audio));
-
-  // Fixed-timestep loop: rAF drives rendering; the accumulator drives logic ticks
-  // at a fixed rate so gameplay speed is frame-rate independent.
-  let accumulator = 0;
-  let lastFrame: number | null = null;
-
-  const frame = (now: number): void => {
-    const frameMs = lastFrame === null ? 0 : now - lastFrame;
-    lastFrame = now;
-
-    if (state.phase === 'PLAYING') {
-      const drained = drainAccumulator(accumulator, frameMs);
-      accumulator = drained.accumulator;
-      for (let i = 0; i < drained.ticks; i += 1) {
-        commit(tick(state));
-        if (state.phase !== 'PLAYING') break; // reached WIN / GAME_OVER
-      }
-    } else {
-      // Nothing simulates while OFF / WIN / GAME_OVER; don't bank catch-up time.
-      accumulator = 0;
-    }
-
-    render(state);
-    requestAnimationFrame(frame);
-  };
-
-  requestAnimationFrame(frame);
 }
 
 /**
@@ -147,11 +233,20 @@ function watchDevicePixelRatio(onChange: () => void): void {
   arm();
 }
 
+/** The mute control's state, as the toggle button sees it. */
+interface MuteControl {
+  isMuted(): boolean;
+  setMuted(muted: boolean): void;
+}
+
 /**
- * A small mute toggle button mounted at the case's top-left, mirroring the audio
- * system's state. The M key toggles the same control.
+ * A small mute toggle mounted at the case's top-left, and the M key beside it.
+ *
+ * It silences the browser's output, not the machine: the ROM keeps toggling the
+ * pin and the board keeps recording the edges, exactly as a real unit with its
+ * piezo disconnected would.
  */
-function buildMuteToggle(audio: AudioSystem): HTMLElement {
+function buildMuteToggle(control: MuteControl): HTMLElement {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'jf-mute';
@@ -162,14 +257,14 @@ function buildMuteToggle(audio: AudioSystem): HTMLElement {
     'font-family:system-ui,sans-serif;';
 
   const sync = (): void => {
-    const muted = audio.isMuted();
+    const muted = control.isMuted();
     btn.textContent = muted ? '\u{1F507}' : '\u{1F50A}'; // muted / speaker
     btn.setAttribute('aria-label', muted ? 'Unmute audio' : 'Mute audio');
     btn.setAttribute('aria-pressed', String(muted));
   };
 
   const toggle = (): void => {
-    audio.setMuted(!audio.isMuted());
+    control.setMuted(!control.isMuted());
     sync();
   };
 

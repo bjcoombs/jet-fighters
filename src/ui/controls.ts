@@ -12,7 +12,14 @@ export type Lane = 0 | 1 | 2;
 export type SkillLevel = 1 | 2 | 3;
 
 export interface ControlsConfig {
-  onFire: () => void;
+  /**
+   * The fire button's contact closed (`true`) or opened (`false`).
+   *
+   * A press, not an event: the machine reads the button as a switch on the
+   * input matrix, so a press that never reported its release would read as a
+   * jammed button on every subsequent strobe.
+   */
+  onFire: (pressed: boolean) => void;
   onLaneChange: (lane: Lane) => void;
   onSkillChange: (level: SkillLevel) => void;
   onPowerToggle: (on: boolean) => void;
@@ -79,9 +86,11 @@ function query(container: HTMLElement, name: string): HTMLElement | null {
   return container.querySelector<HTMLElement>(`[data-control="${name}"]`);
 }
 
-function wireFire(container: HTMLElement, onFire: () => void): void {
+function wireFire(container: HTMLElement, onFire: (pressed: boolean) => void): void {
   const btn = query(container, 'fire');
   if (!btn) return;
+
+  let down = false;
 
   const press = (e: PointerEvent): void => {
     e.preventDefault();
@@ -91,10 +100,17 @@ function wireFire(container: HTMLElement, onFire: () => void): void {
     } catch {
       /* setPointerCapture unsupported - ignore */
     }
-    onFire();
+    if (down) return;
+    down = true;
+    onFire(true);
   };
+  // Pointer leave and cancel report a release too: a finger that slides off the
+  // button has let go of it, and the contact has to open with it.
   const release = (): void => {
     btn.classList.remove('is-pressed');
+    if (!down) return;
+    down = false;
+    onFire(false);
   };
 
   btn.addEventListener('pointerdown', press);
