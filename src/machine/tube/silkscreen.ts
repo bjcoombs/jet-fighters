@@ -289,6 +289,61 @@ const RULER_LABEL_RISE_FRACTION = 0.14;
 const RULER_ELBOW_ARM_FRACTION = 0.38;
 const RULER_ELBOW_GAP_FRACTION = 0.06;
 
+/**
+ * The zone-label bracket plumbing hanging below the bottom rail.
+ *
+ * This is one of the most distinctive things on the face and it was missing
+ * entirely: the labels used to float, centred, just under the rail. What the
+ * photographs show, working outward from the middle:
+ *
+ * - Two drop lines leave the bottom rail, one at the field's left edge and one on
+ *   the right rail, and turn inward along a horizontal at {@link ZONE_MID_DEPTH}.
+ * - Each inward run ends in a short arm turning back up, and a second arm just
+ *   inboard of it turns up too, so the pair reads as nested square brackets.
+ * - `JET FIGHTER FLYING ZONE` is joined to the inner pair by a horizontal dash on
+ *   each side.
+ * - `BATTLE SHIP ZONE` hangs from the left outer run on a deeper bracket at
+ *   {@link ZONE_LOW_DEPTH}, joined by a dash on its left; `MISSILE STATION ZONE`
+ *   hangs from the right outer run and is joined on its right, its bracket
+ *   turning back up to the rail.
+ *
+ * Depths are fractions of the playfield height. The photographs put the middle
+ * line 0.33 of the playfield height below the rail and the lower line at 0.58,
+ * but at those depths on our flatter playfield the outer drops and the lower
+ * brackets fall outside the scope circle and would be clipped; 0.235 and 0.45 are
+ * as deep as the window allows. Likewise the lower row's bracket columns are
+ * pulled in from the photographed 0.245 and 0.955 of the playfield width.
+ */
+const ZONE_MID_DEPTH = 0.235;
+const ZONE_LOW_DEPTH = 0.45;
+const ZONE_INNER_RISE = 0.115;
+const ZONE_BRACKET_INNER = [0.3, 0.315, 0.845, 0.86] as const;
+const ZONE_LOW_LEFT_FRACTION = 0.28;
+const ZONE_LOW_RIGHT_FRACTION = 0.9;
+const ZONE_LABEL_SIZE = 8;
+const ZONE_LABEL_ADVANCE = 0.6;
+const ZONE_DASH_GAP = 3;
+
+/**
+ * The three station missiles at the right edge of the glass.
+ *
+ * Painted, not phosphor - owner-confirmed - and drawn here because the atlas no
+ * longer carries them. Both photographs show, at 8x, a bullet lying horizontally
+ * with a rounded nose pointing left into the field and a square tail on the right,
+ * about 49 x 19 px, one per lane row between the right rail and the bezel. (The
+ * task described them as nose up; the photographs do not support that, and this
+ * follows the photographs.)
+ *
+ * The real unit has about 89 px of glass between the right rail and the bezel at
+ * this height - more than a cell's width. Ours has 15 atlas units, because the
+ * inherited playfield reaches much closer to the glass edge than the real one, so
+ * the missiles are drawn to fit that gap rather than to scale.
+ */
+const MISSILE_GAP = 2.2;
+const MISSILE_LENGTH = 11.3;
+const MISSILE_HEIGHT = 7.7;
+const MISSILE_NOSE_FRACTION = 0.45;
+
 /** The printed frame: left rail, the solid rail stretches, and the right rail. */
 function drawFrame(ctx: CanvasRenderingContext2D, rightRailBottom: number): void {
   const left = PLAYFIELD.x;
@@ -416,6 +471,106 @@ function drawRulerLabels(ctx: CanvasRenderingContext2D): void {
   }
 }
 
+/** Half the printed width of `text`, approximated from the font size. */
+function halfWidth(text: string, size: number): number {
+  return (text.length * size * ZONE_LABEL_ADVANCE) / 2;
+}
+
+/**
+ * The zone labels and the bracket plumbing that carries them.
+ *
+ * Returns the depth the right rail has to run to, so the frame and the plumbing
+ * meet rather than merely coming close.
+ */
+function drawZoneBrackets(ctx: CanvasRenderingContext2D): void {
+  const left = PLAYFIELD.x;
+  const right = PLAYFIELD.x + PLAYFIELD.width;
+  const rail = PLAYFIELD.y + PLAYFIELD.height;
+  const midY = rail + PLAYFIELD.height * ZONE_MID_DEPTH;
+  const lowY = rail + PLAYFIELD.height * ZONE_LOW_DEPTH;
+  const innerTop = midY - PLAYFIELD.height * ZONE_INNER_RISE;
+  const [outerL, innerL, innerR, outerR] = ZONE_BRACKET_INNER.map(
+    (fraction) => left + PLAYFIELD.width * fraction,
+  );
+  const lowLeft = left + PLAYFIELD.width * ZONE_LOW_LEFT_FRACTION;
+  const lowRight = left + PLAYFIELD.width * ZONE_LOW_RIGHT_FRACTION;
+
+  ctx.strokeStyle = SILKSCREEN;
+  ctx.lineWidth = LINE_WIDTH;
+  ctx.beginPath();
+
+  // Outer brackets: down from the rail, inward, and back up.
+  ctx.moveTo(FIELD.x, rail);
+  ctx.lineTo(FIELD.x, midY);
+  ctx.lineTo(outerL, midY);
+  ctx.lineTo(outerL, innerTop);
+  ctx.moveTo(right, rail);
+  ctx.lineTo(right, midY);
+  ctx.lineTo(outerR, midY);
+  ctx.lineTo(outerR, innerTop);
+
+  // Inner brackets, nested just inboard of them, with a dash into the label.
+  const midLabel = 'JET FIGHTER FLYING ZONE';
+  const midCentre = (innerL + innerR) / 2;
+  const midReach = halfWidth(midLabel, ZONE_LABEL_SIZE) + ZONE_DASH_GAP;
+  ctx.moveTo(innerL, innerTop);
+  ctx.lineTo(innerL, midY);
+  ctx.lineTo(midCentre - midReach, midY);
+  ctx.moveTo(innerR, innerTop);
+  ctx.lineTo(innerR, midY);
+  ctx.lineTo(midCentre + midReach, midY);
+
+  // The deeper row hangs off the two outer runs.
+  const lowLabel = 'BATTLE SHIP ZONE';
+  const stationLabel = 'MISSILE STATION ZONE';
+  ctx.moveTo(lowLeft, midY);
+  ctx.lineTo(lowLeft, lowY);
+  ctx.lineTo(lowLeft + ZONE_DASH_GAP * 2, lowY);
+  ctx.moveTo(lowRight, midY);
+  ctx.lineTo(lowRight, lowY);
+  ctx.lineTo(lowRight - ZONE_DASH_GAP * 2, lowY);
+  ctx.stroke();
+
+  // The labels sit on the lines their dashes run along.
+  ctx.font = `${ZONE_LABEL_SIZE}px sans-serif`;
+  ctx.fillStyle = SILKSCREEN;
+  const drop = ZONE_LABEL_SIZE * 0.36;
+  ctx.textAlign = 'center';
+  ctx.fillText(midLabel, midCentre, midY + drop);
+  ctx.textAlign = 'left';
+  ctx.fillText(lowLabel, lowLeft + ZONE_DASH_GAP * 2, lowY + drop);
+  ctx.textAlign = 'right';
+  ctx.fillText(stationLabel, lowRight - ZONE_DASH_GAP * 2, lowY + drop);
+  ctx.textAlign = 'center';
+}
+
+/** How deep the right rail runs before the zone plumbing takes it over. */
+function zoneMidY(): number {
+  return PLAYFIELD.y + PLAYFIELD.height * (1 + ZONE_MID_DEPTH);
+}
+
+/** The three painted station missiles: bullets lying nose-left at each lane row. */
+function drawStationMissiles(ctx: CanvasRenderingContext2D): void {
+  const nose = PLAYFIELD.x + PLAYFIELD.width + MISSILE_GAP;
+  const tail = nose + MISSILE_LENGTH;
+  const shoulder = nose + MISSILE_LENGTH * MISSILE_NOSE_FRACTION;
+
+  ctx.fillStyle = SILKSCREEN;
+  for (let lane = 0; lane < LANE_COUNT; lane += 1) {
+    const cy = laneCenterY(lane);
+    const top = cy - MISSILE_HEIGHT / 2;
+    const bottom = cy + MISSILE_HEIGHT / 2;
+    ctx.beginPath();
+    ctx.moveTo(tail, top);
+    ctx.lineTo(shoulder, top);
+    ctx.quadraticCurveTo(nose, top, nose, cy);
+    ctx.quadraticCurveTo(nose, bottom, shoulder, bottom);
+    ctx.lineTo(tail, bottom);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
 /**
  * Paint the whole silkscreen overlay in atlas units.
  *
@@ -442,8 +597,9 @@ export function drawSilkscreen(ctx: CanvasRenderingContext2D): void {
   // The faint printed grid, under everything else on this layer.
   drawCellLattice(ctx);
 
-  // The printed frame, and the bottom rail's long heavy dashes.
-  drawFrame(ctx, PLAYFIELD.y + PLAYFIELD.height);
+  // The printed frame, and the bottom rail's long heavy dashes. The right rail
+  // runs on down to where the zone brackets pick it up.
+  drawFrame(ctx, zoneMidY());
   drawBottomRail(ctx);
 
   // The distance ruler, then its crosshairs on top of the dot run.
@@ -461,17 +617,11 @@ export function drawSilkscreen(ctx: CanvasRenderingContext2D): void {
 
   drawRulerLabels(ctx);
 
-  // Zone labels below the playfield. The lower row stays pulled inward from the
-  // playfield edges: the scope circle narrows below the left rectangle tab, and
-  // labels at the full width would fall outside the window.
-  const zoneSize = CELL.height * 0.32;
-  ctx.font = `${zoneSize}px sans-serif`;
-  ctx.textAlign = 'center';
-  const midY = PLAYFIELD.y + PLAYFIELD.height + CELL.height * 0.34;
-  const lowY = PLAYFIELD.y + PLAYFIELD.height + CELL.height * 0.66;
-  ctx.fillText('JET FIGHTER FLYING ZONE', PLAYFIELD.x + PLAYFIELD.width * 0.5, midY);
-  ctx.fillText('BATTLE SHIP ZONE', PLAYFIELD.x + PLAYFIELD.width * 0.27, lowY);
-  ctx.fillText('MISSILE STATION ZONE', PLAYFIELD.x + PLAYFIELD.width * 0.72, lowY);
+  // The three painted station missiles, outboard of the right rail.
+  drawStationMissiles(ctx);
+
+  // Zone labels below the playfield, on their bracket plumbing.
+  drawZoneBrackets(ctx);
 
   ctx.restore();
 }
