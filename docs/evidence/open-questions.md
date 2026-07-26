@@ -76,6 +76,35 @@ that the handle is a grip and the setting is the direction opposite it - which a
 puts both photographs at skill 1. That is inference, not measurement. Moving the
 lever and photographing two settings resolves it immediately.
 
+## 2e. Measured differences left unfixed, and why
+
+These were measured during the geometry work and deliberately not acted on. Each
+needs either the owner's eye or evidence that does not exist yet.
+
+**The jets are now the right size but the wrong shape.** Aspect 2.3 against the
+photographs' 1.3 - they read flatter than the real ones. Two contributing causes,
+neither belonging to the task that found it:
+
+- The field is drawn with `COLUMN_COUNT` 6 where the photographs show 7-8 printed
+  cells across the same span, making each of our cells about 20% too wide.
+- The sprite proportions are those measured in PR #45.
+
+**Note the column-count question is live again here, and it must not be
+re-litigated from memory.** An earlier claim that the atlas was short a column was
+investigated and formally withdrawn - the ROM works in seven columns and the atlas
+carries six jet columns plus a battleship, which is seven cells. What this new
+measurement says is different: that the printed cells *across the field span* count
+7-8 where we draw 6. Those are compatible statements only if the far-left cell is a
+seventh jet column rather than a battleship-only zone - which is exactly the
+question section 2a says the angled-light photograph would settle. **Do not change
+`COLUMN_COUNT` before that photograph exists.**
+
+**`ZONE_INNER_RISE` is 0.115; the photographs put it at 0.158.** Left alone because
+it is not a fitted constant - it belongs to the bracket topology introduced in PR
+#49, and the same photographs show the outer drops turning inward at the arms' top
+rather than at the middle line as that PR drew them. Changing the value without the
+topology would be half a fix.
+
 ## 3. Decisions that are the owner's, not ours
 
 ### 3a. The printed layer's typeface
