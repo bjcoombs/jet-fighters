@@ -2180,9 +2180,19 @@ skill_base:
 ; oscillator the frequency is 400000 / period. Every entry below is the closest
 ; this loop can land to its target, and the target is cited.
 ;
+; One wrinkle, and it is real hardware behaviour rather than a defect: the period
+; that straddles a burst boundary is **twelve cycles longer**, because note_loop
+; has to reload the period counter and decrement the burst counter between
+; bursts and the machine has no timer to hide that behind. A four-burst note
+; therefore contains three slightly flat periods out of sixty-four. It matters
+; for exactly one sound - the missile blip, whose band contract criterion V5
+; asserts against - so that entry is chosen so that *both* its periods land
+; inside 1480-1632 Hz: 257 cycles is 1556 Hz and 269 is 1487 Hz. Retuning it
+; means re-checking the boundary period as well as the nominal one.
+;
 ; | id | sound      | in | out | rep | per | period | Hz   | target (audio-reference.md) |
 ; |----|------------|----|-----|-----|-----|--------|------|-----------------------------|
-; |  0 | missile    |  0 |   8 |   0 |  15 |    265 | 1509 | 1480-1632, centre 1520      |
+; |  0 | missile    |  7 |   3 |   0 |  15 |    257 | 1556 | 1480-1632, centre 1520      |
 ; |  1 | jet march  | 12 |   7 |   0 |   7 |    625 |  640 | 600-650                     |
 ; |  2 | battleship | 15 |  15 |   0 |   7 |   1393 |  287 | 230-300, and below the march|
 ; |  3 | warning    | 13 |   9 |   0 |   4 |    809 |  494 | 455-545                     |
@@ -2216,7 +2226,7 @@ skill_base:
 
 .PATTERN PAT_SND_A
 sound_pitch:
-        .DW $080                ; 0  missile fire
+        .DW $037                ; 0  missile fire
         .DW $07C                ; 1  jet march
         .DW $0FF                ; 2  battleship buzz
         .DW $09D                ; 3  launcher-hit warning beep
