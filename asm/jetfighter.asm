@@ -325,9 +325,13 @@
 ; Burst counts, minus one, passed to play_sound in B. A burst is
 ; (NIB_PERIODS + 1) periods, so a note is (bursts) * (periods) square-wave
 ; cycles; the arithmetic for each is in the sound table at the foot of the file.
+;
+; These are note *lengths*, not game cadence: they say how long one sound lasts,
+; never how often the game triggers it. The provisional-cadence block below owns
+; the second question and none of these constants appear in it.
 .EQU BURSTS_MISSILE, 3
-.EQU BURSTS_MARCH,   0
-.EQU BURSTS_BSHIP,   0
+.EQU BURSTS_MARCH,   2          ; 3 bursts x 15 periods = 70.4 ms, see the table
+.EQU BURSTS_BSHIP,   1          ; 2 bursts x 10 periods = 69.7 ms, see the table
 .EQU BURSTS_WARN,    0
 .EQU BURSTS_WIN1,    8
 .EQU BURSTS_WIN2,    8
@@ -2315,18 +2319,36 @@ skill_base:
 ; | 10 | loss 4     | 13 |  12 |   1 |  15 |   2049 |  195 | ~196 drifting down          |
 ; | 11 | loss 5     | 11 |  12 |   2 |  15 |   2749 |  146 | ~147 decay floor            |
 ;
-; Note *lengths* are a mixture and are not all measured:
+; Note *lengths* are a mixture and are not all measured. A length here is how
+; long one sound lasts; how often the game triggers it is the provisional-cadence
+; block's business and is deliberately not decided here.
+;
+; A length is also not free of perceptual consequence. A burst of eight cycles is
+; not a short tone, it is a click: pitch does not establish itself in under
+; roughly twenty milliseconds, so a note shorter than that reaches the ear as a
+; speaker pop whatever its period says. The march and the battleship buzz are the
+; two sounds a player hears constantly, and at 12.5 ms and 28 ms they were
+; exactly that - which is why the unit sounded like it was popping rather than
+; playing, with both pitches sitting correctly inside their measured bands the
+; whole time. Both are now at the ~70 ms the reference records for a march step.
 ;
 ;  - missile: 4 bursts of 16 periods = 42 ms. audio-reference.md measures ~20 ms;
 ;    contract criterion V5 requires under 150 ms. PROVISIONAL, and longer than the
 ;    measurement.
-;  - jet march: 1 burst of 8 periods = 12.5 ms. audio-reference.md's 70 ms is a
-;    v1 *synthesis* figure, not a measurement, so there is nothing here to match.
-;    PROVISIONAL.
-;  - battleship: 1 burst of 8 periods = 28 ms per lane step, three steps per
-;    crossing. The measurement calls the real buzz "sustained" and v1 synthesized
-;    380 ms; this is a per-step announcement instead. PROVISIONAL.
+;  - jet march: 3 bursts of 15 periods = 70.4 ms, against the 70 ms recorded in
+;    audio-reference.md as jetMarch.stepDurationMs. That figure is a v1
+;    *synthesis* rather than a measurement, so it is a target and not a contract,
+;    but it is the only duration the evidence carries and 12.5 ms was audibly
+;    wrong against it.
+;  - battleship: 2 bursts of 10 periods = 69.7 ms per lane step, three lane steps
+;    per crossing. audio-reference.md calls the real buzz "sustained" and v1
+;    synthesized one 380 ms note; BSHIP_SWEEPS puts the crossing at about that
+;    long, so three ~70 ms buzzes inside it read as a sustained lower buzz. Not a
+;    single 380 ms note, because note_loop does not sweep the tube while it runs
+;    and freezing the display for the whole crossing trades one visible defect
+;    for another. PROVISIONAL.
 ;  - warning beep: 1 burst of 5 periods = 10.1 ms, against a measured ~10 ms.
+;    Short, but this one is the measurement.
 ;  - win: 9, 9 and 12 bursts of 16 periods = 192 / 154 / 154 ms against the
 ;    transcribed 200 / 150 / 150 ms, and 16 bursts = 274 ms for the resolution
 ;    against a transcribed 330 ms - the resolution is short because the burst
@@ -2353,8 +2375,8 @@ sound_pitch:
 .PATTERN PAT_SND_B
 sound_shape:
         .DW $0F0                ; 0  16 periods per burst
-        .DW $070                ; 1   8
-        .DW $070                ; 2   8
+        .DW $0E0                ; 1  15
+        .DW $090                ; 2  10
         .DW $040                ; 3   5
         .DW $0F0                ; 4  16
         .DW $0F0                ; 5  16
