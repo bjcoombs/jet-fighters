@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
 import { callsOf, createFakeContext } from './fake-canvas.js';
-import { CIRCLE, FIELD, PLAYFIELD, RULER_TICKS, VIEWBOX } from './layout.js';
+import {
+  CELL,
+  CIRCLE,
+  COLUMN_COUNT,
+  FIELD,
+  LANE_COUNT,
+  PLAYFIELD,
+  RULER_TICKS,
+  VIEWBOX,
+  laneCenterY,
+} from './layout.js';
 import { SILKSCREEN } from './palette.js';
 import { drawSilkscreen } from './silkscreen.js';
 
@@ -13,7 +23,7 @@ function draw() {
 
 describe('drawSilkscreen', () => {
   it('draws the playfield border at the printed rectangle', () => {
-    const [border] = callsOf(draw(), 'strokeRect');
+    const [border] = callsOf(draw(), 'strokeRect').filter((call) => call.globalAlpha === 1);
     expect(border.args).toEqual([
       PLAYFIELD.x,
       PLAYFIELD.y,
@@ -23,12 +33,90 @@ describe('drawSilkscreen', () => {
     expect(border.strokeStyle).toBe(SILKSCREEN);
   });
 
-  it('draws the inner rule dividing the SCORE box from the distance field', () => {
-    const moves = callsOf(draw(), 'moveTo');
-    const rule = moves.find(
-      (call) => Math.abs(call.args[0] - FIELD.x) < 1e-9 && Math.abs(call.args[1] - PLAYFIELD.y) < 1e-9,
+  it('draws no full-height rule between the SCORE box and the field', () => {
+    // The bright inner rule this layer used to draw is not on the real face -
+    // the separation is the faint lattice plus the three row marks. Nothing may
+    // run the playfield's full height at the field boundary.
+    const recorder = draw();
+    const full = recorder.calls.filter(
+      (call) =>
+        (call.op === 'moveTo' || call.op === 'lineTo') &&
+        Math.abs(call.args[0] - FIELD.x) < 1e-9 &&
+        Math.abs(call.args[1] - PLAYFIELD.y) < 1e-9 &&
+        call.globalAlpha === 1,
     );
-    expect(rule, 'inner vertical rule at the field boundary').toBeDefined();
+    expect(full, 'a full-strength rule starting at the field boundary').toEqual([]);
+  });
+
+  it('divides the playfield into seven countable cells per row, three rows deep', () => {
+    // The critique's highest-value finding: the real face carries a faint printed
+    // lattice, and without it the field reads as empty black rather than a radar
+    // screen. Seven rectangles per row across the playfield - the SCORE box plus
+    // one per distance column - and three rows.
+    const faint = draw().calls.filter((call) => call.globalAlpha < 1);
+    const moves = faint.filter((call) => call.op === 'moveTo');
+
+    const columnEdges = moves
+      .filter((call) => Math.abs(call.args[1] - FIELD.y) < 1e-9)
+      .map((call) => call.args[0]);
+    // COLUMN_COUNT verticals: the SCORE box's right edge and every interior cell
+    // edge. The seventh boundary is the playfield's own right border.
+    expect(columnEdges.length).toBe(COLUMN_COUNT);
+    for (let column = 0; column < COLUMN_COUNT; column += 1) {
+      expect(columnEdges).toContain(FIELD.x + column * CELL.width);
+    }
+
+    const rowEdges = moves
+      .filter((call) => Math.abs(call.args[0] - PLAYFIELD.x) < 1e-9)
+      .map((call) => call.args[1]);
+    expect(rowEdges.length).toBe(LANE_COUNT - 1);
+    for (let lane = 1; lane < LANE_COUNT; lane += 1) {
+      expect(rowEdges).toContain(FIELD.y + lane * CELL.height);
+    }
+  });
+
+  it('prints the lattice far fainter than the frame', () => {
+    const alphas = draw().calls.filter((call) => call.globalAlpha < 1).map((c) => c.globalAlpha);
+    expect(alphas.length).toBeGreaterThan(0);
+    for (const alpha of alphas) {
+      expect(alpha).toBeGreaterThan(0.05);
+      expect(alpha).toBeLessThan(0.3);
+    }
+  });
+
+  it('boxes each SCORE digit', () => {
+    // Faint boxes around the three score digits, matching the atlas segments.
+    const boxes = callsOf(draw(), 'strokeRect').filter((call) => call.globalAlpha < 1);
+    expect(boxes.length).toBe(3);
+    for (const box of boxes) {
+      expect(box.args[0]).toBeGreaterThan(PLAYFIELD.x);
+      expect(box.args[0] + box.args[2]).toBeLessThan(FIELD.x);
+    }
+  });
+
+  it('marks each lane centre with a dash crossing both field edges, and nothing else', () => {
+    // The real face has bead-like dashes straddling the field's left edge and the
+    // right rail at every row centre. It has no lane ticks poking inward from the
+    // frame - those were invented.
+    const right = PLAYFIELD.x + PLAYFIELD.width;
+    const marks = callsOf(draw(), 'fillRect').filter(
+      (call) => call.args[1] > PLAYFIELD.y && call.args[1] < PLAYFIELD.y + PLAYFIELD.height,
+    );
+    expect(marks.length).toBe(LANE_COUNT * 2);
+    for (let lane = 0; lane < LANE_COUNT; lane += 1) {
+      const y = laneCenterY(lane);
+      for (const x of [FIELD.x, right]) {
+        const mark = marks.find(
+          (call) =>
+            Math.abs(call.args[0] + call.args[2] / 2 - x) < 1e-9 &&
+            Math.abs(call.args[1] + call.args[3] / 2 - y) < 1e-9,
+        );
+        expect(mark, `row mark crossing x=${x} at lane ${lane}`).toBeDefined();
+        // Wider than it is tall, and heavier than a printed line.
+        expect(mark!.args[2]).toBeGreaterThan(mark!.args[3]);
+        expect(mark!.args[3]).toBeGreaterThan(2);
+      }
+    }
   });
 
   it('prints every ruler label', () => {
