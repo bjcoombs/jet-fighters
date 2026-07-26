@@ -507,9 +507,13 @@ describe('drawSilkscreen', () => {
       expect(tail, `missile tail at lane ${lane}`).toBeDefined();
       // Nose left of tail: the bullet points into the field.
       expect(apex!.args[2]).toBeLessThan(tail!.args[0]);
-      // Longer than it is tall, so it reads as a bullet and not a blob.
+      // The nose starts at the x origin measured for this item.
+      expect(apex!.args[2]).toBeCloseTo(346.4, 6);
+      // Near the photographed 2.6:1, so it reads as a bullet and not a blob. The
+      // height handed over with this item was 8, which gives 1.5:1 once the length
+      // is trimmed enough to keep the outer two inside the glass; that fails here.
       const height = Math.abs(tail!.args[1] - cy) * 2;
-      expect(tail!.args[0] - apex!.args[2]).toBeGreaterThan(height);
+      expect((tail!.args[0] - apex!.args[2]) / height).toBeGreaterThan(1.8);
     }
   });
 

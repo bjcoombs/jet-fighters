@@ -328,20 +328,34 @@ const ZONE_DASH_GAP = 3;
  * The three station missiles at the right edge of the glass.
  *
  * Painted, not phosphor - owner-confirmed - and drawn here because the atlas no
- * longer carries them. Both photographs show, at 8x, a bullet lying horizontally
- * with a rounded nose pointing left into the field and a square tail on the right,
- * about 49 x 19 px, one per lane row between the right rail and the bezel. (The
- * task described them as nose up; the photographs do not support that, and this
- * follows the photographs.)
+ * longer carries them. One at each lane centre, in the glass outboard of the right
+ * rail. Two figures were handed over with this item, `x 346.4 to 359.4` and
+ * `13 x 8`; the x origin is taken from them, and the other two need recording,
+ * because they disagree with the photographs and with the scope window.
  *
- * The real unit has about 89 px of glass between the right rail and the bezel at
- * this height - more than a cell's width. Ours has 15 atlas units, because the
- * inherited playfield reaches much closer to the glass edge than the real one, so
- * the missiles are drawn to fit that gap rather than to scale.
+ * **Orientation.** The item was described as nose up. At 8x both photographs show
+ * a bullet lying *horizontally* - rounded nose pointing left, into the field and
+ * toward the jets, square tail outboard - measuring about 49 x 19 px. The handed
+ * over `13 x 8` is itself wider than it is tall, so it agrees with the
+ * photographs and only the word disagrees. Drawn horizontal, nose left.
+ *
+ * **Height.** At 8 tall the outer two missiles do not fit: a tail corner at
+ * x 359.4, y 114 is 150.8 from the scope circle's centre against a radius of 150,
+ * so the top and bottom missiles would be clipped by the glass. Trimming the
+ * length until 8 fits gives 12.2 x 8, an aspect of 1.5 against the photographed
+ * 2.6, at which point it stops reading as a bullet and reads as a blob. Height 6
+ * on a length of 12.1 keeps the photographed proportion (2.0) and the furthest
+ * corner 0.35 units inside the glass. The scope-window test covers this.
+ *
+ * The squeeze is not the missiles' fault. The real unit has about 89 px of glass
+ * outboard of the right rail here - more than a whole cell's width - where ours
+ * has 15 atlas units, because the inherited playfield is about 27 units wider
+ * than the photographed one and so reaches much closer to the bezel. If that
+ * geometry is corrected upstream, these four constants should go back to scale.
  */
-const MISSILE_GAP = 2.2;
-const MISSILE_LENGTH = 11.5;
-const MISSILE_HEIGHT = 5.6;
+const MISSILE_GAP = 1.55;
+const MISSILE_LENGTH = 12.1;
+const MISSILE_HEIGHT = 6;
 const MISSILE_NOSE_FRACTION = 0.5;
 
 /** The printed frame: left rail, the solid rail stretches, and the right rail. */
