@@ -71,12 +71,21 @@ gets its own measurement at **each of skill 1, 2, and 3** unless marked otherwis
    sweep period. Round to the nearest integer and **record the pre-rounding value and
    the residual**. A residual above a few percent means either the fps is wrong, the
    sweep rate is wrong, or the ROM's master loop does not cost what it is assumed to.
-6. **Cross-check against audio.** The jet march beep fires once per squadron step,
-   and `gameplay-audio.m4a` is a 130 s recording with an audible march. The beep
-   onsets in that recording give an independent read on T1 for whichever skill level
-   was being played, at audio sample resolution rather than frame resolution. Use it
-   to validate the video-derived figure. It cannot replace the video, because the
-   recording's skill level is not documented and it covers one level only.
+6. **Cross-check against audio - T1 only.** The jet march beep fires once per
+   squadron step, and `gameplay-audio.m4a` is a 130 s recording with an audible
+   march. The beep onsets in that recording give an independent read on T1 for
+   whichever skill level was being played, at audio sample resolution rather than
+   frame resolution. Use it to validate the video-derived figure. It cannot replace
+   the video, because the recording's skill level is not documented and it covers one
+   level only.
+
+   **This is the only row the audio can cross-check.** The recordings capture sounds,
+   not game state, so they cannot time anything whose boundaries are visual - a
+   battleship entering or leaving the far zone (T5, T6), a missile or rocket
+   traversing columns (T7, T8), or control returning to the player after a hit (T10).
+   `audio-reference.md` measures the warning-beep sequence itself - pitch, count,
+   duration, gaps - and nothing about the interval that follows it. Video is the sole
+   source for T2-T10.
 
 ### Output format
 
