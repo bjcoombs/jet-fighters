@@ -780,6 +780,7 @@ describe('SpeakerDriver - stop, reset and dispose', () => {
       edgesConsumed: 0,
       underruns: 0,
       dropped: 0,
+      realignments: 0,
     });
     expect(messageTypes(FakeWorkletNode.instances[0].port)).toContain('flush');
   });
