@@ -56,11 +56,13 @@ const GRID_SCORE_T = 7;
 const GRID_SCORE_U = 8;
 const GRID_STATUS = 9;
 
-/** Six jets to a wave (the ROM's JET_COUNT), released a few at a time. */
-const JET_COUNT = 6;
-
-/** Three lanes, and at most one jet flying in each of them (the ROM's LANE_COUNT). */
-const LANE_COUNT = 3;
+/**
+ * Jets in the air at once (the ROM's AIRBORNE_MAX).
+ *
+ * Two, from assets/reference/device-front-gameplay.jpg. A wave is six jets (the
+ * ROM's JET_COUNT) but they are released into free lanes a few at a time.
+ */
+const AIRBORNE_MAX = 2;
 
 /** Segments the PAT_DIGIT entry for zero lights: a b c d e f, and not g. */
 const DIGIT_ZERO_PLATES = [0, 1, 2, 3, 4, 5];
@@ -180,10 +182,10 @@ describe('the field the ROM puts up at power-on', () => {
   });
 
   it('holds a squadron in the jet lanes, not a saturated row', () => {
-    // Six jets in two ranks of three is the whole squadron, so nothing on this
+    // Two jets is the whole sky (the ROM's AIRBORNE_MAX), so nothing on this
     // tube can ever show more; and no lane can be lit the full width of the
     // field, which is exactly what the invented plate map used to produce.
-    expect(jetSegmentCount(board)).toBeLessThanOrEqual(JET_COUNT);
+    expect(jetSegmentCount(board)).toBeLessThanOrEqual(AIRBORNE_MAX);
     for (const lane of [0, 1, 2]) {
       expect(columnsLitInLane(board, lane)).toBeLessThan(GRID_COLUMN_LAST + 1);
     }
@@ -198,12 +200,11 @@ describe('the field the ROM puts up at power-on', () => {
     expect(platesUnder(board, GRID_STATUS)).toEqual([PLATE_SCORE_LABEL, ...PLATE_LIFE]);
   });
 
-  it('puts a squadron of two ranks in the flying zone', () => {
-    // Six jets: three lanes in the leading column and three one further out. A
-    // fresh squadron enters from the far side, which is grid 0.
-    expect(jetColumns(board)).toEqual([0, 1]);
-    expect(platesUnder(board, 0)).toEqual(expect.arrayContaining(PLATE_JET));
-    expect(platesUnder(board, 1)).toEqual(expect.arrayContaining(PLATE_JET));
+  it('brings the first jet in at the far column, in one lane only', () => {
+    // A jet enters from the battleship side, which is grid 0, and it enters
+    // alone: the rest of the wave follows on its own countdown.
+    expect(jetColumns(board)).toEqual([0]);
+    expect(platesUnder(board, 0).filter((plate) => PLATE_JET.includes(plate))).toHaveLength(1);
   });
 
   it('leaves the battleship dark until a crossing starts', () => {
@@ -241,11 +242,11 @@ describe('the squadron is sparse and staggered, not a rank in every lane', () =>
     expect(jetSegmentCount(board)).toBe(1);
   });
 
-  it('never flies more jets at once than there are lanes', () => {
+  it('never flies more jets at once than the photograph shows', () => {
     const board = romBoard();
     for (let sample = 0; sample < 20; sample += 1) {
       board.runFrames(10);
-      expect(jetSegmentCount(board)).toBeLessThanOrEqual(LANE_COUNT);
+      expect(jetSegmentCount(board)).toBeLessThanOrEqual(AIRBORNE_MAX);
     }
   });
 
