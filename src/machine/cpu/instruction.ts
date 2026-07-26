@@ -9,10 +9,11 @@
 // What this module deliberately does *not* claim: a bit-exact reproduction of
 // Hitachi's opcode table. Jet Fighter's ROM was never dumped (PRD, Technical
 // Context), so there is no image to match and no opcode map in our source
-// material to match it against. The bit assignments live in decoder.ts and are
-// fixed there once, for this repo, with the assembler (R2) emitting the same
-// encoding. The *instruction set* is the documented one; the *encoding* is
-// ours, and is stated as such rather than passed off as measured.
+// material to match it against. The bit assignments live in isa.ts and are
+// fixed there once, for this repo, with the decoder and the assembler (R2)
+// deriving from that single table. The *instruction set* is the documented one;
+// the *encoding* is ours, and is stated as such rather than passed off as
+// measured.
 //
 // Pure data only: no DOM, no timers, no Web APIs. Nothing here has its own
 // clock - the machine advances by cycles driven from cpu.ts.
@@ -53,6 +54,8 @@ export enum InstructionType {
   NEGA = 'NEGA',
   /** B <- ~B. */
   COMB = 'COMB',
+  /** A <- A | B. */
+  OR = 'OR',
   /** Rotate A right through carry. */
   ROTR = 'ROTR',
   /** Rotate A left through carry. */
@@ -81,6 +84,8 @@ export enum InstructionType {
   BLEM = 'BLEM',
   /** ST <- (A != M). */
   ANEM = 'ANEM',
+  /** ST <- (B != M). */
+  BNEM = 'BNEM',
   /** ST <- (Y != A). */
   YNEA = 'YNEA',
   /** ST <- (Y != immediate). */
@@ -123,6 +128,8 @@ export enum InstructionType {
   XSP = 'XSP',
   /** ST <- bit n of M. */
   TM = 'TM',
+  /** Read a pattern-region ROM word indexed by A: A <- low nibble, B <- high nibble. */
+  P = 'P',
 
   // --- Stores --------------------------------------------------------------
   /** M <- A, then Y <- Y + 1. */
@@ -145,6 +152,8 @@ export enum InstructionType {
   JMPL = 'JMPL',
   /** Two-word call anywhere in the 2048-word program region. */
   CALL = 'CALL',
+  /** Computed in-page branch through the accumulators - the jump-table primitive. */
+  TBR = 'TBR',
   /** Return from subroutine. */
   RTN = 'RTN',
   /** Return from interrupt. */
@@ -167,6 +176,52 @@ export enum InstructionType {
   LRB = 'LRB',
   /** A <-> R port r. */
   XAMR = 'XAMR',
+  /** D pin (Y) <- 1 - the Y-indirect form of SED, for a grid-scan loop. */
+  SEDY = 'SEDY',
+  /** D pin (Y) <- 0 - the Y-indirect form of RED. */
+  REDY = 'REDY',
+  /** ST <- D pin (Y) - the Y-indirect form of TD. */
+  TDY = 'TDY',
+
+  // --- Timer, prescaler and interrupt flags --------------------------------
+  /** Timer/counter <- immediate. */
+  LTI = 'LTI',
+  /** Timer/counter <- A. */
+  LTA = 'LTA',
+  /** A <- timer/counter. */
+  LAT = 'LAT',
+  /** Prescaler divide-ratio select <- immediate. */
+  LPI = 'LPI',
+  /** ST <- timer overflow flag TF. */
+  TTF = 'TTF',
+  /** TF <- 1. */
+  SETF = 'SETF',
+  /** TF <- 0. */
+  RETF = 'RETF',
+  /** CF <- 1: the timer counts INT0 edges instead of prescaler ticks. */
+  SECF = 'SECF',
+  /** CF <- 0: the timer counts prescaler ticks. */
+  RECF = 'RECF',
+  /** IE <- 1: interrupts enabled. */
+  SEIE = 'SEIE',
+  /** IE <- 0: interrupts masked. */
+  REIE = 'REIE',
+  /** IF0 <- 1. */
+  SEIF0 = 'SEIF0',
+  /** IF0 <- 0. */
+  REIF0 = 'REIF0',
+  /** IF1 <- 1. */
+  SEIF1 = 'SEIF1',
+  /** IF1 <- 0. */
+  REIF1 = 'REIF1',
+  /** ST <- level of the INT0 pin. */
+  TI0 = 'TI0',
+  /** ST <- level of the INT1 pin. */
+  TI1 = 'TI1',
+  /** ST <- IF0. */
+  TIF0 = 'TIF0',
+  /** ST <- IF1. */
+  TIF1 = 'TIF1',
 
   // --- Not an instruction --------------------------------------------------
   /**
@@ -193,6 +248,8 @@ export enum InstructionCategory {
   BRANCH = 'BRANCH',
   /** Touches the R or D pins. */
   PORT = 'PORT',
+  /** Touches the timer, the prescaler, or the interrupt flags. */
+  TIMER = 'TIMER',
   /** Unassigned bit pattern. */
   UNKNOWN = 'UNKNOWN',
 }
@@ -219,6 +276,7 @@ export const INSTRUCTION_CATEGORY: Record<InstructionType, InstructionCategory> 
   [InstructionType.DAS]: InstructionCategory.ALU,
   [InstructionType.NEGA]: InstructionCategory.ALU,
   [InstructionType.COMB]: InstructionCategory.ALU,
+  [InstructionType.OR]: InstructionCategory.ALU,
   [InstructionType.ROTR]: InstructionCategory.ALU,
   [InstructionType.ROTL]: InstructionCategory.ALU,
   [InstructionType.SEC]: InstructionCategory.ALU,
@@ -232,6 +290,7 @@ export const INSTRUCTION_CATEGORY: Record<InstructionType, InstructionCategory> 
   [InstructionType.ALEI]: InstructionCategory.ALU,
   [InstructionType.BLEM]: InstructionCategory.ALU,
   [InstructionType.ANEM]: InstructionCategory.ALU,
+  [InstructionType.BNEM]: InstructionCategory.ALU,
   [InstructionType.YNEA]: InstructionCategory.ALU,
   [InstructionType.YNEI]: InstructionCategory.ALU,
   [InstructionType.MNEI]: InstructionCategory.ALU,
@@ -253,6 +312,7 @@ export const INSTRUCTION_CATEGORY: Record<InstructionType, InstructionCategory> 
   [InstructionType.XMB]: InstructionCategory.LOAD,
   [InstructionType.XSP]: InstructionCategory.LOAD,
   [InstructionType.TM]: InstructionCategory.LOAD,
+  [InstructionType.P]: InstructionCategory.LOAD,
 
   [InstructionType.LMAIY]: InstructionCategory.STORE,
   [InstructionType.LMADY]: InstructionCategory.STORE,
@@ -264,6 +324,7 @@ export const INSTRUCTION_CATEGORY: Record<InstructionType, InstructionCategory> 
   [InstructionType.CAL]: InstructionCategory.BRANCH,
   [InstructionType.JMPL]: InstructionCategory.BRANCH,
   [InstructionType.CALL]: InstructionCategory.BRANCH,
+  [InstructionType.TBR]: InstructionCategory.BRANCH,
   [InstructionType.RTN]: InstructionCategory.BRANCH,
   [InstructionType.RTNI]: InstructionCategory.BRANCH,
 
@@ -275,6 +336,29 @@ export const INSTRUCTION_CATEGORY: Record<InstructionType, InstructionCategory> 
   [InstructionType.LRA]: InstructionCategory.PORT,
   [InstructionType.LRB]: InstructionCategory.PORT,
   [InstructionType.XAMR]: InstructionCategory.PORT,
+  [InstructionType.SEDY]: InstructionCategory.PORT,
+  [InstructionType.REDY]: InstructionCategory.PORT,
+  [InstructionType.TDY]: InstructionCategory.PORT,
+
+  [InstructionType.LTI]: InstructionCategory.TIMER,
+  [InstructionType.LTA]: InstructionCategory.TIMER,
+  [InstructionType.LAT]: InstructionCategory.TIMER,
+  [InstructionType.LPI]: InstructionCategory.TIMER,
+  [InstructionType.TTF]: InstructionCategory.TIMER,
+  [InstructionType.SETF]: InstructionCategory.TIMER,
+  [InstructionType.RETF]: InstructionCategory.TIMER,
+  [InstructionType.SECF]: InstructionCategory.TIMER,
+  [InstructionType.RECF]: InstructionCategory.TIMER,
+  [InstructionType.SEIE]: InstructionCategory.TIMER,
+  [InstructionType.REIE]: InstructionCategory.TIMER,
+  [InstructionType.SEIF0]: InstructionCategory.TIMER,
+  [InstructionType.REIF0]: InstructionCategory.TIMER,
+  [InstructionType.SEIF1]: InstructionCategory.TIMER,
+  [InstructionType.REIF1]: InstructionCategory.TIMER,
+  [InstructionType.TI0]: InstructionCategory.TIMER,
+  [InstructionType.TI1]: InstructionCategory.TIMER,
+  [InstructionType.TIF0]: InstructionCategory.TIMER,
+  [InstructionType.TIF1]: InstructionCategory.TIMER,
 
   [InstructionType.UNKNOWN]: InstructionCategory.UNKNOWN,
 };
@@ -299,10 +383,10 @@ export interface Instruction {
    * Machine cycles this instruction costs.
    *
    * The HMCS40 family is a one-cycle-per-word machine, so this is `words` for
-   * every instruction the core currently recognises. It is carried per
-   * instruction anyway because the databook figures for the whole set are not
-   * in our source material: when a mnemonic turns out to cost more, the fix
-   * belongs in the opcode table and nowhere else.
+   * every instruction but `P`, which spends a second cycle on its pattern-ROM
+   * read (see isa.ts, which states that cost and its uncertainty). It is carried
+   * per instruction so that when a databook figure turns out to differ, the fix
+   * belongs in the ISA table and nowhere else.
    */
   readonly cycles: number;
   /** ROM words the instruction occupies: 1, or 2 for the long jump and call. */
