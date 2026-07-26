@@ -377,25 +377,40 @@
 ; Provisional cadence constants
 ; ============================================================================
 ;
-; PROVISIONAL - no measurement, see docs/evidence/timing-analysis.md.
+; PROVISIONAL - see docs/evidence/timing-analysis.md.
 ;
 ; Every number in this block, and every entry of PAT_STEP and PAT_ROCKET at the
-; foot of the file, is unmeasured. The gameplay video that T1-T10 of that
+; foot of the file, is provisional. The gameplay video that T2-T10 of that
 ; document are to be measured from is owner-supplied and still pending, so the
-; jet step cadence, the thin-out speed-up curve, the wave respawn speed-up, the
-; cadence floor, the battleship crossing duration and interval, the missile and
-; rocket travel times and the rocket fire rate have **no measured values at all**.
-; T1 could in principle be cross-checked against the march beep in
-; gameplay-audio.m4a; that cross-check has not been done either.
+; thin-out speed-up curve, the wave respawn speed-up, the battleship crossing
+; duration and interval, the missile and rocket travel times and the rocket fire
+; rate have **no measured values at all**.
 ;
-; What these numbers are: the v1 browser game's behavioural approximations, which
-; timing-analysis.md preserves in its "Current unverified working values" table
-; precisely so the v2 ROM would not guess a second time. v1 ran logic at 60 Hz,
-; so its tick counts convert to seconds as ticks/60; this ROM's sweep is its only
-; clock and runs near 63 Hz (measured off the emulated machine, not off the
-; unit), so seconds convert back to sweeps at roughly 63 per second. The
-; conversion is arithmetic on an approximation - it does not make the result a
-; measurement.
+; One row is no longer in that state. T1's audio cross-check has now been done:
+; the march beep fires once per sweep in which a jet stepped, and its onsets in
+; assets/reference/gameplay-audio.m4a run at 205 ms (n = 21 intervals inside five
+; uninterrupted runs, sd 22 ms, 55-121 s of that recording). timing-analysis.md
+; records the method and the interpretation limits. That figure is a squadron
+; step rate, not a per-jet period, so it bounds the *floor* of the ladder below -
+; the real unit was never observed to step faster than that - and it is cited
+; there as derived rather than invented. It does not fix any other rung.
+;
+; What the rest of these numbers are: the v1 browser game's behavioural
+; approximations, which timing-analysis.md preserves in its "Current unverified
+; working values" table precisely so the v2 ROM would not guess a second time,
+; adjusted where the machine was measurably unplayable. v1 ran logic at 60 Hz, so
+; its tick counts convert to seconds as ticks/60; this ROM's sweep is its only
+; clock and runs at 15.5 ms, i.e. 64.5 Hz (measured off the emulated machine with
+; tools/probe/machine-probe.ts, not off the unit), so seconds convert back to
+; sweeps at roughly 64 per second. The conversion is arithmetic on an
+; approximation - it does not make the result a measurement.
+;
+; A sweep count is not the whole story in wall clock, and the gap matters here:
+; note_loop does not sweep the tube while a sound plays, so a cadence of N sweeps
+; lands longer than N * 15.5 ms whenever a note fires inside it. The measured
+; figures quoted below are wall clock off the probe; the nominal figures are the
+; sweep arithmetic. Both are given, because only the first is what a player
+; experiences and only the second is what the ROM stores.
 ;
 ; What the mechanism is, and is not: the cadence *mechanism* here is real work -
 ; integer sweep counts, a per-skill entry point into one cadence ladder, a
@@ -405,19 +420,37 @@
 ; DWELL: how long one grid stays lit. The loop below costs
 ; (DWELL_OUTER + 1) * (2 * DWELL_INNER + 5) + 4 machine cycles, so 16 * 35 + 4 =
 ; 564, and one grid costs about 586 cycles including the sweep's own work. Ten
-; grids is ~5.9 ms, i.e. a sweep somewhere near 68 Hz at the 400 kHz oscillator
-; (src/machine/cpu/cpu.ts) before the game logic between sweeps is counted.
-; PROVISIONAL: that is inside the range a VFD has to run at to look steady rather
-; than a figure taken from the unit.
+; grids is ~5860 cycles, i.e. ~14.7 ms or a sweep near 68 Hz at the 400 kHz
+; oscillator (src/machine/cpu/cpu.ts) before the game logic between sweeps is
+; counted. Counted, the probe measures a whole sweep at 6190 cycles = 15.5 ms,
+; 64.5 Hz - that is the number every ms figure in this block converts through.
+; PROVISIONAL: 64.5 Hz is inside the range a VFD has to run at to look steady
+; rather than a figure taken from the unit.
 .EQU DWELL_OUTER,   15
 .EQU DWELL_INNER,   15
 
 ; How many sweeps a shot spends in each column. PROVISIONAL: v1 moved both a
 ; missile and a rocket one column per 60 Hz tick, i.e. ~16.7 ms, which converts
-; to about one sweep here. Two is used instead so a shot is on the tube for at
-; least one whole PWM frame and can be seen; neither figure is measured.
+; to about one sweep here. T7 and T8 remain unmeasured.
+;
+; The two are no longer the same number, and the asymmetry is deliberate. The
+; rocket is the one shot the player has to *respond* to: the only defence is to
+; move the lever out of its lane before it lands, so its flight is the game's
+; reaction window. At ROCKET_SWEEPS = 2 the probe measured a rocket crossing the
+; whole board in 235 ms mean (n = 5, max 387 ms), and from a jet mid-board in
+; ~150 ms - at or below the ~250 ms floor for a simple human reaction, and well
+; below the 300-500 ms a see-decide-move-the-lever response costs. That is the
+; measured reason the game could not be played, and it is the anchor for the new
+; figure: 6 sweeps is ~93 ms nominal per column, so a full-board flight is a
+; little over half a second and a mid-board one is inside the reaction band.
+; The anchor is human reaction time, not the unit - still not a measurement of
+; the real machine.
+;
+; The player's missile keeps the fast figure. Nothing has to be dodged in
+; response to it, so slowing it would only take time away from the player, and
+; the complaint being fixed here is that the game is too fast.
 .EQU MISSILE_SWEEPS, 2
-.EQU ROCKET_SWEEPS,  2
+.EQU ROCKET_SWEEPS,  6
 
 ; The battleship. PROVISIONAL: v1 crossed the far zone in 400 ms, which over the
 ; three lanes of this geometry is ~8 sweeps per lane step. The gap between
@@ -2421,15 +2454,24 @@ column_plates:
 ; --- Skill -> how often the jets fire back ----------------------------------
 ; Sweeps between rocket launches, as A = low nibble and B = high nibble.
 ; PROVISIONAL - no measurement, see docs/evidence/timing-analysis.md (T9).
-; v1's per-tick fire chances give mean intervals of ~556 / ~278 / ~167 ms, which
-; at this ROM's ~63 sweeps per second are ~35 / ~18 / ~11 sweeps. Those means
-; came from v1's tuning, not from the unit.
+; v1's per-tick fire chances gave mean intervals of ~556 / ~278 / ~167 ms, which
+; at this ROM's ~64 sweeps per second are ~35 / ~18 / ~11 sweeps. Those means
+; came from v1's tuning, not from the unit, and they were shorter than a rocket's
+; own flight: at 6 sweeps per column (ROCKET_SWEEPS) a full-board flight is 36
+; sweeps, so skill 3 launched a second rocket into a lane while the first was
+; still in it and the lane never cleared. A player cannot dodge a lane that is
+; permanently occupied, whatever the flight time is.
+;
+; The figures below are therefore derived from ROCKET_SWEEPS rather than from
+; v1: each is longer than the 36-sweep flight, so at most one rocket per lane is
+; ever airborne and the dodge window the flight time buys actually exists. The
+; skill ordering and the spread are v1's; the floor under them is arithmetic.
 .PATTERN PAT_ROCKET
 rocket_interval:
         .DW $000                ; 0: unused - the dial reads 1..3
-        .DW $023                ; skill 1: 35 sweeps
-        .DW $012                ; skill 2: 18 sweeps
-        .DW $00B                ; skill 3: 11 sweeps
+        .DW $03C                ; skill 1: 60 sweeps, ~930 ms
+        .DW $030                ; skill 2: 48 sweeps, ~744 ms
+        .DW $028                ; skill 3: 40 sweeps, ~620 ms
         .DW $000, $000, $000, $000
         .DW $000, $000, $000, $000
         .DW $000, $000, $000, $000
@@ -2439,27 +2481,44 @@ rocket_interval:
 ; PAT_SKILL picks the entry point, each kill and each cleared wave takes one step
 ; down it, and entry 15 is the floor.
 ;
-; PROVISIONAL - no measurement, see docs/evidence/timing-analysis.md (T1-T4).
-; The three entry points come from v1's 750 / 500 / 300 ms per step at ~63 sweeps
-; per second: 48, 32 and 19. The spacing between rungs comes from v1's 4-tick
-; (~67 ms, ~4 sweeps) decrement per dead jet, widened slightly toward the bottom
-; so the ladder reaches v1's ~83 ms floor by its last entry. Whether the real
+; PROVISIONAL. The top of the ladder is unmeasured; its floor is now derived.
+;
+; Entry 0 comes from v1's 750 ms per step at ~64 sweeps per second: 48 sweeps,
+; 743 ms nominal and 1054 ms median in wall clock off the probe. That rung is
+; unchanged and remains a v1 approximation - T1 at skill 1 is still video-only.
+;
+; Entry 15, the floor, is **derived** from the march beep in
+; assets/reference/gameplay-audio.m4a (docs/evidence/timing-analysis.md T1-audio;
+; 205 ms mean, sd 22 ms, n = 21, over 55-121 s of that recording). The beep fires
+; once per sweep in which any jet stepped, so 205 ms is how fast the real unit's
+; squadron was observed to step - a rate it was never seen to exceed in 65 s of
+; play. 13 sweeps is 201 ms, the closest integer under it. The previous floor of
+; 5 sweeps - 77 ms nominal - was 2.6x faster than anything on the recording and
+; is the rung the game descends to after roughly six kills and cleared waves,
+; which is where it stopped being playable.
+;
+; What the audio does NOT settle: 205 ms is a *squadron* rate, and jets step one
+; at a time on the same period at different phases, so a per-jet period cannot be
+; recovered from it without knowing how many jets were flying. It bounds the
+; floor and nothing else. The rungs between are v1's decrement per dead jet
+; (4 ticks, ~67 ms) relaxed to a steady 2-3 sweeps (~31-46 ms) so the ladder
+; spans entry 0 to the derived floor across all sixteen rungs. Whether the real
 ; curve is linear at all is exactly what T2 exists to settle, and it has not been
 ; measured.
 .PATTERN PAT_STEP
 step_cadence:
-        .DW 48, 44, 40, 36      ; 0-3
-        .DW 32, 30, 27, 24      ; 4-7   (4 = skill 2's fresh squadron)
-        .DW 21, 19, 17, 15      ; 8-11  (9 = skill 3's fresh squadron)
-        .DW 13, 11, 8, 5        ; 12-15 (15 = the floor)
+        .DW 48, 45, 42, 39      ; 0-3   (0 = skill 1's fresh squadron, 743 ms)
+        .DW 36, 34, 32, 30      ; 4-7   (4 = skill 2's fresh squadron, 558 ms)
+        .DW 27, 24, 22, 20      ; 8-11  (9 = skill 3's fresh squadron, 372 ms)
+        .DW 18, 16, 14, 13      ; 12-15 (15 = the floor, 201 ms, audio-derived)
 
 ; --- Skill -> where on that ladder a fresh squadron starts ------------------
 .PATTERN PAT_SKILL
 skill_base:
         .DW $000                ; 0: unused - the dial reads 1..3
-        .DW $000                ; skill 1: 48 sweeps per step
-        .DW $004                ; skill 2: 32
-        .DW $009                ; skill 3: 19
+        .DW $000                ; skill 1: 48 sweeps per step, 743 ms nominal
+        .DW $004                ; skill 2: 36, 558 ms
+        .DW $009                ; skill 3: 24, 372 ms
         .DW $000, $000, $000, $000
         .DW $000, $000, $000, $000
         .DW $000, $000, $000, $000

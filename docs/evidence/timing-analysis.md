@@ -3,9 +3,12 @@
 How the v2 ROM's cadence constants will be derived from the reference video, and
 what is currently blocked.
 
-**Status: no timings have been measured.** The measured-timings table below is empty
-on purpose. Read the [Evidence gap](#evidence-gap) section before using any number
-from this document.
+**Status: one figure is derived from audio; T2-T10 remain unmeasured.** The march
+beep in `gameplay-audio.m4a` has now been measured, which bounds the *floor* of the
+jet step cadence (row `T1-audio` in the [measured timings](#output-format) table).
+Nothing else in this document has a measurement behind it, and the per-skill
+gameplay video that T2-T10 need still does not exist. Read the
+[Evidence gap](#evidence-gap) section before using any number from this document.
 
 ## Why sweep counts, not milliseconds
 
@@ -93,9 +96,69 @@ Each measured row lands in the table below and is cited from the ROM source:
 
 | ID | Quantity | Skill | Measured (s) | fps / frames | Sweeps (pre-round) | **Sweeps (ROM)** | Residual | Source clip / timestamp |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| - | - | - | - | - | - | - | - | - |
+| T1-audio | Squadron step rate, fastest observed | unknown | 0.205 +/- 0.022 | n/a - audio, 22050 Hz | 13.2 | **13** (`PAT_STEP` entry 15, the floor) | -1.5% | `gameplay-audio.m4a`, 55-121 s |
 
-*(Empty: no gameplay video exists. See [Evidence gap](#evidence-gap).)*
+*(One row. It is an audio cross-check of T1, not a video measurement of it, and it
+constrains the ladder's floor only - see [What the audio row does and does not
+say](#what-the-audio-row-does-and-does-not-say). T2-T10 are still empty: no
+gameplay video exists. See [Evidence gap](#evidence-gap).)*
+
+### The T1 audio cross-check, as performed
+
+Method 6 above, carried out. Reproducible from the repository as it stands:
+
+1. Decode to mono PCM: `ffmpeg -i assets/reference/gameplay-audio.m4a -ac 1 -ar
+   22050 -c:a pcm_s16le gameplay.wav`.
+2. Take a Hann-windowed short-time transform (512-sample window, 64-sample hop =
+   2.90 ms resolution) and sum magnitude across 585-660 Hz - the `jetMarch` band
+   from `audio-reference.md`.
+3. Peak-pick that envelope with a fixed threshold and a 120 ms refractory window
+   (the march note is ~70 ms, so 120 ms cannot split one note into two onsets).
+   153 onsets over 55-121 s.
+4. **Classify each onset by its own dominant bin**, not by the band it was found
+   in. Leakage from the missile blip (1480-1632 Hz) survives step 3 and would
+   otherwise be counted: 54 of the 153 onsets are missile fire and one run of
+   eight "beeps" at ~170 ms turned out to be entirely missile blips at ~1460 Hz.
+   99 onsets have a dominant bin in 520-700 Hz and are march steps.
+5. Keep only runs of four or more consecutive march onsets with no gap longer
+   than 400 ms, so a measured interval is always between two beeps of the same
+   uninterrupted march rather than across a pause.
+
+Result: five such runs, 21 intervals.
+
+| Run start (s) | Beeps | Intervals (ms) | Mean (ms) |
+| --- | --- | --- | --- |
+| 58.497 | 5 | 209, 206, 206, 200 | 205 |
+| 62.877 | 5 | 197, 194, 197, 203 | 198 |
+| 68.403 | 5 | 232, 223, 151, 180 | 197 |
+| 79.993 | 7 | 247, 223, 206, 253, 186, 189 | 217 |
+| 117.566 | 4 | 189, 215, 200 | 201 |
+
+Pooled: **mean 205.1 ms, median 203.2 ms, sd 22.1 ms, n = 21**, min 151, max 253.
+The first-half and second-half means are 206.9 and 203.4 ms, so there is no drift
+across the recording that would suggest the level changed mid-take.
+
+At the emulated machine's measured sweep period of 15.5 ms (below), 205 ms is 13.2
+sweeps; the ROM stores 13, a residual of -1.5%.
+
+### What the audio row does and does not say
+
+**Says:** the real unit's squadron was never observed to step faster than ~205 ms,
+across 65 s of one recording. The march beep fires once per sweep in which any jet
+stepped, so the beep rate *is* the squadron step rate, whatever the skill was.
+
+**Does not say** anything about the per-jet step period. Jets step one at a time on
+a common period at different phases, so a squadron rate of 205 ms is one jet at 205
+ms, or two at 410, or three at 615. Recovering the per-jet figure needs a count of
+how many jets were flying, which is visual and therefore video-only. The steadiness
+of the runs (sd 22 ms over 21 intervals, and 197-217 ms across five runs recorded
+59 s apart) argues against several independently-phased jets, but arguing is not
+measuring and this document does not record it as one.
+
+**Does not say** which skill level was being played. `audio-reference.md` records
+that the recording's skill setting is undocumented. So the figure cannot be
+attached to a skill row; it is used as the floor under all three, which is the one
+claim it supports regardless of which level it came from.
 
 The ROM cites the ID:
 
@@ -114,7 +177,9 @@ photographs - no video file. There is no frame data in this repository to analys
 Consequently the following **cannot be stated** and must not be written into the ROM
 as if measured:
 
-- Jet step cadence at any skill level (T1)
+- Jet step cadence at any skill level (T1). The audio row above bounds how fast the
+  squadron was ever seen to step; it does not give a per-skill, per-jet cadence, and
+  `PAT_STEP` entries 0-14 are still v1 approximations.
 - The thin-out speed-up curve, including whether it is linear (T2)
 - The wave respawn speed-up (T3)
 - The cadence floor (T4)
@@ -123,15 +188,69 @@ as if measured:
 - Rocket fire rate (T9)
 - Post-hit recovery time (T10)
 
-A second, smaller gap: even with the video, converting seconds to sweeps needs the
-emulated machine's sweep rate, which does not exist until the ROM's master loop is
-written. T1-T10 can be measured in seconds as soon as the video arrives; they become
-sweep counts only after the loop exists. Recording the seconds figure and the
-conversion separately keeps the measurement from being invalidated if the loop is
-later restructured.
+A second, smaller gap, now closed: converting seconds to sweeps needs the emulated
+machine's sweep rate, which did not exist until the ROM's master loop was written.
+It exists now and is measured below. Recording the seconds figure and the conversion
+separately still matters, so a measurement is not invalidated if the loop is later
+restructured.
 
-Until the gap closes, the honest statement in a review or a commit message is "not
-yet measured", not a number.
+Until the rest of the gap closes, the honest statement in a review or a commit
+message is "not yet measured", not a number.
+
+## The machine's sweep period, measured
+
+Read off the emulated board (`Board.runFrames(1)` in a loop, cycle-stamped; the same
+machine `tools/probe/machine-probe.ts` drives):
+
+| Quantity | Value |
+| --- | --- |
+| Machine cycles per completed display sweep | 6190 (p10 6190, p90 6393) |
+| Oscillator | 400 kHz (`src/machine/cpu/cpu.ts`, `OSCILLATOR_HZ`) |
+| Sweep period | **15.5 ms** |
+| Sweep rate | **64.5 Hz** |
+
+Every sweeps-to-milliseconds conversion in this document and in the ROM's cadence
+block uses this figure. It is a measurement of the emulator, not of the unit.
+
+**A sweep count is not wall clock.** `note_loop` does not sweep the tube while a
+sound plays, so any cadence with a note inside it lands longer than
+`sweeps * 15.5 ms`. Measured off the tube at skill 1, a fresh squadron's nominal
+743 ms step (48 sweeps) arrives every 1054 ms median. Quote both, or quote which.
+
+## Wall-clock pace of the current ROM, measured
+
+Taken off the tube (`Board.getLitSegments()` per completed frame, tracking the jet
+and rocket dots by grid and plate), power-on to game over, no player input. Nominal
+= sweeps x 15.5 ms; measured = median wall clock between column changes.
+
+| Quantity | Sweeps | Nominal | Measured (median) |
+| --- | --- | --- | --- |
+| Jet step, skill 1 fresh squadron | 48 | 743 ms | 1054 ms |
+| Jet step, skill 2 fresh squadron | 36 | 558 ms | 837 ms |
+| Jet step, skill 3 fresh squadron | 24 | 372 ms | 604 ms |
+| Jet step, ladder floor (`PAT_STEP` 15) | 13 | 201 ms | 365 ms |
+| Rocket, per column | 6 | 93 ms | 112-182 ms |
+| Rocket, full-board flight | 36 | 558 ms | 284-549 ms observed |
+
+These are the figures after the pacing fix. What they replaced, measured the same
+way on the same machine:
+
+| Quantity | Was | Measured (median) | Now |
+| --- | --- | --- | --- |
+| Jet step, ladder floor | 5 sweeps, 77 ms nominal | 238 ms | 13 sweeps, 365 ms |
+| Rocket, per column | 2 sweeps, 31 ms nominal | 48 ms | 6 sweeps, 112-182 ms |
+| Rocket, full-board flight | 12 sweeps | 235 ms mean, max 387 | 284-549 ms |
+| Rocket fire interval, skill 3 | 11 sweeps, 171 ms nominal | - | 40 sweeps, 620 ms |
+
+The old rocket flight is why the game could not be played: the only defence against
+a rocket is moving the lever out of its lane, and a 235 ms mean flight is at or
+below the ~250 ms floor for a simple human reaction, let alone the 300-500 ms a
+see-decide-move response costs. At skill 3 the fire interval (171 ms) was also
+shorter than the flight, so a lane never cleared between rockets.
+
+**None of the reaction-time reasoning is a measurement of the unit.** It is a
+constraint on what a person can play, used to pick a provisional number where no
+measurement exists. When the video arrives, T7-T9 replace it.
 
 ## Current unverified working values
 
@@ -179,6 +298,10 @@ random. T2 and T6 exist to settle both questions; neither is settled now.
 
 ## Related evidence
 
-- `audio-reference.md` - sound bands and envelopes, fully measured. The march beep in
-  particular is the audio-side cross-check for T1.
+- `audio-reference.md` - sound bands and envelopes, fully measured. The march beep is
+  the audio-side cross-check for T1, and has now been performed - see
+  [the measured-timings table](#output-format). Its `jetMarch.dominantHzRange`
+  (600-650 Hz) is the band the onset detector runs in, and its
+  `missileFire.dominantHzRange` (1480-1632 Hz) is what the per-onset
+  classification step exists to reject.
 - `README.md` - the full reference catalogue and what else is outstanding.
