@@ -236,9 +236,9 @@ describe('phosphor persistence', () => {
 
   it('blanks instantly on power off', () => {
     const { renderer, recorder } = setup();
-    settle(renderer, recorder, frameOf([{ id: 'life_0', duty: FULL_DUTY }]));
+    settle(renderer, recorder, frameOf([{ id: 'score_label', duty: FULL_DUTY }]));
     renderer.blank();
-    expect(renderer.brightnessOf('life_0')).toBe(0);
+    expect(renderer.brightnessOf('score_label')).toBe(0);
 
     // The printed silkscreen and the ghost matrix survive a dark tube.
     renderer.draw(EMPTY_FRAME, 16);
