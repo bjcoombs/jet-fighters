@@ -32,6 +32,11 @@
   user-select: none;
   -webkit-user-select: none;
   touch-action: manipulation;
+  /* `user-select: none` stops the selection but not iOS's callout and
+     magnifier, which a held control - the fire button, the lever - raises on
+     its own. They are separate switches and both have to be off. */
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .jf-body {
