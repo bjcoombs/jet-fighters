@@ -420,6 +420,29 @@ confirm these are jets, not the battleship. The score climbs and missiles fly
 throughout, so the game is live. Column-presence time is not uniform either: red is
 lit for 49, 66, 69 and 107 s at columns 6, 5, 4 and 3.
 
+**Controlled against a known-moving object**, because "this thing did not move" is
+the one shape of conclusion this footage can fake: a window in which the game is
+paused, the tube is blanked, or the analysis has lost its anchor makes everything
+look stationary. The control is the player's missile, whose motion is independent
+of the squadron and unmistakable. In each hold window it visits all five flight
+columns and changes position many times:
+
+| Hold window | Frames with a missile lit | Columns visited | Missile position changes |
+| --- | --- | --- | --- |
+| t=206-217, column 3 | 233 | 1-5 | 70 |
+| t=259-300, lane 1 | 632 | 1-5 | 159 |
+| t=336-350 | 271 | 1-5 | 95 |
+
+So the tube is live, the game is running and the lattice is tracking throughout,
+and the jets are genuinely holding station while something else moves.
+
+The cadence figures earlier in this section need no such control, and it is worth
+being explicit about why: every one of them is timed **between two observed column
+changes of the object being measured**. A stalled window, a blanked tube or a lost
+anchor can manufacture a false *absence* of motion; none of them can manufacture a
+jet arriving in a new cell. The control matters for the holds and for anything else
+phrased as "X did not move", not for a measured interval between two movements.
+
 So the real machine's squadron does not step on a metronome, and a table of periods
 cannot say so. Recorded as a known divergence and deliberately not encoded; what
 would settle it is footage in which jets can be tracked individually and counted.
