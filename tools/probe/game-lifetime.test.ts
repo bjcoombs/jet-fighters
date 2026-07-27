@@ -233,7 +233,65 @@ describe("the unattended machine reaches an ending rather than wedging", () => {
     },
     LONG_RUN_TIMEOUT_MS,
   );
+
+  it(
+    "freezes its picture, which is what the played machine is measured against",
+    () => {
+      // The negative control for the liveness assertion in the next block, and
+      // the reason that assertion is not vacuous: the same measurement, on the
+      // same helper, over the same window, must come out the other way here.
+      //
+      // The unattended machine is *not* wedged - the test above proves it is
+      // still running whole sweeps - so what distinguishes it is that its
+      // picture stops changing. A liveness check that this machine also passes
+      // is measuring nothing.
+      const board = new Board(ROM);
+      const horizon = seconds(20);
+      const { samples } = sampleRun(board, horizon);
+
+      expect(new Set(lastThird(board, horizon, samples)).size, "frozen picture").toBe(1);
+      // And frozen while still sweeping, so the two properties are independent
+      // and the played machine has to satisfy both.
+      expect(board.display.frameCount).toBeGreaterThan(100);
+    },
+    LONG_RUN_TIMEOUT_MS,
+  );
 });
+
+/**
+ * Run a board and sample what the tube shows, with the samples timestamped.
+ *
+ * Timestamps are the point: a liveness question about the *end* of a run has to
+ * be asked of a window that begins near the end of it. Both `getStrobedGrids()`
+ * and `frameCount` answer "at some point since the display was last cleared",
+ * so read straight off a finished board they are satisfied by a machine that
+ * worked for six seconds and then wedged - which is the machine these tests
+ * exist to exclude.
+ */
+function sampleRun(
+  board: Board,
+  horizon: number,
+  onSlice?: (board: Board, slice: number) => void,
+): { edges: SpeakerEdge[]; samples: { cycle: number; picture: string }[] } {
+  const samples: { cycle: number; picture: string }[] = [];
+  const edges = run(board, horizon, (playing, slice) => {
+    onSlice?.(playing, slice);
+    if (slice % 100 === 0) {
+      samples.push({ cycle: playing.cycles, picture: tubeSignature(playing) });
+    }
+  });
+  return { edges, samples };
+}
+
+/** The samples taken in the last third of a run of `horizon` cycles. */
+function lastThird(
+  board: Board,
+  horizon: number,
+  samples: readonly { cycle: number; picture: string }[],
+): string[] {
+  const from = board.cycles - Math.floor(horizon / 3);
+  return samples.filter((sample) => sample.cycle >= from).map((sample) => sample.picture);
+}
 
 describe("a machine whose controls are worked keeps playing", () => {
   it(
@@ -242,24 +300,61 @@ describe("a machine whose controls are worked keeps playing", () => {
       const board = new Board(ROM);
       const horizon = seconds(20);
 
-      const signatures: string[] = [];
-      const edges = run(board, horizon, (playing, slice) => {
+      let framesAtTwoThirds = -1;
+      const twoThirds = board.cycles + Math.floor((horizon * 2) / 3);
+      const { edges, samples } = sampleRun(board, horizon, (playing, slice) => {
         blindPlayer(playing, slice);
-        if (slice % 400 === 0) {
-          signatures.push(tubeSignature(playing));
+        if (framesAtTwoThirds < 0 && playing.cycles >= twoThirds) {
+          framesAtTwoThirds = playing.display.frameCount;
         }
       });
 
-      // Sound across the whole run, not just its first six seconds. Ten buckets of
-      // two seconds each: an ending anywhere inside the run empties every bucket
-      // after it, so this fails for a machine that stopped at 5.66 s.
+      // Sound across the run, not just its first six seconds. Ten buckets of
+      // two seconds each.
+      //
+      // The bug this guards is a machine that stops *dead* at 5.66 s - the
+      // unattended one, whose picture is byte-identical from six seconds on. A
+      // blind player being destroyed is not that: the game ends, correctly, and
+      // the tube goes on being swept and redrawn. This used to require all ten
+      // buckets, which also required the blind player to survive the whole
+      // twenty seconds, and that is not a property of the machine - it depends
+      // on the sampled counter the game takes its randomness from, so any change
+      // that moves the cycle stream by a few cycles a sweep moves it.
+      //
+      // So the assertion is on the shape of the sound, not on its last bucket:
+      // no silent gap anywhere inside the sounding part of the run, and the
+      // sound reaching at least three times the 5.66 s the bug stopped at.
       const buckets = bucketByCycle(edges, horizon, 10);
-      expect(buckets.filter((count) => count > 0)).toHaveLength(buckets.length);
+      const lastHeard = buckets.reduce((last, count, i) => (count > 0 ? i : last), -1);
+      expect(lastHeard, "sound reached past 16 s").toBeGreaterThanOrEqual(7);
+      expect(
+        buckets.slice(0, lastHeard + 1).filter((count) => count > 0),
+        "no silent stretch before the game ends",
+      ).toHaveLength(lastHeard + 1);
 
-      // And a tube that keeps changing. The unattended machine's picture is
-      // byte-identical from 6 s onwards; this one must not be.
-      expect(new Set(signatures).size).toBeGreaterThan(1);
-      expect(signatures[signatures.length - 1]).not.toEqual(signatures[0]);
+      // And a tube still being swept and still changing *at the end of the
+      // run*, which is the half of this the bucket count no longer carries.
+      //
+      // Every assertion here is anchored on the horizon rather than on
+      // power-on, and that is the whole point. `getStrobedGrids()` and the
+      // signature-against-signatures[0] comparisons both count from the
+      // display's last clear, so a machine that swept normally for six seconds
+      // and then wedged solid satisfies all of them - they are true of exactly
+      // the machine this test exists to exclude. That hole was fixed once
+      // before on this project, in #54, and it came back the same way.
+      const late = lastThird(board, horizon, samples);
+      expect(late.length, "enough late samples to mean anything").toBeGreaterThan(3);
+      expect(
+        new Set(late).size,
+        "the picture was still changing in the last third of the run",
+      ).toBeGreaterThan(1);
+      // And frames were still being completed after the two-thirds mark: a
+      // wedged sweep stops closing PWM frames, however many it closed earlier.
+      expect(framesAtTwoThirds).toBeGreaterThan(0);
+      expect(
+        board.display.frameCount,
+        "the sweep was still completing frames at the horizon",
+      ).toBeGreaterThan(framesAtTwoThirds);
     },
     LONG_RUN_TIMEOUT_MS,
   );

@@ -68,6 +68,13 @@
 ; miscompiling. If you add code and the assembler complains about a branch,
 ; putting `.PAGE` back on that routine is the fix.
 ;
+; One warning for anyone checking a paging change by diffing the assembled
+; words: **the word streams will not match, and that is expected.** JMPL and
+; CALL carry absolute addresses, so moving code necessarily changes their
+; operands. What must match is the emitted word *count* and the cycle timing;
+; comparing grid-on intervals between two builds is the check that actually
+; means something.
+;
 ; A routine may still run past 32 words - draw_jet and close_up do - provided
 ; nothing past the boundary is a branch target. CAL additionally fixes its page
 ; at 0, which is why page 0 holds only `dwell` and `find_contact`; everything
@@ -99,14 +106,10 @@
 .EQU R_PLATE0,       0          ; R0 drives plates 0-3
 .EQU R_PLATE1,       1          ; R1 drives plates 4-7
 .EQU R_PLATE2,       2          ; R2 drives plates 8-11
-.EQU R_PLATE3,       3          ; R3 drives plates 12-15
-                                ; The board wires the whole twenty-line plate
-                                ; bus to R0-R4 (src/machine/board/display.ts,
-                                ; PLATE_COUNT = R_PIN_COUNT = 20). This ROM used
-                                ; three R ports for as long as every grid fitted
-                                ; in twelve plates; the far column does not, and
-                                ; R3 carries its battleship. Nothing else on the
-                                ; tube sits above plate 11.
+; The board wires a twenty-line plate bus to R0-R4 (src/machine/board/display.ts,
+; PLATE_COUNT = R_PIN_COUNT = 20), so R3 and R4 are there when a grid needs more
+; than twelve plates. None does at the moment: the busiest is a jet column, at
+; twelve. See the sweep for when that changes.
 
 .EQU D_SPEAKER,     14          ; the 1-bit piezo
 .EQU D_INPUT,       15          ; the matrix read-back line
@@ -143,31 +146,40 @@
 ; advances by counting down. PAT_COLUMN carries the column -> grid translation so
 ; the tick chain never has to know which end of the glass it is looking at.
 ;
+; **That translation is now one to one.** It used to send both column 5 and
+; column 6 to grid 0, because the atlas gave the playfield six grids and the
+; ROM has always had seven columns - so the far jet column and the battleship's
+; zone shared a grid and neither the ROM nor any test could tell them apart. The
+; teardown photographs (assets/reference/tube-teardown/) count seven printed
+; cell boxes, and the score is two digit cells rather than three, which is where
+; the seventh playfield grid comes from. Column N is now grid 6 - N, and a cell
+; and a grid are the same thing.
+;
 ; The overlay's printed ruler reads 10 / 3 / 2 / 1 / G from the far side inwards
 ; (PRD v1, "The original hardware"). Which column falls in which band is *not*
-; established by any reference asset - the photograph
-; assets/reference/screen-overlay-closeup.jpg has not been column-counted - so the
-; split below (5=3, 4,3=2, 2,1=1) is this ROM's reading of the ruler and is
-; recorded in PAT_COLUMN rather than spread through the code.
+; established by any reference asset, so the split below (5=3, 4,3=2, 2,1=1) is
+; this ROM's reading of the ruler and is recorded in PAT_COLUMN rather than
+; spread through the code.
 
 .EQU COL_LAUNCH,     0          ; the launcher's column, and the G line
 .EQU COL_MSL_START,  1          ; the column a launched missile appears in
 .EQU COL_JET_FAR,    5          ; the far column a jet enters the field at - the
-                                ; battleship side of the flying zone, grid 0
+                                ; battleship side of the flying zone, grid 1
 .EQU COL_BSHIP,      6          ; the battleship's column
 .EQU COL_MSL_LAST,   5          ; the last column a missile is drawn in. The
                                 ; tube has no dart in the battleship's cell, so
                                 ; a shot that reaches column 6 to test the ship
                                 ; is not drawn on the way - which is what the
                                 ; video shows: the missile is never lit there.
-.EQU COL_BURST_MIN,  2          ; the nearest column a jet-kill burst is drawn
-                                ; in. The two cells nearest the launcher have no
-                                ; burst segment, and the video finds no jet in
-                                ; them to be killed either.
-.EQU GRID_LAUNCH,    5          ; atlas: the launcher segments live on grid 5
+.EQU COL_NO_BURST,   6          ; the battleship's column, the one column with
+                                ; no burst on plates 9-11. The tube does carry a
+                                ; burst behind the ship, but it is a different
+                                ; shape in a cell of its own and is not drawn
+                                ; yet - see ATLAS-COORDINATES.md, known gaps.
+.EQU GRID_LAUNCH,    6          ; atlas: the launcher segments live on grid 6
 .EQU GRID_BSHIP,     0          ; atlas: the three battleship segments, grid 0
-.EQU GRID_SC_H,      6          ; score, hundreds
-.EQU GRID_SC_T,      7          ; score, tens
+.EQU GRID_SC_T,      7          ; score: the tens digit, and the hundreds
+                                ; half-digit that shares its cell
 .EQU GRID_SC_U,      8          ; score, units
 .EQU GRID_STATUS,    9          ; the lit SCORE label, the grid's one segment
 
@@ -180,32 +192,38 @@
 ; not a convention of this file. The two-colour split follows the real unit: red
 ; for everything on the jets' side, cyan for the player's.
 ;
-;   grids 0-5 (the six distance columns)
+;   grid 0 (the battleship's own cell)
+;     plates 0-2   red:  the battleship standing in lane 0, 1, 2
+;   grids 1-5 (the five jet columns)
 ;     plates 0-2   red:  the jet in lane 0, 1, 2 of that column
 ;     plates 3-5   red:  that lane's attacker colon, the shot fired back
-;     plates 6-8   cyan: the player's own object in that cell - the missile dart
-;                        under grids 0-4, the launcher itself under grid 5
-;     plates 9-11  cyan: the burst that happens in that cell - a jet dying under
-;                        grids 0-3, and under grid 5 the player's own
-;                        destruction, which is red rather than cyan
-;     grid 0 only
-;       plates 12-14 red: the battleship, one plate per lane
-;   grids 6-8      cyan: the seven score digit segments, a-g on plates 0-6
+;     plates 6-8   cyan: the missile dart crossing that cell
+;     plates 9-11  cyan: the burst a jet leaves when the missile kills it
+;   grid 6 (the player's own cell, at the G line)
+;     plates 6-8   cyan: the launcher standing in lane 0, 1, 2
+;     plates 9-11  red:  the burst where it is destroyed
+;   grid 7         cyan: plates 0-6 the tens digit a-g, plate 7 the hundreds
+;                        half-digit - two strokes reading 1, on one plate
+;   grid 8         cyan: plates 0-6 the units digit a-g
 ;   grid 9         cyan: plate 0 the SCORE label - the only segment on the grid
 ;
-; Grid 4 has no plates 9-11 and grid 5 no dart: the video finds no jet, and so
-; no kill, in the two cells nearest the launcher, and finds no dart in the
-; launcher's own cell. Those addresses are unwired, and the conformance test in
-; tools/probe/jetfighter-rom.test.ts fails if this ROM ever drives one.
+; Neither end cell carries a jet, so grids 0 and 6 have nothing on plates 0-5
+; and 3-5 respectively: the teardown photographs show no aircraft printed in the
+; battleship's cell or the player's. Those addresses are unwired, and
+; tools/probe/rom-atlas-conformance.test.ts fails if this ROM drives one.
 ;
-; Plates 0-3 are R0, 4-7 are R1, 8-11 are R2 and 12-15 are R3, so a segment's
-; plate decides which of the four plate files carries it. Several actors
-; straddle a boundary - the colons are plates 3,4,5 and the player's object
-; 6,7,8 - so PAT_LANE stores the *file* alongside the bit and or_plate below
-; does the dispatch. The battleship does not go through or_plate: its three
-; plates are the only ones on R3, so render_bship writes that file directly.
+; Plates 0-3 are R0, 4-7 are R1 and 8-11 are R2, so a segment's plate decides
+; which of the three plate files carries it. Several actors straddle a boundary
+; - the colons are plates 3,4,5 and the player's object 6,7,8 - so PAT_LANE
+; stores the *file* alongside the bit and or_plate below does the dispatch. The
+; battleship does not go through or_plate: it is the only thing in its cell, so
+; render_bship writes the file directly.
 
 .EQU PLATE_SC_LBL,  %0001       ; R0 bit 0 -> plate 0, under grid 9
+.EQU PLATE_SC_HUND, %1000       ; R1 bit 3 -> plate 7, under grid 7: the
+                                ; hundreds half-digit. The readout caps at 199,
+                                ; so it reads 1 or nothing and needs one bit
+                                ; rather than a seven-segment lookup.
 
 ; --- Pattern tables ---------------------------------------------------------
 ;
@@ -236,8 +254,6 @@
 ; |  0   | FILE_PLATE0 | per grid, the nibble driven onto R0 when it strobes   |
 ; |  1   | FILE_PLATE1 | the same for R1                                       |
 ; |  2   | FILE_PLATE2 | the same for R2                                       |
-; |  8   | FILE_PLATE3 | the same for R3 - the battleship's three plates, and  |
-; |      |             | zero under every other grid                           |
 ; |  3   | FILE_STATE  | the game's entities and control positions             |
 ; |  4   | FILE_INPUT  | one nibble per strobe line: 1 = contact closed        |
 ; |  5   | FILE_SOUND  | the note being played and its loop counters           |
@@ -260,10 +276,6 @@
 .EQU FILE_SOUND,     5
 .EQU FILE_TIME,      6
 .EQU FILE_JETS,      7
-; File 8 rather than 3, because the three plate files the clear loop walks have
-; to be consecutive from zero and FILE_STATE already holds 3. render_field
-; clears this one on its own, before that loop runs.
-.EQU FILE_PLATE3,    8
 
 ; --- FILE_STATE: the entities ------------------------------------------------
 .EQU NIB_LANE,       0          ; lever lane, 0 top .. 2 bottom
@@ -350,7 +362,7 @@
 ; reports (tools/hmasm/assembler.ts). render_field and main select files through
 ; LXA, whose operand is a register and therefore invisible to that count, so the
 ; ceiling is declared here rather than left to be inferred from the LXI operands.
-.EQU RAM_TOP,      143          ; FILE_PLATE3 * 16 + 15
+.EQU RAM_TOP,      127          ; FILE_JETS * 16 + 15
 
 ; --- Values -----------------------------------------------------------------
 
@@ -687,13 +699,17 @@ fc_found:
 ; so the frame period is decided here, by how long this loop takes, exactly as it
 ; is on the real tube.
 ;
-; The grid loop must stay inside page 1, because `BR sweep_grid`, `BR sweep_hit`
-; and `BR sweep_store` all reach within it. The tail below - the three CALLs and
-; the jump back - is allowed to run past the boundary because nothing in it is a
-; branch, which is why the loop-back is a JMPL rather than the BR it used to be:
-; driving a fourth plate file cost three words the page did not have. A fourth
-; CALL would still not fit; the three below each head a JMPL chain, which is how
-; the game gets more code without more stack or more pages here.
+; This routine must stay inside page 1, because `BR sweep_grid` and `BR sweep`
+; both reach backwards within it. A fourth CALL would not fit; the three below
+; each head a JMPL chain, which is how the game gets more code without more
+; stack or more pages here.
+;
+; It drove a fourth plate file onto R3 for as long as the battleship sat above
+; plate 11, which it did only because it shared the far jet column's grid. The
+; seventh playfield grid gave the ship a cell of its own and its first three
+; plates with it, so nothing on this tube is above plate 11 any more and R3
+; would be a nibble of zeroes written ten times a sweep. It comes back the
+; moment the player's cell gets the rest of what is printed in it.
 
 .PAGE
 sweep:  LYI 0                   ; Y is the grid index for the whole sweep
@@ -708,9 +724,6 @@ sweep_grid:
         LXI FILE_PLATE2
         LAM
         LRA R_PLATE2
-        LXI FILE_PLATE3
-        LAM
-        LRA R_PLATE3
 
         ; --- light the grid; on D0-D6 this also strobes the input matrix ---
         SEDY                    ; D(Y) <- 1
@@ -736,9 +749,7 @@ sweep_store:
         CALL input_scan
         CALL render_field
         CALL tick
-        JMPL sweep              ; not BR: the fourth plate file pushed the tail
-                                ; past the page boundary, and only the three
-                                ; branches above have to stay inside it
+        BR sweep
 
 ; ============================================================================
 ; turn the sampled matrix lines into control positions
@@ -810,15 +821,6 @@ render_field:
         ; The file number comes out of B, so the assembler's static RAM
         ; high-water mark cannot see these accesses - which is why RAM_TOP above
         ; declares the ceiling explicitly.
-        ; FILE_PLATE3 is not consecutive with the other three - FILE_STATE has
-        ; held file 3 since long before the tube needed a fourth plate bus - so
-        ; it is cleared on its own rather than by extending the count-down loop.
-        LXI FILE_PLATE3
-        LYI 0
-rf_r3:
-        LMIIY 0
-        BR rf_r3
-
         LBI FILE_PLATE2
 rf_file:
         LAB
@@ -955,10 +957,13 @@ draw_jet:
         LXI FILE_JETS
         LAM                     ; A <- the jet's column, plus one
         AI 15                   ; A <- the column it stands in
+        ALEI COL_LAUNCH         ; ST <- 1 when it stands on the capture line
+        BR dj_captured          ; the tube prints no jet in the player's cell
         P PAT_COLUMN            ; A <- the grid that column is strobed on
         LYA                     ; Y <- the grid
         LASPY                   ; A <- the lane, which is its own PAT_LANE index
         CALL or_plate
+dj_captured:
         XSP                     ; give the loop its X/Y back
         RTN
 
@@ -973,10 +978,11 @@ draw_jet:
 ; lighting and going out rather than a sprite moving. NIB_BSLANE is that lane,
 ; and it is now what reaches the glass rather than a counter that showed nowhere.
 ;
-; This is the only actor on plates above 11, so it is the only one that writes
-; FILE_PLATE3, and the plate bit is 1 << lane. The machine has no shift, and the
-; three PAT_LANE slots a fifth group would need are the ones that keep the other
-; four groups a single AI apart, so the bit is branched out here instead.
+; The ship has its cell to itself, so it takes that grid's first three plates
+; rather than the high ones it needed while it shared the far jet column's grid.
+; The plate bit is 1 << lane; the machine has no shift, and the three PAT_LANE
+; slots a fifth group would need are the ones that keep the other four groups a
+; single AI apart, so the bit is branched out here instead.
 
 render_bship:
         LXI FILE_STATE
@@ -986,15 +992,15 @@ render_bship:
         BR rb_draw
         JMPL render_rocket
 rb_draw:
-        LBI %0001               ; lane 0 -> plate 12, R3 bit 0
+        LBI %0001               ; lane 0 -> plate 0, R0 bit 0
         ALEI LANE_TOP
         BR rb_write
-        LBI %0010               ; lane 1 -> plate 13
+        LBI %0010               ; lane 1 -> plate 1
         ALEI LANE_CENTRE
         BR rb_write
-        LBI %0100               ; lane 2 -> plate 14
+        LBI %0100               ; lane 2 -> plate 2
 rb_write:
-        LXI FILE_PLATE3
+        LXI FILE_PLATE0
         LYI GRID_BSHIP
         LAM
         OR
@@ -1095,10 +1101,9 @@ rs_done:
 ; a column, a lane and a countdown - so both are drawn here.
 ;
 ; NIB_KCOL holds the column plus one, so zero means nothing is bursting, the
-; same convention the jets use for an empty lane. Column 1 is skipped: grid 4
-; has no plate 9-11 segment, and neither the video nor this ROM's own rules put
-; a kill there - a jet in that cell is one step from the capture line and the
-; only shot that reaches it is one the player fired into it.
+; same convention the jets use for an empty lane. The battleship's column is
+; skipped: the tube does carry a burst behind the ship, but it is a wider shape
+; in that cell's own right and is not drawn yet.
 
 render_burst:
         LXI FILE_STATE
@@ -1106,8 +1111,9 @@ render_burst:
         LAM
         ALEI 0                  ; ST <- 1 when nothing is bursting
         BR rk_done
-        MNEI COL_BURST_MIN      ; the nibble is the column plus one, so this is
-                                ; column 1: ST <- 0 there and 1 everywhere else
+        MNEI COL_NO_BURST + 1   ; the nibble is the column plus one, so this is
+                                ; the battleship's column: ST <- 0 there, 1
+                                ; everywhere else
         BR rk_draw
 rk_done:
         JMPL render_score
@@ -1197,27 +1203,31 @@ rs_tens_done:
         JMPL render_hundreds
 
 ; ============================================================================
-; the hundreds digit, blanked while it is zero
+; the hundreds, which is half a digit
 ; ============================================================================
 ;
-; The unit's readout is a 2-3 digit display (PRD v1 rule 6): the hundreds column
-; is dark below 100 rather than showing a leading zero. The hundreds is the
-; highest digit, so unlike the tens above it has no digit to consult - its own
-; zero is always a leading zero. This is the tail of the render chain, so its RTN
-; is the one that returns to the sweep.
+; The tube's readout is two digit cells, not three: the left one carries the
+; tens as a full seven-segment digit and the hundreds beside it as two strokes
+; reading `1` (assets/reference/tube-teardown/score-block.jpg). The score caps
+; at 199, so the hundreds is only ever 1 or nothing and one plate expresses it -
+; there is no digit lookup here any more, and the five seven-segment addresses
+; the atlas used to carry for it were phosphor the glass does not have.
+;
+; It ORs rather than overwrites because it shares grid 7's R1 nibble with the
+; tens digit's e, f and g segments, which the block above has already written.
+; This is the tail of the render chain, so its RTN returns to the sweep.
 
 render_hundreds:
         LXI FILE_TIME
         LYI NIB_SC_H
         LAM
-        ALEI 0
+        ALEI 0                  ; ST <- 1 below one hundred: nothing to light
         BR rh_blank
-        P PAT_DIGIT
-        LXI FILE_PLATE0
-        LYI GRID_SC_H
-        XMA
-        LAB
         LXI FILE_PLATE1
+        LYI GRID_SC_T
+        LBI PLATE_SC_HUND
+        LAM
+        OR
         XMA
 rh_blank:
         RTN
@@ -2770,25 +2780,29 @@ digit_plates:
 ; --- Column -> its display grid, and what a jet there is worth ---------------
 ; A = the display grid that column is strobed on. The game counts columns from
 ; the G line outwards and the tube numbers its grids from the far side inwards,
-; so this is the whole of that translation: grid = 5 - column. Column 6 is the
-; battleship zone, which has no jet cells of its own - the ship is one segment on
-; grid 0 - so its grid entry is never read.
+; so this is the whole of that translation: grid = 6 - column, one to one.
+;
+; It used to be grid = 5 - column with columns 5 and 6 both landing on grid 0,
+; because the atlas gave the playfield six grids. Seven printed cell boxes and a
+; two-cell score readout (assets/reference/tube-teardown/) freed the seventh, so
+; the battleship's zone now has a grid of its own and nothing is collapsed.
 ; B = the scoring band, read by missile_kill. The printed ruler is 10 / 3 / 2 /
 ; 1 / G from the far side inwards; the battleship zone carries the 10 and is
 ; scored through add_score's tens addend, so its band here is zero.
 ;
-; Entries 7-15 are unused: a column index stops at 6. Entries 12-15 once held a
-; launcher tally for grid 9's plates 1-3, which the tube has no segments for -
-; see render_status.
+; Column 0 is the capture line. Its grid is real - the launcher and the burst
+; that marks its destruction hang there - but the tube prints no jet in that
+; cell, so draw_jet stops short of it rather than driving an address the glass
+; has nothing at.
 .PATTERN PAT_COLUMN
 column_plates:
-        .DW $005                ; 0: grid 5, the G line - a jet here captures
-        .DW $014                ; 1: grid 4, near band, 1 point
-        .DW $013                ; 2: grid 3, near band, 1 point
-        .DW $022                ; 3: grid 2, middle band, 2 points
-        .DW $021                ; 4: grid 1, middle band, 2 points
-        .DW $030                ; 5: grid 0, far band, 3 points
-        .DW $000                ; 6: the battleship zone
+        .DW $006                ; 0: grid 6, the G line - a jet here captures
+        .DW $015                ; 1: grid 5, near band, 1 point
+        .DW $014                ; 2: grid 4, near band, 1 point
+        .DW $023                ; 3: grid 3, middle band, 2 points
+        .DW $022                ; 4: grid 2, middle band, 2 points
+        .DW $031                ; 5: grid 1, far band, 3 points
+        .DW $000                ; 6: grid 0, the battleship zone
         .DW $000, $000, $000, $000, $000    ; 7-11:  unused
         .DW $000, $000, $000, $000          ; 12-15: unused
 

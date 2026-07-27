@@ -226,7 +226,7 @@ describe('phosphor persistence', () => {
       renderer,
       recorder,
       frameOf([
-        { id: 'jet_lane0_col0', duty: FULL_DUTY },
+        { id: 'jet_lane0_col1', duty: FULL_DUTY },
         { id: 'launcher_lane0', duty: FULL_DUTY },
       ]),
     );
@@ -239,14 +239,14 @@ describe('phosphor persistence', () => {
     // CI at 5 s while passing locally.
     const steps = 200;
     const dt = REFRESH_OFF_TIME_MS / steps;
-    let red = renderer.brightnessOf('jet_lane0_col0') / 2;
+    let red = renderer.brightnessOf('jet_lane0_col1') / 2;
     let cyan = renderer.brightnessOf('launcher_lane0') / 2;
     for (let i = 0; i < steps; i += 1) {
       renderer.draw(EMPTY_FRAME, dt);
-      red += renderer.brightnessOf('jet_lane0_col0');
+      red += renderer.brightnessOf('jet_lane0_col1');
       cyan += renderer.brightnessOf('launcher_lane0');
     }
-    red = (red - renderer.brightnessOf('jet_lane0_col0') / 2) / steps;
+    red = (red - renderer.brightnessOf('jet_lane0_col1') / 2) / steps;
     cyan = (cyan - renderer.brightnessOf('launcher_lane0') / 2) / steps;
 
     // vfd-appearance.md section 3: red 13-21%, cyan 3.2-4.5%.
@@ -266,11 +266,11 @@ describe('phosphor persistence', () => {
 
   it('does not light instantly - the rise is visible over several frames', () => {
     const { renderer } = setup();
-    const frame = frameOf([{ id: 'score_digit0_sega', duty: FULL_DUTY }]);
+    const frame = frameOf([{ id: 'score_tens_sega', duty: FULL_DUTY }]);
     renderer.draw(frame, 1);
-    const first = renderer.brightnessOf('score_digit0_sega');
+    const first = renderer.brightnessOf('score_tens_sega');
     renderer.draw(frame, 1);
-    const second = renderer.brightnessOf('score_digit0_sega');
+    const second = renderer.brightnessOf('score_tens_sega');
     expect(first).toBeGreaterThan(0);
     expect(first).toBeLessThan(1);
     expect(second).toBeGreaterThan(first);
@@ -293,15 +293,15 @@ describe('phosphor persistence', () => {
     const { renderer } = setup();
     // Half a millisecond a side, inside both phosphors' time constants.
     const lit = frameOf([
-      { id: 'missile_lane0_col0', duty: FULL_DUTY },
-      { id: 'jet_lane0_col0', duty: FULL_DUTY },
+      { id: 'missile_lane0_col1', duty: FULL_DUTY },
+      { id: 'jet_lane0_col1', duty: FULL_DUTY },
     ]);
     const cyan: number[] = [];
     const red: number[] = [];
     for (let i = 0; i < 120; i += 1) {
       renderer.draw(i % 2 === 0 ? lit : EMPTY_FRAME, 0.5);
-      cyan.push(renderer.brightnessOf('missile_lane0_col0'));
-      red.push(renderer.brightnessOf('jet_lane0_col0'));
+      cyan.push(renderer.brightnessOf('missile_lane0_col1'));
+      red.push(renderer.brightnessOf('jet_lane0_col1'));
     }
 
     for (const samples of [cyan, red]) {
@@ -327,7 +327,7 @@ describe('phosphor colour and bloom', () => {
   it('paints each region in its own phosphor colour', () => {
     const { renderer, recorder } = setup();
     const frame = frameOf([
-      { id: 'jet_lane0_col0', duty: FULL_DUTY },
+      { id: 'jet_lane0_col1', duty: FULL_DUTY },
       { id: 'launcher_lane0', duty: FULL_DUTY },
     ]);
     settle(renderer, recorder, frame);
@@ -342,13 +342,13 @@ describe('phosphor colour and bloom', () => {
 
   it('blooms in proportion to brightness', () => {
     const { renderer, recorder } = setup();
-    const frame = frameOf([{ id: 'jet_lane0_col0', duty: FULL_DUTY }]);
+    const frame = frameOf([{ id: 'jet_lane0_col1', duty: FULL_DUTY }]);
     settle(renderer, recorder, frame);
     renderer.draw(frame, 16);
     const brightBlur = Math.max(...callsOf(recorder, 'fill').map((call) => call.shadowBlur));
 
     recorder.calls.length = 0;
-    const dim = frameOf([{ id: 'jet_lane0_col0', duty: FULL_DUTY * 0.05 }]);
+    const dim = frameOf([{ id: 'jet_lane0_col1', duty: FULL_DUTY * 0.05 }]);
     for (let i = 0; i < 200; i += 1) renderer.draw(dim, 16);
     recorder.calls.length = 0;
     renderer.draw(dim, 16);
@@ -360,7 +360,7 @@ describe('phosphor colour and bloom', () => {
   });
 
   it('scales the bloom with the projection so it holds up at any size', () => {
-    const frame = frameOf([{ id: 'jet_lane0_col0', duty: FULL_DUTY }]);
+    const frame = frameOf([{ id: 'jet_lane0_col1', duty: FULL_DUTY }]);
 
     const blurAt = (cssWidth: number, dpr: number): number => {
       const { ctx, recorder } = createFakeContext();
@@ -379,7 +379,7 @@ describe('phosphor colour and bloom', () => {
 
   it('can be built without bloom for a diagnostic view', () => {
     const { renderer, recorder } = setup({ glow: false });
-    const frame = frameOf([{ id: 'jet_lane0_col0', duty: FULL_DUTY }]);
+    const frame = frameOf([{ id: 'jet_lane0_col1', duty: FULL_DUTY }]);
     settle(renderer, recorder, frame);
     renderer.draw(frame, 16);
     for (const call of callsOf(recorder, 'fill')) {
@@ -393,8 +393,8 @@ describe('phosphor colour and bloom', () => {
       red: { ...PHOSPHOR.red, riseTimeMs: 0.001 },
     };
     const { renderer } = setup({ phosphor: instant });
-    renderer.draw(frameOf([{ id: 'jet_lane0_col0', duty: FULL_DUTY }]), 16);
-    expect(renderer.brightnessOf('jet_lane0_col0')).toBeCloseTo(1, 6);
+    renderer.draw(frameOf([{ id: 'jet_lane0_col1', duty: FULL_DUTY }]), 16);
+    expect(renderer.brightnessOf('jet_lane0_col1')).toBeCloseTo(1, 6);
   });
 });
 
@@ -421,7 +421,7 @@ describe('layer order', () => {
 
   it('leaves the context balanced across a frame', () => {
     const { renderer, recorder } = setup();
-    renderer.draw(frameOf([{ id: 'jet_lane0_col0', duty: FULL_DUTY }]), 16);
+    renderer.draw(frameOf([{ id: 'jet_lane0_col1', duty: FULL_DUTY }]), 16);
     expect(callsOf(recorder, 'save').length).toBe(callsOf(recorder, 'restore').length);
   });
 });

@@ -38,107 +38,135 @@ import { loadAtlas, getSegmentByAddress } from '../../src/machine/tube/atlas.js'
 const LEVERS = ['up', 'centre', 'down'] as const;
 
 /**
- * The scenarios, and what each is there to reach.
+ * The scenarios, as a space to search rather than a list to run.
  *
- * Between them every actor on the tube gets its turn. They are deterministic -
- * the machine has no clock of its own and the board is stepped, so the same
- * scenarios always drive the same addresses - and they are described by what
- * the player is doing rather than by frame numbers, so a cadence change moves
- * when things happen without changing whether they happen.
+ * Coverage needs rare conjunctions - a colon fired down the bottom lane is one
+ * value in sixteen of the sampled counter, the launcher's own burst is lit for
+ * about a dozen sweeps in a run of thousands - and there is no way to ask the
+ * ROM for them directly, because nothing here writes game state.
+ *
+ * Hand-picked scenarios did work, and were the wrong shape. They were tuned
+ * against one set of cadence constants, and `PAT_STEP` is explicitly
+ * provisional: change how fast the squadron steps and the sweep a burst lands
+ * on moves, so a fixture that stopped forty frames after the event it was
+ * chosen for stops before it instead. That is a property of the fixture, not of
+ * the ROM, and it made this file fail on a cadence change that was nothing to
+ * do with the display map.
+ *
+ * So the scenarios are generated and searched in a fixed order, accumulating
+ * coverage, and the search stops as soon as the atlas is covered. A cadence
+ * change now means a different member of the space supplies the rare event
+ * rather than the file going red. The order is deterministic, so a passing run
+ * is reproducible; only how many of them are needed varies.
  */
-const SCENARIOS: readonly {
+interface Scenario {
   readonly what: string;
   readonly skill: string;
   readonly lever: (frame: number) => (typeof LEVERS)[number];
   readonly fire: (frame: number) => boolean;
   readonly frames: number;
-}[] = [
-  {
-    what: 'firing hard at the hardest setting, moving between lanes every few sweeps',
-    skill: '3',
-    lever: (frame) => LEVERS[Math.floor(frame / 7) % 3]!,
-    fire: (frame) => frame % 2 === 0,
-    frames: 1400,
-  },
-  {
-    what: 'a steadier game: shots that miss as well as hit, and jets that get further in',
-    skill: '2',
-    lever: (frame) => LEVERS[Math.floor(frame / 11) % 3]!,
-    fire: (frame) => frame % 3 === 0,
-    frames: 900,
-  },
+}
+
+const cycling = (dwell: number) => (frame: number) => LEVERS[Math.floor(frame / dwell) % 3]!;
+const every = (period: number) => (frame: number) => frame % period === 0;
+
+/**
+ * The scenarios known to cover the atlas, tried first because they are quick.
+ *
+ * Each earns its place: the search below reports which ones contributed, and
+ * these are the five that did. They are a cache of a previous search, not a
+ * specification - if a cadence change stops one working, the space after them
+ * supplies the missing event and the file stays green while getting slower.
+ */
+const KNOWN_GOOD: Scenario[] = [
   {
     what: 'one shot and then nothing: the squadron walks in and the launcher is destroyed',
     skill: '3',
     lever: () => 'centre',
     fire: (frame) => frame === 5,
-    frames: 500,
+    frames: 600,
   },
   {
-    what: 'the easiest setting, firing rarely, so a jet reaches every column',
-    skill: '1',
-    lever: (frame) => LEVERS[Math.floor(frame / 23) % 3]!,
-    fire: (frame) => frame % 11 === 0,
-    frames: 700,
+    what: 'firing hard at the hardest setting, moving lanes every few sweeps',
+    skill: '3',
+    lever: cycling(7),
+    fire: every(2),
+    frames: 1500,
   },
   {
-    what: 'a run that gets a colon fired down the bottom lane, which is rare',
-    // rocket_fire takes the lane from the free-running counter as the player's
-    // last press left it and folds every value above the last lane onto the
-    // centre, so the bottom lane is one value in sixteen. This scenario is here
-    // because the atlas gives the colon all three lanes and a test that never
-    // sees the third would be measuring the sampling, not the ROM.
+    what: 'firing rarely, so jets survive deep into the field and die there',
     skill: '2',
-    lever: (frame) => LEVERS[Math.floor(frame / 9) % 3]!,
-    fire: (frame) => frame % 4 === 0,
-    frames: 250,
-  },
-  // The player being destroyed in the bottom lane, then in the top one. Both
-  // need a rare conjunction - a jet alive in that lane to fire the colon, the
-  // sampled counter landing on that lane, and the lever still standing there
-  // when the colon arrives five columns later - so the lever dwells rather than
-  // darting, and the shooting is steady enough to keep the squadron off the
-  // capture line while it happens. The atlas gives the player's own burst three
-  // lanes and the ROM has to be shown reaching all three.
-  {
-    what: 'a long game in the bottom lane, ending with the launcher destroyed there',
-    skill: '1',
-    lever: (frame) => LEVERS[Math.floor(frame / 40) % 3]!,
-    fire: (frame) => frame % 3 === 0,
-    frames: 1200,
+    lever: cycling(7),
+    fire: every(13),
+    frames: 1500,
   },
   {
-    what: 'the same in the top lane',
+    what: 'a long slow game that gets a colon fired down the bottom lane',
     skill: '1',
-    lever: (frame) => LEVERS[Math.floor(frame / 60) % 3]!,
-    fire: (frame) => frame % 3 === 0,
-    frames: 1320,
+    lever: cycling(9),
+    fire: every(13),
+    frames: 1500,
+  },
+  {
+    what: 'the lever dwelling, so the launcher is still there when a colon arrives',
+    skill: '1',
+    lever: cycling(40),
+    fire: every(13),
+    frames: 1500,
   },
 ];
 
+/** The space searched when the five above stop being enough. */
+function scenarioSpace(): Scenario[] {
+  const fallback: Scenario[] = [];
+  for (const dwell of [7, 9, 11, 25, 40, 60]) {
+    for (const period of [2, 3, 13]) {
+      for (const skill of ['3', '2', '1']) {
+        fallback.push({
+          what: `dwell ${dwell}, fire every ${period}, skill ${skill}`,
+          skill,
+          lever: cycling(dwell),
+          fire: every(period),
+          frames: 1500,
+        });
+      }
+    }
+  }
+  return [...KNOWN_GOOD, ...fallback];
+}
+
 /**
- * Addresses the atlas defines that this ROM cannot reach at all, and why.
+ * Addresses the atlas defines that this ROM cannot reach. **There are none.**
  *
- * Pinned by equality rather than tolerated: the expectations below subtract
- * exactly these, so a ROM that starts driving one fails this file until the
- * entry is deleted. Each is a real gap between the glass and the program, not a
- * gap in the scenarios above.
+ * There was one, and the seventh grid dissolved it rather than fixing it.
+ * `NIB_RCOL` spends zero on "no rocket in flight", so the ROM cannot express a
+ * colon standing in column 0 - and while the atlas gave the playfield six grids,
+ * column 0 was the G-line cell and the atlas put a colon there, so the tube
+ * carried a segment the program could not light. The teardown photographs show
+ * no colon printed in the player's own cell at all: the attackers' shot is
+ * drawn in the five jet cells and nowhere else. The sentinel and the glass
+ * agree, and the exception that used to live here is gone.
+ *
+ * Kept as an empty pair rather than deleted so that the next real gap has an
+ * obvious place to be written down, with its reason, instead of being tolerated
+ * by loosening an assertion.
  */
 const ROM_CANNOT_REACH = {
   /**
-   * The colon in the launcher's own cell, grid 5.
+   * The jet-kill burst in cell 5, the cell nearest the player.
    *
-   * `NIB_RCOL` spends zero on "no rocket in flight", so column 0 - the capture
-   * line, which is where the launcher stands - is not a value the nibble can
-   * hold. A shot that reaches the player is resolved by `rocket_move` on the
-   * sweep it arrives, and is drawn one column short of the player for its whole
-   * flight. The tube has the segment; nothing can light it.
+   * A newly visible bug rather than a missing sprite, and the seventh grid is
+   * what made it visible. `tick_missile` advances the shot and *then* tests
+   * what it reached, so the column it is launched into - cell 5 - is never hit
+   * tested at all. Fire at a jet standing directly in front of the launcher and
+   * the shot appears in its cell, leaves, and misses it.
    *
-   * Fixing it means giving `NIB_RCOL` the column-plus-one convention the jets
-   * and the burst already use, which touches four blocks and the ROM has ten
-   * words of program space left. It is recorded here rather than done quietly.
+   * The tube has the burst printed there: the teardown photographs show the
+   * same pair of white bursts in all five jet cells. Fixing it means testing
+   * before advancing as well as after, which is a change to the hit chain
+   * rather than to the display, so it is not folded into the map change.
    */
-  grids: new Map([['rocket', [5]]]),
+  grids: new Map([['burst', [5]]]),
   plates: new Map<string, number[]>(),
 } as const;
 
@@ -154,9 +182,11 @@ interface Coverage {
   readonly grids: Map<string, Set<number>>;
   /** Per family, the plates it was ever lit on. */
   readonly plates: Map<string, Set<number>>;
+  /** How many of the scenario space were needed. Reported, not asserted. */
+  readonly scenariosRun: number;
 }
 
-/** Play every scenario and record what reached the glass. */
+/** Play scenarios in order until the atlas is covered, or the space runs out. */
 function sweepScenarios(): Coverage {
   const path = resolve(import.meta.dirname, '..', '..', 'asm', 'jetfighter.asm');
   const image = romImage(assemble(readFileSync(path, 'utf8'), path));
@@ -168,7 +198,26 @@ function sweepScenarios(): Coverage {
     set.add(value);
     into.set(key, set);
   };
-  for (const scenario of SCENARIOS) {
+  // What the search is trying to reach, and it is exactly what the tests below
+  // assert: every family under every grid and on every plate the atlas gives
+  // it, less the gaps the ROM provably cannot reach. Keeping the two in step
+  // matters - a stop condition stricter than the assertions never becomes true,
+  // so the search runs the whole space every time and takes minutes to agree
+  // with a result it had in seconds.
+  const wanted = new Set<string>();
+  for (const segment of atlasSegments) {
+    const family = familyOf(segment.id);
+    if (!ROM_CANNOT_REACH.grids.get(family)?.includes(segment.grid)) {
+      wanted.add(`${family}:grid:${segment.grid}`);
+    }
+    if (!ROM_CANNOT_REACH.plates.get(family)?.includes(segment.plate)) {
+      wanted.add(`${family}:plate:${segment.plate}`);
+    }
+  }
+  let scenariosRun = 0;
+  for (const scenario of scenarioSpace()) {
+    if (wanted.size === 0) break;
+    scenariosRun += 1;
     const board = new Board(image);
     board.setControl('skill', scenario.skill);
     for (let frame = 0; frame < scenario.frames; frame += 1) {
@@ -182,16 +231,20 @@ function sweepScenarios(): Coverage {
           unmapped.add(`${lit.grid}-${lit.plate}`);
           continue;
         }
-        record(grids, familyOf(segment.id), lit.grid);
-        record(plates, familyOf(segment.id), lit.plate);
+        const family = familyOf(segment.id);
+        record(grids, family, lit.grid);
+        record(plates, family, lit.plate);
+        wanted.delete(`${family}:grid:${lit.grid}`);
+        wanted.delete(`${family}:plate:${lit.plate}`);
       }
     }
   }
-  return { unmapped: [...unmapped].sort(), grids, plates };
+  return { unmapped: [...unmapped].sort(), grids, plates, scenariosRun };
 }
 
-const coverage = sweepScenarios();
 const atlas = loadAtlas();
+const atlasSegments = atlas.segments;
+const coverage = sweepScenarios();
 
 /** Per family, the grids and plates the atlas actually defines it on. */
 function atlasBy(pick: (grid: number, plate: number) => number): Map<string, number[]> {

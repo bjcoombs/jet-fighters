@@ -29,12 +29,13 @@ const ID_FAMILIES: readonly {
   readonly name: keyof typeof EXPECTED_SEGMENT_COUNTS;
   readonly pattern: RegExp;
 }[] = [
-  { name: 'jet', pattern: /^jet_lane[0-2]_col[0-5]$/ },
-  { name: 'rocket', pattern: /^rocket_lane[0-2]_col[0-5]$/ },
-  { name: 'missile', pattern: /^missile_lane[0-2]_col[0-4]$/ },
-  { name: 'burst', pattern: /^burst_lane[0-2]_col[0-3]$/ },
+  { name: 'jet', pattern: /^jet_lane[0-2]_col[1-5]$/ },
+  { name: 'rocket', pattern: /^rocket_lane[0-2]_col[1-5]$/ },
+  { name: 'missile', pattern: /^missile_lane[0-2]_col[1-5]$/ },
+  { name: 'burst', pattern: /^burst_lane[0-2]_col[1-5]$/ },
   { name: 'launcher', pattern: /^launcher_lane[0-2]$/ },
-  { name: 'score', pattern: /^score_digit[0-2]_seg[a-g]$/ },
+  { name: 'score', pattern: /^score_(tens|units)_seg[a-g]$/ },
+  { name: 'scoreHundreds', pattern: /^score_hundreds$/ },
   { name: 'explosion', pattern: /^explosion_lane[0-2]$/ },
   { name: 'battleship', pattern: /^battleship_lane[0-2]$/ },
   { name: 'scoreLabel', pattern: /^score_label$/ },
