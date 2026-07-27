@@ -175,6 +175,17 @@ export function rgba(color: Rgb, alpha: number): string {
  * the alpha rises, so a segment at half brightness composes as a genuinely
  * dimmer segment against the dark glass rather than a smaller one. Both are
  * continuous in brightness - that continuity is the visible shimmer.
+ *
+ * The alpha is linear in brightness while the wash is quadratic, and
+ * docs/evidence/vfd-appearance.md (D9) flags that mismatch as worth revisiting
+ * if the phosphor fix left a visible brightness oscillation. Measured after that
+ * fix, driving the ROM headlessly at a 16.67 ms frame: a continuously driven
+ * segment varies by 1.0% of its own level, below the eye's contrast threshold,
+ * and by the same 1.0% under the old decay constants - the phosphor was never
+ * the source. The 33% swing that shows up when the ROM parks the sweep to bit-
+ * bang the speaker is D1's subject and belongs in `asm/`, where the real machine
+ * blanks outright. Squaring the alpha would *raise* that modulation (33% -> 47%)
+ * rather than settle it. Left linear deliberately.
  */
 export function segmentFill(region: ColorRegion, brightness: number): string {
   const colors = TUBE_PALETTE[region];
