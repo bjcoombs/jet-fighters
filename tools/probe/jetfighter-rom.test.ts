@@ -40,22 +40,28 @@ import { getSegmentByAddress } from '../../src/machine/tube/atlas.js';
  */
 const PLATE_JET = [0, 1, 2];
 const PLATE_ROCKET = [3, 4, 5];
-const PLATE_BSHIP = 6;
-/** Grid 4 only: a head/trail dot pair per lane. */
-const PLATE_MISSILE_PAIR = [
-  [6, 7],
-  [8, 9],
-  [10, 11],
-];
-/** Grid 5 only. */
-const PLATE_LAUNCHER = [6, 7, 8];
+/** Grid 0 only: the battleship, one plate per lane - the tube's only R3 segments. */
+const PLATE_BSHIP = [12, 13, 14];
+/**
+ * The player's own object in a cell: the missile dart under grids 0-4, the
+ * launcher under grid 5. One plate per lane, and the grid says which it is.
+ */
+const PLATE_PLAYER = [6, 7, 8];
+const PLATE_MISSILE = PLATE_PLAYER;
+const PLATE_LAUNCHER = PLATE_PLAYER;
+/**
+ * The burst in a cell: a jet dying under grids 0-3, the player's own
+ * destruction under grid 5. Grid 4 carries no segment on these plates.
+ */
+const PLATE_BURST = [9, 10, 11];
 /** Grid 9 only: the lit SCORE label. */
 const PLATE_SCORE_LABEL = 0;
 
 /** Playfield geometry, mirroring the ROM's "Playfield geometry" block. */
 const GRID_COLUMN_LAST = 5;
 const GRID_BSHIP = 0;
-const GRID_MISSILE = 4;
+/** The column a shot launches into, as a grid: the cell next to the launcher. */
+const GRID_MISSILE_START = 4;
 const GRID_LAUNCH = 5;
 const GRID_SCORE_H = 6;
 const GRID_SCORE_T = 7;
@@ -225,7 +231,19 @@ describe('the field the ROM puts up at power-on', () => {
   });
 
   it('leaves the battleship dark until a crossing starts', () => {
-    expect(platesUnder(board, GRID_BSHIP)).not.toContain(PLATE_BSHIP);
+    // All three lanes, not just the centre one: the tube has a ship segment per
+    // lane and none of them may be lit before a crossing.
+    for (const plate of PLATE_BSHIP) {
+      expect(platesUnder(board, GRID_BSHIP), `plate ${plate}`).not.toContain(plate);
+    }
+  });
+
+  it('leaves every burst plate dark, because nothing has been destroyed', () => {
+    for (let grid = 0; grid <= GRID_COLUMN_LAST; grid += 1) {
+      for (const plate of PLATE_BURST) {
+        expect(platesUnder(board, grid), `grid ${grid} plate ${plate}`).not.toContain(plate);
+      }
+    }
   });
 
   it('holds no jet rocket in the air before the jets have fired one', () => {
@@ -271,12 +289,18 @@ describe('the score readout blanks leading digits, and only leading digits', () 
 
   it('lights the tens column once the score reaches ten', () => {
     // assets/reference/tube-closeup-score10.webp: at ten the readout is `10`,
-    // so the tens column is a blanked leading zero and not a dark column. The
-    // first ten points on this ROM come from the battleship, in one hit, which
-    // is the photograph's own reading.
+    // so the tens column is a blanked leading zero and not a dark column.
+    //
+    // The tens digit is pinned at 1 rather than the whole readout at `10`. A
+    // score crosses ten by 1, 2, 3 or 10 points at a time, so the first score
+    // with a tens digit is somewhere in 10-19 whichever way it got there, and
+    // its tens digit is 1 in every case. It used to be exactly `10` because the
+    // first ten points always came from the battleship in one hit; that is no
+    // longer guaranteed, because a shot now has to be in the ship's own lane to
+    // reach it and the ship is drawn in whichever lane it is standing in.
     const board = boardAtFirstTensDigit();
     expect(platesUnder(board, GRID_SCORE_T)).toEqual(DIGIT_ONE_PLATES);
-    expect(platesUnder(board, GRID_SCORE_U)).toEqual(DIGIT_ZERO_PLATES);
+    expect(platesUnder(board, GRID_SCORE_U).length).toBeGreaterThan(0);
     expect(platesUnder(board, GRID_SCORE_H)).toEqual(DIGIT_BLANK_PLATES);
   });
 
@@ -386,13 +410,33 @@ describe('firing', () => {
     board.runFrames(4);
     board.setFire(true);
     board.runFrames(3);
-    // The tube carries one cyan dot pair per lane, all six on grid 4
-    // (ATLAS-COORDINATES.md assumption 5), so a shot in the top lane is that
-    // lane's pair and nothing in the other two lanes.
-    expect(platesUnder(board, GRID_MISSILE)).toEqual(
-      expect.arrayContaining(PLATE_MISSILE_PAIR[0]!),
-    );
-    expect(platesUnder(board, GRID_MISSILE)).not.toContain(PLATE_MISSILE_PAIR[2]![0]);
+    // The tube carries a dart per lane in each of the five columns the shot
+    // crosses, and a shot launches into the column next to the launcher, which
+    // is grid 4. So a shot fired with the lever up is that grid's top-lane dart
+    // and neither of the other two lanes.
+    expect(platesUnder(board, GRID_MISSILE_START)).toContain(PLATE_MISSILE[0]);
+    expect(platesUnder(board, GRID_MISSILE_START)).not.toContain(PLATE_MISSILE[1]);
+    expect(platesUnder(board, GRID_MISSILE_START)).not.toContain(PLATE_MISSILE[2]);
+  });
+
+  it('walks the shot across the field instead of parking it in one column', () => {
+    // The regression the whole missile family exists to fix. The atlas used to
+    // carry six missile segments on one grid, so the ROM drew every shot parked
+    // beside the launcher for its entire flight while the hit tests advanced it
+    // column by column somewhere the player could not see. A shot must now be
+    // lit in more than one column over its life.
+    const board = romBoard();
+    board.setControl('lever', 'up');
+    board.runFrames(4);
+    board.setFire(true);
+    const columns = new Set<number>();
+    for (let frame = 0; frame < 24; frame += 1) {
+      board.runFrames(1);
+      for (const grid of gridsShowing(board, [PLATE_MISSILE[0]!])) {
+        if (grid <= GRID_COLUMN_LAST && grid !== GRID_LAUNCH) columns.add(grid);
+      }
+    }
+    expect([...columns].sort((left, right) => left - right).length).toBeGreaterThan(1);
   });
 
   it('does not launch a second shot while the button is merely held', () => {
