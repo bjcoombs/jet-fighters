@@ -188,12 +188,12 @@ describe('brightness from PWM duty', () => {
 
   it('accepts the board\'s segment list as well as a whole frame', () => {
     const { renderer, recorder } = setup();
-    const frame = frameOf([{ id: 'battleship', duty: FULL_DUTY }]);
+    const frame = frameOf([{ id: 'battleship_lane1', duty: FULL_DUTY }]);
     for (let i = 0; i < 200; i += 1) {
       renderer.draw(frame.segments, 16);
     }
     recorder.calls.length = 0;
-    expect(renderer.brightnessOf('battleship')).toBeCloseTo(1, 6);
+    expect(renderer.brightnessOf('battleship_lane1')).toBeCloseTo(1, 6);
   });
 });
 
@@ -293,14 +293,14 @@ describe('phosphor persistence', () => {
     const { renderer } = setup();
     // Half a millisecond a side, inside both phosphors' time constants.
     const lit = frameOf([
-      { id: 'missile_lane0_dot0', duty: FULL_DUTY },
+      { id: 'missile_lane0_col0', duty: FULL_DUTY },
       { id: 'jet_lane0_col0', duty: FULL_DUTY },
     ]);
     const cyan: number[] = [];
     const red: number[] = [];
     for (let i = 0; i < 120; i += 1) {
       renderer.draw(i % 2 === 0 ? lit : EMPTY_FRAME, 0.5);
-      cyan.push(renderer.brightnessOf('missile_lane0_dot0'));
+      cyan.push(renderer.brightnessOf('missile_lane0_col0'));
       red.push(renderer.brightnessOf('jet_lane0_col0'));
     }
 

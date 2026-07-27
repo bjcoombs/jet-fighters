@@ -40,23 +40,57 @@ export type LaneIndex = 0 | 1 | 2;
 /** Distance column: 0 = battleship / far zone, 5 = the G (capture) line. */
 export type ColumnIndex = 0 | 1 | 2 | 3 | 4 | 5;
 
+/**
+ * Columns the player's missile is drawn in. The gameplay video finds it in five
+ * of the six cells - it is launched into the cell next to the launcher and steps
+ * away as far as the far column, and it is never lit in the launcher's own cell,
+ * which is where the launcher is. See ATLAS-COORDINATES.md.
+ */
+export type MissileColumnIndex = 0 | 1 | 2 | 3 | 4;
+
+/**
+ * Columns the cyan jet-kill burst is drawn in: the four the video ever shows it
+ * in. There is no burst in the two cells nearest the launcher, and the video
+ * finds no jet there either.
+ */
+export type BurstColumnIndex = 0 | 1 | 2 | 3;
+
 /** Seven-segment keys in the conventional a-g order (a = top, g = middle). */
 export type SevenSegmentKey = 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g';
 
 /** Score digit position: 0 = leftmost (hundreds), 2 = rightmost (units). */
 export type ScoreDigitIndex = 0 | 1 | 2;
 
-/** Attacking jet silhouettes: one per lane per distance column (18 total). */
+/**
+ * Attacking jet silhouettes: one per lane per distance column (18 total).
+ *
+ * Two outlines, not one translated across the lattice. The tube carries the
+ * wing-beat in the phosphor: a cell whose `(column + lane)` is even holds the
+ * level-winged pose and an odd one the raked pose, which is the parity the
+ * gameplay video measured across thirteen cells. See ATLAS-COORDINATES.md.
+ */
 export type JetSegmentId = `jet_lane${LaneIndex}_col${ColumnIndex}`;
-/** Jet rocket dots travelling back toward the player (18 total). */
+/**
+ * The attackers' shot: a colon, two red dots one directly above the other, one
+ * per lane per distance column (18 total). It travels toward the player, so it
+ * is drawn in every cell it can cross.
+ */
 export type RocketSegmentId = `rocket_lane${LaneIndex}_col${ColumnIndex}`;
 /**
- * The player missile: two spiky bursts stacked vertically in one column, the
- * upper broader than the lower (6 total). `dot0` is the upper burst, `dot1` the
- * lower. The ids predate the photographs that showed the pair is stacked, not
- * side by side, and are kept so the ROM's plate map does not move.
+ * The player's missile in flight: a cyan dart pointing left, the direction it
+ * travels, one per lane in each of the five columns it crosses (15 total). The
+ * same outline in every column - unlike the jet it does not change with
+ * position, which the video records as a negative result.
  */
-export type MissileSegmentId = `missile_lane${LaneIndex}_dot${0 | 1}`;
+export type MissileSegmentId = `missile_lane${LaneIndex}_col${MissileColumnIndex}`;
+/**
+ * The burst a jet leaves when the missile kills it: two spiky cyan blobs
+ * stacked vertically in one cell, the upper broader than the lower, their
+ * jagged edges facing away from each other (12 total). One segment, not two -
+ * the pair always appears together, so the machine has no reason to light half
+ * of it, and the path carries both blobs as disjoint sub-paths.
+ */
+export type BurstSegmentId = `burst_lane${LaneIndex}_col${BurstColumnIndex}`;
 /**
  * The player's ship, inside the field at the G line, one segment per lane
  * position (3 total). Owner-confirmed as the object the player controls and
@@ -72,6 +106,13 @@ export type ScoreSegmentId = `score_digit${ScoreDigitIndex}_seg${SevenSegmentKey
  * `assets/reference/sprites/explosion-red-lit.png`.
  */
 export type ExplosionSegmentId = `explosion_lane${LaneIndex}`;
+/**
+ * The battleship, a warship in side profile, one per lane position (3 total).
+ * The video finds it in the far cell in any of the three lanes and never
+ * anywhere else, so it is three segments rather than the one the atlas used to
+ * carry, and a crossing is segments lighting rather than a sprite moving.
+ */
+export type BattleshipSegmentId = `battleship_lane${LaneIndex}`;
 
 /**
  * Every addressable segment on the tube. Exhaustive by construction: a typo in
@@ -81,10 +122,11 @@ export type SegmentId =
   | JetSegmentId
   | RocketSegmentId
   | MissileSegmentId
+  | BurstSegmentId
   | LauncherSegmentId
   | ScoreSegmentId
   | ExplosionSegmentId
-  | 'battleship'
+  | BattleshipSegmentId
   | 'score_label';
 
 /** Axis-aligned bounding box of a segment's path, in atlas units. */
@@ -133,11 +175,12 @@ export interface Atlas {
 export const EXPECTED_SEGMENT_COUNTS = {
   jet: 18,
   rocket: 18,
-  missile: 6,
+  missile: 15,
+  burst: 12,
   launcher: 3,
   score: 21,
   explosion: 3,
-  battleship: 1,
+  battleship: 3,
   scoreLabel: 1,
 } as const;
 
