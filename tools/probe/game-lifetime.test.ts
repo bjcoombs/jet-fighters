@@ -3,26 +3,27 @@
 // ## Why this file exists
 //
 // A long probe run of this ROM looks alarming. Drive 24,000,000 cycles - sixty
-// seconds - with no controls touched and the speaker produces 1238 edges, the
-// last of them at 5.66 s, then nothing for the remaining fifty-four seconds. The
-// lit-segment output is byte-identical at 6 s, 8 s, 12 s, 20 s and 40 s, and a
-// fire contact closed at 10 s changes neither. Sampling the program counter
-// after that point lands on the inner arm of `dwell` almost every time.
+// seconds - with no controls touched and the speaker falls silent partway
+// through and stays silent for the rest of the run. The lit-segment output is
+// byte-identical from there to 40 s, and a fire contact closed at any point
+// afterwards changes neither. Sampling the program counter after that point
+// lands on the inner arm of `dwell` almost every time.
 //
 // All of that is true and none of it is a fault. The reading it invites - that
 // the ROM has wedged in a delay loop that never terminates - is wrong, and this
 // file is here so the next person to run that probe does not spend a night
 // chasing it.
 //
-// What is actually happening: the ROM plays a whole game and loses. A jet
-// entered on the first sweep, marched one column at a time, and reached the G
-// line at 5.03 s, which PRD v1 rule 6 makes an instant game over. `game_capture`
-// writes ST_OVER into NIB_STATE and calls the loss sound, which runs to 5.66 s.
+// What is actually happening: the ROM plays a whole game and loses. Jets enter,
+// march one column at a time, and reach the G line; each arrival costs the
+// player a launcher, and the third one ends the game (PRD v1 rule 6, as
+// amended - see that rule for why a capture costs a launcher rather than the
+// game). `game_lost` writes ST_OVER into NIB_STATE and calls the loss sound.
 // From the next sweep on, `tick` reads NIB_STATE, fails its `ALEI ST_PLAY`, and
 // returns - so the sweep keeps running, the tube keeps being refreshed with a
 // picture that no longer changes, and nothing ever touches the speaker again.
-// That is the documented behaviour of the unit: the three endings are terminal
-// and the power switch is the only reset. The program counter camps in `dwell`
+// That is the documented behaviour of the unit: the endings are terminal and
+// the power switch is the only reset. The program counter camps in `dwell`
 // afterwards for the same reason it does before - the sweep spends the great
 // majority of every frame holding a grid lit.
 //
@@ -31,8 +32,9 @@
 //   1. after the sound stops the machine is still sweeping the tube, still
 //      executing, and has decoded no illegal opcode;
 //   2. a machine whose controls are actually being worked keeps sounding and
-//      keeps redrawing far beyond 5.66 s - the game is playable, and its length
-//      is a function of play, not of a timer running out;
+//      keeps redrawing far beyond the unattended machine's silence - the game
+//      is playable, and its length is a function of play, not of a timer
+//      running out;
 //   3. throwing the power switch on a finished game starts a new one.
 //
 // (2) is the load-bearing one. It fails for a ROM that has genuinely stopped
@@ -73,8 +75,12 @@ function seconds(count: number): number {
  * constants happen to land today, and it moves whenever those constants do.
  * It is named because it is the figure that started the misdiagnosis, and the
  * horizons below are stated as multiples of it.
+ *
+ * It was 5.66 s while a single capture ended the game. Three captures are now
+ * survivable (see launcher-lives.test.ts), so an unattended machine has to lose
+ * three launchers before it stops, which takes roughly twice as long.
  */
-const UNATTENDED_SILENCE_S = 5.66;
+const UNATTENDED_SILENCE_S = 10.92;
 
 /** Every control this ROM reads, in the order a blind player works them. */
 const LEVER_POSITIONS = ["up", "centre", "down"] as const;
@@ -137,7 +143,7 @@ function run(
  * is enough to shoot down jets: the missile launches in whichever lane the lever
  * is standing in, so cycling the lever while pressing fire eventually puts a
  * shot under every jet. It plays badly - it aims at nothing - and it still keeps
- * the game alive several times past the unattended machine's 5.66 s, which is
+ * the game alive well past the unattended machine's own silence, which is
  * the whole point. A player that read the tube would prove less, because its
  * skill rather than the ROM's liveness would be carrying the result.
  */
@@ -211,7 +217,7 @@ describe("the unattended machine reaches an ending rather than wedging", () => {
       // Both `getStrobedGrids()` and `frameCount` count from the display's last
       // `clear()`, which nothing but the power switch calls - so read straight
       // off a sixty-second board they answer "at some point since power-on",
-      // and a ROM that wedged at 5.66 s in a loop touching one grid would still
+      // and a ROM that wedged mid-game in a loop touching one grid would still
       // report all ten from the gameplay that preceded it. Clearing here is
       // what makes the next five seconds the thing being observed. It resets
       // the display's own bookkeeping and blanks its grid and plate masks;
@@ -295,7 +301,7 @@ function lastThird(
 
 describe("a machine whose controls are worked keeps playing", () => {
   it(
-    "sounds and redraws throughout a run several times longer than 5.66 s",
+    "sounds and redraws throughout a run far longer than the unattended machine",
     () => {
       const board = new Board(ROM);
       const horizon = seconds(20);
@@ -312,7 +318,7 @@ describe("a machine whose controls are worked keeps playing", () => {
       // Sound across the run, not just its first six seconds. Ten buckets of
       // two seconds each.
       //
-      // The bug this guards is a machine that stops *dead* at 5.66 s - the
+      // The bug this guards is a machine that stops *dead* partway in - the
       // unattended one, whose picture is byte-identical from six seconds on. A
       // blind player being destroyed is not that: the game ends, correctly, and
       // the tube goes on being swept and redrawn. This used to require all ten
@@ -323,7 +329,7 @@ describe("a machine whose controls are worked keeps playing", () => {
       //
       // So the assertion is on the shape of the sound, not on its last bucket:
       // no silent gap anywhere inside the sounding part of the run, and the
-      // sound reaching at least three times the 5.66 s the bug stopped at.
+      // sound reaching well past the point the bug stopped at.
       const buckets = bucketByCycle(edges, horizon, 10);
       const lastHeard = buckets.reduce((last, count, i) => (count > 0 ? i : last), -1);
       expect(lastHeard, "sound reached past 16 s").toBeGreaterThanOrEqual(7);
