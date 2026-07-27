@@ -31,6 +31,7 @@ import { romImage } from '../hmasm/output.js';
 import { Board } from '../../src/machine/board/board.js';
 import { CYCLE_HZ } from '../../src/machine/cpu/cpu.js';
 import { getSegmentByAddress } from '../../src/machine/tube/atlas.js';
+import { ROM_PROGRAM_SIZE } from '../../src/machine/cpu/memory.js';
 
 /**
  * Plate assignments, mirroring the "Plate assignments" block in the ROM - which
@@ -179,6 +180,36 @@ function burstPitches(board: Board): number[] {
   close();
   return pitches;
 }
+
+describe('the program region has room to work in', () => {
+  // `.PAGE` starts a routine on a 32-word boundary, which is how a BR is kept
+  // inside its own page - but it also pads. Sixty of them cost 783 words of
+  // padding against 1240 words of code, and left the ROM ten words from the
+  // ceiling with nearly a quarter of the region empty. Only twenty-four
+  // routines actually reach across a boundary; the rest were paying for
+  // alignment they did not use.
+  //
+  // This is a ratchet, not a size limit. It fails when the padding creeps back,
+  // which is the failure that is otherwise invisible until the next change has
+  // nowhere to go - and by then it looks like the ROM being full rather than
+  // the ROM being mostly gaps.
+  it('spends more of the program region on code than on alignment padding', () => {
+    const path = resolve(import.meta.dirname, '..', '..', 'asm', 'jetfighter.asm');
+    const assembly = assemble(readFileSync(path, 'utf8'), path);
+    const addresses = assembly.words
+      .map((word) => word.address)
+      .filter((address) => address < ROM_PROGRAM_SIZE);
+    const code = addresses.length;
+    const padding = Math.max(...addresses) + 1 - code;
+
+    // Padding rather than total size, because the ratchet has to let real code
+    // in and keep alignment waste out. A `.PAGE` on a routine that does not
+    // need one adds no instructions and still consumes the rest of its page, so
+    // it shows up here and nowhere else. 304 words at the time of writing,
+    // against 783 before the unneeded directives came out.
+    expect(padding, `${code} words of code, ${padding} of padding`).toBeLessThan(400);
+  });
+});
 
 describe('the field the ROM puts up at power-on', () => {
   const board = romBoard();
