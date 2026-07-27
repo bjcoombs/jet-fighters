@@ -157,6 +157,24 @@ clips the sprites that sit hard against the cell's right-hand edge. **The
 threshold is computed over a tight window and applied to a wide one**, and a
 component belongs to whichever cell its centroid falls in.
 
+**When a threshold cannot find a thing, check whether its position is already
+known.** This is the method, and it has unblocked every family that resisted the
+first attempt - three times, in three different ways:
+
+- The **jets** came out right because the cell lattice was measured first and
+  each aircraft traced inside its own cell.
+- The **white families** separate because all three sit in the cell's right-hand
+  half and ordering them down the lane names each one. Ranking them by a
+  property instead - the flattest of the three is the dart - picks wrongly the
+  moment two of them merge, which they do at any single threshold.
+- The **sea** is found because the hull's extent is known, so the wave rows
+  below it can be thresholded on their own.
+
+The general form: a threshold is being asked to *discover* a boundary that is
+usually already known from the geometry. Give it the smaller question and it
+stops having to be clever. Where this fails - cell 6, below - it fails because
+the position genuinely is not known, not because the threshold needs tuning.
+
 **Where a threshold cannot find a family, locate it and threshold inside it.**
 The printed sea is two rows of small wave glyphs under the battleship's hull,
 and a cell-wide adaptive threshold drops them as noise - they are faint and the
@@ -543,6 +561,46 @@ cell*, *the launcher must not out-mass a jet*. Each is a reason someone had.
 When a test has no reference behind it - no photograph, no measurement, no
 statement from the owner - it is pinning the last person's judgement, and the
 right form is to say so in the test rather than to let it read as fact.
+
+### Cell 6 is not traced, and what has been ruled out
+
+The player's cell holds four printed things per lane: two solid yellow
+starbursts, a yellow **stipple** - a knot of loose curls - and the cyan
+launcher. Only the launcher and the two starbursts segment; the stipple does
+not, and five approaches have been tried:
+
+| Attempt | Result |
+| --- | --- |
+| One global threshold | Takes some cells cleanly, loses others entirely |
+| Per-cell adaptive (Otsu) | Two solid components; the stipple is mostly dropped |
+| Erosion, to break necks | Destroys the stipple rather than separating it |
+| Hue split | **Hue is the same**: 49 deg against 46-47 deg. No separation |
+| Saturation / value split | Separates pixel-wise, but the solid bursts' soft edges are low-saturation too and bridge into the stipple, so it comes back as one blob spanning the cell |
+
+The hue result is the interesting one, because it says what the stipple *is*:
+**the same phosphor, printed as a texture rather than as an area.** Its lower
+saturation and value (0.29 / 0.58 against 0.50 / 0.77) are what a dot screen
+does to a measurement - each pixel averages pigment with the dark gaps between
+the dots - not evidence of a second pigment.
+
+**And there is a second gap that no image work can close.** The atlas carries
+`explosion_lane*` in this cell for the player being hit, and the tube prints
+**two** starbursts. Which is which is not determined by anything here. What is
+now measured is that they are **not the same glyph**:
+
+| | Lower-left | Upper-right |
+| --- | --- | --- |
+| Size | 112 x 70 | 83 x 56 |
+| Area | ~5,060 px | ~3,170 px |
+| Shape against each other | IoU 0.64-0.66 | |
+| Same one across the three lanes | IoU 0.96 | IoU 0.91 |
+
+So the tube draws two different bursts, consistently, and one is about 1.6x the
+area of the other. That rules out the reading that the player's death and
+something else share a glyph, and it means whichever answer arrives has a
+visible consequence. Assigning them without evidence would be a coin flip
+dressed as a trace, and the cell would render convincingly either way - which is
+how every phantom-segment bug on this project survived review.
 
 ### Known gaps, so they are not lost
 
