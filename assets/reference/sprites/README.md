@@ -52,32 +52,56 @@ translation and the lattice below comparable between runs.
 
 ### What the recording actually is, and what that costs
 
-The lead's brief assumed 240 fps capture, which would make one container frame 1/240 s
-and the whole clip ~51 s of real play, and predicted a **49-frame** march step. The
-measured march-beep interval is **23.3 container frames** (median 0.776 s of file time,
-n=89 intervals over a 90 s window) - almost exactly half.
+**The recording is 30 fps real time.** One container frame is 1/30 s = 33.33 ms, and the
+clip is 6 min 48 s of real play. Every spatial figure below is unaffected by this; the
+timing figures are stated in file time, which is now also real time.
 
-The audio is at true pitch: the march note reads 640 Hz and 700 Hz and the missile blip
-1594.8 Hz, all inside the bands `audio-reference.md` records as measured from the
-owner's real-time recordings (`jetMarch` 600-650 Hz, `missileFire` 1480-1632 Hz). So the
-export **time-stretched the audio without pitching it down**, which keeps audio events
-aligned with video events but means file-time intervals carry the same slow factor as
-the picture.
+The brief for this work asserted 240 fps slow-motion. It is not that either.
 
-That leaves two readings:
+**How it was settled.** `audio-reference.md` records the win jingle as measured from the
+owner's real-time recordings: F#5/A#5/D#6 at 750/940/1240 Hz, durations 200/150/150 ms,
+that arpeggio three times over, 1830 ms total. The jingle occurs in this video at file
+t = 403 s. Measured there:
 
-| Capture rate | Squadron step in real time | Verdict |
+| Arpeggio | Measured | Reference |
 | --- | --- | --- |
-| 240 fps | 97 ms | Faster than anything ever observed. The owner's audio gives 205.1 ms mean over 21 intervals, min 151 ms (`timing-analysis.md`). |
-| 120 fps | 194 ms | Sits inside the observed distribution (five runs, means 197-217 ms). |
+| 1st | 750, 936, 1248 Hz / 190, 180, 160 ms | 750, 940, 1240 Hz / 200, 150, 150 ms |
+| 2nd | 749, 936, 1248 Hz / 260, 180, 160 ms | as above |
+| 3rd | 749, 937, 1249 Hz / 260, 180, 180 ms | as above |
 
-**The evidence favours 120 fps**, making each container frame 1/120 s and the clip about
-102 s of real play, not 51. This is inference from cadence, not from metadata: the file
-was flattened to 30 fps and carries no capture-rate tag, the room was daylit so there is
-no mains flicker to alias against, and the argument would collapse if this session were
-being played at a harder skill than the one the owner recorded. **Treat the real-time
-column of any table derived from this video as provisional until a clip is captured with
-a known frame rate.** Nothing in the sprite catalogue below depends on it.
+Pitch exact, **duration 1:1**. This is the decisive test because a tone burst has both a
+pitch and a length: real time preserves both, a naive slow-motion export drops the pitch,
+and a pitch-preserving time-stretch keeps the pitch but stretches the length. Only real
+time fits. Under the 4x reading each of these notes would run 600-800 ms.
+
+### The wrong reading this replaces, and why it looked right
+
+An earlier revision of this section concluded **120 fps**, i.e. that the file ran 4x slow
+with audio time-stretched but not pitched down. It is recorded here rather than deleted
+because it was very nearly acted on, and because the reasoning was sound given what was
+known.
+
+The argument was: the measured march-beep interval is 23.3 container frames (median
+0.776 s, n = 89 over a 90 s window), against 205.1 ms in `timing-analysis.md`. A ratio
+near 4 pointed straight at a 4x time base, and the audio being at true pitch was
+explained by a pitch-preserving stretch.
+
+**The flaw was in the comparison, not the measurement.** 205.1 ms is the *floor* of the
+cadence ladder, not a typical rate. `PAT_STEP` in `asm/jetfighter.asm` runs 48 sweeps
+(743 ms) for a fresh squadron at skill 1, 36 (558 ms) at skill 2, 27 (372 ms) at skill 3,
+descending to 13 sweeps (201 ms) as jets are killed and waves cleared. A file-time
+interval of 600-776 ms is a fresh-to-mid squadron sitting near the *top* of that ladder.
+There was never a 4x discrepancy to explain - two figures from opposite ends of one ramp
+were being compared as though they measured the same thing.
+
+That reframing is worth more than the correction. The video is the **first direct evidence
+of where real play sits on the cadence ladder**, which `docs/evidence/timing-analysis.md`
+carries as an open evidence gap. Whether our ramp descends at the right *rate* is a
+separate question and is under measurement.
+
+**Consequence for the reader:** 33.33 ms per frame is longer than one sweep of the tube,
+so no single frame shows a whole sprite (see Method, below) - but that was already true
+under either reading and the accumulation method below handles it.
 
 ### Method
 
@@ -88,7 +112,7 @@ glass is scratched and glary; a luminance threshold selects the case. Red phosph
 `R - max(G,B) >= 45`, cyan is `min(G,B) - R >= 45`. Both hold across the whole clip.
 
 **Accumulate across frames, because one frame is not one sprite.** The tube is
-multiplexed and a single 1/120 s exposure catches only the scan slots that happened to
+multiplexed and a single frame's exposure catches only the scan slots that happened to
 be live. Masks taken from single frames of the *same* sprite disagree with each other
 badly - one frame of the column-4 jet reads as a symmetric delta, another as a raked
 wedge. Every outline below is the **per-pixel maximum of the colour excess over a window
