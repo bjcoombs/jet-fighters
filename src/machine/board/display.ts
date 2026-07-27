@@ -94,6 +94,14 @@ export interface DisplaySnapshot {
  *
  * A sweep that never repeats a grid never completes a frame on its own; callers
  * that need a boundary anyway (the probe taking a snapshot) call `endFrame`.
+ *
+ * A sweep that *stops* is the other case, and it is not hypothetical: the ROM
+ * stops sweeping on every sound. Two things follow, and both live here rather
+ * than in the renderer, because the tube is dark for an electrical reason and
+ * not a drawing one. `getObservedFrame` reports the tube dark once the drive has
+ * been gone longer than {@link REFRESH_TIMEOUT_CYCLES}, and the stalled interval
+ * is taken out of the frame period it fell in, so the sweeps either side of a
+ * note are measured against their own length rather than against the note's.
  */
 export class Display {
   private readonly pwm = new PwmAccumulator(GRID_COUNT, PLATE_COUNT);
