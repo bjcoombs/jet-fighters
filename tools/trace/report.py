@@ -12,12 +12,15 @@ Prints, in order:
 
 The last one is the interesting measurement, and it is what said that
 Douglas-Peucker was *not* where this atlas was losing its detail. Point
-`--baseline` at the pre-retrace `atlas.json` and it reads a median 1.7 units,
-against 0.36 for the coarsest tolerance in the sweep - fourteen times too big an
-effect for simplification to have caused. Left at its default it reads the
-working tree's own atlas, where a residual tail is expected: rings pared below
-the minimum area are dropped after simplification, and the contour vertices of a
-dropped ring have nothing to measure against.
+`--baseline` at the pre-retrace `atlas.json` (the parent of the commit that
+added this directory) and it reads a **median 0.88 units**, against 0.36 for the
+coarsest tolerance in the sweep and 0.08 for the tolerance in use - so
+simplification could account for at most a tenth of it.
+
+Left at its default it reads the working tree's own atlas, where a residual tail
+is expected: rings pared below the minimum area are dropped after
+simplification, and the contour vertices of a dropped ring have nothing to
+measure against.
 
 Paths in this file are relative to the repository root.
 """
@@ -26,7 +29,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 from pathlib import Path
 
@@ -38,6 +40,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from trace_atlas import (  # noqa: E402
     TOLERANCE_PROBES,
     Tracer,
+    _rings_of,
     build,
     geodesic_partition,
     trace_uncertainty,
@@ -113,26 +116,34 @@ def main() -> None:
         name = segment["id"]
         if name not in reference:
             continue
-        traced = np.vstack([r for r, in [(r,) for r in reference[name][0]]])
-        points = np.array(
-            [
-                [float(m[1]), float(m[2])]
-                for m in re.finditer(r"(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)", segment["path"])
-            ]
-        )
-        if not len(points):
+        traced = np.vstack(reference[name][0])
+        rings = _rings_of(segment["path"])
+        if not rings:
             continue
-        rows.append((name, _hausdorff(traced, points), len(points)))
+        rows.append((name, _hausdorff(traced, rings), sum(len(r) for r in rings)))
     rows.sort(key=lambda r: -r[1])
     print(f"  median {np.median([r[1] for r in rows]):.3f} u over {len(rows)} segments")
     for name, deviation, vertices in rows[:8]:
         print(f"    {name:24s} {deviation:.3f} u, {vertices} vertices")
 
 
-def _hausdorff(traced: np.ndarray, committed: np.ndarray) -> float:
-    """Worst distance from a traced contour vertex to the committed outline."""
-    ring = np.vstack([committed, committed[:1]])
-    starts, ends = ring[:-1], ring[1:]
+def _hausdorff(traced: np.ndarray, rings: list[np.ndarray]) -> float:
+    """Worst distance from a traced contour vertex to the baseline outline.
+
+    The baseline's sub-paths are kept apart. Flattening them into one point
+    list closes each ring onto the next one's first point, and those bridging
+    edges do not exist - a traced vertex measured against one of them reads as
+    closer to the baseline than it is, which understates the deviation exactly
+    on the multi-mark segments this atlas has most of: the bursts, the colons,
+    the sea's glyphs and the smoke.
+    """
+    ring = np.vstack([np.vstack([r, r[:1]]) for r in rings])
+    keep = np.ones(len(ring) - 1, bool)
+    cut = -1
+    for r in rings[:-1]:
+        cut += len(r) + 1
+        keep[cut] = False  # the edge from one closed ring to the next
+    starts, ends = ring[:-1][keep], ring[1:][keep]
     spans = ends - starts
     lengths = np.maximum((spans**2).sum(axis=1), 1e-12)
     worst = 0.0

@@ -1,6 +1,6 @@
 """Render the atlas beside the photograph it was traced from, at matched scale.
 
-    python3 tools/trace/preview.py <out.png> [--cells 0,2,6] [--atlas <file>]
+    python3 tools/trace/preview.py <out.png> [--cells 0,2,6] [--before <atlas.json>]
 
 Three panels per cell, all resampled to the same atlas units per pixel, in the
 shape `docs/evidence/tube-mesh-comparison.jpg` established: the atlas as

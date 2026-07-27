@@ -157,8 +157,8 @@ print (`report.py --baseline` re-measures it):
 
 | | Deviation from the traced contour |
 | --- | --- |
-| The atlas as it stood, against the contour it should follow | **0.90 atlas units** |
-| The same, with the best rigid translation removed | 0.93 units |
+| The atlas as it stood, against the contour it should follow | **0.88 atlas units** |
+| The same, with the best rigid translation removed | 0.89 units |
 | Douglas-Peucker at the tolerance this retrace uses | 0.08 units |
 | Douglas-Peucker at 6 px, four times coarser than anything considered | 0.36 units |
 
@@ -308,14 +308,13 @@ very nearly the atlas's, which the video's was not.
 ### Shapes, and where each one comes from
 
 The score digits and the SCORE label are still the v1 shape tables from
-`src/render/sprites.ts`, scaled and translated into atlas units. The player's
-ship and the burst that marks its destruction are the outlines traced off the
-two lit close-ups.
+`src/render/sprites.ts`, scaled and translated into atlas units.
 
-**Every other playfield sprite is traced from the gameplay video**, from the
-per-cell crops in `assets/reference/sprites/video/`. That set supersedes the
-outlines taken from the two handheld stills, which could prove that the sprites
-were not what v1 drew but could not recover what they are.
+**Every playfield outline in the shipped atlas is traced from the bare tube**,
+by `tools/trace/` - including the player's ship and the two bursts in its cell,
+which had been the last shapes still coming from the lit close-ups. The two
+sections that follow describe the video-crop trace those outlines replaced;
+they are kept for the questions they leave open rather than for the geometry.
 
 ### Tracing from the video crops
 
@@ -339,7 +338,7 @@ the frames of one cell. A shape is then what the samples agree on rather than
 what one sample happened to catch. The boundary of the majority mask is walked
 and simplified (Douglas-Peucker, 1.2 px).
 
-**None of the shipped outlines come from this any more** - "The retrace, and the
+**None of the shipped outlines come from this now** - "The retrace, and the
 thing it turned out not to be" above replaced them all with the bare tube. The
 section is kept because the video is still the only source for how the sprites
 *behave*, and because the two readings of which cell a crop is in, below, are
@@ -792,13 +791,13 @@ extraction window far enough left to clip the right-hand burst.
 
 Three things this revision leaves undone, recorded rather than dropped:
 
-1. **The battleship's destruction burst is not in the atlas.** The crop set
-   carries `video/battleship-kill-burst-lane0.png` and `-lane2.png` - the pair
-   of cyan blobs arranged side by side that the catalogue's prose still calls
-   the "column-6 burst" and still calls inference rather than observation. It
-   would fit at D0 plates 15-17, but that drags in a fifth plate file and a
-   battleship-destroyed display the ROM does not have. It was not commissioned
-   and is not built.
+1. ~~**The battleship's destruction burst is not in the atlas.**~~ It is -
+   `battleship_burst_lane{0,1,2}` on D0 plates 6-8, traced from the bare tube
+   when cell 0 was done. What is still missing is the *rule*: the ROM scores a
+   battleship kill (`bship_kill`, ten points) and has never drawn one, so the
+   segment is on `tools/probe/rom-atlas-conformance.test.ts`'s enumerated
+   exception list. That is a line someone deletes when they drive it, not a
+   shape anyone has to trace.
 2. **The colon in the launcher's own cell can never light.** `NIB_RCOL` in the
    ROM spends zero on "no rocket in flight", so column 0 is not a value the
    nibble can hold, and a shot arriving at the player is resolved on the sweep
@@ -814,11 +813,13 @@ Three things this revision leaves undone, recorded rather than dropped:
    above. This is the largest open question in the atlas and it is bigger than
    any sprite in it.
 5. ~~**The teardown photographs supersede everything used here for shape.**~~
-   **Done.** Every playfield outline is now traced from
+   **Done.** Every playfield segment the atlas carries is now traced from
    `tube-teardown/tube-unlit-full.jpg` by `tools/trace/`, and the jet is fifteen
-   distinct outlines rather than two poses on a parity. What the retrace does
-   *not* touch is the score readout, which is still v1's shape tables against a
-   `score-block.jpg` that has never been traced.
+   distinct outlines rather than two poses on a parity. Two things that is not a
+   claim about: the score readout, which is still v1's shape tables against a
+   `score-block.jpg` nobody has traced, and any segment the tube prints that the
+   atlas does not yet carry - the retrace draws what is in the inventory and
+   does not extend it.
 
 ## Tracing workflow
 
