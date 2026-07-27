@@ -78,14 +78,26 @@
 
 /* --- Bezel tab (12 o'clock) --------------------------------------------
    A moulded tag on the module's top edge that hangs over the glass. Body units
-   x 520..546, y 38..91 of the 1000 x 460 viewBox, as percentages of the case.
-   It sits above `.jf-screen` in DOM order because it overlaps the window. */
+   x 520..546, y 38..78 of the 1000 x 460 viewBox, as percentages of the case.
+   It sits above `.jf-screen` in DOM order because it overlaps the window.
+
+   It reaches y 78 and no further, because the curved legend printed inside the
+   scope - COAST SIDE MISSILE STATION RADAR SIGHT SCREEN - runs at y 80..86,
+   just under the circle's top edge at y 72. The tab used to end at y 91 and
+   struck straight through the middle of it, so the legend read "COAST SIDE
+   MISSILE ... RADAR SIGHT SCREEN" with STATION hidden behind the plastic.
+
+   On the real unit (assets/reference/device-front-lit.jpg) the tag overhangs
+   the very top of the glass and the legend is fully readable beneath it, which
+   is what the 6 units of overlap left here reproduce. If the legend's radius
+   (ARC_RADIUS_FRACTION in src/machine/tube/silkscreen.ts) ever moves outward,
+   this has to come up with it. */
 .jf-tab {
   position: absolute;
   left: 52%;
   top: 8.2609%;
   width: 2.6%;
-  height: 11.5217%;
+  height: 8.6957%;
   border-radius: 0 0 46% 46% / 0 0 26% 26%;
   background: linear-gradient(180deg, #e5794f 0%, #cb5a30 55%, #b04520 100%);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
