@@ -495,6 +495,36 @@ decision rather than a consequence: the colon is offset clear of its own
 cell-mates and touches nothing but the battleship, which is drawn half again as
 wide as a jet and reaches it.
 
+### The two ways this atlas goes wrong
+
+Both have happened more than once, and only the first was written down.
+
+**A segment the glass does not have.** The invented ground line, the lives
+display, the five seven-segment strokes for a hundreds digit that is really two
+strokes. The ROM drives an address, the write reaches no phosphor, and the
+sprite simply never appears. `tools/probe/rom-atlas-conformance.test.ts` is the
+guard: every address driven must resolve, with no exceptions, ever. It caught
+the hundreds digit before the photograph explained it.
+
+**A belief promoted to a constraint.** Subtler, and the guard above cannot see
+it, because the addresses are all real. Someone reasons about what the machine
+*ought* to do, builds the atlas that way, and then writes a test that freezes
+the reasoning as though it were a measurement.
+
+The worked example is the attackers' colon. A shot should read as having left
+the aircraft that fired it, so it was drawn offset toward the player, clear of
+the jet - and `atlas.test.ts` then asserted that it overlapped nothing, which
+was true of the atlas and had never been true of the tube. The bare tube puts
+its two dots straddling the fuselage at the nose. The assertion was pinning a
+choice, and it would have gone on passing forever.
+
+The tell is an assertion that describes an intention rather than an observation:
+*the colon should be clear of the jet*, *the burst should be centred on the
+cell*, *the launcher must not out-mass a jet*. Each is a reason someone had.
+When a test has no reference behind it - no photograph, no measurement, no
+statement from the owner - it is pinning the last person's judgement, and the
+right form is to say so in the test rather than to let it read as fact.
+
 ### Known gaps, so they are not lost
 
 Three things this revision leaves undone, recorded rather than dropped:
