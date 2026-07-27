@@ -120,6 +120,57 @@ measuring the playfield height off the photos gives height/width ratios between
 line, where the foreshortening is close to uniform, were taken from the photos.
 Every vertical proportion comes from v1's already-tuned layout instead.
 
+### What is traced from the bare tube, and what is not
+
+The teardown photographs supersede the video for shape, and the retrace against
+them is being done a family at a time rather than in one commit. **This table is
+the record of where each outline currently comes from; do not read a
+carried-over outline as a retraced one.**
+
+| Family | Source |
+| --- | --- |
+| Jets, cells 1-5 | `tube-teardown/tube-unlit-full.jpg`, 15 distinct outlines |
+| Attacker colons, cells 1-5 | the same, two dots straddling the fuselage at the nose |
+| Missile darts, cells 1-5 | `tube-teardown/tube-unlit-full.jpg` |
+| Jet-kill bursts, cells 1-5 | the same, two blobs in one segment |
+| Battleship | gameplay video, awaiting retrace |
+| Printed sea | not in the atlas yet |
+| Launcher, player's burst | the two lit close-ups, awaiting retrace |
+| Cell 6's smoke and second burst | not in the atlas yet |
+| Score digits, SCORE label | v1 shape tables |
+
+### Tracing from the bare tube
+
+The plate is **not evenly lit**, so a single global threshold does not segment
+all 21 cells: it takes some cleanly and loses others entirely. Masking is
+therefore per cell - Otsu on brightness inside the cell separates print from the
+dark hatched fill, and blue-minus-red then splits the two pigments at the
+midpoint of that cell's own two clusters. Unlit, the yellow phosphor is the one
+that emits red-orange and the white is the one that emits cyan; the two measure
+around -66 and -28 against -4 and +2, so the split is nowhere near either class.
+
+Two window sizes, and the reason is worth keeping. Otsu is a property of the
+pixels it sees, so widening the window takes in more dark border, drops the
+threshold, and merges neighbouring sprites into one component; narrowing it
+clips the sprites that sit hard against the cell's right-hand edge. **The
+threshold is computed over a tight window and applied to a wide one**, and a
+component belongs to whichever cell its centroid falls in.
+
+**Locate families by position, do not rank them by size.** A jet cell holds
+three white shapes - two burst blobs and the dart between them - and they are
+identified by where they sit: all three are in the cell's right-hand half, and
+ordering them down the lane names each one. Ranking by a property instead (the
+flattest of the three is the dart) picks wrongly the moment two of them merge,
+which they do in about half the cells at any single threshold. The size is then
+an independent check on the assignment rather than the thing that made it: each
+traced dart converts back to 23.9 x 9.6 of the video's own pixels against the
+catalogue's 26 x 12 for the missile in flight.
+
+Scale: the printed lattice measures 259 px across and 152 px down at the working
+resolution against the atlas cell's 31.114 x 17.68 units, so 0.1201 and 0.1163
+units per pixel. Those are within 3% of each other - the bare tube's aspect is
+very nearly the atlas's, which the video's was not.
+
 ### Shapes, and where each one comes from
 
 The score digits and the SCORE label are still the v1 shape tables from
@@ -453,6 +504,36 @@ out of its own. The one exception is stated separately and is a placement
 decision rather than a consequence: the colon is offset clear of its own
 cell-mates and touches nothing but the battleship, which is drawn half again as
 wide as a jet and reaches it.
+
+### The two ways this atlas goes wrong
+
+Both have happened more than once, and only the first was written down.
+
+**A segment the glass does not have.** The invented ground line, the lives
+display, the five seven-segment strokes for a hundreds digit that is really two
+strokes. The ROM drives an address, the write reaches no phosphor, and the
+sprite simply never appears. `tools/probe/rom-atlas-conformance.test.ts` is the
+guard: every address driven must resolve, with no exceptions, ever. It caught
+the hundreds digit before the photograph explained it.
+
+**A belief promoted to a constraint.** Subtler, and the guard above cannot see
+it, because the addresses are all real. Someone reasons about what the machine
+*ought* to do, builds the atlas that way, and then writes a test that freezes
+the reasoning as though it were a measurement.
+
+The worked example is the attackers' colon. A shot should read as having left
+the aircraft that fired it, so it was drawn offset toward the player, clear of
+the jet - and `atlas.test.ts` then asserted that it overlapped nothing, which
+was true of the atlas and had never been true of the tube. The bare tube puts
+its two dots straddling the fuselage at the nose. The assertion was pinning a
+choice, and it would have gone on passing forever.
+
+The tell is an assertion that describes an intention rather than an observation:
+*the colon should be clear of the jet*, *the burst should be centred on the
+cell*, *the launcher must not out-mass a jet*. Each is a reason someone had.
+When a test has no reference behind it - no photograph, no measurement, no
+statement from the owner - it is pinning the last person's judgement, and the
+right form is to say so in the test rather than to let it read as fact.
 
 ### Known gaps, so they are not lost
 
