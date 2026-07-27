@@ -38,6 +38,8 @@ const ID_FAMILIES: readonly {
   { name: 'scoreHundreds', pattern: /^score_hundreds$/ },
   { name: 'explosion', pattern: /^explosion_lane[0-2]$/ },
   { name: 'battleship', pattern: /^battleship_lane[0-2]$/ },
+  { name: 'sea', pattern: /^sea_lane[0-2]$/ },
+  { name: 'battleshipBurst', pattern: /^battleship_burst_lane[0-2]$/ },
   { name: 'scoreLabel', pattern: /^score_label$/ },
 ];
 

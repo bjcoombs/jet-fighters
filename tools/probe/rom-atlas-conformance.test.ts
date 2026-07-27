@@ -153,18 +153,32 @@ function scenarioSpace(): Scenario[] {
  */
 const ROM_CANNOT_REACH = {
   /**
-   * The jet-kill burst in cell 5, the cell nearest the player.
+   * Families the ROM cannot light at all, because it has no concept of them.
    *
-   * A newly visible bug rather than a missing sprite, and the seventh grid is
-   * what made it visible. `tick_missile` advances the shot and *then* tests
-   * what it reached, so the column it is launched into - cell 5 - is never hit
-   * tested at all. Fire at a jet standing directly in front of the launcher and
-   * the shot appears in its cell, leaves, and misses it.
+   * Segments the tube carries and the program has never been told about. They
+   * are in the atlas because leaving out phosphor we can see is how the atlas
+   * drifts from the glass again - and they are named here, one line each, so
+   * that the day someone drives one they delete a line rather than loosen an
+   * assertion.
+   */
+  families: new Map([
+    // Two rows of wave glyphs under the battleship's hull. Nothing had
+    // accounted for them before the bare tube was traced; whether they light
+    // with the ship or on their own is not known.
+    ['sea', 'the printed sea under the battleship, which no rule refers to'],
+    // The ROM scores a battleship kill already - bship_kill, ten points - and
+    // has never drawn one.
+    ['battleship_burst', 'the burst behind the battleship: scored, never drawn'],
+  ]),
+  /**
+   * Addresses inside an otherwise driven family that the ROM cannot reach.
    *
-   * The tube has the burst printed there: the teardown photographs show the
-   * same pair of white bursts in all five jet cells. Fixing it means testing
-   * before advancing as well as after, which is a change to the hit chain
-   * rather than to the display, so it is not folded into the map change.
+   * The jet-kill burst in the cell nearest the player. `tick_missile` advances
+   * the shot and *then* tests what it reached, so the cell it is launched into
+   * is never hit tested: fire at a jet standing directly in front of the
+   * launcher and the shot appears in its cell, leaves, and misses. The tube
+   * prints the burst there. This is a bug with a line in the test rather than a
+   * gap in the glass, and it is commissioned separately.
    */
   grids: new Map([['burst', [5]]]),
   plates: new Map<string, number[]>(),
@@ -207,6 +221,7 @@ function sweepScenarios(): Coverage {
   const wanted = new Set<string>();
   for (const segment of atlasSegments) {
     const family = familyOf(segment.id);
+    if (ROM_CANNOT_REACH.families.has(family)) continue;
     if (!ROM_CANNOT_REACH.grids.get(family)?.includes(segment.grid)) {
       wanted.add(`${family}:grid:${segment.grid}`);
     }
@@ -264,10 +279,12 @@ function reachable(
   gaps: ReadonlyMap<string, readonly number[]>,
 ): Map<string, number[]> {
   return new Map(
-    [...defined].map(([family, values]) => {
-      const gap = gaps.get(family) ?? [];
-      return [family, values.filter((value) => !gap.includes(value))];
-    }),
+    [...defined]
+      .filter(([family]) => !ROM_CANNOT_REACH.families.has(family))
+      .map(([family, values]) => {
+        const gap = gaps.get(family) ?? [];
+        return [family, values.filter((value) => !gap.includes(value))];
+      }),
   );
 }
 
@@ -277,14 +294,22 @@ const ATLAS_PLATES = reachable(atlasBy((_grid, plate) => plate), ROM_CANNOT_REAC
 const driven = (into: Map<string, Set<number>>, family: string): number[] =>
   [...(into.get(family) ?? [])].sort((a, b) => a - b);
 
-describe('the ROM drives the tube the atlas describes', () => {
+// The two directions are separate blocks on purpose. They are not equally
+// strong and should not share an exception mechanism: the first admits none and
+// never will, because a violation is a phantom-segment bug. The second has
+// known exceptions, and a mechanism that exists will eventually be used to
+// silence something real - so it lives next to the assertions it applies to,
+// enumerated by name with a reason each, and nowhere near the strict one.
+describe('the ROM drives no address the tube has no segment at', () => {
   it('drives no address the tube has no segment at', () => {
     // The phantom-segment direction, and the one that has actually bitten. Not
     // "few" and not "only the known ones": none. Every address that reaches the
     // bus over every scenario must resolve to a segment.
     expect(coverage.unmapped).toEqual([]);
   });
+});
 
+describe('the ROM lights every segment the tube has, except where it is named', () => {
   it('lights every family the atlas defines', () => {
     // Nothing on this tube is inert. A family in the atlas that no scenario ever
     // lights is either phosphor the atlas invented or a sprite the ROM forgot -
