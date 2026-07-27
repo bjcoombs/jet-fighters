@@ -386,7 +386,16 @@ def build(tracer: Tracer, tolerance_px: float) -> tuple[dict, list[str]]:
                     if not claimed.any():
                         notes.append(f"{family}: nothing claimed it - kept its previous outline")
                         continue
-                    result[family] = tracer.rings_for(family, claimed, tolerance_px)
+                    rings, deviation = tracer.rings_for(family, claimed, tolerance_px)
+                    if not rings:
+                        # Every ring pared below the minimum area by the
+                        # simplifier. It cannot happen at a measured tolerance
+                        # and does at `--tolerance 40`, which is what the flag is
+                        # for; a sweep that ends in a stack trace teaches nobody
+                        # anything, so the segment keeps its outline and says so.
+                        notes.append(f"{family}: simplified away entirely - kept its outline")
+                        continue
+                    result[family] = (rings, deviation)
     return result, notes
 
 
