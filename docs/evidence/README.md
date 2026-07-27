@@ -11,7 +11,13 @@ review.
 | File | Contents | Status |
 | --- | --- | --- |
 | `audio-reference.md` | Measured frequency bands, envelopes, and note sequences for all six sounds. | Complete - extracted from the v1 codebase before Task 11 deletes `src/audio/`. |
-| `timing-analysis.md` | Method spec for deriving cadences in display sweeps, plus the v1 working values. | Blocked - the per-skill gameplay video is owner-supplied and pending. |
+| `timing-analysis.md` | Method spec for deriving cadences in display sweeps, plus the v1 working values, plus what the owner's gameplay recording supplies. | Partly relieved - one recording at one unknown skill; the per-skill clips are still pending. |
+| `vfd-appearance.md` | Tube refresh, phosphor persistence, brightness and sound blanking, measured from the gameplay recording. | Complete for what 30 fps can resolve; the sweep rate is bracketed, not pinned. |
+
+**The sprite catalogue is not in this directory.** Every lit shape the tube draws - its
+cell, lane, measured size, frame count and crop - is in
+`assets/reference/sprites/README.md`, next to the crops it cites. That file is the
+authority for segment shape and placement; `src/machine/tube/atlas.json` should match it.
 
 ## Reference materials in `assets/reference/`
 

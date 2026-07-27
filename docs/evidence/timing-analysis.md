@@ -97,11 +97,16 @@ Each measured row lands in the table below and is cited from the ROM source:
 | ID | Quantity | Skill | Measured (s) | fps / frames | Sweeps (pre-round) | **Sweeps (ROM)** | Residual | Source clip / timestamp |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | T1-audio | Squadron step rate, fastest observed | unknown | 0.205 +/- 0.022 | n/a - audio, 22050 Hz | 13.2 | **13** (`PAT_STEP` entry 15, the floor) | -1.5% | `gameplay-audio.m4a`, 55-121 s |
+| T1-video | One aircraft advancing one cell | unknown | 1.4 (range 1.2-1.9) | 30 fps, 42 frames (36-56) | see below | not yet mapped | - | `IMG_6113.mov`, whole file, n=12 |
+| T5-video | Missile step, one cell | unknown | 0.500 | 30 fps, 15 frames | see below | not yet mapped | - | `IMG_6113.mov`, whole file, n=744 |
+| T-march | March beep interval | unknown | 0.71 median | n/a - audio, 22050 Hz | - | - | - | `IMG_6113.mov`, t=180-270 s, n=111 |
 
-*(One row. It is an audio cross-check of T1, not a video measurement of it, and it
-constrains the ladder's floor only - see [What the audio row does and does not
-say](#what-the-audio-row-does-and-does-not-say). T2-T10 are still empty: no
-gameplay video exists. See [Evidence gap](#evidence-gap).)*
+*(The audio row is a cross-check of T1, not a video measurement of it, and it constrains
+the ladder's floor only - see [What the audio row does and does not
+say](#what-the-audio-row-does-and-does-not-say). The three video rows are the first
+measurements from the owner's gameplay recording; see [What the gameplay video
+supplies](#what-the-gameplay-video-supplies) below for what they do and do not settle.
+T2, T3, T4 and T6-T10 are still empty. See [Evidence gap](#evidence-gap).)*
 
 ### The T1 audio cross-check, as performed
 
@@ -170,24 +175,75 @@ The ROM cites the ID:
 SKILL1_STEP_SWEEPS: .word 0
 ```
 
+## What the gameplay video supplies
+
+A single owner recording of real play now exists - `IMG_6113.mov`, 12,237 frames at
+**30 fps real time**, 407.9 s. It is not committed (580 MB) and is referenced by path.
+The frame rate is settled in `docs/evidence/vfd-appearance.md` section 1 and again in
+`assets/reference/sprites/README.md` from the win jingle's pitch *and* note lengths.
+Sprite positions, cells and lanes are catalogued in that README; the cadence figures
+are here.
+
+**Says:** on the real unit, at the skill this recording was played on,
+
+- **one aircraft advances one cell every 1.2 to 1.9 s, median 1.4 s** (42 frames). From
+  12 consecutive same-aircraft steps found across the whole file by tracking the leading
+  jet's cell per lane. Three further readings of 10 to 22 frames are almost certainly two
+  jets being confused for one and are excluded.
+- **the missile steps one cell every 500 ms** (15 frames), from 744 adjacent leftward
+  steps. Zero rightward steps. This is the most solid number in the video by a wide
+  margin.
+- **the march beep sounds every 0.71 s median** (n = 111, 590-740 Hz band, t = 180-270 s),
+  measured from this file's own audio, independently of the picture.
+
+**The interesting part is the ratio.** One aircraft steps about **twice as slowly as the
+march beep sounds**. Either the beep pulses twice per squadron step, or the beep is a
+per-aircraft rate and two aircraft alternate phase. The video cannot separate those, and
+it matters: the note above, "the march beep fires once per sweep in which any jet
+stepped, so the beep rate *is* the squadron step rate", is an assumption the ROM
+inherits, and this is the first evidence bearing on it. It is not enough to overturn it,
+and it is enough that nobody should treat the beep rate as the per-aircraft rate without
+checking.
+
+**Says, about the cadence ladder:** `PAT_STEP` runs 48 sweeps (743 ms) for a fresh
+squadron at skill 1, 36 (558 ms) at skill 2, 27 (372 ms) at skill 3, descending to 13
+(201 ms). A march beep interval of 0.71 s sits near the **top** of that ladder, and a
+per-aircraft step of 1.4 s sits above it. The 205 ms audio row is the ladder's floor.
+Both figures are points on one ramp, and they were briefly and wrongly read as a
+contradiction - the record of that is in the sprite README.
+
+**Does not say:**
+
+- which skill level this recording was played on. Unknown, exactly as for the audio row.
+- how many jets were flying at each measured step, so the per-jet against per-squadron
+  question above stays open.
+- anything about the thin-out curve, the wave respawn speed-up or the floor. Those need
+  the per-skill clips, which are still outstanding.
+- the battleship crossing interval. The battleship was seen 17 times and **never left its
+  cell**, so the video gives its dwell (2.5 s median, 5.9 s longest) but no crossing
+  duration, and does not establish that it crosses at all.
+
 ## Evidence gap
 
-**Blocked on: the owner-supplied gameplay video, 15-20 s per skill level.** PRD R7
-lists it as pending. `assets/reference/` contains two audio recordings and five
-photographs - no video file. There is no frame data in this repository to analyse.
+**Still blocked on: the owner-supplied per-skill gameplay video, 15-20 s per skill
+level.** PRD R7 lists it as pending. `IMG_6113.mov` is one recording at one unknown
+skill, which supplies the rows above but not a per-skill ladder.
 
 Consequently the following **cannot be stated** and must not be written into the ROM
 as if measured:
 
-- Jet step cadence at any skill level (T1). The audio row above bounds how fast the
-  squadron was ever seen to step; it does not give a per-skill, per-jet cadence, and
-  `PAT_STEP` entries 0-14 are still v1 approximations.
+- Jet step cadence **at a known skill level** (T1). The audio row bounds how fast the
+  squadron was ever seen to step and the video row gives one aircraft's step at one
+  unknown skill; neither gives a per-skill cadence, and `PAT_STEP` entries 0-14 are still
+  v1 approximations.
 - The thin-out speed-up curve, including whether it is linear (T2)
 - The wave respawn speed-up (T3)
 - The cadence floor (T4)
-- Battleship crossing duration and interval distribution (T5, T6)
-- Missile and rocket travel times (T7, T8)
-- Rocket fire rate (T9)
+- Battleship crossing duration and interval distribution (T5, T6). The video adds that
+  the battleship's **traversal is not established at all** - 17 sightings, never outside
+  its own cell.
+- Rocket travel time and fire rate (T8, T9). The attackers' colon is now traced as a
+  shape but never as a moving object.
 - Post-hit recovery time (T10)
 
 A second, smaller gap, now closed: converting seconds to sweeps needs the emulated
