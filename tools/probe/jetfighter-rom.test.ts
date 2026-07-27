@@ -448,25 +448,47 @@ describe('the squadron advances, and the skill dial sets how fast', () => {
     return Math.max(...jetColumns(board));
   }
 
-  /** Sweeps between the leading rank's column changes, over `frames` sweeps. */
-  function stepIntervals(skill: string, frames: number): number[] {
+  /**
+   * Sweeps between one lane's jet advancing a column, over `frames` sweeps.
+   *
+   * Measured **per lane**, because that is the quantity `PAT_STEP` controls:
+   * each lane carries its own countdown reloaded from the same cadence,
+   * deliberately out of phase so the jets step one at a time.
+   *
+   * This used to track `Math.max` across every lane, which is a different
+   * quantity - three lanes stepping out of phase raise the maximum more often
+   * than any single jet advances, so what it returned was a beat between lanes
+   * rather than the cadence. It read correctly only while the phases were fixed
+   * at power-on, and stopped when a jet reaching the G line began costing a
+   * launcher instead of ending the game: a lane can now repopulate mid-run,
+   * which re-phases it.
+   *
+   * An interval is recorded only when the lane advances by exactly one from a
+   * column it already held, so a capture, a kill, a respawn or a sound blank
+   * starts a fresh measurement instead of being averaged into the interval
+   * spanning it.
+   */
+  function stepIntervals(skill: string, frames: number, lane = 0): number[] {
     const board = romBoard();
     board.setControl('skill', skill);
     const out: number[] = [];
-    let lead = -1;
+    let held = -1;
     let since = 0;
     for (let i = 0; i < frames; i += 1) {
       board.runFrames(1);
       since += 1;
-      const columns = jetColumns(board);
-      if (columns.length === 0) continue;
-      const now = Math.max(...columns);
-      if (now > lead) {
-        if (lead >= 0) out.push(since);
-        lead = now;
+      const columns = laneColumns(board, lane);
+      if (columns.length === 0) {
+        held = -1;
         since = 0;
-      } else if (now < lead) {
-        lead = now;
+        continue;
+      }
+      const now = Math.max(...columns);
+      if (held >= 0 && now === held + 1) {
+        out.push(since);
+      }
+      if (now !== held) {
+        held = now;
         since = 0;
       }
     }

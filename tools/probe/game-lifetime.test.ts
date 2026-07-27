@@ -78,9 +78,16 @@ function seconds(count: number): number {
  *
  * It was 5.66 s while a single capture ended the game. Three captures are now
  * survivable (see launcher-lives.test.ts), so an unattended machine has to lose
- * three launchers before it stops, which takes roughly twice as long.
+ * three launchers before it stops.
+ *
+ * 20.6 s is **measured**, by driving the ROM and timing the last speaker edge
+ * and the last change of picture - both land there. An earlier revision of this
+ * constant estimated 10.92 s as "roughly twice" the old 5.66 s, which was wrong
+ * in two ways: the cadence ladder also doubled (#71), and the three lives are
+ * not three equal spans. The estimate left the horizons below just short of the
+ * ending they were meant to contain, which is what turned main red.
  */
-const UNATTENDED_SILENCE_S = 10.92;
+const UNATTENDED_SILENCE_S = 20.6;
 
 /** Every control this ROM reads, in the order a blind player works them. */
 const LEVER_POSITIONS = ["up", "centre", "down"] as const;
@@ -252,7 +259,11 @@ describe("the unattended machine reaches an ending rather than wedging", () => {
       // picture stops changing. A liveness check that this machine also passes
       // is measuring nothing.
       const board = new Board(ROM);
-      const horizon = seconds(20);
+      // Twice the measured silence, so the ending falls well inside the first
+      // two thirds and the window below is entirely after it. At a 20 s horizon
+      // this sampled the ending itself - the machine falls silent at 20.6 s -
+      // and read the game still playing as a picture that had not frozen.
+      const horizon = seconds(UNATTENDED_SILENCE_S * 2);
       const { samples } = sampleRun(board, horizon);
 
       expect(new Set(lastThird(board, horizon, samples)).size, "frozen picture").toBe(1);
@@ -372,7 +383,9 @@ describe("the power switch is the way back", () => {
     () => {
       const board = new Board(ROM);
 
-      run(board, seconds(15));
+      // Past the measured 20.6 s at which an unattended game runs out of
+      // launchers, with margin - not a round number chosen by eye.
+      run(board, seconds(UNATTENDED_SILENCE_S + 3));
       expect(run(board, seconds(3))).toHaveLength(0); // ended, and silent
 
       board.powerOff();
