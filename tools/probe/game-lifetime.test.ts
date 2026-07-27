@@ -163,18 +163,55 @@ function blindPlayer(board: Board, slice: number): void {
 }
 
 /**
- * A stable, comparable rendering of what the ROM last drew on the tube.
+ * The launcher: grid 6, plates 6-8, one per lane.
+ *
+ * Excluded from the signature below. See `tubeSignature`.
+ */
+const GRID_LAUNCHER = 6;
+const PLATES_LAUNCHER = [6, 7, 8];
+
+/**
+ * A stable, comparable rendering of what the ROM last drew on the tube,
+ * excluding the one segment the player's hand moves directly.
  *
  * The last *completed* sweep, not what a viewer sees at this instant: these runs
  * are read at arbitrary cycles, and an arbitrary cycle lands inside a sound's
  * blanking often enough to matter - the ROM parks the sweep while it bit-bangs
  * the speaker and the tube really is dark then (vfd-appearance.md D1). "The tube
  * changed" is a question about what the ROM drew.
+ *
+ * ## Why the launcher is left out, which is load bearing
+ *
+ * `tick` returns at its first test once the game is over, but `render_field`
+ * does not - the sweep goes on redrawing, and the launcher is drawn in whatever
+ * lane the lever is standing in. So on a machine whose game ended, moving the
+ * lever still changes the picture, for ever.
+ *
+ * That made the liveness assertion below pass on a corpse. Measured: let a
+ * machine end unattended, confirm it is silent, then waggle the lever at it for
+ * thirty seconds. It produces no speaker edge at all and three distinct
+ * pictures - comfortably over the "more than one" the assertion asks for. Take
+ * the launcher out of the signature and the same run collapses to one.
+ *
+ * The frozen-picture control could not catch this, because the two runs differ
+ * in whether the lever is worked as well as in whether the game is alive: the
+ * unattended machine's lever never moves, so its picture freezes whether or not
+ * the launcher is counted. What was being compared was a machine with a moving
+ * hand against one without, not a live game against a dead one.
+ *
+ * Everything else on the tube is the game's: jets march, the score changes,
+ * bursts light and go out, and none of it moves after `NIB_STATE` leaves
+ * ST_PLAY. The missile is the player's too, but a shot can only exist while the
+ * game is running, so it is a fair liveness signal and stays in.
  */
 function tubeSignature(board: Board): string {
   return board
     .getFrame()
     .segments
+    .filter(
+      (segment) =>
+        !(segment.grid === GRID_LAUNCHER && PLATES_LAUNCHER.includes(segment.plate)),
+    )
     .map((segment) => `${segment.grid}.${segment.plate}`)
     .sort()
     .join(" ");
@@ -269,6 +306,38 @@ describe("the unattended machine reaches an ending rather than wedging", () => {
       expect(new Set(lastThird(board, horizon, samples)).size, "frozen picture").toBe(1);
       // And frozen while still sweeping, so the two properties are independent
       // and the played machine has to satisfy both.
+      expect(board.display.frameCount).toBeGreaterThan(100);
+    },
+    LONG_RUN_TIMEOUT_MS,
+  );
+
+  it(
+    "is not brought back to life by working the lever at it",
+    () => {
+      // The second negative control, and the one the first cannot supply.
+      //
+      // The frozen-picture run above differs from the played run below in two
+      // ways at once - the game is over, *and* nobody is touching the case - so
+      // on its own it cannot say which of the two the liveness check is
+      // actually reading. This run holds the first fixed and varies the second:
+      // a machine that has definitely ended, with a hand working the controls.
+      //
+      // It matters because the answer used to be the wrong one. `render_field`
+      // keeps drawing the launcher in whatever lane the lever selects long
+      // after `tick` has stopped doing anything, so a dead machine with a moved
+      // lever produced a changing picture and passed the liveness assertion.
+      // See `tubeSignature` for the measurement and the fix.
+      const board = new Board(ROM);
+      run(board, seconds(UNATTENDED_SILENCE_S + 3));
+
+      // Definitely finished: nothing more from the speaker, whatever is done to
+      // it from here.
+      const { edges, samples } = sampleRun(board, seconds(UNATTENDED_SILENCE_S), blindPlayer);
+      expect(edges, "a finished game makes no sound however the case is worked").toEqual([]);
+
+      // And definitely still sweeping, so this is a picture that could have
+      // changed and did not, rather than a display that stopped being driven.
+      expect(new Set(samples.map((sample) => sample.picture)).size, "frozen picture").toBe(1);
       expect(board.display.frameCount).toBeGreaterThan(100);
     },
     LONG_RUN_TIMEOUT_MS,
