@@ -23,7 +23,7 @@
 //     for 5.2 ms. They read as seven lone edges - the exact signature of a pin
 //     driven and never returned to rest - and they are nothing of the kind.
 //     BURST_GAP_CYCLES is 8000 (20 ms), above that half-period and below the
-//     ~10200-cycle warning-beep gap, so it splits sounds without splitting a note.
+//     ~11000-cycle warning-beep gap, so it splits sounds without splitting a note.
 //   - Taking one frequency for a whole segment averages any two sounds that run
 //     back to back. A march step immediately followed by a battleship lane step
 //     - 640 Hz then 287 Hz, ~400 cycles apart - reads as a single 399 Hz burst
@@ -47,7 +47,7 @@ import { CYCLE_HZ } from '../../src/machine/cpu/cpu.js';
  * Silence that separates two sounds, in machine cycles - 20 ms.
  *
  * Above the 5.2 ms half-period of the slowest note the ROM plays (the loss
- * sound's 96 Hz collapse) and below the ~10200-cycle gap between two
+ * sound's 96 Hz collapse) and below the ~11000-cycle gap between two
  * launcher-hit warning beeps. Same constant as machine-probe.test.ts and
  * jetfighter-rom.test.ts.
  */

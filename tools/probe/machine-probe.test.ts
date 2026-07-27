@@ -54,7 +54,7 @@ const BLIP_MAX_SECONDS = 0.15;
  *
  * The slowest note the ROM plays is the loss sound's 96 Hz collapse, whose
  * period is ~4150 cycles, and the shortest silence between two sounds is the
- * ~10200-cycle warning-beep gap. 8000 sits between them, so this splits sounds
+ * ~11000-cycle warning-beep gap. 8000 sits between them, so this splits sounds
  * without splitting a note in half.
  */
 const BURST_GAP_CYCLES = 8000;

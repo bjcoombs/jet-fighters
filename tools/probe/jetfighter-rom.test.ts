@@ -355,7 +355,7 @@ describe('the squadron advances, and the skill dial sets how fast', () => {
   }
 
   it('walks the squadron toward the missile station', () => {
-    // PROVISIONAL cadence: skill 1 steps every 48 sweeps (see the ROM's
+    // PROVISIONAL cadence: skill 1 steps every 54 sweeps (see the ROM's
     // provisional-cadence block), so 160 frames is three steps or so. The test
     // asserts the direction of travel, not the number of steps - the number is
     // unmeasured and will change when the reference video arrives.
