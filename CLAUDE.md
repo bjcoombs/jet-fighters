@@ -59,6 +59,24 @@ The rules that keep it honest:
 - CI patterns: `ci` workflow (lint + test + build) required; `pages` deploy runs on main only
 - Bot reviewer rules: none
 
+### Two things that have cost this project a red `main`
+
+**A green local run says nothing about a branch whose base has moved.** GitHub builds the
+*merge* commit for a `pull_request` event, so a branch tests against `main` as it was when
+the run started. Three PRs each green against a different base landed red together, and a
+fourth went red on a commit that changed only comments - the assembled ROM was
+byte-identical, and what had moved was `main` underneath it. Before merging a run of PRs
+that touch related behaviour, rebase each onto the current `main` and let CI run again;
+merging them in the order their CI happened to pass is not the same thing.
+
+**A literal timeout in a test about a machine that stops is a bet on when it stops.** That
+figure has moved three times in one day here - 5.66 s while a single capture ended the
+game, then 10.92 s once three captures were survivable, then 20.6 s once the cadence
+ladder doubled. Express such horizons as multiples of a named, *measured* constant
+(`UNATTENDED_SILENCE_S` in `tools/probe/game-lifetime.test.ts` is the worked example), so a
+rule or cadence change moves one number instead of turning `main` red. Estimating that
+constant rather than measuring it is what caused the third occurrence.
+
 ## Acceptance contract gates
 
 Marathon runs are gated on a frozen acceptance contract at both entry and exit.

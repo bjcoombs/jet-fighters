@@ -201,3 +201,60 @@ these PRs means "did not review", not "reviewed and approved"**.
 Each merge was verified by the lead against the contract criteria, the test suite,
 and by driving the machine - but that is one party's judgement standing in for
 review across a large diff. A pass over the session's changes is worth doing.
+
+## 5. Handover from the teardown retrace
+
+Recorded when the atlas work finished, so these do not evaporate with the agent that
+found them. All three are honest gaps rather than loose ends: each is documented where
+someone will meet it, and each names what would settle it.
+
+### 5a. The capture burst's smoke - a path gap, not an address gap
+
+`assets/reference/tube-teardown/lit-capture-burst.jpg` shows the stippled curls glowing in
+the same event as the starburst beside them, as one connected region. So the smoke is a
+lit segment, and the parsimonious reading is that it belongs in the capture burst's own
+path - the fourth family on this tube with a two-part structure, alongside the colon's two
+dots, the jet-kill burst's two blobs and the sea's wave glyphs.
+
+It is not traced: the stipple is the same pigment printed as a dot screen, so it separates
+on neither brightness, hue nor saturation, and erosion destroys what little survives. Five
+approaches and their results are in `src/machine/tube/ATLAS-COORDINATES.md`.
+
+**Falsifier, and it changes the size of the problem:** a lit frame showing the stipple
+without the starburst, or the starburst without the stipple. Bloom in a lit photograph can
+join separately-addressed segments, so the co-lighting reading is strongly evidenced
+rather than proved. If it is wrong, that cell needs **two addresses** rather than one
+incomplete path.
+
+### 5b. `capture_lane*` is undriven
+
+The tube prints two different bursts in the player's cell - one for a jet reaching the G
+line, one for the colon hitting the launcher - and the ROM draws the same segment for
+both, so the capture burst never lights. It is on the conformance test's enumerated
+exception list, which means it is a line someone **deletes** rather than a thing someone
+has to notice.
+
+Distinguishing them is a change to the launcher-destroyed path in `asm/jetfighter.asm` -
+the same code `launcher_down` touched - and not to the display map.
+
+### 5c. The two-unit border disagreement
+
+`PLAYFIELD` in `src/machine/tube/layout.ts` comes from the lit close-ups; the cell lattice
+comes from the bare tube. They differ by about 5% of a cell on the right-hand border, and
+that sits **visible in a test** rather than absorbed as slack.
+
+**If anyone resolves it, the teardown wins.** It has won every conflict with the video and
+the lit stills today, on the same basis each time: it shows the glass itself rather than
+what happened to be lit, through a smoked filter, sampled slower than the tube refreshes.
+
+### 5d. Do not adjust the frame assertion's data to make it pass
+
+`atlas.test.ts` pins the atlas against three **measured** printed-boundary positions - cell
+index 3.66, 4.665 and 5.68, each the centre of a triple of dark runs in
+`tube-unlit-full.jpg`.
+
+If the atlas is ever re-derived, **re-measure the print**; do not adjust those numbers to
+fit the new atlas. The entire registration error found here was a frame that was perfectly
+self-consistent - every existing test passed from inside it, because they compared the
+atlas against `layout.ts` and both had inherited the same wrong phase. The only assertion
+that could see out of it was one anchored on something the atlas does not control.
