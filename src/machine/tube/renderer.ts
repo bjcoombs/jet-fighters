@@ -34,13 +34,13 @@ import {
   segmentFill,
 } from './palette.js';
 import { parsePathCached, tracePath, type PathCommand } from './path.js';
-import { PhosphorField, type PhosphorConstants } from './phosphor.js';
+import { PhosphorField, type PhosphorSet } from './phosphor.js';
 import { drawSilkscreen } from './silkscreen.js';
 
 /** Options for {@link createTubeRenderer}. */
 export interface TubeRendererOptions {
-  /** Phosphor response. Defaults to `PHOSPHOR` in phosphor.ts. */
-  readonly phosphor?: PhosphorConstants;
+  /** Phosphor response, one set per colour region. Defaults to `PHOSPHOR` in phosphor.ts. */
+  readonly phosphor?: PhosphorSet;
   /**
    * Draw the bloom around lit segments. On by default; off is a diagnostic
    * setting that isolates segment shapes from their glow.
@@ -124,7 +124,12 @@ export function createTubeRenderer(
     indexById.set(entry.segment.id, index);
   });
 
-  const field = new PhosphorField(prepared.length, options.phosphor);
+  // Each segment fades on its own phosphor's constants, so the field is built
+  // from the atlas's colour regions rather than from a segment count.
+  const field = new PhosphorField(
+    prepared.map((entry) => entry.segment.colorRegion),
+    options.phosphor,
+  );
   const withGlow = options.glow ?? true;
 
   // Seeded so a draw before the first resize produces valid output rather than
