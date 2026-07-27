@@ -136,8 +136,10 @@ carried-over outline as a retraced one.**
 | Battleship, cell 0 | `tube-teardown/tube-unlit-full.jpg` |
 | Printed sea, cell 0 | the same - new, nothing had accounted for it |
 | Battleship-kill burst, cell 0 | the same - new to the atlas |
-| Launcher, player's burst | the two lit close-ups, awaiting retrace |
-| Cell 6's smoke and second burst | not in the atlas yet |
+| Launcher, cell 6 | `tube-teardown/tube-unlit-full.jpg` |
+| Capture burst, cell 6 | the same - new to the atlas |
+| Rocket burst (`explosion_*`), cell 6 | the same |
+| Cell 6's smoke | **not traced** - see below |
 | Score digits, SCORE label | v1 shape tables |
 
 ### Tracing from the bare tube
@@ -593,12 +595,12 @@ When a test has no reference behind it - no photograph, no measurement, no
 statement from the owner - it is pinning the last person's judgement, and the
 right form is to say so in the test rather than to let it read as fact.
 
-### Cell 6 is not traced, and what has been ruled out
+### Cell 6's smoke is not traced, and what has been ruled out
 
 The player's cell holds four printed things per lane: two solid yellow
 starbursts, a yellow **stipple** - a knot of loose curls - and the cyan
-launcher. Only the launcher and the two starbursts segment; the stipple does
-not, and five approaches have been tried:
+launcher. The launcher and the two starbursts are traced. **The stipple is not**,
+and five approaches have been tried:
 
 | Attempt | Result |
 | --- | --- |
@@ -614,24 +616,43 @@ saturation and value (0.29 / 0.58 against 0.50 / 0.77) are what a dot screen
 does to a measurement - each pixel averages pigment with the dark gaps between
 the dots - not evidence of a second pigment.
 
-**And there is a second gap that no image work can close.** The atlas carries
-`explosion_lane*` in this cell for the player being hit, and the tube prints
-**two** starbursts. Which is which is not determined by anything here. What is
-now measured is that they are **not the same glyph**:
+The stipple **is a lit segment**, which a lit photograph from the owner settles:
+`tube-teardown/lit-capture-burst.jpg` shows the curls glowing red-orange beside
+a lit starburst in the same event. It also shows them **co-lit and contiguous**,
+so the reading is one segment with the stipple in its path - the same structure
+as the colon's two dots, the burst's two blobs and the sea's wave glyphs.
+Strongly evidenced rather than proved: bloom in a lit photograph can join two
+separately addressed segments. **What would falsify it is a frame in which the
+stipple lights without the starburst, or the starburst without the stipple.**
 
-| | Lower-left | Upper-right |
+So the capture burst's traced path is its starburst without its smoke. That is
+a known incompleteness in a segment that is otherwise correct, not a missing
+address.
+
+### The two bursts in the player's cell are two different losses
+
+Settled by the owner, in his words: one is *"when the plane reaches right hand
+side"* and the other *"when the `:`"*. So `capture_lane*` is a jet reaching the
+capture line and `explosion_lane*` is being hit by the attackers' colon.
+
+**The discriminator is horizontal, which is what makes it safe.** In
+`lit-capture-burst.jpg` the lit burst sits about 106 px (in the bare tube's
+scale) to the *left* of the cyan launcher. Of the two candidates one is 116 px
+left of it and the other 11 px left, so only one fits - and the vertical offset,
+which is the axis a photograph spanning three lanes could be misread on, never
+has to be reconciled.
+
+| | Capture | Rocket |
 | --- | --- | --- |
-| Size | 112 x 70 | 83 x 56 |
-| Area | ~5,060 px | ~3,170 px |
-| Shape against each other | IoU 0.64-0.66 | |
-| Same one across the three lanes | IoU 0.96 | IoU 0.91 |
+| Size | 113 x 71 | 118 x 58 |
+| Area | ~5,100 px | ~4,560 px |
+| Shape against each other | IoU 0.63-0.67 | |
+| Same one across the three lanes | IoU 0.95 | IoU 0.87 |
 
-So the tube draws two different bursts, consistently, and one is about 1.6x the
-area of the other. That rules out the reading that the player's death and
-something else share a glyph, and it means whichever answer arrives has a
-visible consequence. Assigning them without evidence would be a coin flip
-dressed as a trace, and the cell would render convincingly either way - which is
-how every phantom-segment bug on this project survived review.
+They are within about 10% in area and clearly different in shape - the capture
+burst deeper, the rocket burst flatter. An earlier measurement put them 1.6x
+apart in area; that was an artefact of the old lattice phase, which placed the
+extraction window far enough left to clip the right-hand burst.
 
 ### Known gaps, so they are not lost
 
