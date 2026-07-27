@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { GRID_COUNT as ATLAS_GRID_COUNT, PLATE_COUNT as ATLAS_PLATE_COUNT } from '../tube/atlas-schema.js';
-import { Display, GRID_COUNT, GRID_MASK, PLATE_COUNT, PLATE_MASK } from './display.js';
+import {
+  Display,
+  GRID_COUNT,
+  GRID_MASK,
+  PLATE_COUNT,
+  PLATE_MASK,
+  REFRESH_TIMEOUT_CYCLES,
+} from './display.js';
 import type { PwmFrame } from './pwm.js';
 
 /** Duty of one segment in a frame, or 0 when it never lit. */
@@ -248,5 +255,111 @@ describe('Display - clearing', () => {
     display.setGrids(1, 5_000);
     display.clear(0);
     expect(() => display.setGrids(1 << 1, 10)).not.toThrow();
+  });
+});
+
+describe('Display - a sweep that stops', () => {
+  /**
+   * The ROM has one core and no sound hardware, so while it bit-bangs the
+   * speaker it drives no grid and the tube goes out (vfd-appearance.md D1).
+   * Nothing here knows that; all it sees is drive that stopped.
+   */
+  const STALL = REFRESH_TIMEOUT_CYCLES * 10;
+
+  /** A sweep, then the grids dropped, then nothing for `stall` cycles. */
+  function sweepThenStall(display: Display, stall: number): { blankedAt: number; resumeAt: number } {
+    const end = sweep(display, 0b11, 40);
+    display.setGrids(0, end);
+    return { blankedAt: end, resumeAt: end + stall };
+  }
+
+  it('goes on reporting the last completed frame while the sweep is running', () => {
+    const display = new Display();
+    const end = sweep(display, 0b11, 40);
+    display.setGrids(1 << 0, end); // wraps: closes the frame
+
+    // Read between two grids of the next sweep, the way a renderer would.
+    const frame = display.getObservedFrame(end + 10);
+    expect(frame.segments).toHaveLength(GRID_COUNT * 2);
+    expect(display.isRefreshing(end + 10)).toBe(true);
+  });
+
+  it('tolerates the sweep-s own blanking intervals without going dark', () => {
+    const display = new Display();
+    const { blankedAt } = sweepThenStall(display, 0);
+    display.setGrids(1 << 0, blankedAt + 1);
+    display.setGrids(0, blankedAt + 41);
+
+    // A gap at the timeout is still a running sweep - the boundary is inclusive
+    // so that the largest gap the ROM produces cannot be read as a stop.
+    expect(display.isRefreshing(blankedAt + 41 + REFRESH_TIMEOUT_CYCLES)).toBe(true);
+    expect(display.refreshGap(blankedAt + 41 + REFRESH_TIMEOUT_CYCLES)).toBe(REFRESH_TIMEOUT_CYCLES);
+  });
+
+  it('reports the tube dark once the drive has been gone longer than the timeout', () => {
+    const display = new Display();
+    const { blankedAt } = sweepThenStall(display, STALL);
+
+    expect(display.isRefreshing(blankedAt + REFRESH_TIMEOUT_CYCLES + 1)).toBe(false);
+    expect(display.getObservedFrame(blankedAt + REFRESH_TIMEOUT_CYCLES + 1).segments).toEqual([]);
+    expect(display.getObservedFrame(blankedAt + STALL).segments).toEqual([]);
+  });
+
+  it('measures the dark frame from the moment the drive stopped', () => {
+    const display = new Display();
+    const { blankedAt } = sweepThenStall(display, STALL);
+    const frame = display.getObservedFrame(blankedAt + STALL);
+    expect(frame.startCycle).toBe(blankedAt);
+    expect(frame.cycles).toBe(STALL);
+  });
+
+  it('leaves getFrame alone - it is what the ROM drew, not what is on the glass', () => {
+    const display = new Display();
+    const end = sweep(display, 0b11, 40);
+    display.setGrids(1 << 0, end);
+    display.setGrids(0, end + 40);
+
+    expect(display.getFrame().segments).toHaveLength(GRID_COUNT * 2);
+    expect(display.getObservedFrame(end + 40 + STALL).segments).toEqual([]);
+  });
+
+  it('keeps the stall out of the period the sweep either side of it is measured against', () => {
+    // Without this, the frame that contains a stall is the stall's length
+    // longer and every duty in it collapses by the same factor - a fully driven
+    // segment reading as a dim one, once per sound.
+    const withoutStall = new Display();
+    const plainEnd = sweep(withoutStall, 0b11, 40);
+    withoutStall.setGrids(1 << 0, plainEnd);
+
+    const withStall = new Display();
+    const { blankedAt, resumeAt } = sweepThenStall(withStall, STALL);
+    withStall.setGrids(1 << 0, resumeAt); // the sweep comes back and wraps
+
+    expect(withStall.getFrame().cycles).toBe(withoutStall.getFrame().cycles);
+    expect(dutyOf(withStall.getFrame(), 3, 1)).toBeCloseTo(dutyOf(withoutStall.getFrame(), 3, 1), 12);
+    expect(blankedAt).toBeLessThan(resumeAt);
+  });
+
+  it('keeps ordinary sweep variation in the period, because a slower sweep is dimmer', () => {
+    // Only a full stop is excluded. A pass that runs long because the ROM had
+    // more to do is real dimming and stays in the denominator.
+    const quick = new Display();
+    const quickEnd = sweep(quick, 0b11, 40);
+    quick.setGrids(0, quickEnd);
+    quick.setGrids(1 << 0, quickEnd + REFRESH_TIMEOUT_CYCLES);
+
+    const plain = new Display();
+    const plainEnd = sweep(plain, 0b11, 40);
+    plain.setGrids(1 << 0, plainEnd);
+
+    expect(quick.getFrame().cycles).toBeGreaterThan(plain.getFrame().cycles);
+    expect(dutyOf(quick.getFrame(), 3, 1)).toBeLessThan(dutyOf(plain.getFrame(), 3, 1));
+  });
+
+  it('forgets the stall when the power switch goes off', () => {
+    const display = new Display();
+    const { blankedAt } = sweepThenStall(display, STALL);
+    display.clear(blankedAt + STALL);
+    expect(display.refreshGap(blankedAt + STALL)).toBe(0);
   });
 });

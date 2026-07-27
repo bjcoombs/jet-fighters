@@ -336,7 +336,7 @@ Read against `src/machine/tube/phosphor.ts`, `renderer.ts`, `palette.ts`,
 `src/machine/board/display.ts` and `asm/jetfighter.asm`. **No code was changed by this
 task.** Ordered by how much each one changes what the owner sees.
 
-**D1 - Nothing ever blanks the display. (Section 5.)**
+**D1 - Nothing ever blanks the display. (Section 5.) FIXED.**
 `renderer.draw()` (`renderer.ts:219-232`) unconditionally paints background, ghost layer,
 active layer and silkscreen every call; `blank()` (`renderer.ts:243`) only zeroes the
 phosphor field and is only called on a power transition (`main.ts:104`). There is no path
@@ -371,11 +371,69 @@ boundary from the ROM closes the frame either before the blank - leaving the sam
 on screen through it - or after it, one diluted frame late. Reporting a dark tube *during*
 the blank requires the observation surface to consult the live tube.
 
-The remaining work is therefore one change in `src/machine/board/board.ts`, and it is not a
-sound special case: `getLitSegments()` already falls back to a live `sampleFrame()` when
-`frameCount === 0`, "so a caller that reads too early sees what is on the tube rather than
-an empty list that looks like a dark machine". A stalled sweep is the same situation. That
-fallback is not made here, because it was outside the mandate of the change that found this.
+*What was done.* `Display.getObservedFrame(cycle)` answers the viewer's question - what is
+on the glass now - and `Board.getLitSegments()`, which is what `main.ts` draws, returns it.
+While the sweep is running it is the last completed frame period, exactly as before. Once
+the drive has been gone longer than `REFRESH_TIMEOUT_CYCLES` it reports what is true: no
+grid driven, so no segment lit, so every duty zero. The phosphor downstream turns that into
+the decay a tube shows when its electrons stop. Nothing in the renderer changed and nothing
+in the machine knows a sound is playing - the tube is dark because nothing is driving it,
+which is the same reason the real one is.
+
+The threshold is 2000 cycles, 5 ms. It is not a tuning choice, and the margin either side
+of it is wide. Two independent runs driving the ROM and timing every interval with no grid
+driven - 82 s of played and unattended game (n = 36,624) and a separate 20 s run
+(n = 13,453) - give:
+
+| interval | cycles |
+| --- | --- |
+| between grids, and between sweeps | 13 - 707 |
+| shortest sound blank (launcher warning) | 16,990 (42.5 ms) |
+| a march note | 28,415 (71.0 ms) |
+| the loss sequence | 254,754 (636.9 ms) |
+
+**Nothing at all falls between 707 and 16,990**, in either run. 2000 sits 2.8x above the
+longest gap a running sweep makes and 8.5x below the shortest a sound makes.
+
+An earlier revision of this paragraph said 13-660 and "the shortest a sound can produce is
+~4045 (the 10 ms warning beep)", making 2000 look like half the shortest blank rather than
+an eighth of it. No interval near 4045 was observed in either run: the sweep does not
+resume between the warning's two beeps, so the shortest blank is the whole 42.5 ms
+sequence. The constant is unchanged - only the evidence for it was wrong, and in the
+direction that would have made a future reader think it was marginal.
+
+The stalled interval also comes out of the frame period it fell in
+(`PwmAccumulator.exclude`). Duty is a segment's share of a *refresh* period and a stall is
+not refresh time; left in the denominator it put the sweeps either side of a note at 18% of
+their real duty, which is the dilution described above. Ordinary variation - a pass that
+runs long because there is more on the tube - stays in the denominator, because a slower
+sweep really is dimmer.
+
+*Measured through the renderer's own read path*, sampling `getLitSegments()` at the 60 Hz
+cadence `main.ts` reads at, across a 67.9 ms march note:
+
+| read, relative to the note | lit segments | peak duty | brightness |
+| --- | --- | --- | --- |
+| -26.0 ms | 9 | 0.0890 | 1.00 |
+| -9.5 ms | 9 | 0.0890 | 0.93 |
+| +7.5 ms | 0 | 0 | **0.00** |
+| +24.0 ms | 0 | 0 | **0.00** |
+| +40.5 ms | 0 | 0 | **0.00** |
+| +57.5 ms | 0 | 0 | **0.00** |
+| +74.0 ms | 9 | 0.0977 | 0.99 |
+| +90.5 ms | 9 | 0.0889 | 0.93 |
+
+Every read inside the note is dark, and the tube comes back at full level rather than the
+dim frame. Before the period exclusion that +74.0 ms read was 0.0147, a sixth of normal.
+`tools/probe/sweep-timing.test.ts` asserts this on every march-length note in the run
+rather than on the 637 ms loss sequence alone - a long blank passes on a change that leaves
+the common short one lit.
+
+*What is still approximate.* The tube goes dark up to 5 ms into a blank rather than at the
+instant the sweep stops, because that is what the threshold costs. Against a 68 ms note it
+is 7% of the blank, and the phosphor's own decay - 0.97 ms for cyan and 4.29 ms for red to
+10% after D2 and D3 - is of the same order, so the visible onset is a fade of a few
+milliseconds either way.
 
 **D2 - Phosphor decay is 3x to 15x too slow. (Section 3.)**
 `PHOSPHOR.decayTimeMs = 15` (`phosphor.ts:55-60`), i.e. tau = 15/ln(10) = 6.51 ms.

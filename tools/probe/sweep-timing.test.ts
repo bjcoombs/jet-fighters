@@ -45,7 +45,12 @@ import { assemble } from '../hmasm/assembler.js';
 import { romImage } from '../hmasm/output.js';
 import { Board } from '../../src/machine/board/board.js';
 import { CYCLE_HZ } from '../../src/machine/cpu/cpu.js';
-import { GRID_COUNT, GRID_MASK } from '../../src/machine/board/display.js';
+import {
+  GRID_COUNT,
+  GRID_MASK,
+  REFRESH_TIMEOUT_CYCLES,
+} from '../../src/machine/board/display.js';
+import type { SegmentDuty } from '../../src/machine/board/pwm.js';
 
 /**
  * The admissible interval for the mean sweep rate, in Hz.
@@ -353,5 +358,139 @@ describe('the tube goes dark while a note plays (D1)', () => {
       .filter(([cycle]) => cycle > last.lastEdge)
       .reduce((mask, [, next]) => mask | next, 0);
     expect(driven & GRID_MASK).toBe(GRID_MASK);
+  });
+});
+
+// ============================================================================
+// What the renderer is handed while a note plays (D1)
+// ============================================================================
+//
+// The tests above assert what the *ROM* does: it stops driving the grids for
+// the duration of every sound. These assert that the fact survives the trip to
+// `main.ts`, which is where it used to be lost - `Display.getFrame()` returns
+// the last *completed* frame period, no period completes while the sweep is
+// stopped, and the renderer was handed a fully lit tube throughout.
+//
+// Read the way `main.ts` reads: `board.getLitSegments()`, sampled at the ~60 Hz
+// cadence a browser calls its frame callback at. Anything coarser would step
+// over a march note, which is the case that matters - it is the shortest of the
+// common sounds and it fires on every squadron step. A test that only exercised
+// the 637 ms loss sequence would pass against a change that left the march note
+// visibly lit.
+
+/** How often `main.ts` reads the tube, in machine cycles - one 60 Hz frame. */
+const RENDER_INTERVAL_CYCLES = Math.round(CYCLE_HZ / 60);
+
+/** Machine cycles to run. About 2.3 s, which carries several march notes. */
+const RENDER_RUN_CYCLES = 900_000;
+
+/** One read of the tube by the frame driver. */
+interface RenderSample {
+  readonly cycle: number;
+  readonly segments: readonly SegmentDuty[];
+}
+
+/** Brightest duty in a sample - 0 when the tube is dark. */
+function peakDuty(sample: RenderSample): number {
+  return sample.segments.reduce((peak, segment) => Math.max(peak, segment.duty), 0);
+}
+
+describe('the blank reaches the renderer (D1)', () => {
+  const board = romBoard();
+  board.runFrames(WARMUP_SWEEPS);
+
+  const samples: RenderSample[] = [];
+  const edgeCycles: number[] = [];
+  const until = board.cycles + RENDER_RUN_CYCLES;
+  let nextRead = board.cycles + RENDER_INTERVAL_CYCLES;
+  while (board.cycles < until) {
+    // Small slices so a read lands within a few hundred cycles of its due time;
+    // the driver's own resolution is one instruction.
+    board.step(200);
+    edgeCycles.push(...board.takeSpeakerEdges().map((edge) => edge.cycle));
+    if (board.cycles >= nextRead) {
+      samples.push({ cycle: board.cycles, segments: board.getLitSegments() });
+      nextRead += RENDER_INTERVAL_CYCLES;
+    }
+  }
+
+  const sounds = splitSounds(edgeCycles);
+  /** Sounds of march length. The ROM plays a march note in 3 bursts, ~68 ms. */
+  const marchNotes = sounds.filter(
+    (sound) => ms(sound.lastEdge - sound.firstEdge) > 50 && ms(sound.lastEdge - sound.firstEdge) < 110,
+  );
+
+  /** Reads that fall inside `sound`, once the refresh timeout has expired. */
+  function readsDuring(sound: Sound): RenderSample[] {
+    return samples.filter(
+      (sample) =>
+        sample.cycle >= sound.firstEdge + REFRESH_TIMEOUT_CYCLES && sample.cycle <= sound.lastEdge,
+    );
+  }
+
+  it('played several march notes in the window', () => {
+    // Guards every assertion below against passing vacuously.
+    expect(marchNotes.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('hands the renderer a lit tube while the sweep is running', () => {
+    // The control. If this failed the rest would pass on a permanently dark
+    // machine, which is the failure mode the blanking work could most easily
+    // introduce.
+    const lit = samples.filter((sample) => sample.segments.length > 0);
+    expect(lit.length).toBeGreaterThan(samples.length * 0.5);
+  });
+
+  it('hands the renderer nothing at all for the whole of every march note', () => {
+    for (const note of marchNotes) {
+      const reads = readsDuring(note);
+      // A ~68 ms note against a 16.7 ms read interval and a 5 ms timeout leaves
+      // three reads or so inside it. Asserting there are any is what stops this
+      // passing by measuring an empty window.
+      expect(reads.length).toBeGreaterThanOrEqual(2);
+      for (const read of reads) {
+        expect(read.segments).toEqual([]);
+      }
+    }
+  });
+
+  it('hands the renderer nothing for the whole of every sound, march or not', () => {
+    for (const sound of sounds) {
+      for (const read of readsDuring(sound)) {
+        expect(read.segments).toEqual([]);
+      }
+    }
+  });
+
+  it('lights the tube again at full brightness, not a dim frame', () => {
+    // The first read that sees anything after the note, and it has to be at the
+    // level the tube was at before it - the sweep either side of a note is
+    // measured against its own length, not against the note's.
+    //
+    // This is the assertion that catches the second half of the fix. With the
+    // stall left in the frame period, the frame that contains a note is the
+    // note's length longer and every duty in it collapses by the same factor:
+    // measured, this first read came back at 0.0147 against a normal 0.0890,
+    // one sixth of the level, and showed as a dim frame after every beep.
+    for (const note of marchNotes) {
+      const before = samples.filter((sample) => sample.cycle < note.firstEdge).slice(-1);
+      const normal = peakDuty(before[0] as RenderSample);
+      expect(normal).toBeGreaterThan(0);
+
+      const after = samples.filter((sample) => sample.cycle > note.lastEdge).slice(0, 3);
+      const firstLit = after.find((sample) => sample.segments.length > 0);
+      expect(firstLit).toBeDefined();
+      expect(peakDuty(firstLit as RenderSample)).toBeGreaterThan(normal * 0.9);
+    }
+  });
+
+  it('is dark for a tenth of the run, which is what the tube being off looks like', () => {
+    // vfd-appearance.md measures 14-17% of camera frames fully dark during
+    // active play against 0% in its quiet control window. The floor here is
+    // under that because how often the game triggers a sound is provisional
+    // cadence, not this test's subject - what is asserted is that the blanking
+    // is a substantial fraction of what a viewer sees, not a transient.
+    const dark = samples.filter((sample) => sample.segments.length === 0);
+    expect(dark.length / samples.length).toBeGreaterThan(0.1);
   });
 });

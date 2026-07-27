@@ -9,10 +9,17 @@
 // audio-reference.md says they must.
 //
 // Everything here is read off the board's own observation surface, exactly as
-// the probe does it: `getLitSegments()` for the tube and `takeSpeakerEdges()`
-// for D14. Nothing reads the ROM's RAM. A test that asserted on a game-state
-// nibble would pass for a ROM that computed the right numbers and drew nothing,
-// which is the failure mode v2 exists to rule out.
+// the probe does it: `getFrame()` for the tube and `takeSpeakerEdges()` for
+// D14. Nothing reads the ROM's RAM. A test that asserted on a game-state nibble
+// would pass for a ROM that computed the right numbers and drew nothing, which
+// is the failure mode v2 exists to rule out.
+//
+// `getFrame()` and not `getLitSegments()`, and the difference matters: the
+// latter is what a viewer sees *now*, which is nothing at all while the ROM has
+// the sweep parked to bit-bang the speaker (docs/evidence/vfd-appearance.md D1).
+// Every question in this file is about what the ROM drew - which grid carries a
+// jet, whether the units digit is ever blanked - so the right surface is the
+// last sweep the tube completed, not the instant a read happened to land on.
 //
 // Node-side test: no DOM, no browser globals.
 
@@ -89,7 +96,8 @@ function romBoard(): Board {
 /** Grids showing at least one of `plates`, over the last completed frame. */
 function gridsShowing(board: Board, plates: readonly number[]): number[] {
   const grids = board
-    .getLitSegments()
+    .getFrame()
+    .segments
     .filter((segment) => segment.duty > 0 && plates.includes(segment.plate))
     .map((segment) => segment.grid);
   return [...new Set(grids)].sort((left, right) => left - right);
@@ -98,7 +106,8 @@ function gridsShowing(board: Board, plates: readonly number[]): number[] {
 /** Plates lit under one grid, over the last completed frame. */
 function platesUnder(board: Board, grid: number): number[] {
   return board
-    .getLitSegments()
+    .getFrame()
+    .segments
     .filter((segment) => segment.grid === grid && segment.duty > 0)
     .map((segment) => segment.plate)
     .sort((left, right) => left - right);
@@ -128,7 +137,8 @@ function columnsLitInLane(board: Board, lane: number): number {
 /** Every jet segment lit anywhere on the playfield. */
 function jetSegmentCount(board: Board): number {
   return board
-    .getLitSegments()
+    .getFrame()
+    .segments
     .filter(
       (segment) =>
         segment.duty > 0 && segment.grid <= GRID_COLUMN_LAST && PLATE_JET.includes(segment.plate),
@@ -179,7 +189,8 @@ describe('the field the ROM puts up at power-on', () => {
     // 1-3 was the last of them: this unit has no lives display, so the ROM now
     // draws the SCORE label alone on that grid. Every lit address must resolve.
     const unmapped = board
-      .getLitSegments()
+      .getFrame()
+      .segments
       .filter((segment) => segment.duty > 0)
       .filter((segment) => getSegmentByAddress(segment.grid, segment.plate) === undefined)
       .map((segment) => `${segment.grid}-${segment.plate}`);
