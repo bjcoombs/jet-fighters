@@ -65,6 +65,43 @@ rather than absorbed - see [`docs/evidence/`](docs/evidence/) for the audio band
 refresh and persistence, the timing analysis, and an explicit list of what is still
 unsettled.
 
+## How this was built
+
+Every line of this repository was written by Claude, working in Claude Code - Opus 5 and
+Fable 5, across the days in the commit log. The owner supplied the machine, the
+photographs, the recordings, and the judgement about what the real unit does.
+
+That was the point of attempting it. This is a project I had wanted to try for a while and
+had held off on, because agentic coding did not feel ready for something with this shape:
+no reference implementation to copy, a correctness standard that lives in a physical object
+on a desk, and thousands of small decisions that are each individually plausible and
+collectively wrong if nobody checks them against the thing itself.
+
+What made it work is not that the model got things right. The section above is a list of
+things it got confidently, thoroughly wrong - and those are the ones that were caught.
+What made it work is that it could be **held to evidence**: made to measure rather than
+assert, made to record how it knows each thing, and made to say plainly what it could not
+determine.
+
+Some of that came from the model refusing instructions. Told to remap the sprite grid one
+way, it measured, disagreed, and held its ground - obeying would have mirrored the
+playfield and deleted three real segments. Told the battleship's pitch encoding was capped
+and to redesign it, it measured, found the pitch already correct, and declined to build the
+change. Told that a path-simplification step was throwing away sprite detail, it measured
+that step at a tenth of the error and went looking elsewhere. Every one of those was a
+lead-agent instruction that was simply wrong, and each would have shipped.
+
+The rest came from method. Findings carry their provenance and the count of samples behind
+them. Assertions are checked by mutation - break the thing on purpose and confirm the test
+notices. Where two sources disagree, the disagreement is written down rather than averaged
+away. And the two ways this project has repeatedly gone wrong are named in the notes so
+they can be recognised on sight: **phantom segments**, phosphor the glass does not have,
+found three times; and **beliefs promoted to constraints**, an assertion describing what we
+decided rather than what the machine does, found four.
+
+None of that is specific to emulation. It is what it takes to trust work you did not do by
+hand.
+
 ## Controls
 
 | Action        | Keyboard                | On-case control               |
@@ -195,12 +232,6 @@ and what it does *not* establish:
 | [`assets/reference/sprites/README.md`](assets/reference/sprites/README.md) | Every sprite on the glass, its size, its cell and its lanes |
 | [`src/machine/tube/ATLAS-COORDINATES.md`](src/machine/tube/ATLAS-COORDINATES.md) | The tracing method, the five approaches that failed, and the two ways this atlas has gone wrong |
 | [`docs/evidence/open-questions.md`](docs/evidence/open-questions.md) | What is still unsettled, and what would settle it |
-
-Two failure modes recur often enough to be named in the notes. **Phantom segments** -
-phosphor the glass does not have, found three times. And **beliefs promoted to
-constraints** - an assertion describing what we decided rather than what the machine does,
-found four times, including one that had frozen a sprite in a position chosen because it
-"should" look right.
 
 ## Credits
 
