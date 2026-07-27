@@ -178,10 +178,34 @@ existing description.
 untraced; there is now a clean one. It is a **warship in side profile**: a long low hull
 with a raised superstructure and funnel amidships, drawn red-orange, 54 x 24 px - half
 again as wide as a jet and slightly shorter. It appears **only in column 6**, in any of
-the three lanes, and **it does not move**: four separate episodes (file t=168-170,
-199-203, 259-265, 311-316) each hold it stationary in one lane for 4.4 to 6 s of file
-time and then it vanishes. Whatever "a battleship crossing" means on this machine, it is
-not the sprite traversing columns.
+the three lanes. Four separate episodes (file t=168-170, 199-203, 259-265, 311-316) each
+hold it in one lane for 4.4 to 6 s and then it vanishes.
+
+**Whether it traverses is NOT settled, and an earlier revision of this section said it
+was.** That revision concluded "it does not move", and that reading was checked
+independently by tracking red blobs through the t=259-266 s episode at 500 ms intervals:
+
+```
+wide blob   (w~48 px, the battleship): x66-116, x70-116, x72-114, x68-116, x68-116
+narrow blob (w~34 px, a jet):          x212-248, x212-246, x216-242, x212-246
+```
+
+The battleship holds position, which looks like confirmation - **but the control failed.**
+The narrow blob is a jet, and jets certainly do advance; at ~600 ms per column it should
+have crossed several columns in seven seconds, and it did not move either. A window in
+which a known-moving object does not move cannot be used to prove another object is
+stationary. Whether that stretch falls between waves, in an ended state, or is defeated
+by the sound blanking is unresolved.
+
+So: the battleship's **shape, colour, size, column and three lanes are well attested**;
+its **motion is not**. Do not build a stationary battleship into the ROM on the strength
+of this section. It is recorded this way rather than deleted because the stationary
+reading contradicts the PRD's "battleship crossing", and acting on it would have changed
+a game rule on a measurement that could not carry the claim.
+
+The general lesson is worth more than the instance: **motion analysis in this video needs
+a control** - something whose behaviour is known, measured in the same window. If the
+control does not do what it must do, the window is unusable.
 
 **Missile in flight.** `missile-column-1..5.png`. A cyan dart, **point to the left**,
 with a short tapering tail to the right - the direction it travels, corroborating the
