@@ -167,17 +167,28 @@ export class Board {
   }
 
   /**
-   * Segments lit over the most recently completed frame, each with its duty.
+   * What is on the tube now, each segment with its duty - what a renderer draws.
    *
-   * Falls back to a live sample of the frame in progress before the first sweep
-   * has wrapped, so a caller that reads too early sees what is on the tube
-   * rather than an empty list that looks like a dark machine.
+   * Two cases where the last completed frame period is not the answer, and both
+   * are answered the same way: by looking at the tube rather than at the last
+   * period it finished.
+   *
+   * Before the first sweep has wrapped there is no completed period at all, so a
+   * caller that reads too early gets a live sample rather than an empty list
+   * that looks like a dark machine.
+   *
+   * Once the sweep has *stopped* - which the ROM does on every sound, because it
+   * bit-bangs the speaker in a delay loop and cannot strobe the grids at the
+   * same time - no period closes either, and the last completed one goes on
+   * reporting a fully lit tube for as long as the silence of the grids lasts.
+   * `Display.getObservedFrame` reports that tube dark, because it is: nothing is
+   * driving a grid. See docs/evidence/vfd-appearance.md D1.
    */
   getLitSegments(): readonly SegmentDuty[] {
     if (this.display.frameCount === 0) {
       return this.sampleFrame().segments;
     }
-    return this.display.getLitSegments();
+    return this.display.getObservedFrame(this.cpu.cycles).segments;
   }
 
   /** Duty accrued so far in the frame in progress, without closing it. */

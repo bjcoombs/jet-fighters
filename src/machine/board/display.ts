@@ -38,6 +38,35 @@ export const PLATE_COUNT = R_PIN_COUNT;
 /** R0-R19 as a bit mask. */
 export const PLATE_MASK = R_MASK;
 
+/**
+ * Machine cycles with no grid driven after which the tube is taken to be dark.
+ *
+ * The ROM has one core and no sound hardware, so it bit-bangs the speaker in a
+ * timed delay loop and stops strobing the grids for as long as the note lasts
+ * (`note_loop` in asm/jetfighter.asm). The tube goes out - measured on the real
+ * unit at 133-167 ms on every sound, 14-17% of all frames during active play
+ * (docs/evidence/vfd-appearance.md, section 5 and D1).
+ *
+ * This is the threshold that separates that from the sweep's own blanking
+ * intervals, and the two do not overlap anywhere near it. Driving the ROM and
+ * timing every interval with no grid driven, over 1400 slices of a played game:
+ *
+ * | interval                                     | cycles        |
+ * | -------------------------------------------- | ------------- |
+ * | between grids, and between sweeps (n = 5526) | 13 to **660** |
+ * | shortest note the ROM can play (warning beep) | **~4045**     |
+ * | a march note                                  | ~28,400       |
+ *
+ * 2000 is 3x the longest gap a running sweep produces and half the shortest a
+ * sound produces, so neither ordinary sweep jitter nor a longer-than-average
+ * pass through the game logic can reach it. 5 ms at the 400 kHz oscillator.
+ *
+ * It is not a frame period and does not impose one: nothing here schedules a
+ * refresh, this only decides how long a tube left undriven goes on being
+ * reported as lit. See {@link Display.getObservedFrame}.
+ */
+export const REFRESH_TIMEOUT_CYCLES = 2000;
+
 /** Immutable view of the tube at an instant. */
 export interface DisplaySnapshot {
   /** Grids currently driven, as a bit mask over D0-D9. */
@@ -75,6 +104,7 @@ export class Display {
   private _strobedGrids = 0;
   private _frameCount = 0;
   private _lastFrame: PwmFrame | undefined;
+  private _lastDriveCycle = 0;
 
   /** Grids currently driven, as a bit mask over D0-D9. */
   get gridMask(): number {
@@ -109,9 +139,29 @@ export class Display {
       return;
     }
 
+    // Drive resuming after the sweep stopped. The stall is taken out of the
+    // frame period it happened in, before that frame can close: the tube was
+    // not being scanned then, so it is not refresh time, and leaving it in
+    // would make the sweeps either side of a note read as dim ones. See
+    // `PwmAccumulator.exclude`.
+    if (this._gridMask === 0 && next !== 0) {
+      const gap = cycle - this._lastDriveCycle;
+      if (gap > REFRESH_TIMEOUT_CYCLES) {
+        this.pwm.exclude(gap);
+      }
+    }
+
     const rising = next & ~this._gridMask;
     if ((rising & this._seenGrids) !== 0) {
       this.endFrame(cycle);
+    }
+
+    // When drive ended, which is what `refreshGap` measures from. Only the
+    // falling edge is recorded: while a grid is up the gap is zero by
+    // definition, and the ROM holds one up for a whole dwell without producing
+    // a transition to record.
+    if (this._gridMask !== 0 && next === 0) {
+      this._lastDriveCycle = cycle;
     }
 
     this._gridMask = next;
@@ -175,6 +225,65 @@ export class Display {
     return this.getFrame().segments;
   }
 
+  /**
+   * Machine cycles since a grid was last driven, as of `cycle`.
+   *
+   * Zero while a grid is up. This is how long the tube has been receiving no
+   * drive at all, which is the only thing that decides whether it is lit.
+   */
+  refreshGap(cycle: number): number {
+    if (this._gridMask !== 0) {
+      return 0;
+    }
+    return Math.max(0, cycle - this._lastDriveCycle);
+  }
+
+  /** True while the sweep is still refreshing the tube. See `getObservedFrame`. */
+  isRefreshing(cycle: number): boolean {
+    return this.refreshGap(cycle) <= REFRESH_TIMEOUT_CYCLES;
+  }
+
+  /**
+   * What is on the tube at `cycle` - the frame a renderer should draw.
+   *
+   * While the sweep is running this is {@link getFrame}, the last period the
+   * tube completed, measured against a complete denominator. That is the right
+   * answer for a refreshing display and it is what this returns almost always.
+   *
+   * It is the wrong answer while the sweep has *stopped*. A frame period closes
+   * only when a grid rises that has already risen, so a stalled sweep completes
+   * no period, and `getFrame()` goes on reporting the last fully lit sweep for
+   * as long as the stall lasts. The ROM stalls the sweep on every sound - it
+   * bit-bangs the speaker in a delay loop and cannot strobe at the same time -
+   * so the tube the ROM has switched off reads as lit, for 71 ms on a march
+   * note and 637 ms on the loss sequence. That is D1 of
+   * docs/evidence/vfd-appearance.md, the largest visible divergence the
+   * reference video found, and it is a bug in this observation surface rather
+   * than in the ROM: the ROM already stops driving the grids.
+   *
+   * So once the gap since the last drive passes {@link REFRESH_TIMEOUT_CYCLES},
+   * this reports what is actually true - no grid driven, therefore no segment
+   * lit, therefore every duty zero. The phosphor downstream turns that into the
+   * decay a real tube shows when its supply of electrons stops
+   * (src/machine/tube/phosphor.ts). Nothing here fades anything, and nothing
+   * here knows a sound is playing: the tube is dark because nothing is driving
+   * it, which is the same reason the real one is.
+   *
+   * The frame returned spans the stall rather than being zero-length, so a
+   * caller that reads `cycles` sees how long the tube has been dark.
+   */
+  getObservedFrame(cycle: number): PwmFrame {
+    if (this.isRefreshing(cycle)) {
+      return this.getFrame();
+    }
+    return {
+      startCycle: this._lastDriveCycle,
+      endCycle: cycle,
+      cycles: cycle - this._lastDriveCycle,
+      segments: [],
+    };
+  }
+
   /** Duty of one segment in the most recently completed frame; 0 if unlit. */
   getSegmentDuty(grid: number, plate: number): number {
     assertIndex(grid, GRID_COUNT, 'grid');
@@ -206,6 +315,7 @@ export class Display {
     this._strobedGrids = 0;
     this._frameCount = 0;
     this._lastFrame = undefined;
+    this._lastDriveCycle = cycle;
   }
 
   /** Immutable snapshot for tests, the probe, and future debug tooling. */

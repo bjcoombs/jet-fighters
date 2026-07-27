@@ -34,7 +34,13 @@ export interface PwmFrame {
   readonly startCycle: number;
   /** Cycle at which it closed. */
   readonly endCycle: number;
-  /** Frame period in machine cycles - the denominator of every duty. */
+  /**
+   * The denominator of every duty in this frame, in machine cycles.
+   *
+   * `endCycle - startCycle` less any interval the display was not being scanned
+   * at all - see {@link PwmAccumulator.exclude}. The two are equal for every
+   * frame in which the sweep kept running, which is almost all of them.
+   */
   readonly cycles: number;
   /**
    * Segments with a non-zero duty, ordered by grid then plate. Segments that
@@ -69,6 +75,7 @@ export class PwmAccumulator {
   private _plateMask = 0;
   private _frameStart = 0;
   private _lastCycle = 0;
+  private _excluded = 0;
 
   constructor(
     readonly gridCount: number,
@@ -103,6 +110,37 @@ export class PwmAccumulator {
     return this._lastCycle;
   }
 
+  /** Cycles excluded from this frame's period. See {@link exclude}. */
+  get excludedCycles(): number {
+    return this._excluded;
+  }
+
+  /**
+   * Take `cycles` out of this frame's period - time the display was not being
+   * scanned at all.
+   *
+   * Duty is a segment's share of a *refresh* period, and an interval in which
+   * the driver stopped refreshing is not part of one. The ROM stops: it has one
+   * core and no sound hardware, so while it bit-bangs the speaker it drives no
+   * grid, for as long as the note lasts (docs/evidence/vfd-appearance.md D1).
+   * Left in the denominator, a 71 ms note turns the sweep either side of it into
+   * a frame at 18% of its real duty, and a segment that was fully driven for its
+   * whole slot reads as a dim one. Excluded, the sweeps either side of a note
+   * read exactly as they would with no note at all, which is what the tube does.
+   *
+   * This is deliberately not a general knob for shortening periods. Ordinary
+   * variation - a pass through the game logic that takes longer because there is
+   * more on the tube - stays in the denominator, because the display really is
+   * dimmer when the sweep is slower. Only a full stop is excluded, and
+   * display.ts decides what counts as one.
+   */
+  exclude(cycles: number): void {
+    if (!Number.isFinite(cycles) || cycles < 0) {
+      throw new RangeError(`excluded cycles must be finite and non-negative: ${cycles}`);
+    }
+    this._excluded += cycles;
+  }
+
   /**
    * Open a frame period at `cycle`, discarding any accumulated active time.
    *
@@ -115,6 +153,7 @@ export class PwmAccumulator {
     this.active.fill(0);
     this._frameStart = cycle;
     this._lastCycle = cycle;
+    this._excluded = 0;
   }
 
   /**
@@ -154,7 +193,7 @@ export class PwmAccumulator {
    */
   sample(cycle: number): PwmFrame {
     this.credit(cycle);
-    const period = cycle - this._frameStart;
+    const period = Math.max(0, cycle - this._frameStart - this._excluded);
     const segments: SegmentDuty[] = [];
 
     for (let index = 0; index < this.active.length; index += 1) {
@@ -182,6 +221,7 @@ export class PwmAccumulator {
     const frame = this.sample(cycle);
     this.active.fill(0);
     this._frameStart = cycle;
+    this._excluded = 0;
     return frame;
   }
 
@@ -202,6 +242,7 @@ export class PwmAccumulator {
     this._plateMask = 0;
     this._frameStart = cycle;
     this._lastCycle = cycle;
+    this._excluded = 0;
   }
 
   /** Credit the interval ending at `cycle` to whatever is currently lit. */

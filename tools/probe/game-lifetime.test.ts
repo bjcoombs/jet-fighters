@@ -149,10 +149,19 @@ function blindPlayer(board: Board, slice: number): void {
   board.setControl("fire", slice % 2 === 0 ? "up" : "down");
 }
 
-/** A stable, comparable rendering of what is lit on the tube. */
+/**
+ * A stable, comparable rendering of what the ROM last drew on the tube.
+ *
+ * The last *completed* sweep, not what a viewer sees at this instant: these runs
+ * are read at arbitrary cycles, and an arbitrary cycle lands inside a sound's
+ * blanking often enough to matter - the ROM parks the sweep while it bit-bangs
+ * the speaker and the tube really is dark then (vfd-appearance.md D1). "The tube
+ * changed" is a question about what the ROM drew.
+ */
 function tubeSignature(board: Board): string {
   return board
-    .getLitSegments()
+    .getFrame()
+    .segments
     .map((segment) => `${segment.grid}.${segment.plate}`)
     .sort()
     .join(" ");

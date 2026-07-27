@@ -182,13 +182,15 @@ export function rgba(color: Rgb, alpha: number): string {
  * fix, driving the ROM headlessly at a 16.67 ms frame: a continuously driven
  * segment varies by 1.0% of its own level, below the eye's contrast threshold,
  * and by the same 1.0% under the old decay constants - the phosphor was never
- * the source. The 33% swing that shows up when the ROM parks the sweep to bit-
- * bang the speaker is D1's subject and is not a palette problem: the ROM already
- * drops every grid before it bit-bangs the speaker, so the machine goes dark on
- * its own - what reaches the renderer is stale because `getLitSegments()` serves
- * the last *completed* frame and no frame completes while the sweep is parked.
- * Squaring the alpha would *raise* that modulation (33% -> 47%) rather than
- * settle it. Left linear deliberately.
+ * the source. The 33% swing that used to show up when the ROM parks the sweep
+ * to bit-bang the speaker was D1's subject and was never a palette problem: the
+ * ROM drops every grid before it bit-bangs the speaker, and what reached the
+ * renderer was stale because `getLitSegments()` served the last *completed*
+ * frame and no frame completes while the sweep is parked. `getLitSegments()`
+ * now reports the tube dark for the duration instead, so there is no swing left
+ * to settle - the segment goes out and comes back. Squaring the alpha would
+ * have *raised* that modulation (33% -> 47%) rather than settled it. Left
+ * linear deliberately.
  */
 export function segmentFill(region: ColorRegion, brightness: number): string {
   const colors = TUBE_PALETTE[region];

@@ -16,8 +16,8 @@
 //
 // It is not a test harness with a JSON coat on. Everything it reports is read
 // off the board's own observation surface: `getStrobedGrids()` for the sweep,
-// `getLitSegments()` for per-segment PWM duty, `takeSpeakerEdges()` for the D14
-// transition stream. There is no path from here into game state, and there is
+// `getFrame()` for per-segment PWM duty over a completed sweep,
+// `takeSpeakerEdges()` for the D14 transition stream. There is no path from here into game state, and there is
 // deliberately none: inputs go in through `setControl`, which moves a case
 // control and lets the ROM find out on its next strobe, exactly as a player's
 // hand does. A probe that poked RAM to move the launcher would prove nothing
@@ -313,13 +313,22 @@ export function assembleRom(path: string): AssemblyResult {
   });
 }
 
-/** Read the tube's most recently completed frame as report triples. */
+/**
+ * Read the tube's most recently completed frame as report triples.
+ *
+ * `getFrame()` rather than `getLitSegments()`: the report is about what the ROM
+ * drove the tube with over a complete sweep, which is what criteria V3 and V4
+ * are written against. `getLitSegments()` answers the viewer's question instead
+ * - what is on the glass at this instant - and the answer is nothing while the
+ * ROM has the sweep parked to bit-bang the speaker, which a snapshot can land
+ * inside (docs/evidence/vfd-appearance.md D1).
+ */
 function takeSnapshot(board: Board): Snapshot {
   return {
     atCycle: board.cycles,
     litSegments: board
-      .getLitSegments()
-      .map((segment) => [segment.grid, segment.plate, segment.duty] as const),
+      .getFrame()
+      .segments.map((segment) => [segment.grid, segment.plate, segment.duty] as const),
   };
 }
 
