@@ -9,8 +9,11 @@
 //      black. The matrix is there whether the machine is running or not.
 //   3. active layer - each segment tinted and blended by the brightness its
 //      phosphor has actually reached, with a bloom scaled to the same value
-//   4. silkscreen - printed on the glass, so it stays visible when the tube is
-//      dark
+//   4. control grid - the tube's honeycomb mesh, multiplied over the phosphor.
+//      Only drawn where the backing store is dense enough to resolve it, which
+//      at ordinary sizes it is not; see mesh.ts.
+//   5. silkscreen - printed on the glass, so it stays visible when the tube is
+//      dark, and outside the mesh, which is inside the envelope
 //
 // Brightness comes from *duty*, never from a lit/unlit boolean. The board hands
 // over a real fraction per segment (src/machine/board/pwm.ts); phosphor.ts turns
@@ -33,6 +36,14 @@ import {
   glowRadius,
   segmentFill,
 } from './palette.js';
+import {
+  MESH_BOX,
+  buildMeshLayer,
+  defaultMeshSurfaceFactory,
+  meshOpacity,
+  type MeshSurfaceFactory,
+  type MeshTile,
+} from './mesh.js';
 import { parsePathCached, tracePath, type PathCommand } from './path.js';
 import { PhosphorField, type PhosphorSet } from './phosphor.js';
 import { drawSilkscreen } from './silkscreen.js';
@@ -46,6 +57,18 @@ export interface TubeRendererOptions {
    * setting that isolates segment shapes from their glow.
    */
   readonly glow?: boolean;
+  /**
+   * Where the control-grid mesh tile is drawn. Defaults to an `OffscreenCanvas`
+   * where the platform has one and to nothing where it does not, which is what
+   * lets the machine layer stay headless. Injectable so a test can supply a
+   * recording surface.
+   */
+  readonly meshSurface?: MeshSurfaceFactory;
+  /**
+   * Draw the control-grid mesh at all. On by default, and even then only above
+   * the magnification at which it resolves; off is a diagnostic setting.
+   */
+  readonly mesh?: boolean;
 }
 
 /** A renderer bound to a canvas. */
@@ -131,6 +154,8 @@ export function createTubeRenderer(
     options.phosphor,
   );
   const withGlow = options.glow ?? true;
+  const withMesh = options.mesh ?? true;
+  const meshSurface = options.meshSurface ?? defaultMeshSurfaceFactory;
 
   // Seeded so a draw before the first resize produces valid output rather than
   // dividing by a zero-sized canvas.
@@ -138,6 +163,35 @@ export function createTubeRenderer(
   let cssHeight: number = VIEWBOX.height;
   let pixelRatio = 1;
   let projection: TubeProjection = projectTube(cssWidth, cssHeight);
+
+  // The mesh, composed for the current backing-store scale. Settled in `resize`
+  // and never touched per frame: at a fixed magnification the honeycomb is drawn
+  // once and every frame after that is a single blit.
+  let meshLayer: MeshTile | null = null;
+  let meshAlpha = 0;
+
+  /** Device pixels per atlas unit - the real resolution the tube is drawn at. */
+  const backingScale = (): number => projection.scale * pixelRatio;
+
+  /**
+   * Rebuild the mesh for the current scale, or drop it.
+   *
+   * Called from `resize` only. Everything the pass needs - whether it runs at
+   * all, how strong it is, and how big its tile is - falls out of
+   * {@link backingScale}, so browser zoom, a window resize and a move to a
+   * denser display all reach it by the same route.
+   */
+  const rebuildMesh = (): void => {
+    meshLayer = null;
+    meshAlpha = withMesh ? meshOpacity(backingScale()) : 0;
+    if (meshAlpha <= 0) return;
+    if (typeof ctx.drawImage !== 'function') {
+      meshAlpha = 0;
+      return;
+    }
+    meshLayer = buildMeshLayer(backingScale(), meshSurface);
+    if (!meshLayer) meshAlpha = 0;
+  };
 
   const resize = (width: number, height: number, dpr?: number): void => {
     const requested = dpr ?? (typeof globalThis.devicePixelRatio === 'number' ? globalThis.devicePixelRatio : 1);
@@ -151,6 +205,7 @@ export function createTubeRenderer(
       ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
     }
     projection = projectTube(width, height);
+    rebuildMesh();
   };
 
   /** Trace one segment's outline as a fresh path, in atlas units. */
@@ -207,6 +262,31 @@ export function createTubeRenderer(
     }
   };
 
+  /**
+   * The control grid, multiplied over the phosphor.
+   *
+   * One blit of an image that was composed at this exact scale, drawn in
+   * device-pixel space so its pixels land on the backing store's one for one -
+   * `scale(1/s, 1/s)` inside the projection transform, which needs no assumption
+   * about how the caller set the base transform.
+   *
+   * The layer is black at varying alpha, so an ordinary source-over draw leaves
+   * `dst * (1 - a)` and one pass does both jobs: it bites the mesh out of a lit
+   * segment as a dot screen, shows as a faint honeycomb over the ghost layer,
+   * and leaves the dark glass alone, because near-black darkened is still
+   * near-black.
+   */
+  const drawMeshLayer = (): void => {
+    if (!meshLayer || meshAlpha <= 0) return;
+    const s = backingScale();
+    if (s <= 0) return;
+    ctx.save();
+    ctx.scale(1 / s, 1 / s);
+    ctx.globalAlpha = meshAlpha;
+    ctx.drawImage(meshLayer.image, Math.round(MESH_BOX.x * s), Math.round(MESH_BOX.y * s));
+    ctx.restore();
+  };
+
   const draw = (pwm: PwmFrame | readonly SegmentDuty[], dtMs: number): void => {
     // Duty in, brightness out. A segment absent from the frame is a segment at
     // duty 0: it fades on the decay curve rather than snapping to black.
@@ -230,8 +310,11 @@ export function createTubeRenderer(
 
     drawGhostLayer();
     drawActiveLayer();
-    // Printed on the glass: on top of the phosphor, and still there when the
-    // tube is dark.
+    // Inside the envelope, in front of the phosphor: the grid shadows the light
+    // the phosphor emits, so it goes over both layers and under the silkscreen.
+    drawMeshLayer();
+    // Printed on the outside of the glass: on top of everything in the tube, and
+    // still there when the tube is dark.
     drawSilkscreen(ctx);
 
     ctx.restore();

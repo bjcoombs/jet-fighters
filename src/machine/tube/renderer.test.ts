@@ -5,6 +5,7 @@ import type { SegmentId } from './atlas-schema.js';
 import type { PwmFrame, SegmentDuty } from '../board/display.js';
 import { callsOf, createFakeCanvas, createFakeContext, type FakeCanvasContext } from './fake-canvas.js';
 import { VIEWBOX } from './layout.js';
+import type { MeshSurfaceFactory } from './mesh.js';
 import { BACKGROUND, GHOST_ALPHA, SILKSCREEN, TUBE_PALETTE, ghostFill } from './palette.js';
 import { PHOSPHOR, REFRESH_OFF_TIME_MS, type PhosphorSet } from './phosphor.js';
 import { createTubeRenderer, type TubeRenderer } from './renderer.js';
@@ -422,6 +423,121 @@ describe('layer order', () => {
   it('leaves the context balanced across a frame', () => {
     const { renderer, recorder } = setup();
     renderer.draw(frameOf([{ id: 'jet_lane0_col1', duty: FULL_DUTY }]), 16);
+    expect(callsOf(recorder, 'save').length).toBe(callsOf(recorder, 'restore').length);
+  });
+});
+
+describe('the control-grid mesh', () => {
+  /** A surface factory over recording contexts - the injectable stand-in for OffscreenCanvas. */
+  function meshSurfaces(): MeshSurfaceFactory {
+    return () => {
+      const { ctx } = createFakeContext();
+      return { context: ctx, image: {} as CanvasImageSource };
+    };
+  }
+
+  /** A renderer sized so the mesh resolves, or so it does not. */
+  function atScale(
+    devicePxPerUnit: number,
+    options?: Parameters<typeof createTubeRenderer>[1],
+  ): { renderer: TubeRenderer; recorder: FakeCanvasContext } {
+    const { ctx, recorder } = createFakeContext();
+    const renderer = createTubeRenderer(ctx, { meshSurface: meshSurfaces(), ...options });
+    // One CSS pixel per device pixel, so the scale is the projection's alone.
+    renderer.resize(VIEWBOX.width * devicePxPerUnit, VIEWBOX.height * devicePxPerUnit, 1);
+    return { renderer, recorder };
+  }
+
+  const LIT = () => frameOf([{ id: 'jet_lane0_col1', duty: FULL_DUTY }]);
+
+  it('draws nothing at the magnification the case shell gives the tube', () => {
+    // 726 x 600 on a 2x display is 4 device px per atlas unit - a 2.5 px mesh
+    // period, which is a moire and not a honeycomb. The whole point of the gate
+    // is that the ordinary case pays nothing.
+    const { renderer, recorder } = atScale(4);
+    settle(renderer, recorder, LIT());
+    renderer.draw(LIT(), 16);
+    expect(callsOf(recorder, 'drawImage')).toHaveLength(0);
+  });
+
+  it('draws once a zoom has given it the pixels', () => {
+    const { renderer, recorder } = atScale(16);
+    settle(renderer, recorder, LIT());
+    renderer.draw(LIT(), 16);
+    expect(callsOf(recorder, 'drawImage')).toHaveLength(1);
+  });
+
+  it('composes the layer on resize, not on every frame', () => {
+    // The layer is the expensive part; a frame is meant to be one blit.
+    let surfaces = 0;
+    const counting: MeshSurfaceFactory = () => {
+      surfaces += 1;
+      const { ctx } = createFakeContext();
+      return { context: ctx, image: {} as CanvasImageSource };
+    };
+    const { ctx } = createFakeContext();
+    const renderer = createTubeRenderer(ctx, { meshSurface: counting });
+    renderer.resize(VIEWBOX.width * 16, VIEWBOX.height * 16, 1);
+    const afterResize = surfaces;
+    expect(afterResize).toBeGreaterThan(0);
+    for (let i = 0; i < 50; i += 1) renderer.draw(LIT(), 16);
+    expect(surfaces).toBe(afterResize);
+  });
+
+  it('rebuilds the layer when the magnification changes', () => {
+    let surfaces = 0;
+    const counting: MeshSurfaceFactory = () => {
+      surfaces += 1;
+      const { ctx } = createFakeContext();
+      return { context: ctx, image: {} as CanvasImageSource };
+    };
+    const { ctx } = createFakeContext();
+    const renderer = createTubeRenderer(ctx, { meshSurface: counting });
+    renderer.resize(VIEWBOX.width * 16, VIEWBOX.height * 16, 1);
+    const afterFirst = surfaces;
+    // The same CSS box at twice the device pixel ratio: a browser zoom step.
+    renderer.resize(VIEWBOX.width * 8, VIEWBOX.height * 8, 2);
+    expect(surfaces).toBeGreaterThan(afterFirst);
+  });
+
+  it('sits over the phosphor and under the printed silkscreen', () => {
+    // The grid is inside the envelope, in front of the anode; the silkscreen is
+    // ink on the outside of the glass.
+    const { renderer, recorder } = atScale(16);
+    const frame = frameOf([{ id: 'score_label', duty: FULL_DUTY }]);
+    settle(renderer, recorder, frame);
+    renderer.draw(frame, 16);
+
+    const ops = recorder.calls;
+    const ghost = ops.findIndex((call) => call.op === 'fill' && call.fillStyle === ghostFill('red'));
+    const mesh = ops.findIndex((call) => call.op === 'drawImage');
+    const silkscreen = ops.findIndex((call) => call.op === 'strokeRect');
+    expect(ghost).toBeGreaterThanOrEqual(0);
+    expect(mesh).toBeGreaterThan(ghost);
+    expect(silkscreen).toBeGreaterThan(mesh);
+  });
+
+  it('is suppressed outright by the diagnostic switch', () => {
+    const { renderer, recorder } = atScale(16, { mesh: false });
+    settle(renderer, recorder, LIT());
+    renderer.draw(LIT(), 16);
+    expect(callsOf(recorder, 'drawImage')).toHaveLength(0);
+  });
+
+  it('carries on without a mesh where no surface can be had', () => {
+    // tools/probe/ and the node environment take this path.
+    const { ctx, recorder } = createFakeContext();
+    const renderer = createTubeRenderer(ctx, { meshSurface: () => null });
+    renderer.resize(VIEWBOX.width * 16, VIEWBOX.height * 16, 1);
+    settle(renderer, recorder, LIT());
+    renderer.draw(LIT(), 16);
+    expect(callsOf(recorder, 'drawImage')).toHaveLength(0);
+    expect(callsOf(recorder, 'fill').length).toBeGreaterThan(0);
+  });
+
+  it('leaves the context balanced when it has drawn', () => {
+    const { renderer, recorder } = atScale(16);
+    renderer.draw(LIT(), 16);
     expect(callsOf(recorder, 'save').length).toBe(callsOf(recorder, 'restore').length);
   });
 });

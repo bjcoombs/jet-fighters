@@ -13,6 +13,7 @@ review.
 | `audio-reference.md` | Measured frequency bands, envelopes, and note sequences for all six sounds. | Complete - extracted from the v1 codebase before Task 11 deletes `src/audio/`. |
 | `timing-analysis.md` | Method spec for deriving cadences in display sweeps, plus the v1 working values, plus what the owner's gameplay recording supplies. | Partly relieved - one recording at one unknown skill; the per-skill clips are still pending. |
 | `vfd-appearance.md` | Tube refresh, phosphor persistence, brightness and sound blanking, measured from the gameplay recording. | Complete for what 30 fps can resolve; the sweep rate is bracketed, not pinned. |
+| `tube-mesh.md` | The control-grid honeycomb: its pitch, its axes, and where on the face it sits, measured off the teardown photographs. Also the finding that the phosphor's dot screen and the dark field's lattice are one structure. | Complete for period, angle and extent; web width and shadow depth are judgements, and say so. |
 
 **The sprite catalogue is not in this directory.** Every lit shape the tube draws - its
 cell, lane, measured size, frame count and crop - is in

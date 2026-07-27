@@ -616,6 +616,14 @@ saturation and value (0.29 / 0.58 against 0.50 / 0.77) are what a dot screen
 does to a measurement - each pixel averages pigment with the dark gaps between
 the dots - not evidence of a second pigment.
 
+**But the dot screen is not the stipple's own.**
+`docs/evidence/tube-mesh.md` measures a single modulation - 10.83 px period on a
+31 degree axis - present in both phosphors, in the dark field, and in this
+stipple alike: the tube's control grid, in front of everything. So the dots that
+lower the stipple's saturation are the grid's shadow, and they lower the solid
+bursts' saturation beside it by exactly as much. What separates the two is a
+coarser feature drawn on top, and the measurement does not name it.
+
 The stipple **is a lit segment**, which a lit photograph from the owner settles:
 `tube-teardown/lit-capture-burst.jpg` shows the curls glowing red-orange beside
 a lit starburst in the same event. It also shows them **co-lit and contiguous**,

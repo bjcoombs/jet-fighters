@@ -48,6 +48,19 @@ import { setupControls } from './ui/controls.js';
  */
 const MAX_FRAME_MS = 100;
 
+/**
+ * Ceiling on the effective device pixel ratio.
+ *
+ * The backing store costs memory as the square of this, and a pinched-in phone
+ * can ask for a lot of it. Eight is past the point where any of the tube's
+ * structure is still gaining detail.
+ *
+ * Declared up here with the rest of the module's constants because `start` runs
+ * on the line below: a `const` further down the file is still in its temporal
+ * dead zone by the time the first `resize` reaches for it.
+ */
+const MAX_PIXEL_RATIO = 8;
+
 const app = document.querySelector<HTMLElement>('#app');
 if (app) {
   start(app);
@@ -196,24 +209,56 @@ function start(mount: HTMLElement): void {
 }
 
 /**
+ * The resolution the tube should be drawn at, in backing-store pixels per CSS
+ * pixel.
+ *
+ * `devicePixelRatio` covers the display's own density and browser zoom - a zoom
+ * step raises it, which is why zooming the page already hands the renderer more
+ * real pixels. It does **not** cover pinch zoom: the visual viewport magnifies
+ * pixels that have already been drawn, so on a phone a pinch makes the tube
+ * bigger and blurrier and nothing tells the canvas about it. `visualViewport
+ * .scale` is that missing factor, and folding it in is what makes magnifying the
+ * display on a touch device resolve the tube's structure rather than its
+ * pixels.
+ */
+function effectivePixelRatio(): number {
+  const base = window.devicePixelRatio || 1;
+  const pinch = window.visualViewport?.scale ?? 1;
+  const combined = base * (Number.isFinite(pinch) && pinch > 0 ? pinch : 1);
+  return Math.min(MAX_PIXEL_RATIO, combined);
+}
+
+/**
  * Keep the canvas backing store matched to its CSS box.
  *
- * Sized to the box x devicePixelRatio, now and on every viewport resize or
- * devicePixelRatio change (dragging the window between monitors, browser zoom),
- * so the tube stays crisp and uniformly scaled.
+ * Sized to the box x {@link effectivePixelRatio}, now and on every viewport
+ * resize, devicePixelRatio change (dragging the window between monitors, browser
+ * zoom) or pinch, so the tube stays crisp and uniformly scaled.
  */
 function attachCanvasSizing(canvas: HTMLCanvasElement, renderer: TubeRenderer): void {
+  let lastRatio = 0;
+  let lastWidth = 0;
+  let lastHeight = 0;
+
   const applyCanvasSize = (): void => {
     const rect = canvas.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) {
-      renderer.resize(rect.width, rect.height, window.devicePixelRatio || 1);
-    }
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const ratio = effectivePixelRatio();
+    // Re-sizing a canvas clears it and rebuilds the mesh tile, and the visual
+    // viewport fires continuously through a pinch. Only act on a real change.
+    if (ratio === lastRatio && rect.width === lastWidth && rect.height === lastHeight) return;
+    lastRatio = ratio;
+    lastWidth = rect.width;
+    lastHeight = rect.height;
+    renderer.resize(rect.width, rect.height, ratio);
   };
+
   applyCanvasSize();
   window.addEventListener('resize', applyCanvasSize);
   if (typeof ResizeObserver !== 'undefined') {
     new ResizeObserver(applyCanvasSize).observe(canvas);
   }
+  window.visualViewport?.addEventListener('resize', applyCanvasSize);
   watchDevicePixelRatio(applyCanvasSize);
 }
 
