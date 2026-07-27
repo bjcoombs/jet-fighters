@@ -120,6 +120,47 @@ measuring the playfield height off the photos gives height/width ratios between
 line, where the foreshortening is close to uniform, were taken from the photos.
 Every vertical proportion comes from v1's already-tuned layout instead.
 
+### What is traced from the bare tube, and what is not
+
+The teardown photographs supersede the video for shape, and the retrace against
+them is being done a family at a time rather than in one commit. **This table is
+the record of where each outline currently comes from; do not read a
+carried-over outline as a retraced one.**
+
+| Family | Source |
+| --- | --- |
+| Jets, cells 1-5 | `tube-teardown/tube-unlit-full.jpg`, 15 distinct outlines |
+| Attacker colons, cells 1-5 | the same, two dots straddling the fuselage at the nose |
+| Missile darts | gameplay video, awaiting retrace |
+| Jet-kill bursts | gameplay video, awaiting retrace |
+| Battleship | gameplay video, awaiting retrace |
+| Printed sea | not in the atlas yet |
+| Launcher, player's burst | the two lit close-ups, awaiting retrace |
+| Cell 6's smoke and second burst | not in the atlas yet |
+| Score digits, SCORE label | v1 shape tables |
+
+### Tracing from the bare tube
+
+The plate is **not evenly lit**, so a single global threshold does not segment
+all 21 cells: it takes some cleanly and loses others entirely. Masking is
+therefore per cell - Otsu on brightness inside the cell separates print from the
+dark hatched fill, and blue-minus-red then splits the two pigments at the
+midpoint of that cell's own two clusters. Unlit, the yellow phosphor is the one
+that emits red-orange and the white is the one that emits cyan; the two measure
+around -66 and -28 against -4 and +2, so the split is nowhere near either class.
+
+Two window sizes, and the reason is worth keeping. Otsu is a property of the
+pixels it sees, so widening the window takes in more dark border, drops the
+threshold, and merges neighbouring sprites into one component; narrowing it
+clips the sprites that sit hard against the cell's right-hand edge. **The
+threshold is computed over a tight window and applied to a wide one**, and a
+component belongs to whichever cell its centroid falls in.
+
+Scale: the printed lattice measures 259 px across and 152 px down at the working
+resolution against the atlas cell's 31.114 x 17.68 units, so 0.1201 and 0.1163
+units per pixel. Those are within 3% of each other - the bare tube's aspect is
+very nearly the atlas's, which the video's was not.
+
 ### Shapes, and where each one comes from
 
 The score digits and the SCORE label are still the v1 shape tables from

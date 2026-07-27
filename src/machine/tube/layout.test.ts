@@ -113,6 +113,13 @@ describe('columnCenterX and laneCenterY', () => {
     // The silkscreen is drawn from these functions and the segments from the
     // atlas; if they disagreed, the printed lanes would not line up with the
     // phosphor. Check a jet in each lane against its atlas bounds.
+    //
+    // Within a quarter of a cell, not to the decimal. The jets are traced from
+    // the bare tube and drawn where the photograph has them, and the tube does
+    // not print them dead centre in their cells - so an exact match would be
+    // asserting that the sprites were snapped to this lattice rather than
+    // measured against it. A quarter cell still catches the failure that
+    // matters, which is a sprite in the wrong cell or the wrong lane.
     const atlas = loadAtlas();
     for (let lane = 0; lane < LANE_COUNT; lane += 1) {
       const segment = atlas.segments.find((s) => s.id === `jet_lane${lane}_col2`);
@@ -120,8 +127,8 @@ describe('columnCenterX and laneCenterY', () => {
       if (!segment) continue;
       const centreY = segment.bounds.y + segment.bounds.height / 2;
       const centreX = segment.bounds.x + segment.bounds.width / 2;
-      expect(centreY).toBeCloseTo(laneCenterY(lane), 1);
-      expect(centreX).toBeCloseTo(columnCenterX(2), 0);
+      expect(Math.abs(centreY - laneCenterY(lane)), `lane ${lane} y`).toBeLessThan(CELL.height / 4);
+      expect(Math.abs(centreX - columnCenterX(2)), `lane ${lane} x`).toBeLessThan(CELL.width / 4);
     }
   });
 });
