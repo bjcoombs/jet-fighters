@@ -387,7 +387,28 @@
 .EQU LANEP_MISSILE,  LANEP_PLAYER
 
 .EQU SPEED_LAST,    15          ; the last entry in PAT_STEP
-.EQU WAVE_LAST,     15          ; NIB_WAVE saturates here rather than wrapping
+; NIB_WAVE saturates here rather than wrapping, and because speed_index adds
+; NIB_WAVE to the skill dial's entry point, this is also the entire reach of the
+; *permanent* part of the cadence descent: however many squadrons a game clears,
+; they can move it at most WAVE_LAST rungs. The thin-out term is separate and
+; unbounded by this - NIB_KILLS runs 0..6 and resets every wave.
+;
+; One, not fifteen, and the gameplay video is why. MEASURED, docs/evidence/
+; timing-analysis.md T1/T3: one game in that clip covers the whole scoring range,
+; 0 to the 199 cap, and its column step goes from 1067 ms at score 87 to 733 and
+; 900 ms at scores 164 and 188. Six rungs' worth of change across an entire game,
+; and the thin-out term supplies six rungs on its own. At WAVE_LAST 15 the sum
+; instead reached entry 15 at around score 30 and stayed pinned there for the
+; remaining 85% of the game, so every game converged on the same cadence within
+; its first two waves whatever the dial said. That is the "too fast to play"
+; complaint, and it is why the dial stopped mattering.
+;
+; What it costs, plainly: PRD v1 rule 2's second clause - "each cleared squadron
+; respawns faster" - is now worth one rung across a whole game rather than one
+; per wave. The video does **not** show that clause to be false. It shows the
+; combined rate was far too fast and that the readable data needs no permanent
+; term to account for it. T3 is what would size the term properly.
+.EQU WAVE_LAST,      1
 .EQU ST_PLAY,        0          ; game states; anything above ST_PLAY is an end
 .EQU ST_OVER,        1
 .EQU ST_WIN,         2
@@ -2802,41 +2823,54 @@ rocket_interval:
 ; PAT_SKILL picks the entry point, each kill and each cleared wave takes one step
 ; down it, and entry 15 is the floor.
 ;
-; PROVISIONAL. The top of the ladder is unmeasured; its floor is now derived.
+; PROVISIONAL, and now known to be about twice too fast throughout. The values
+; below are unchanged; what follows is the measurement that condemns them and the
+; reason it was not applied here.
 ;
-; Entry 0 comes from v1's 750 ms per step at ~74 sweeps per second: 55 sweeps,
-; 740 ms nominal. That rung still stands for v1's 750 ms and remains a v1
-; approximation - T1 at skill 1 is still video-only. It was 48 sweeps at the old
-; 15.46 ms sweep, the same 740-742 ms; the count moved with the sweep rate.
+; **The floor's derivation is refuted.** Entry 15 was derived from the 205 ms
+; march-beep interval in assets/reference/gameplay-audio.m4a, on the premise that
+; the beep fires once per squadron step. `IMG_6113.mov` measures both at once and
+; they disagree: over t=122-128, four consecutive column steps are timed at 1067,
+; 1200 and 1167 ms in two lanes at once, while the 590-720 Hz band's own
+; repetition period in that same window is 763 ms and its notes fall in the gaps
+; between the steps. Clip-wide the band repeats at 700-800 ms and missile launches
+; - directly observable as a cyan onset at column 1 - at 600-1000 ms, so that
+; period tracks how often the player fires. 205 ms never bounded the squadron
+; rate. docs/evidence/timing-analysis.md, "What the audio row does and does not say".
 ;
-; Entry 15, the floor, is **derived** from the march beep in
-; assets/reference/gameplay-audio.m4a (docs/evidence/timing-analysis.md T1-audio;
-; 205 ms mean, sd 22 ms, n = 21, over 55-121 s of that recording). The beep fires
-; once per sweep in which any jet stepped, so 205 ms is how fast the real unit's
-; squadron was observed to step - a rate it was never seen to exceed in 65 s of
-; play. 15 sweeps is 202 ms, the closest integer under it at the current sweep rate
-; - the same rule the old floor was picked by. It was 13 sweeps - 201 ms - at the
-; old 15.46 ms sweep; leaving it at 13 while the sweep shortened would have put
-; the floor at 175 ms, faster than the unit was ever recorded stepping, so the
-; count moved with the sweep. The floor before that was 5 sweeps
-; - 77 ms nominal - 2.6x faster than anything on the recording, and it is the rung
-; the game descends to after roughly six kills and cleared waves, which is where
-; it stopped being playable.
+; **Both ends are too fast, and neither claim needs the skill dial.**
+;   * Nothing anywhere in 408 s of real play steps faster than 700 ms, and at
+;     scores 164 and 188 against a 199 cap - where the ladder is at or near its
+;     floor on any reading - the steps are 733 and 900 ms. Entry 15 runs at
+;     365 ms of wall clock. (T4)
+;   * The two slowest steady marches in the clip are 2033 and 2050 ms, each three
+;     columns with two intervals agreeing to 100 ms. This ladder cannot march
+;     slower than about 1050 ms at any dial setting or any point in a game, so it
+;     cannot produce a march the unit was observed making. (T1)
 ;
-; What the audio does NOT settle: 205 ms is a *squadron* rate, and jets step one
-; at a time on the same period at different phases, so a per-jet period cannot be
-; recovered from it without knowing how many jets were flying. It bounds the
-; floor and nothing else. The rungs between are v1's decrement per dead jet
-; (4 ticks, ~67 ms) relaxed to a steady 1-4 sweeps (~13-54 ms) so the ladder
-; spans entry 0 to the derived floor across all sixteen rungs. Whether the real
-; curve is linear at all is exactly what T2 exists to settle, and it has not been
-; measured.
+; **Why the values are not changed here.** Retuning them is not a free edit to
+; this table: cadence and sweep rate are coupled, because a sweep with more
+; sprites lit costs more cycles and a slower squadron keeps more jets alive at
+; once. A ladder slow enough to reach 2040 ms drops the mean silent sweep below
+; the 70.6 Hz floor of the band docs/evidence/vfd-appearance.md D4 admits, which
+; sweep-timing.test.ts pins; and it moves which game states the atlas coverage
+; scenarios reach, because jets that live longer are shot further out. Both want
+; deciding together with the sweep period rather than inside a cadence retune.
+;
+; What *was* changed on the strength of this measurement is WAVE_LAST - see
+; there. It bounds how far a game walks this ladder, which is the half of the
+; problem that needs no new cadence values.
+;
+; The rungs between are v1's decrement per dead jet (4 ticks, ~67 ms) relaxed to
+; a steady 1-4 sweeps (~13-54 ms) so the ladder spans entry 0 to the old derived
+; floor across all sixteen rungs. Whether the real curve is linear at all is
+; exactly what T2 exists to settle, and it has not been measured.
 .PATTERN PAT_STEP
 step_cadence:
         .DW 55, 52, 48, 45      ; 0-3   (0 = skill 1's fresh squadron, 740 ms)
         .DW 41, 39, 37, 34      ; 4-7   (4 = skill 2's fresh squadron, 552 ms)
         .DW 31, 28, 25, 23      ; 8-11  (9 = skill 3's fresh squadron, 377 ms)
-        .DW 21, 18, 16, 15      ; 12-15 (15 = the floor, 202 ms, audio-derived)
+        .DW 21, 18, 16, 15      ; 12-15 (15 = the floor, 202 ms - refuted, see above)
 
 ; --- Skill -> where on that ladder a fresh squadron starts ------------------
 .PATTERN PAT_SKILL
