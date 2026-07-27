@@ -47,6 +47,12 @@ sys.path.insert(0, str(Path(__file__).parent))
 from contour import _signed_area, douglas_peucker, iso_contours, max_deviation  # noqa: E402
 from lattice import Registration, load_photo, measure_lattice  # noqa: E402
 from masks import WIDE_MARGIN, CellMasks  # noqa: E402
+from score import (  # noqa: E402
+    ScoreMasks,
+    measure_boxes,
+    name_seven_segment,
+    split_tens_box,
+)
 
 ATLAS = Path("src/machine/tube/atlas.json")
 
@@ -95,15 +101,17 @@ TOLERANCE_PROBES = (
     (6, 1, "red", "capture_lane1"),
 )
 
-# Segments whose outlines are not on this photograph and are left alone: the
-# score readout is v1's shape tables and the SCORE label is a block, per
-# ATLAS-COORDINATES.md, "Shapes, and where each one comes from".
-UNTRACED_PREFIXES = ("score_",)
+# The score readout, which is on this photograph but not on the playfield's cell
+# lattice: three printed boxes rather than seven cell slots, and marks named by
+# where they sit inside a seven-segment digit rather than by the cell they stand
+# in. `score.py` traces it and `build_score` below drives that; the playfield
+# pass skips these ids because none of its cell arithmetic applies to them.
+SCORE_PREFIXES = ("score_",)
 
 
 def cell_of(segment_id: str) -> int | None:
     """Which printed cell a segment is drawn in, or None for the score readout."""
-    if segment_id.startswith(UNTRACED_PREFIXES):
+    if segment_id.startswith(SCORE_PREFIXES):
         return None
     marker = segment_id.split("_col")
     if len(marker) == 2:
@@ -337,6 +345,16 @@ class Tracer:
         """Contour and simplify one segment's claimed pixels, in atlas units."""
         cell = self.masks(cell_of(segment_id), lane_of(segment_id))
         wx0, wy0, _, _ = cell.wide
+        return self.rings_at((wx0, wy0), claimed, tolerance_px)
+
+    def rings_at(self, origin: tuple[int, int], claimed: np.ndarray, tolerance_px: float):
+        """The same, for a window that is not a playfield cell.
+
+        The score block has no cell to look its window up from, and everything
+        below this line was already independent of one - it needs the window's
+        pixel origin and nothing else.
+        """
+        wx0, wy0 = origin
         field = ndi.gaussian_filter(claimed.astype(np.float32), 1.0) - 0.5
         traced = iso_contours(field, MIN_COMPONENT_AREA)
         rings, deviation = [], 0.0
@@ -354,6 +372,53 @@ class Tracer:
         return rings, deviation
 
 
+def build_score(tracer: Tracer, tolerance_px: float) -> tuple[dict, list[str]]:
+    """The SCORE readout's rings, plus the notes the run wants reported.
+
+    Three printed boxes, and each one's contents named by position: the label
+    box holds the five letters of `SCORE`, which are one segment because the
+    tube drives them from one plate; the left digit box holds the half-digit's
+    two strokes and the tens digit's seven marks; the right box holds the units
+    digit's seven. Nothing here counts on a cell pitch, and nothing here is
+    seeded from the atlas's own previous outlines - the score readout's shapes
+    were v1's hand-authored tables, so there is no prior worth carrying and the
+    naming is done from the geometry of a seven-segment digit instead.
+    """
+    notes: list[str] = []
+    result: dict[str, tuple] = {}
+    boxes = measure_boxes(tracer.rgb)
+    for name, box in boxes.items():
+        masks = ScoreMasks(tracer.rgb, box)
+        marks = masks.marks()
+        origin = (box[0], box[1])
+        pigment = masks.pigment_check
+        if pigment < -30:
+            notes.append(
+                f"score {name} box: blue-minus-red {pigment:.0f} - that is the red pigment, "
+                "so this mask has taken in playfield print"
+            )
+        claims: dict[str, np.ndarray] = {}
+        if name == "label":
+            # One address, five letters, and the counters inside `O` and `R`
+            # come through as opposite-winding sub-paths of the same ring set -
+            # the same structure as the launcher's eye.
+            claims["score_label"] = np.logical_or.reduce(marks)
+        else:
+            digit = name
+            if name == "tens":
+                half, marks = split_tens_box(marks)
+                claims["score_hundreds"] = np.logical_or.reduce(half)
+            for key, mark in name_seven_segment(marks).items():
+                claims[f"score_{digit}_seg{key}"] = mark
+        for segment_id, claimed in claims.items():
+            rings, deviation = tracer.rings_at(origin, claimed, tolerance_px)
+            if not rings:
+                notes.append(f"{segment_id}: simplified away entirely - kept its outline")
+                continue
+            result[segment_id] = (rings, deviation)
+    return result, notes
+
+
 def build(tracer: Tracer, tolerance_px: float) -> tuple[dict, list[str]]:
     """Every traced segment's rings, plus the notes the run wants reported."""
     notes: list[str] = []
@@ -366,7 +431,7 @@ def build(tracer: Tracer, tolerance_px: float) -> tuple[dict, list[str]]:
                     for s in tracer.atlas["segments"]
                     if s["colorRegion"] == region
                     and cell_of(s["id"]) == column
-                    and not s["id"].startswith(UNTRACED_PREFIXES)
+                    and not s["id"].startswith(SCORE_PREFIXES)
                     and lane_of(s["id"]) == lane
                 ]
                 if not families:
@@ -533,6 +598,9 @@ def main() -> None:
         )
 
     built, notes = build(tracer, tolerance)
+    score_built, score_notes = build_score(tracer, tolerance)
+    built.update(score_built)
+    notes += score_notes
     total_before = 0
     total_after = 0
     worst = 0.0

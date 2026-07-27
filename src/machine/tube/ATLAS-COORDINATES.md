@@ -142,8 +142,12 @@ outline as a retraced one.**
 | Score digits, SCORE label | v1 shape tables |
 
 Every row above that names the teardown photograph is now produced by
-`tools/trace/`, which is the retrace described in the next section. The score
-readout is the one thing on the tube these outlines do not cover.
+`tools/trace/`, which is the retrace described in the next section. **The score
+readout is now covered too**, by `tools/trace/score.py` against
+`tube-teardown/score-block.jpg` - it was the last thing in the atlas still
+carrying v1's invented shapes, and the owner spotted it by eye before any
+measurement did: the digits were drawn as hollow rectangles rather than as
+seven-segment glyphs, at 8.11 x 9.59 units against a measured 10.16 x 17.50.
 
 ### The retrace, and the thing it turned out not to be
 
@@ -816,10 +820,10 @@ Three things this revision leaves undone, recorded rather than dropped:
    **Done.** Every playfield segment the atlas carries is now traced from
    `tube-teardown/tube-unlit-full.jpg` by `tools/trace/`, and the jet is fifteen
    distinct outlines rather than two poses on a parity. Two things that is not a
-   claim about: the score readout, which is still v1's shape tables against a
-   `score-block.jpg` nobody has traced, and any segment the tube prints that the
-   atlas does not yet carry - the retrace draws what is in the inventory and
-   does not extend it.
+   claim about: any segment the tube prints that the atlas does not yet carry -
+   the retrace draws what is in the inventory and does not extend it. The score
+   readout **was** the other exception and no longer is; it is traced by
+   `tools/trace/score.py`.
 
 ## Tracing workflow
 
@@ -852,7 +856,8 @@ wrong frame. Section 5d of `docs/evidence/open-questions.md` explains why.
 
 ### By hand, for anything the tracer does not cover
 
-The score readout, and any new reference that is not `tube-unlit-full.jpg`:
+Any new reference that is not `tube-unlit-full.jpg` (the score readout used to be
+the standing example here and is now traced by `tools/trace/score.py`):
 
 1. Read the photo at full resolution. For faint ghost phosphor, level-stretch the
    dark end rather than raising brightness, which blows out the lit segments:

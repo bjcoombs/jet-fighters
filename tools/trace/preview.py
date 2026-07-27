@@ -24,6 +24,7 @@ from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+from score import measure_boxes  # noqa: E402
 from lattice import (  # noqa: E402
     BAND_TOP,
     CELL_H,
@@ -40,27 +41,65 @@ BACKGROUND = (34, 38, 40)
 
 
 def rings_of(path: str) -> list[np.ndarray]:
+    """The sub-paths of an atlas `path`, as arrays of atlas-unit points.
+
+    Traced outlines are `M x,y L x,y ... Z` and need nothing but the coordinate
+    pairs. `H` and `V` are here for the *older* atlases this tool is pointed at
+    with `--before`: v1's hand-authored score digits were axis-aligned
+    rectangles written with them, and a parser that reads only pairs renders
+    each one as a single point - which is a blank left-hand panel, and a blank
+    panel reads as "there was nothing there before" rather than as "this tool
+    cannot read it".
+    """
     out = []
     for chunk in path.split("M")[1:]:
-        points = [
-            (float(m[1]), float(m[2]))
-            for m in re.finditer(r"(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)", chunk)
-        ]
+        points: list[tuple[float, float]] = []
+        for token in re.finditer(r"([HV])\s*(-?[\d.]+)|(-?[\d.]+),(-?[\d.]+)", chunk):
+            if token.group(3) is not None:
+                points.append((float(token.group(3)), float(token.group(4))))
+            elif points:
+                x, y = points[-1]
+                value = float(token.group(2))
+                points.append((value, y) if token.group(1) == "H" else (x, value))
         if len(points) >= 3:
             out.append(np.array(points))
     return out
 
 
-def render(atlas: dict, column: int, scale: float) -> Image.Image:
-    x0 = FIELD_X + column * CELL_W
-    y0 = BAND_TOP
-    width = int(CELL_W * scale)
-    height = int(3 * CELL_H * scale)
-    image = Image.new("RGB", (width, height), BACKGROUND)
+def cell_rect(column: int) -> tuple[float, float, float, float]:
+    """One printed cell's three lanes, in atlas units: (x, y, width, height)."""
+    return FIELD_X + column * CELL_W, BAND_TOP, CELL_W, 3 * CELL_H
+
+
+def score_rect(registration: Registration, rgb: np.ndarray) -> tuple[float, float, float, float]:
+    """The score block, in atlas units, from the printed boxes `score.py` finds.
+
+    Taken from the boxes rather than from the segments inside them, so that a
+    segment which escaped its box shows as running off the panel instead of
+    quietly recentring it - the same reason the playfield panels are cut on the
+    printed cell rather than on the sprite.
+    """
+    boxes = measure_boxes(rgb).values()
+    x0 = min(b[0] for b in boxes)
+    y0 = min(b[1] for b in boxes)
+    x1 = max(b[2] for b in boxes)
+    y1 = max(b[3] for b in boxes)
+    ax0, ay0 = registration.to_atlas(np.array([x0]), np.array([y0]))
+    ax1, ay1 = registration.to_atlas(np.array([x1]), np.array([y1]))
+    return float(ax0[0]), float(ay0[0]), float(ax1[0] - ax0[0]), float(ay1[0] - ay0[0])
+
+
+def render(atlas: dict, rect: tuple[float, float, float, float], scale: float) -> Image.Image:
+    x0, y0, width, height = rect
+    image = Image.new("RGB", (int(width * scale), int(height * scale)), BACKGROUND)
     draw = ImageDraw.Draw(image)
     for segment in atlas["segments"]:
         bounds = segment["bounds"]
-        if not (x0 - CELL_W / 2 < bounds["x"] + bounds["width"] / 2 < x0 + 1.5 * CELL_W):
+        centre_x = bounds["x"] + bounds["width"] / 2
+        centre_y = bounds["y"] + bounds["height"] / 2
+        inside_x = x0 - width / 2 < centre_x < x0 + 1.5 * width
+        inside_y = y0 - height / 2 < centre_y < y0 + 1.5 * height
+        if not (inside_x and inside_y):
             continue
         for ring in rings_of(segment["path"]):
             pixels = [((x - x0) * scale, (y - y0) * scale) for x, y in ring]
@@ -68,18 +107,35 @@ def render(atlas: dict, column: int, scale: float) -> Image.Image:
     return image
 
 
-def photograph(rgb: np.ndarray, registration: Registration, column: int, scale: float) -> Image.Image:
-    x0, y0 = registration.to_pixels(FIELD_X + column * CELL_W, BAND_TOP)
-    x1, y1 = registration.to_pixels(FIELD_X + (column + 1) * CELL_W, BAND_TOP + 3 * CELL_H)
+def photograph(
+    rgb: np.ndarray,
+    registration: Registration,
+    rect: tuple[float, float, float, float],
+    scale: float,
+) -> Image.Image:
+    ax, ay, width, height = rect
+    x0, y0 = registration.to_pixels(ax, ay)
+    x1, y1 = registration.to_pixels(ax + width, ay + height)
     crop = Image.fromarray(rgb[int(y0) : int(y1), int(x0) : int(x1)].astype(np.uint8))
-    return crop.resize((int(CELL_W * scale), int(3 * CELL_H * scale)), Image.LANCZOS)
+    return crop.resize((int(width * scale), int(height * scale)), Image.LANCZOS)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("out")
     parser.add_argument("--cells", default="0,2,6")
+    parser.add_argument(
+        "--score",
+        action="store_true",
+        help="the SCORE readout instead of playfield cells",
+    )
     parser.add_argument("--before", default=None, help="an earlier atlas.json to put first")
+    parser.add_argument(
+        "--scale",
+        type=float,
+        default=PIXELS_PER_UNIT,
+        help="pixels per atlas unit; all three panels share it",
+    )
     args = parser.parse_args()
 
     rgb = load_photo()
@@ -87,14 +143,17 @@ def main() -> None:
     current = json.loads(Path("src/machine/tube/atlas.json").read_text())
     before = json.loads(Path(args.before).read_text()) if args.before else None
 
-    columns = [int(c) for c in args.cells.split(",")]
+    if args.score:
+        rects = [score_rect(registration, rgb)]
+    else:
+        rects = [cell_rect(int(c)) for c in args.cells.split(",")]
     panels: list[list[Image.Image]] = []
-    for column in columns:
+    for rect in rects:
         row = []
         if before:
-            row.append(render(before, column, PIXELS_PER_UNIT))
-        row.append(render(current, column, PIXELS_PER_UNIT))
-        row.append(photograph(rgb, registration, column, PIXELS_PER_UNIT))
+            row.append(render(before, rect, args.scale))
+        row.append(render(current, rect, args.scale))
+        row.append(photograph(rgb, registration, rect, args.scale))
         panels.append(row)
 
     gap = 12
