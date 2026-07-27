@@ -595,16 +595,37 @@
 .EQU ROCKET_SWEEPS,  7
 
 ; The battleship. PROVISIONAL: v1 crossed the far zone in 400 ms, which over the
-; three lanes of this geometry is ~9 sweeps per lane step (8 at the old 15.46 ms
-; sweep - the count moved with the sweep so the 400 ms would not). The gap
-; between crossings is BSHIP_GAP_HI*16 plus the sampled counter, i.e. 48-63
-; sweeps, 646-848 ms, straddling v1's ~833 ms mean, with the spread coming from
-; the only randomness source the machine has rather than from a measured
+; three lanes of this geometry is ~133 ms per lane step.
+;
+; Nine sweeps was that figure divided by the sweep alone, and the sweep is not
+; all a lane step costs. Every lane step triggers a buzz, note_loop does not
+; scan the tube while it runs, so the note's own 67.9 ms is part of the step and
+; not something that happens beside it. Nine sweeps therefore bought
+; 9 * 14.5 + 67.9 = 198 ms a step, and the crossing came out at 593 ms MEASURED
+; against the 400 ms it was sized for - half as long again.
+;
+; That overrun is what the owner heard as the crossing not being announced. The
+; three buzzes are 68 ms each whatever this constant says; stretching the
+; crossing only pushes them apart, and at 198 ms a step they sat 142 ms of
+; silence apart and covered 26% of the crossing. Three isolated blips the same
+; length and envelope as a jet-march step do not read as the "distinctly lower,
+; sustained buzz" audio-reference.md records - they read as more marching.
+;
+; Four sweeps is the same 400 ms target with the note counted: 4 * 14.5 + 67.9 =
+; 126 ms a step, 378 ms the crossing, the buzzes 58 ms apart and sounding for
+; 54% of it. The count is what moved, not the target. Four rather than five
+; (421 ms nominal) because a sweep inside a crossing is routinely stretched by
+; the march and missile notes landing in it, so a crossing measures longer than
+; nominal in play: 457 ms against 522 ms, either side of v1's 400 ms.
+;
+; The gap between crossings is BSHIP_GAP_HI*16 plus the sampled counter, i.e.
+; 48-63 sweeps, 646-848 ms, straddling v1's ~833 ms mean, with the spread coming
+; from the only randomness source the machine has rather than from a measured
 ; distribution. That constant did not move: the gap is expressible only as
 ; HI*16 + 0..15, and the next rung up is 64-79 sweeps, 861-1063 ms, which
 ; overshoots v1 by more than 3 understates it. T5 and T6 remain unmeasured,
 ; including whether the real interval is random at all.
-.EQU BSHIP_SWEEPS,   9
+.EQU BSHIP_SWEEPS,   4
 .EQU BSHIP_GAP_HI,   3
 
 ; How long a burst stays on the glass, in sweeps. PROVISIONAL, and the only
@@ -3048,11 +3069,13 @@ skill_base:
 ;    wrong against it.
 ;  - battleship: 2 bursts of 10 periods = 69.7 ms per lane step, three lane steps
 ;    per crossing. audio-reference.md calls the real buzz "sustained" and v1
-;    synthesized one 380 ms note; BSHIP_SWEEPS puts the crossing at about that
-;    long, so three ~70 ms buzzes inside it read as a sustained lower buzz. Not a
-;    single 380 ms note, because note_loop does not sweep the tube while it runs
-;    and freezing the display for the whole crossing trades one visible defect
-;    for another. PROVISIONAL.
+;    synthesized one 380 ms note. Not a single 380 ms note, because note_loop
+;    does not sweep the tube while it runs and freezing the display for the whole
+;    crossing trades one visible defect for another; three ~70 ms buzzes read as
+;    one sustained buzz only if they are close enough together, which is a
+;    property of BSHIP_SWEEPS and not of this table. That is where this claim was
+;    wrong until the crossing was re-sized - see the battleship's entry in the
+;    provisional-cadence block. PROVISIONAL.
 ;  - warning beep: 1 burst of 5 periods = 10.1 ms, against a measured ~10 ms.
 ;    Short, but this one is the measurement.
 ;  - win: 9, 9 and 12 bursts of 16 periods = 192 / 154 / 154 ms against the

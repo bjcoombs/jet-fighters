@@ -201,6 +201,25 @@ function trace(board: Board, cycles: number): Trace {
 interface Sound {
   readonly firstEdge: number;
   readonly lastEdge: number;
+  /**
+   * Stretches inside the sound where the pin was left alone for longer than
+   * {@link REFRESH_TIMEOUT_CYCLES}, as `[from, to]` cycle pairs.
+   *
+   * BURST_GAP_CYCLES groups two notes played back to back into a single sound,
+   * which is what it is for - it stops the loss sound's 96 Hz collapse reading
+   * as seven lone edges. But the ROM runs a sweep between two such notes when
+   * there is time for one, and 15 ms is time for one: a march note running
+   * straight into a battleship buzz leaves a hole in the middle of what this
+   * function calls one 152 ms sound, and the grids are driven in it.
+   *
+   * A lit tube there is the machine working, not the blank failing, so D1 is
+   * asserted around these holes rather than through them. The threshold is
+   * `REFRESH_TIMEOUT_CYCLES` rather than a figure of this file's own because it
+   * is the constant `Display.getObservedFrame` uses to decide the tube has gone
+   * dark - one definition of "long enough to have stopped scanning", shared by
+   * the implementation and the test.
+   */
+  readonly holes: readonly (readonly [number, number])[];
 }
 
 /** Split a D14 edge stream into sounds at gaps of {@link BURST_GAP_CYCLES}. */
@@ -208,17 +227,27 @@ function splitSounds(edgeCycles: readonly number[]): Sound[] {
   const sounds: Sound[] = [];
   let first = edgeCycles[0];
   let last = first;
+  let holes: (readonly [number, number])[] = [];
   for (const cycle of edgeCycles.slice(1)) {
-    if (cycle - last > BURST_GAP_CYCLES) {
-      sounds.push({ firstEdge: first as number, lastEdge: last as number });
+    const previous = last as number;
+    if (cycle - previous > BURST_GAP_CYCLES) {
+      sounds.push({ firstEdge: first as number, lastEdge: previous, holes });
+      holes = [];
       first = cycle;
+    } else if (cycle - previous > REFRESH_TIMEOUT_CYCLES) {
+      holes.push([previous, cycle]);
     }
     last = cycle;
   }
   if (first !== undefined) {
-    sounds.push({ firstEdge: first, lastEdge: last as number });
+    sounds.push({ firstEdge: first, lastEdge: last as number, holes });
   }
   return sounds;
+}
+
+/** True when `cycle` falls in a stretch of `sound` where the pin was idle. */
+function inHole(sound: Sound, cycle: number): boolean {
+  return sound.holes.some(([from, to]) => cycle > from && cycle < to);
 }
 
 /** Milliseconds for a cycle count at the 400 kHz oscillator. */
@@ -420,11 +449,17 @@ describe('the blank reaches the renderer (D1)', () => {
     (sound) => ms(sound.lastEdge - sound.firstEdge) > 50 && ms(sound.lastEdge - sound.firstEdge) < 110,
   );
 
-  /** Reads that fall inside `sound`, once the refresh timeout has expired. */
+  /**
+   * Reads that fall inside `sound` while the pin was actually being toggled,
+   * once the refresh timeout has expired. Reads inside an internal hole are
+   * excluded - see {@link Sound.holes}.
+   */
   function readsDuring(sound: Sound): RenderSample[] {
     return samples.filter(
       (sample) =>
-        sample.cycle >= sound.firstEdge + REFRESH_TIMEOUT_CYCLES && sample.cycle <= sound.lastEdge,
+        sample.cycle >= sound.firstEdge + REFRESH_TIMEOUT_CYCLES &&
+        sample.cycle <= sound.lastEdge &&
+        !inHole(sound, sample.cycle),
     );
   }
 

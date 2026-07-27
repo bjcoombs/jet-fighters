@@ -518,7 +518,12 @@ describe('the squadron advances, and the skill dial sets how fast', () => {
       expect(sweeps).toBeGreaterThanOrEqual(108);
       expect(sweeps).toBeLessThanOrEqual(113);
     }
-  });
+    // 700 sweeps at the slowest cadence in the ladder is the longest emulator
+    // run in this file - 1.3 s here, over 5 s on a loaded CI runner - so it sat
+    // on the wrong side of vitest's 5 s default and reported the runner's load
+    // rather than the ROM's cadence. Nothing is measured by how long it takes,
+    // and the same run has failed on main for the same reason.
+  }, 30_000);
 
   it('advances no faster at skill 1 than at skill 3', () => {
     // Rule 1 of the back label: the dial sets level 1 (easiest) to 3 (fastest).

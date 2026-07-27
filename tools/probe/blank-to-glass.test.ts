@@ -107,6 +107,19 @@ function ms(cycles: number): number {
 interface Sound {
   readonly firstEdge: number;
   readonly lastEdge: number;
+  /**
+   * Stretches inside the sound where the pin was left alone for longer than
+   * {@link REFRESH_TIMEOUT_CYCLES}, as `[from, to]` cycle pairs.
+   *
+   * BURST_GAP_CYCLES groups two notes played back to back into one sound. The
+   * ROM runs a sweep between two such notes when there is time for one, and
+   * 15 ms is time for one: a march note running straight into a battleship buzz
+   * leaves a hole in the middle of what this function calls a single 152 ms
+   * sound, and the grids are driven in it. A lit tube there is the machine
+   * working, not the blank failing, so the assertions below step around these
+   * holes. Same threshold and same reasoning as sweep-timing.test.ts.
+   */
+  readonly holes: readonly (readonly [number, number])[];
 }
 
 /** Split a D14 edge stream into sounds at gaps of {@link BURST_GAP_CYCLES}. */
@@ -115,15 +128,24 @@ function splitSounds(edgeCycles: readonly number[]): Sound[] {
   if (edgeCycles.length === 0) return sounds;
   let first = edgeCycles[0] as number;
   let last = first;
+  let holes: (readonly [number, number])[] = [];
   for (const cycle of edgeCycles.slice(1)) {
     if (cycle - last > BURST_GAP_CYCLES) {
-      sounds.push({ firstEdge: first, lastEdge: last });
+      sounds.push({ firstEdge: first, lastEdge: last, holes });
+      holes = [];
       first = cycle;
+    } else if (cycle - last > REFRESH_TIMEOUT_CYCLES) {
+      holes.push([last, cycle]);
     }
     last = cycle;
   }
-  sounds.push({ firstEdge: first, lastEdge: last });
+  sounds.push({ firstEdge: first, lastEdge: last, holes });
   return sounds;
+}
+
+/** True when `cycle` falls in a stretch of `sound` where the pin was idle. */
+function inHole(sound: Sound, cycle: number): boolean {
+  return sound.holes.some(([from, to]) => cycle > from && cycle < to);
 }
 
 /**
@@ -232,11 +254,15 @@ describe('the blank the ROM makes reaches the glass (D1)', () => {
   /**
    * Frames drawn while `sound` was playing, once the refresh timeout has run
    * out. The first 5 ms of a blank is the threshold's cost and is not what this
-   * asserts about; everything after it is.
+   * asserts about; everything after it is. Frames inside an internal hole are
+   * excluded - see {@link Sound.holes}.
    */
   function framesDuring(sound: Sound): Painted[] {
     return frames.filter(
-      (frame) => frame.cycle >= sound.firstEdge + REFRESH_TIMEOUT_CYCLES && frame.cycle <= sound.lastEdge,
+      (frame) =>
+        frame.cycle >= sound.firstEdge + REFRESH_TIMEOUT_CYCLES &&
+        frame.cycle <= sound.lastEdge &&
+        !inHole(sound, frame.cycle),
     );
   }
 
