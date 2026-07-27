@@ -323,12 +323,18 @@ describe('the score readout blanks leading digits, and only leading digits', () 
    * The board at the first sweep on which the tens column lights.
    *
    * Reaching a two-digit score means actually scoring: the lever rests in the
-   * centre lane, which is the lane the battleship crosses, and a battleship is
-   * ten points (the printed ruler's "10" over its zone). Firing on alternate
-   * sweeps re-triggers the edge-triggered launch each time a shot is spent, so
-   * the run lands one on the ship within a few dozen sweeps. Nothing here is
-   * timed to a frame number - the loop stops on what the tube shows - so a
-   * cadence change moves when this happens without breaking the assertion.
+   * centre lane, and firing on alternate sweeps re-triggers the edge-triggered
+   * launch each time a shot is spent, so jets and eventually the battleship are
+   * hit. Nothing here is timed to a frame number - the loop stops on what the
+   * tube shows - so a cadence change moves when this happens without breaking
+   * the assertion.
+   *
+   * It used to land on the battleship within a few dozen sweeps: the boat
+   * crossed 51 times a minute and the centre lane is one it passed through. It
+   * now crosses about once a minute and the first crossing is at sweep 512, so
+   * the ten points come from jets over several hundred sweeps instead - which is
+   * why the tests below carry a timeout. The work is the same per sweep; there
+   * are simply many more of them, and 5 s is not enough for it on CI.
    */
   function boardAtFirstTensDigit(): Board {
     const board = romBoard();
@@ -361,7 +367,7 @@ describe('the score readout blanks leading digits, and only leading digits', () 
     expect(platesUnder(board, GRID_SCORE_T)).toEqual(DIGIT_ONE_PLATES);
     expect(platesUnder(board, GRID_SCORE_U).length).toBeGreaterThan(0);
     expect(platesUnder(board, GRID_SCORE_T)).not.toContain(PLATE_SCORE_HUNDREDS);
-  });
+  }, 30_000);
 
   it('never blanks the units column, at any score it reaches', () => {
     // The units digit is never a leading digit. Whatever the score, and however
