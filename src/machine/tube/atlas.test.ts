@@ -356,9 +356,50 @@ describe('sprite proportions', () => {
     // bright patches. The bare tube shows one connected object per lane. The
     // three bands were an artefact of looking at a lit sprite through smoked
     // glass, and the assertion froze them.
+    //
+    // It then asserted exactly one sub-path, which is a stronger claim than
+    // "one object" and is not one the photograph supports. The ship is drawn
+    // with an eye - a small enclosed dark dot, plainly visible in all three
+    // lanes - and an enclosed hole is a sub-path. It also carries a dark line
+    // across it that closes in two lanes and opens in the third, so the number
+    // of filled pieces is a fact about where the threshold fell, not about the
+    // glass.
+    //
+    // What the glass does say is that they are one silhouette rather than a
+    // stack of separate bands: every filled piece overlaps every other. That is
+    // what fails if bloom-derived bands ever come back, and it is indifferent
+    // to an eye and to a hairline that may or may not close.
     for (let lane = 0; lane < 3; lane += 1) {
       const path = getSegmentById(`launcher_lane${lane}` as SegmentId).path;
-      expect(path.match(/M /g)?.length, `launcher_lane${lane}`).toBe(1);
+      const filled = path
+        .split('M ')
+        .filter((part) => part.trim().length > 0)
+        .map((part) =>
+          [...part.matchAll(/(-?[\d.]+),(-?[\d.]+)/g)].map((m) => ({
+            x: Number(m[1]),
+            y: Number(m[2]),
+          })),
+        )
+        .map((points) => ({
+          // Shoelace: an outer boundary and a hole wind opposite ways, so the
+          // sign of the area is what separates the ship from its own eye.
+          area: points.reduce((sum, p, i) => {
+            const q = points[(i + 1) % points.length]!;
+            return sum + (p.x * q.y - q.x * p.y);
+          }, 0),
+          x0: Math.min(...points.map((p) => p.x)),
+          x1: Math.max(...points.map((p) => p.x)),
+          y0: Math.min(...points.map((p) => p.y)),
+          y1: Math.max(...points.map((p) => p.y)),
+        }))
+        .filter((piece) => piece.area > 0);
+      expect(filled.length, `launcher_lane${lane} has a filled shape`).toBeGreaterThan(0);
+      for (const a of filled) {
+        for (const b of filled) {
+          expect(a.x0 < b.x1 && b.x0 < a.x1, `launcher_lane${lane} pieces overlap in x`).toBe(true);
+          expect(a.y0 < b.y1 && b.y0 < a.y1, `launcher_lane${lane} pieces overlap in y`).toBe(true);
+        }
+      }
     }
   });
 

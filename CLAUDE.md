@@ -21,6 +21,12 @@ the physical machine:
 | `src/machine/audio/` | Cycle-stamped edges band-limited into a waveform                            |
 | `src/ui/`, `src/input/`, `src/main.ts` | Case shell, keyboard/touch, and the frame driver          |
 
+Beside them, and not part of the build: `tools/trace/` is where
+`src/machine/tube/atlas.json` comes from. It traces the teardown photograph into segment
+outlines, in Python, needing NumPy, SciPy and Pillow. Nothing in `src/` imports it and
+`npm test` never runs it, but **a playfield outline is changed there and regenerated, not
+edited by hand** - `src/machine/tube/ATLAS-COORDINATES.md`, "Tracing workflow".
+
 The rules that keep it honest:
 
 - **Nothing owns a clock except `src/main.ts`.** The board advances only when stepped.

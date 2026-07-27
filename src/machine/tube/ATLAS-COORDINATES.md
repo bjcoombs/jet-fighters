@@ -122,10 +122,9 @@ Every vertical proportion comes from v1's already-tuned layout instead.
 
 ### What is traced from the bare tube, and what is not
 
-The teardown photographs supersede the video for shape, and the retrace against
-them is being done a family at a time rather than in one commit. **This table is
-the record of where each outline currently comes from; do not read a
-carried-over outline as a retraced one.**
+The teardown photographs supersede the video for shape. **This table is the
+record of where each outline currently comes from; do not read a carried-over
+outline as a retraced one.**
 
 | Family | Source |
 | --- | --- |
@@ -139,8 +138,114 @@ carried-over outline as a retraced one.**
 | Launcher, cell 6 | `tube-teardown/tube-unlit-full.jpg` |
 | Capture burst, cell 6 | the same - new to the atlas |
 | Rocket burst (`explosion_*`), cell 6 | the same |
-| Cell 6's smoke | **not traced** - see below |
+| Cell 6's smoke | `tube-teardown/tube-unlit-full.jpg` - **now traced**, see below |
 | Score digits, SCORE label | v1 shape tables |
+
+Every row above that names the teardown photograph is now produced by
+`tools/trace/`, which is the retrace described in the next section. The score
+readout is the one thing on the tube these outlines do not cover.
+
+### The retrace, and the thing it turned out not to be
+
+The outlines were coarser than the glass, and the obvious suspect was the
+Douglas-Peucker simplification at the end of the pipeline. **It was not, and the
+measurement is worth keeping** because it is exactly the sort of thing that gets
+assumed:
+
+Median over the 78 traced segments, against an unsimplified contour of the same
+print (`report.py --baseline` re-measures it):
+
+| | Deviation from the traced contour |
+| --- | --- |
+| The atlas as it stood, against the contour it should follow | **0.90 atlas units** |
+| The same, with the best rigid translation removed | 0.93 units |
+| Douglas-Peucker at the tolerance this retrace uses | 0.08 units |
+| Douglas-Peucker at 6 px, four times coarser than anything considered | 0.36 units |
+
+Simplification accounts for at most a tenth of that, and removing the
+translation does not shrink it - so the loss was neither the tolerance nor a
+uniform registration shift. It was the mask: sprites merged with the silkscreen
+rules and with each other, and marks below the largest few in a cell were
+dropped. The tail runs much further than the median says - the capture burst was
+out by 8 units because most of it was not there.
+
+`tools/trace/` is that pipeline, committed rather than run once and described:
+`lattice.py` registers, `masks.py` separates the pigments, `contour.py` traces
+and simplifies, `trace_atlas.py` names each mark and writes `atlas.json`, and
+`report.py` re-measures every number the other four depend on. It needs NumPy,
+SciPy and Pillow, and nothing in `src/` or in CI imports it.
+
+Four things changed, and each is a measurement rather than a preference.
+
+**The lattice was re-measured, and it had a 2% scale error.** The printed cell
+boundaries sit on a 523.85 px pitch (least squares over six gutters, worst
+residual 2.1 px = 0.13 atlas units) and the lane dividers on 308.83 px. The
+committed atlas implied 515.4 px and 302.4 px - about 2% short on each axis,
+which is 0.08 of a cell by the far end of the field. Two of the eight vertical
+boundaries and two of the four horizontal ones are excluded from the fit and
+`lattice.py` says which and why; they are the field's outer borders, where the
+dark run is a frame against tube structure rather than a gutter between two
+equal neighbours.
+
+**The print on this glass is three things, not two.** Over cell 2's top lane:
+
+| | luma | blue-minus-red |
+| --- | --- | --- |
+| White phosphor | 189 | +3 |
+| Yellow phosphor | 157 | -53 |
+| Silkscreen cell rules | 155 | -3 |
+| Dark glass | 123 | +5 |
+
+The silkscreen box rules are as bright as the yellow phosphor and as neutral as
+the white, so neither channel separates them alone - and a rule is not a
+segment. Left in, cell 0's burst took the box's right-hand rule into its own
+component and traced as a shape running the full height of the cell, which is
+where its 22-unit bounding box came from. Two thresholds separate all three:
+pigment on blue-minus-red, then phosphor from silkscreen on brightness among
+the neutral print only.
+
+**A mark is named by where it is, not by what it touches.** Several families are
+two or more separate marks - the colon's two dots, the burst's two blobs, the
+sea's row of eight wave glyphs, the smoke's eleven curls - and several *touch*
+their neighbour, the dart running into the upper burst blob in about half the
+cells. So each family's committed outline is rasterised as a seed and grown
+through the mask; a merged pair is cut where the print thins rather than where
+the previous atlas guessed. Seeding from the committed *bounding box* instead
+was tried first and is the wrong thing: a colon's box is mostly the fuselage it
+straddles and a burst's box is mostly the dart between its blobs.
+
+**The tolerance is measured, and it is measured at run time.** Nudge the print
+threshold by ±5% of a cell's own print-to-field contrast and the traced boundary
+moves 1.41 px. Below that a simplifier is encoding which threshold the run
+happened to pick, so the tolerance is set *at* that floor - it discards nothing
+the trace can tell from its own repeatability. For the check in the other
+direction: 1.41 px is **0.084 atlas units**, against the control grid's 0.63-unit
+row spacing as the finest real feature the glass has
+(`docs/evidence/tube-mesh.md`) and the photograph's own 0.59-unit edge width. It
+is eight times finer than either, so nothing that could be a feature is at risk.
+`trace_atlas.py` computes it from the photograph on every run rather than
+carrying a number someone could nudge.
+
+Coordinates are written to two decimal places, not four. 0.01 atlas units is
+0.17 px on the tracing photograph - eight times finer than the trace's own
+repeatability - so the two extra places were recording noise, and they cost
+20 kB of the shipped bundle.
+
+### What it costs
+
+| | Before | After |
+| --- | --- | --- |
+| Path vertices across the atlas | 3,287 | 4,787 |
+| `atlas.json` | 89.7 kB | 99.9 kB |
+| Bundle | 173.6 kB (54.0 kB gzip) | 183.8 kB (60.7 kB gzip) |
+| Per-frame path traversal, 30 segments lit | 0.193 ms | 0.296 ms |
+
+The frame figure is the renderer's own geometry work against a no-op context -
+the part that scales with the vertex count - and it is 1.8% of a 16.7 ms budget
+against 1.2% before. The ghost layer dominates it, because it traces all 94
+segments every frame and never changes; caching it to a bitmap the way the mesh
+layer already is would remove the growth entirely, and is the lever to pull if
+this ever matters. It does not yet.
 
 ### Tracing from the bare tube
 
@@ -232,8 +337,13 @@ sprite**, normalised to a common box - the catalogue's accumulation method one
 level up, applied across the cells that carry the same shape rather than across
 the frames of one cell. A shape is then what the samples agree on rather than
 what one sample happened to catch. The boundary of the majority mask is walked
-and simplified (Douglas-Peucker, 1.2 px), which is where the vertex counts in
-`atlas.json` come from.
+and simplified (Douglas-Peucker, 1.2 px).
+
+**None of the shipped outlines come from this any more** - "The retrace, and the
+thing it turned out not to be" above replaced them all with the bare tube. The
+section is kept because the video is still the only source for how the sprites
+*behave*, and because the two readings of which cell a crop is in, below, are
+still unresolved.
 
 **Which cell each crop is in - and this is now contested.** The crop filenames
 run `col0` to `col5`. When these sprites were traced the catalogue's prose had
@@ -595,12 +705,13 @@ When a test has no reference behind it - no photograph, no measurement, no
 statement from the owner - it is pinning the last person's judgement, and the
 right form is to say so in the test rather than to let it read as fact.
 
-### Cell 6's smoke is not traced, and what has been ruled out
+### Cell 6's smoke, and why five attempts missed it
 
 The player's cell holds four printed things per lane: two solid yellow
 starbursts, a yellow **stipple** - a knot of loose curls - and the cyan
-launcher. The launcher and the two starbursts are traced. **The stipple is not**,
-and five approaches have been tried:
+launcher. All four are now traced, and the stipple is in `capture_lane*`'s path.
+Five earlier approaches had failed, and what they were all doing wrong is the
+useful part:
 
 | Attempt | Result |
 | --- | --- |
@@ -610,32 +721,47 @@ and five approaches have been tried:
 | Hue split | **Hue is the same**: 49 deg against 46-47 deg. No separation |
 | Saturation / value split | Separates pixel-wise, but the solid bursts' soft edges are low-saturation too and bridge into the stipple, so it comes back as one blob spanning the cell |
 
-The hue result is the interesting one, because it says what the stipple *is*:
-**the same phosphor, printed as a texture rather than as an area.** Its lower
-saturation and value (0.29 / 0.58 against 0.50 / 0.77) are what a dot screen
-does to a measurement - each pixel averages pigment with the dark gaps between
-the dots - not evidence of a second pigment.
+Every one of them was looking for a *pixel property* that would tell a stipple
+from a solid area. **There is no such property, and none was needed.** At the
+per-lane Otsu threshold the stipple comes out as about **eleven separate marks
+of 200 to 1,500 px each**, none of them touching either starburst. They were
+never merged with anything. What dropped them was a pipeline that took the
+largest components in the cell and treated the rest as noise, and the fix is
+that the smoke has a *name* and a place to be: unclaimed red print in the left
+half of cell 6, which is the same left/right discriminator that told the capture
+burst from the rocket burst.
 
-**But the dot screen is not the stipple's own.**
-`docs/evidence/tube-mesh.md` measures a single modulation - 10.83 px period on a
-31 degree axis - present in both phosphors, in the dark field, and in this
-stipple alike: the tube's control grid, in front of everything. So the dots that
-lower the stipple's saturation are the grid's shadow, and they lower the solid
-bursts' saturation beside it by exactly as much. What separates the two is a
-coarser feature drawn on top, and the measurement does not name it.
+**The mesh was not the obstacle, and this is worth recording because it looked
+like the promising lead.** `docs/evidence/tube-mesh.md` had established that the
+control grid modulates the stipple, both phosphors and the dark field alike, and
+the reasonable hypothesis was that removing that known periodic modulation would
+let the stipple separate where thresholds had failed. It would not have: over
+the smoke, the grid's ripple measures **3.5 grey levels of standard deviation
+against 74 levels of curl-to-glass contrast** - twenty times too small to be
+what was defeating a threshold. Low-passing below the grid's period is in
+`masks.py` anyway, because it keeps grid ripple out of the traced contour, but
+it changes the smoke's mask by about 7% and it is not what unblocked it.
+
+So the stipple is a coarse print of loose curls, as `tube-mesh.md` suspected
+when it said "whatever makes the stipple a stipple is a coarser feature drawn on
+top". It is drawn, not screened.
 
 The stipple **is a lit segment**, which a lit photograph from the owner settles:
-`tube-teardown/lit-capture-burst.jpg` shows the curls glowing red-orange beside
-a lit starburst in the same event. It also shows them **co-lit and contiguous**,
-so the reading is one segment with the stipple in its path - the same structure
-as the colon's two dots, the burst's two blobs and the sea's wave glyphs.
-Strongly evidenced rather than proved: bloom in a lit photograph can join two
-separately addressed segments. **What would falsify it is a frame in which the
-stipple lights without the starburst, or the starburst without the stipple.**
+`lit-capture-burst.jpg` shows the curls glowing red-orange beside a lit
+starburst in the same event, **co-lit and contiguous**. So it is one segment with
+the stipple in its path - the same structure as the colon's two dots, the
+burst's two blobs and the sea's wave glyphs. Strongly evidenced rather than
+proved: bloom in a lit photograph can join two separately addressed segments.
+**What would falsify it is a frame in which the stipple lights without the
+starburst, or the starburst without the stipple** - and if that frame turns up,
+what changes is one segment splitting into two addresses, not the outline, which
+is now measured either way.
 
-So the capture burst's traced path is its starburst without its smoke. That is
-a known incompleteness in a segment that is otherwise correct, not a missing
-address.
+**That photograph is not in this repository.** It is cited here and in
+`docs/evidence/open-questions.md` as `assets/reference/tube-teardown/lit-capture-burst.jpg`
+and no commit has ever added it. It was in the hands of whoever wrote those
+sections; the co-lighting reading rests on it and cannot be re-checked here
+until the owner supplies it.
 
 ### The two bursts in the player's cell are two different losses
 
@@ -687,20 +813,45 @@ Three things this revision leaves undone, recorded rather than dropped:
 4. **The whole cell assignment may be one out**, per "Which cell each crop is in"
    above. This is the largest open question in the atlas and it is bigger than
    any sprite in it.
-5. **The teardown photographs supersede everything used here for shape.**
-   `assets/reference/tube-teardown/` arrived after these outlines were traced:
-   the bare tube at 46.7 MP, every segment visible at once, no filter and no
-   multiplexing to defeat. The outlines below are accumulated video masks, which
-   is the best that could be had from lit references and is not as good as that.
-   Retracing from the teardown crops is the obvious next pass, and it would also
-   settle the jet: the teardown shows the three lanes of a single cell carrying
-   three different outlines, so the two-pose parity model here is a floor and
-   may be as many as fifteen distinct shapes.
+5. ~~**The teardown photographs supersede everything used here for shape.**~~
+   **Done.** Every playfield outline is now traced from
+   `tube-teardown/tube-unlit-full.jpg` by `tools/trace/`, and the jet is fifteen
+   distinct outlines rather than two poses on a parity. What the retrace does
+   *not* touch is the score readout, which is still v1's shape tables against a
+   `score-block.jpg` that has never been traced.
 
 ## Tracing workflow
 
-To revise the atlas - and this is the expected path once the angled-light photo
-arrives:
+**For a playfield outline, do not do any of this by hand.** Change
+`tools/trace/` and re-run it:
+
+```bash
+python3 tools/trace/report.py                     # re-measure the free numbers
+python3 tools/trace/trace_atlas.py                # dry run: counts and notes
+python3 tools/trace/trace_atlas.py --write        # rewrite atlas.json
+python3 tools/trace/preview.py /tmp/cmp.png --cells 6,2,0 --before <old atlas.json>
+npm test
+```
+
+Read the notes the dry run prints. Each one is a mark the pipeline could not
+place from a segment's known position and assigned to its nearest neighbour
+instead; two is the current count and both are named in the PR that introduced
+them. A run that starts printing more of them has found something, and the thing
+to do is look at the photograph rather than at the threshold.
+
+`preview.py` is the check that matters, and it is the one that catches an
+outline that is self-consistently wrong: three panels at one scale, the atlas as
+committed, the atlas as your tree has it, and the glass.
+`docs/evidence/tube-sprite-detail.jpg` is the current one.
+
+**Re-measure the print rather than adjusting the frame assertion.** If the
+lattice moves, `lattice.py` is where it is measured and `atlas.test.ts`'s
+left-of-centre assertion is the only test that can see out of a self-consistent
+wrong frame. Section 5d of `docs/evidence/open-questions.md` explains why.
+
+### By hand, for anything the tracer does not cover
+
+The score readout, and any new reference that is not `tube-unlit-full.jpg`:
 
 1. Read the photo at full resolution. For faint ghost phosphor, level-stretch the
    dark end rather than raising brightness, which blows out the lit segments:
