@@ -524,9 +524,17 @@ as if measured:
   199 cap, and nothing faster than 700 ms anywhere in the clip. `PAT_STEP` entry 15
   does not yet answer to it - see
   [What was changed, and what the ladder now says](#what-was-changed-and-what-the-ladder-now-says).
-- Battleship crossing duration and interval distribution (T5, T6). The video adds that
-  the battleship's **traversal is not established at all** - 17 sightings, never outside
-  its own cell.
+- **Closed: battleship crossing duration and arrival rate (T5, T6, in part).** The
+  traversal question is settled - across the columns it does not move, down the lanes it
+  does, on the owner's own description of his unit - which makes the sprite catalogue's
+  17 **episodes** readable as lane dwells rather than crossings. Median 2.5 s a lane, so a
+  crossing is ~7.5 s; eight lane-0 episodes over 407.9 s, so arrivals come **1.18 a
+  minute**. Both are in the ROM. See `open-questions.md` and
+  `assets/reference/sprites/README.md`.
+  What is **not** closed is the interval's *distribution*: whether the real one varies at
+  all, and if so how. This ROM's does not vary meaningfully and cannot - its only
+  randomness is the phase of the player's last fire press, and it moves the interval by
+  under 9%.
 - Rocket travel time and fire rate (T8, T9). The attackers' colon is now traced as a
   shape but never as a moving object.
 - Post-hit recovery time (T10)

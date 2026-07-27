@@ -267,10 +267,34 @@ It is a different shape from a jet by measurement, not only by eye: best-alignme
 between the two battleship lanes that share a superstructure position is 0.87, while the
 highest IoU between any battleship mask and any jet mask is 0.69.
 
-**Whether it traverses is NOT settled, and an earlier revision of this section said it
-was.** That revision concluded "it does not move", and that reading was checked
-independently by tracking red blobs through the file t=259-266 s episode at 500 ms
-intervals:
+**Whether it traverses is now settled, and it took the owner rather than the video.** The
+question had to be split first, because two different claims were being carried in one
+sentence:
+
+- **Across the columns it does not move.** That half the video does settle - see below.
+- **Down the lanes it does.** The owner, playing beside his own unit: the battleship
+  *"moves slowly down the the slots which gives you time to shoot at it"*. That is the
+  half the video could not reach, and it makes the succession this section traces - lane 0,
+  then lane 1, then lane 2 - one boat descending rather than three appearing in turn.
+
+It also makes this section's own figures readable. An **episode** here is a contiguous run
+of sightings in one lane, not a whole crossing: the traced descent below is 9.3 s end to
+end, longer than the longest episode, so an episode cannot be a crossing. Read as lane
+dwells, the 17 episodes give a **median lane dwell of 2.5 s** and the longest of them,
+5.9 s, is that descent's own last lane at 5.83 s. A crossing is therefore about 7.5 s, and
+the eight lane-0 episodes over 407.9 s are eight arrivals - **1.18 crossings a minute**.
+Both figures are what the ROM was rebuilt against.
+
+What remains open is the lane split, **8 / 2 / 7**. Three equal counts are what a boat
+that always descends all three lanes should give. Lane 1 is the shortest dwell of the
+traced descent and the tube blanks for every sound, so detection loss in the transit lane
+is the likely cause, but a boat that does not always start at the top would look the same.
+One crossing watched start to finish settles it.
+
+**The evidence below is kept because the reasoning in it is still right, and because an
+earlier revision of this section got it wrong in the other direction.** That revision
+concluded "it does not move", and that reading was checked independently by tracking red
+blobs through the file t=259-266 s episode at 500 ms intervals:
 
 ```
 wide blob   (w~48 px, the battleship): x66-116, x70-116, x72-114, x68-116, x68-116
@@ -291,11 +315,13 @@ about the tube rather than about the game. The succession lane 0 (frames 524-561
 1 (565-626) to lane 2 (628-802) looks like a descent through the lanes, but the video
 cannot separate one battleship moving from three in succession.
 
-So: the battleship's **shape, colour, size, cell and three lanes are well attested**; its
-**motion is not**. Do not build a stationary battleship into the ROM on the strength of
-this section. It is recorded this way rather than deleted because the stationary reading
-contradicts the PRD's "battleship crossing", and acting on it would have changed a game
-rule on a measurement that could not carry the claim.
+So on the video alone: the battleship's **shape, colour, size, cell and three lanes are
+well attested**; its **motion is not**. Nothing here was ever enough to build a stationary
+battleship into the ROM, and it was recorded this way rather than deleted because the
+stationary reading contradicts the PRD's "battleship crossing". The owner's description
+resolves it in the direction the PRD already had - the boat moves, down the lanes - and
+the succession above is what that motion looks like through this video. At 30 fps those
+three runs are **1.3 / 2.1 / 5.8 s** a lane.
 
 The general lesson is worth more than the instance: **motion analysis in this video needs
 a control** - something whose behaviour is known, measured in the same window. If the
