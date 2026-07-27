@@ -169,7 +169,7 @@ export interface MeshTile {
  * pixels per mesh period, well past where the structure is already fully
  * legible. Past it the mesh is dropped rather than the allocation made.
  */
-const MAX_LAYER_PX = 8_000_000;
+export const MAX_LAYER_PX = 8_000_000;
 
 /**
  * The default surface: an `OffscreenCanvas`, where the platform has one.
@@ -232,7 +232,7 @@ export function meshOpacity(devicePxPerUnit: number): number {
  * the same 7 Mpx. The tilt is worth about a pixel of drift across the whole
  * field; it is not worth three times the fill.
  */
-const CELLS_PER_TILE = 33;
+export const CELLS_PER_TILE = 33;
 
 /**
  * Draw one tileable patch of mesh into a surface from `factory`.

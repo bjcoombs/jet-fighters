@@ -21,6 +21,17 @@ export interface RecordedCall {
   readonly shadowBlur: number;
 }
 
+/**
+ * What a recorded `createPattern` hands back.
+ *
+ * The renderer only ever assigns a pattern to `fillStyle` and never inspects it,
+ * so a marker is enough to prove one was made and from what.
+ */
+export interface FakePattern {
+  readonly kind: 'pattern';
+  readonly repetition: string | null;
+}
+
 interface PaintState {
   fillStyle: string;
   strokeStyle: string;
@@ -32,7 +43,10 @@ interface PaintState {
   textAlign: string;
   textBaseline: string;
   lineCap: string;
+  lineJoin: string;
   globalCompositeOperation: string;
+  imageSmoothingEnabled: boolean;
+  imageSmoothingQuality: string;
 }
 
 function initialState(): PaintState {
@@ -47,7 +61,10 @@ function initialState(): PaintState {
     textAlign: 'start',
     textBaseline: 'alphabetic',
     lineCap: 'butt',
+    lineJoin: 'miter',
     globalCompositeOperation: 'source-over',
+    imageSmoothingEnabled: true,
+    imageSmoothingQuality: 'low',
   };
 }
 
@@ -133,6 +150,13 @@ export class FakeCanvasContext {
     this.state.lineCap = value;
   }
 
+  get lineJoin(): string {
+    return this.state.lineJoin;
+  }
+  set lineJoin(value: string) {
+    this.state.lineJoin = value;
+  }
+
   get globalCompositeOperation(): string {
     return this.state.globalCompositeOperation;
   }
@@ -140,7 +164,35 @@ export class FakeCanvasContext {
     this.state.globalCompositeOperation = value;
   }
 
+  get imageSmoothingEnabled(): boolean {
+    return this.state.imageSmoothingEnabled;
+  }
+  set imageSmoothingEnabled(value: boolean) {
+    this.state.imageSmoothingEnabled = value;
+  }
+
+  get imageSmoothingQuality(): string {
+    return this.state.imageSmoothingQuality;
+  }
+  set imageSmoothingQuality(value: string) {
+    this.state.imageSmoothingQuality = value;
+  }
+
   // --- drawing ---------------------------------------------------------------
+
+  /**
+   * A marker standing in for a `CanvasPattern`. Recorded so a test can prove one
+   * was made; the renderer only ever assigns it to `fillStyle`.
+   */
+  createPattern(_image: unknown, repetition: string | null): FakePattern {
+    this.record('createPattern', []);
+    return { kind: 'pattern', repetition };
+  }
+
+  /** `drawImage`, in either of the argument shapes the renderer uses. */
+  drawImage(_image: unknown, ...rest: number[]): void {
+    this.record('drawImage', rest);
+  }
 
   save(): void {
     this.record('save', []);
@@ -283,7 +335,8 @@ export function callsOf(recorder: FakeCanvasContext, op: string): readonly Recor
 export function fillColorsUsed(recorder: FakeCanvasContext): readonly string[] {
   const seen: string[] = [];
   for (const call of recorder.calls) {
-    if ((call.op === 'fill' || call.op === 'fillRect' || call.op === 'fillText') && !seen.includes(call.fillStyle)) {
+    const isFill = call.op === 'fill' || call.op === 'fillRect' || call.op === 'fillText';
+    if (isFill && typeof call.fillStyle === 'string' && !seen.includes(call.fillStyle)) {
       seen.push(call.fillStyle);
     }
   }
