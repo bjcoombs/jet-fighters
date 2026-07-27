@@ -2970,6 +2970,29 @@ skill_base:
 ; oscillator the frequency is 400000 / period. Every entry below is the closest
 ; this loop can land to its target, and the target is cited.
 ;
+; **Two ways this arithmetic gets misread, both of which say the battleship buzz
+; is broken when it is not.** The buzz has been reported as unreachably high
+; twice now, and each time the reasoning ran off the same two facts:
+;
+;   - `outer` is the stored value *plus one*, because DB leaves the loop only
+;     after the counter borrows. Dropping the plus one on entry 2 gives 1309
+;     cycles and 306 Hz - above the measured band, and wrong. The real figure is
+;     1393 cycles and 287 Hz.
+;   - `$0FF` is the largest PAT_SND_A entry, but PAT_SND_A is not the floor.
+;     `rep` - PAT_SND_B's low nibble - multiplies the whole delay, which is how
+;     the loss sound's collapse reaches 96 Hz on a *smaller* PAT_SND_A entry
+;     than the buzz uses. Entry 2 stores rep 0; rep 1 would roughly double its
+;     period to about 145 Hz, far below the band. There is a great deal of room
+;     under this entry and no encoding change is needed to reach it.
+;
+; Neither is a matter of opinion. Drive the machine and reconstruct the tone
+; from D14 and the buzz reads 287.2 Hz against a measured 230-300, with the
+; march at 640.0 Hz against a measured 600-650 - the march being the calibration
+; point that says the model behind these numbers is the right one.
+; tools/probe/speaker-bands.test.ts asserts both, and separately asserts the
+; buzz below the march, which audio-reference.md records as the stronger
+; owner-confirmed constraint.
+;
 ; One wrinkle, and it is real hardware behaviour rather than a defect: the period
 ; that straddles a burst boundary is **twelve cycles longer**, because note_loop
 ; has to reload the period counter and decrement the burst counter between
