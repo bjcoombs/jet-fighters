@@ -155,16 +155,38 @@ what one sample happened to catch. The boundary of the majority mask is walked
 and simplified (Douglas-Peucker, 1.2 px), which is where the vertex counts in
 `atlas.json` come from.
 
-**Reading the crops' column numbers.** The crop filenames run `col0` to `col5`
-while the catalogue's prose numbers columns 0 (the G line) to 6 (farthest), and
-the prose was not updated when the crop set was replaced - it still cites
-filenames that no longer exist. The reading used here is that **crop `colN` is
-atlas grid `N - 1`**, with crop `col0` the battleship's cell, which has no grid
-of its own. Three families corroborate it independently: darts appear at crop
-col1-col5 and the atlas gives them five columns, jet-kill bursts at col1-col4
-and the atlas gives them four, the battleship at col0 alone. It is a reading and
-not a statement from the catalogue, and it is the first thing to check if a
-sprite turns out to be a cell out.
+**Which cell each crop is in - and this is now contested.** The crop filenames
+run `col0` to `col5`. When these sprites were traced the catalogue's prose had
+not caught up with its own crop set, so the mapping was inferred from the counts:
+darts at `col1`-`col5` and five dart columns in the atlas, bursts at
+`col1`-`col4` and four, the battleship alone at `col0`. That gives **crop `colN`
+= atlas grid `N - 1`**, which is what the geometry below is built on.
+
+The catalogue has since stated the opposite convention outright: cells are
+numbered as the overlay prints them, cell 0 the far zone and cell 6 the `G` line,
+and **crop `colN` = atlas grid `N`**. On that reading the field is seven cells -
+battleship alone in cell 0, jets in cells 1-5, the launcher alone in cell 6 - and
+the `assets/reference/tube-teardown/` photographs of the bare tube agree with it:
+seven printed cell boxes, no jet in the launcher's cell, no jet in the
+battleship's.
+
+**The two readings cannot both be right, and the atlas cannot express the second
+one at all**, because it has six playfield grids and the seven-cell field needs
+seven. Under the atlas's own map the launcher sits on grid 5 and a jet reaching
+grid 5 captures it, which is the ROM's `COL_LAUNCH` and its whole distance model;
+under the printed reading the launcher has a cell of its own that no jet ever
+enters. Everything here is placed on the first reading because that is the one
+the ROM is wired to, and the shapes are unaffected either way - a dart is the
+same dart wherever the lattice says it stands.
+
+Resolving it means going to seven playfield grids, which moves every sprite in
+the atlas and every column in the ROM. `assets/reference/tube-teardown/README.md`
+says the same thing and declines to do it, because the grid split it implies -
+7 playfield, 2 score digit cells, 1 label against the atlas's 6, 3, 1 - is read
+off printed cell boxes and not off the tube's leads. That correlation is the
+work that settles it. Until it is done, a sprite may be one cell out; the
+conformance test will not catch that, because both readings are internally
+consistent.
 
 ### Converting to atlas units
 
@@ -426,10 +448,18 @@ Three things this revision leaves undone, recorded rather than dropped:
    a game rule meeting a three-digit readout, not a fault, and the readout is
    three digits on the evidence of `tube-closeup-score10.webp`.
 
-Also worth knowing: `assets/reference/sprites/README.md`'s prose was not updated
-when its crop set was replaced, so it cites filenames that no longer exist and
-still lists the colon and the player's red burst as untraced when both are now
-traced. Trust the crops over the prose until that is reconciled.
+4. **The whole cell assignment may be one out**, per "Which cell each crop is in"
+   above. This is the largest open question in the atlas and it is bigger than
+   any sprite in it.
+5. **The teardown photographs supersede everything used here for shape.**
+   `assets/reference/tube-teardown/` arrived after these outlines were traced:
+   the bare tube at 46.7 MP, every segment visible at once, no filter and no
+   multiplexing to defeat. The outlines below are accumulated video masks, which
+   is the best that could be had from lit references and is not as good as that.
+   Retracing from the teardown crops is the obvious next pass, and it would also
+   settle the jet: the teardown shows the three lanes of a single cell carrying
+   three different outlines, so the two-pose parity model here is a floor and
+   may be as many as fifteen distinct shapes.
 
 ## Tracing workflow
 
