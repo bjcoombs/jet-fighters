@@ -89,8 +89,8 @@ function buildScreen(): HTMLElement {
 /**
  * The small moulded tab that hangs off the module's top edge at 12 o'clock and
  * overlaps the glass (assets/reference/screen-overlay-closeup.jpg). Positioned
- * in body units: x 520..546, y 38..78 of the 1000 x 460 viewBox. It stops at 78
- * so it clears the curved legend printed inside the scope at y 80..86 - see the
+ * in body units: x 520..546, y 38..99 of the 1000 x 460 viewBox. It stops at 99
+ * so it clears the curved legend printed inside the scope at y 101..107 - see the
  * `.jf-tab` rule in case.css for why that bound is where it is.
  */
 function buildBezelTab(): HTMLElement {

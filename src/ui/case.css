@@ -78,14 +78,20 @@
 
 /* --- Bezel tab (12 o'clock) --------------------------------------------
    A moulded tag on the module's top edge that hangs over the glass. Body units
-   x 520..546, y 38..78 of the 1000 x 460 viewBox, as percentages of the case.
+   x 520..546, y 38..99 of the 1000 x 460 viewBox, as percentages of the case.
    It sits above `.jf-screen` in DOM order because it overlaps the window.
 
-   It reaches y 78 and no further, because the curved legend printed inside the
-   scope - COAST SIDE MISSILE STATION RADAR SIGHT SCREEN - runs at y 80..86,
-   just under the circle's top edge at y 72. The tab used to end at y 91 and
-   struck straight through the middle of it, so the legend read "COAST SIDE
-   MISSILE ... RADAR SIGHT SCREEN" with STATION hidden behind the plastic.
+   It reaches y 99 and no further, because the curved legend printed inside the
+   scope - COAST SIDE MISSILE STATION RADAR SIGHT SCREEN - runs at y 101..107,
+   just under the circle's top edge at y 93. The tab once ended at y 91 against
+   a circle whose top was y 72, and struck straight through the middle of the
+   legend, so it read "COAST SIDE MISSILE ... RADAR SIGHT SCREEN" with STATION
+   hidden behind the plastic.
+
+   This length is tied to SCOPE_CIRCLE.cy in src/ui/geometry.ts and has already
+   had to follow it once: moving the scope down 21 units to remove the dead band
+   under the glass left the tab floating clear of the circle it is meant to
+   overhang. If cy moves again, this moves with it.
 
    On the real unit (assets/reference/device-front-lit.jpg) the tag overhangs
    the very top of the glass and the legend is fully readable beneath it, which
@@ -97,7 +103,7 @@
   left: 52%;
   top: 8.2609%;
   width: 2.6%;
-  height: 8.6957%;
+  height: 13.3152%;
   border-radius: 0 0 46% 46% / 0 0 26% 26%;
   background: linear-gradient(180deg, #e5794f 0%, #cb5a30 55%, #b04520 100%);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);

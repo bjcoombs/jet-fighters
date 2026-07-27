@@ -28,8 +28,30 @@ export interface Circle {
 /** The case SVG coordinate space; every master constant below is in these units. */
 export const CASE_VIEWBOX = { width: 1000, height: 460 } as const;
 
-/** Radar circle - the dominant round scope. */
-export const SCOPE_CIRCLE: Circle = { cx: 533, cy: 222, r: 150 };
+/**
+ * Radar circle - the dominant round scope.
+ *
+ * `cy` is 243 rather than the centre of the module, because on the real unit the
+ * scope is not centred in its module: measuring a column through the middle of
+ * the scope in `assets/reference/device-front-lit.jpg` gives 52 px of red above
+ * it and 49 px below, against a scope 410 px tall. This puts 55 units above and
+ * 53 below against the module's 38..446, which is that proportion.
+ *
+ * It was 222, which left 34 above and **74 below** - the dead band under the
+ * glass the owner reported. The module is not symmetrical about the scope and
+ * assuming it was is what produced it.
+ *
+ * **Do not change `r` without regenerating the atlas.** `SCOPE_BOUNDS` below is
+ * the union of this circle and {@link SCOPE_RECT}, and it is exactly the atlas's
+ * 363 x 300 viewBox (see src/machine/tube/ATLAS-COORDINATES.md). Moving `cy`
+ * shifts that box without resizing it, so the atlas is unaffected; changing `r`
+ * would resize it and every segment path would have to move with it.
+ *
+ * Still unmatched, and left alone for that reason: the scope is 300 units of a
+ * 408-unit module, 74%, where the real one is 80%. Closing that means a larger
+ * `r`, which is the atlas regeneration above.
+ */
+export const SCOPE_CIRCLE: Circle = { cx: 533, cy: 243, r: 150 };
 
 /**
  * Left rectangle fused onto the circle (SCORE + the left playfield live here).
