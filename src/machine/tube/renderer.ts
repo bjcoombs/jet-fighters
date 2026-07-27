@@ -37,9 +37,8 @@ import {
   segmentFill,
 } from './palette.js';
 import {
-  MESH_AXIS_DEGREES,
   MESH_BOX,
-  buildMeshTile,
+  buildMeshLayer,
   defaultMeshSurfaceFactory,
   meshOpacity,
   type MeshSurfaceFactory,
@@ -165,12 +164,11 @@ export function createTubeRenderer(
   let pixelRatio = 1;
   let projection: TubeProjection = projectTube(cssWidth, cssHeight);
 
-  // The mesh, and the backing-store scale it was built for. Both are settled in
-  // `resize` and never touched per frame: at a fixed magnification the tile is
-  // built once and every frame after that is a single pattern fill.
-  let meshTile: MeshTile | null = null;
+  // The mesh, composed for the current backing-store scale. Settled in `resize`
+  // and never touched per frame: at a fixed magnification the honeycomb is drawn
+  // once and every frame after that is a single blit.
+  let meshLayer: MeshTile | null = null;
   let meshAlpha = 0;
-  let meshPattern: CanvasPattern | null = null;
 
   /** Device pixels per atlas unit - the real resolution the tube is drawn at. */
   const backingScale = (): number => projection.scale * pixelRatio;
@@ -184,30 +182,15 @@ export function createTubeRenderer(
    * denser display all reach it by the same route.
    */
   const rebuildMesh = (): void => {
-    meshTile = null;
-    meshPattern = null;
+    meshLayer = null;
     meshAlpha = withMesh ? meshOpacity(backingScale()) : 0;
     if (meshAlpha <= 0) return;
-    if (typeof ctx.createPattern !== 'function') return;
-    meshTile = buildMeshTile(backingScale(), meshSurface);
-    if (!meshTile) {
+    if (typeof ctx.drawImage !== 'function') {
       meshAlpha = 0;
       return;
     }
-    meshPattern = ctx.createPattern(meshTile.image, 'repeat');
-    if (!meshPattern) {
-      meshTile = null;
-      meshAlpha = 0;
-      return;
-    }
-    // Tilt the lattice by rotating the pattern rather than the fill, so the
-    // rect stays axis-aligned and nothing is rasterised twice.
-    if (typeof meshPattern.setTransform === 'function') {
-      const theta = (MESH_AXIS_DEGREES * Math.PI) / 180;
-      const cos = Math.cos(theta);
-      const sin = Math.sin(theta);
-      meshPattern.setTransform({ a: cos, b: sin, c: -sin, d: cos, e: 0, f: 0 });
-    }
+    meshLayer = buildMeshLayer(backingScale(), meshSurface);
+    if (!meshLayer) meshAlpha = 0;
   };
 
   const resize = (width: number, height: number, dpr?: number): void => {
@@ -282,23 +265,25 @@ export function createTubeRenderer(
   /**
    * The control grid, multiplied over the phosphor.
    *
-   * Drawn in device-pixel space so the tile's pixels land on the backing store's
-   * one for one - `scale(1/s, 1/s)` inside the projection transform, which needs
-   * no assumption about how the caller set the base transform. Multiply is what
-   * makes one pass do both jobs: it bites the mesh out of a lit segment as a dot
-   * screen, shows as a faint honeycomb over the ghost layer, and leaves the dark
-   * glass alone, because near-black times anything is still near-black.
+   * One blit of an image that was composed at this exact scale, drawn in
+   * device-pixel space so its pixels land on the backing store's one for one -
+   * `scale(1/s, 1/s)` inside the projection transform, which needs no assumption
+   * about how the caller set the base transform.
+   *
+   * The layer is black at varying alpha, so an ordinary source-over draw leaves
+   * `dst * (1 - a)` and one pass does both jobs: it bites the mesh out of a lit
+   * segment as a dot screen, shows as a faint honeycomb over the ghost layer,
+   * and leaves the dark glass alone, because near-black darkened is still
+   * near-black.
    */
   const drawMeshLayer = (): void => {
-    if (!meshPattern || meshAlpha <= 0) return;
+    if (!meshLayer || meshAlpha <= 0) return;
     const s = backingScale();
     if (s <= 0) return;
     ctx.save();
     ctx.scale(1 / s, 1 / s);
-    ctx.globalCompositeOperation = 'multiply';
     ctx.globalAlpha = meshAlpha;
-    ctx.fillStyle = meshPattern;
-    ctx.fillRect(MESH_BOX.x * s, MESH_BOX.y * s, MESH_BOX.width * s, MESH_BOX.height * s);
+    ctx.drawImage(meshLayer.image, Math.round(MESH_BOX.x * s), Math.round(MESH_BOX.y * s));
     ctx.restore();
   };
 

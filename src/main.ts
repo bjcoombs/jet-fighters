@@ -48,6 +48,19 @@ import { setupControls } from './ui/controls.js';
  */
 const MAX_FRAME_MS = 100;
 
+/**
+ * Ceiling on the effective device pixel ratio.
+ *
+ * The backing store costs memory as the square of this, and a pinched-in phone
+ * can ask for a lot of it. Eight is past the point where any of the tube's
+ * structure is still gaining detail.
+ *
+ * Declared up here with the rest of the module's constants because `start` runs
+ * on the line below: a `const` further down the file is still in its temporal
+ * dead zone by the time the first `resize` reaches for it.
+ */
+const MAX_PIXEL_RATIO = 8;
+
 const app = document.querySelector<HTMLElement>('#app');
 if (app) {
   start(app);
@@ -194,15 +207,6 @@ function start(mount: HTMLElement): void {
     };
   }
 }
-
-/**
- * Ceiling on the effective device pixel ratio.
- *
- * The backing store costs memory as the square of this, and a pinched-in phone
- * can ask for a lot of it. Eight is past the point where any of the tube's
- * structure is still gaining detail.
- */
-const MAX_PIXEL_RATIO = 8;
 
 /**
  * The resolution the tube should be drawn at, in backing-store pixels per CSS

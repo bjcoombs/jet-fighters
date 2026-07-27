@@ -69,12 +69,15 @@ export const MESH_AXIS_DEGREES = 1;
  * Not measured. The photograph resolves the mesh's *period* firmly and its duty
  * cycle not at all: at 10.8 px per cycle the lens and the sensor have already
  * smeared the webs into a sinusoid, and what survives is a 2% modulation of the
- * local level whatever the true web width is. 0.22 is the low end of the
- * ordinary range for an etched grid and is what the tile is drawn at; the
- * appearance is tuned by {@link MESH_DEPTH}, which is the honest place for a
- * judgement call to live.
+ * local level whatever the true web width is. 0.3 is within the ordinary range
+ * for an etched grid and is what matches the crops at equal magnification once
+ * the penumbra has softened it; the strength of the effect is set by
+ * {@link MESH_DEPTH}, which is the honest place for a judgement call to live.
+ *
+ * Together with the penumbra these give a tile 30% peak to peak, attenuating
+ * 10% of the light on average.
  */
-export const MESH_WEB_FRACTION = 0.22;
+export const MESH_WEB_FRACTION = 0.3;
 
 /**
  * How much of the light a web blocks, at full strength.
@@ -102,8 +105,43 @@ export const MESH_FADE_IN_PX = 3;
 /** Mesh period, in device pixels, at and above which the pass is at full strength. */
 export const MESH_FADE_FULL_PX = 6;
 
-/** Largest tile the builder will allocate, per side, in device pixels. */
-const MAX_TILE_PX = 256;
+/**
+ * Largest tile the builder will allocate, per side, in device pixels.
+ *
+ * The tile is a fixed 33 cells (see {@link CELLS_PER_TILE}), so its size grows
+ * with the magnification: 1024 is reached at about 15 device pixels per mesh
+ * period, which is past anything the case shell's tube can be zoomed to. Beyond
+ * it the builder gives up rather than allocate without limit.
+ */
+const MAX_TILE_PX = 1024;
+
+/**
+ * Supersampling factor the tile is drawn at before being reduced, and the mesh
+ * period below which it is needed.
+ *
+ * The mesh arrives at five or six device pixels per cycle, and a hexagon drawn
+ * straight in at that size is a square wave: its second harmonic lands on top of
+ * the Nyquist frequency and beats against the pixel grid, which measured as a
+ * 2.5 px component twice the strength of the 5 px one it was meant to draw.
+ * Drawing three times over and reducing puts a real filter in front of it. Once
+ * a cell is ten pixels across the canvas's own antialiasing is enough and the
+ * larger surface is not worth allocating.
+ */
+const TILE_SUPERSAMPLE = 3;
+const SUPERSAMPLE_BELOW_SPACING_PX = 10;
+
+/**
+ * Half-width of the webs' penumbra, as a fraction of the hole spacing.
+ *
+ * The grid stands off the phosphor, so its shadow has a soft edge whose width is
+ * set by that gap and not by the width of the wire. Nothing in the teardown
+ * photographs measures the standoff - the tube is photographed face on - so this
+ * is set from what the crops look like: at the magnifications the reference
+ * resolves, the structure is a stipple that fades into the phosphor, never a
+ * hard cell wall. Rendered hard it also beats against the pixel grid, which is
+ * the same defect the supersample is there to fix.
+ */
+const WEB_PENUMBRA_FRACTION = 0.07;
 
 /** A surface the mesh tile is drawn into, and the image a pattern can be built from. */
 export interface MeshSurface {
@@ -116,12 +154,22 @@ export interface MeshSurface {
 /** Makes a surface of the given size in device pixels, or null if it cannot. */
 export type MeshSurfaceFactory = (widthPx: number, heightPx: number) => MeshSurface | null;
 
-/** One built tile: the image to repeat, and how big it is in device pixels. */
+/** A drawable image and its size in device pixels. */
 export interface MeshTile {
   readonly image: CanvasImageSource;
   readonly widthPx: number;
   readonly heightPx: number;
 }
+
+/**
+ * Ceiling on the composed layer, in device pixels.
+ *
+ * The layer is the mesh box at the current magnification, so at four bytes a
+ * pixel eight megapixels is thirty-odd megabytes - reached at about 13 device
+ * pixels per mesh period, well past where the structure is already fully
+ * legible. Past it the mesh is dropped rather than the allocation made.
+ */
+const MAX_LAYER_PX = 8_000_000;
 
 /**
  * The default surface: an `OffscreenCanvas`, where the platform has one.
@@ -168,23 +216,32 @@ export function meshOpacity(devicePxPerUnit: number): number {
   return t * t * (3 - 2 * t);
 }
 
-/** Number of lattice cells across a tile, chosen to keep the tile under {@link MAX_TILE_PX}. */
-function cellsPerTile(spacingPx: number): number {
-  // Height is spacing * sqrt(3) per cell, so height is the binding constraint.
-  const limit = Math.floor(MAX_TILE_PX / (spacingPx * Math.SQRT2 * 1.23));
-  return Math.max(1, Math.min(32, limit));
-}
+/**
+ * Lattice cells across one tile.
+ *
+ * Chosen so that the {@link MESH_AXIS_DEGREES} tilt lands *inside* the tile and
+ * the tile stays exactly periodic, rather than being applied by rotating the
+ * pattern as it is filled. Each row is stepped sideways by one cell width per
+ * `2 * CELLS_PER_TILE` rows, so the tilt is
+ * `atan(1 / (2 * CELLS_PER_TILE * cos 30))` and the rows still line up where the
+ * tile wraps. 33 makes that 1.003 deg, against the 1 deg measured.
+ *
+ * Rotating the pattern instead is what a `CanvasPattern.setTransform` is for,
+ * and it costs: a rotated pattern cannot be tiled by repetition and has to be
+ * resampled per pixel, which measured 42 ms a frame against 14 ms unrotated over
+ * the same 7 Mpx. The tilt is worth about a pixel of drift across the whole
+ * field; it is not worth three times the fill.
+ */
+const CELLS_PER_TILE = 33;
 
 /**
  * Draw one tileable patch of mesh into a surface from `factory`.
  *
- * The tile is a rectangle of the triangular lattice with its rows axis-aligned;
- * the {@link MESH_AXIS_DEGREES} tilt is applied by the renderer when it fills,
- * so the tile itself stays exactly periodic. White is a hole and passes the
- * light unchanged, grey is a web and multiplies it down by {@link MESH_DEPTH}.
+ * Transparent where a hole passes the phosphor untouched, black at
+ * {@link MESH_DEPTH} where a web shadows it, with a soft edge between.
  *
- * Returns null when no surface can be made, or when the scale is too coarse for
- * a tile to mean anything.
+ * Returns null when no surface can be made, or when the scale is too coarse or
+ * too fine for a tile to be worth having.
  */
 export function buildMeshTile(
   devicePxPerUnit: number,
@@ -192,35 +249,49 @@ export function buildMeshTile(
 ): MeshTile | null {
   if (!Number.isFinite(devicePxPerUnit) || devicePxPerUnit <= 0) return null;
   const spacing = MESH_SPACING_UNITS * devicePxPerUnit;
-  if (spacing < 2) return null;
+  // Too coarse to draw, or so fine that a 33-cell tile would be an extravagant
+  // allocation - the latter is past any magnification the case shell allows.
+  if (spacing < 2 || spacing * CELLS_PER_TILE * Math.sqrt(3) > MAX_TILE_PX) return null;
 
-  const cells = cellsPerTile(spacing);
+  const cells = CELLS_PER_TILE;
   const rowHeight = (spacing * Math.sqrt(3)) / 2;
   const widthPx = Math.max(1, Math.round(cells * spacing));
   const heightPx = Math.max(1, Math.round(cells * rowHeight * 2));
-  const surface = factory(widthPx, heightPx);
-  if (!surface) return null;
+  const ss = spacing < SUPERSAMPLE_BELOW_SPACING_PX ? TILE_SUPERSAMPLE : 1;
+
+  const big = factory(widthPx * ss, heightPx * ss);
+  if (!big) return null;
 
   // Draw at the tile's own rounded size rather than the exact one, so the
   // pattern repeats without a seam; the rounding costs under 1% of the pitch at
   // these tile sizes.
-  const stepX = widthPx / cells;
-  const stepY = heightPx / (cells * 2);
-  const ctx = surface.context;
+  const stepX = (widthPx / cells) * ss;
+  const stepY = (heightPx / (cells * 2)) * ss;
+  const ctx = big.context;
 
-  const web = Math.round(255 * (1 - MESH_DEPTH));
-  ctx.fillStyle = `rgb(${web}, ${web}, ${web})`;
-  ctx.fillRect(0, 0, widthPx, heightPx);
+  // The tile is *black at varying alpha*, not grey: composited normally, black
+  // at alpha a leaves dst * (1 - a), which is exactly the multiplication a
+  // shadow performs. Reaching for `globalCompositeOperation = 'multiply'`
+  // instead is arithmetically the same and measured 15 ms a frame at 3192 px
+  // and 45 ms at 5760 - a separable blend mode takes the canvas off its fast
+  // path, where an ordinary source-over pattern fill stays on it.
+  ctx.fillStyle = `rgba(0, 0, 0, ${MESH_DEPTH})`;
+  ctx.fillRect(0, 0, widthPx * ss, heightPx * ss);
 
   // Hexagonal holes on the triangular lattice: the Voronoi cell of the lattice,
   // inset by half a web. Vertices sit at 30 + k*60 degrees, so the flats face
-  // the six neighbours.
-  const holeRadius = ((stepX * (1 - MESH_WEB_FRACTION)) / Math.sqrt(3)) * 1.0;
+  // the six neighbours. Cut out of the black rather than painted over it, so a
+  // hole is genuinely transparent and passes the phosphor untouched.
+  const holeRadius = (stepX * (1 - MESH_WEB_FRACTION)) / Math.sqrt(3);
+  ctx.globalCompositeOperation = 'destination-out';
   ctx.fillStyle = '#ffffff';
   ctx.beginPath();
+  // One cell width of sideways drift per tile height is the tilt; see
+  // CELLS_PER_TILE. Adding it row by row keeps the wrap exact.
+  const tiltPerRow = stepX / (cells * 2);
   for (let row = -1; row <= cells * 2; row += 1) {
-    const offset = row % 2 === 0 ? 0 : stepX / 2;
-    for (let col = -1; col <= cells; col += 1) {
+    const offset = (row % 2 === 0 ? 0 : stepX / 2) + row * tiltPerRow;
+    for (let col = -2; col <= cells + 1; col += 1) {
       const cx = col * stepX + offset;
       const cy = row * stepY;
       for (let k = 0; k < 6; k += 1) {
@@ -235,15 +306,101 @@ export function buildMeshTile(
   }
   ctx.fill();
 
+  // The penumbra: the hole edges eaten outward in two graded strokes, so a web
+  // goes from full shadow to none across a soft band instead of a pixel. Half of
+  // each stroke lands inside the hole, which is already clear.
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#ffffff';
+  const penumbra = WEB_PENUMBRA_FRACTION * stepX;
+  for (const [widthScale, alpha] of [
+    [2, 0.22],
+    [1, 0.4],
+  ] as const) {
+    ctx.lineWidth = penumbra * 2 * widthScale;
+    ctx.globalAlpha = alpha;
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+
+  if (ss === 1) return { image: big.image, widthPx, heightPx };
+
+  const surface = factory(widthPx, heightPx);
+  if (!surface) return { image: big.image, widthPx: widthPx * ss, heightPx: heightPx * ss };
+  const out = surface.context;
+  out.imageSmoothingEnabled = true;
+  out.imageSmoothingQuality = 'high';
+  out.drawImage(big.image, 0, 0, widthPx * ss, heightPx * ss, 0, 0, widthPx, heightPx);
+
   return { image: surface.image, widthPx, heightPx };
 }
 
 /**
+ * Fractions of the printed frame's height the mesh spans, measured down from the
+ * top rail. See {@link MESH_BOX}.
+ */
+export const MESH_BAND_FRACTION = { top: 0.21, bottom: 0.873 } as const;
+
+/**
  * The box the mesh covers, in atlas units.
  *
- * The grid spans the printed frame - the same rectangle `layout.ts` derives from
- * the two registered close-ups - and the tube carries structure rather than mesh
- * outside it. Filling the frame instead of the whole canvas is also what keeps
- * the pass cheap: it is a quarter of the viewBox's area.
+ * Measured, not assumed, by asking where on the tube the mesh's own signature -
+ * power at a 10.83 px period on the 31 deg and 91 deg axes, against the rest of
+ * the ring at that radius - rises above the surrounding noise in
+ * `tube-unlit-full.jpg`. It does so between y 820 and y 2010 and between x 850
+ * and x 5450.
+ *
+ * Registered against this coordinate space by the printed lane borders, which
+ * fall at y 946, 1270, 1579 and 1880 - a 305 px pitch against `layout.ts`'s lane
+ * pitch of 17.68 units, so 17.3 px per unit, and the cell band's own top and
+ * bottom land on the first and last of them. That puts the mesh at atlas
+ * y 106.6 to 174.2: two thirds of the frame's height, centred a little below
+ * the cell band, with black glass above and below it. Horizontally it runs
+ * x 44.7 to 315.1 against the frame's 41.4 to 313.6, which is the frame's own
+ * width to within the measurement, so the box takes the frame there.
+ *
+ * Filling a measured box rather than the whole canvas is also what keeps the
+ * pass affordable: it is a sixth of the viewBox's area.
  */
-export const MESH_BOX = PLAYFIELD;
+export const MESH_BOX = {
+  x: PLAYFIELD.x,
+  y: PLAYFIELD.y + PLAYFIELD.height * MESH_BAND_FRACTION.top,
+  width: PLAYFIELD.width,
+  height: PLAYFIELD.height * (MESH_BAND_FRACTION.bottom - MESH_BAND_FRACTION.top),
+} as const;
+
+/**
+ * Compose the whole of {@link MESH_BOX} into one image, at the given scale.
+ *
+ * This is the per-frame cost, and it is why the layer exists rather than the
+ * renderer simply filling the box with the tile pattern every frame. A repeating
+ * pattern is a shader: the canvas evaluates it per destination pixel, which at
+ * the resolutions this only runs at measured 3.6 ms for the box against 0.16 ms
+ * to blit an image of the same size - the same 0.16 ms a plain `fillRect` of it
+ * costs. Paying the pattern once per resize and blitting it every frame turns a
+ * dropped frame into a rounding error.
+ *
+ * Returns null when no surface can be had, when the tile cannot be built, or
+ * when the layer would exceed {@link MAX_LAYER_PX}.
+ */
+export function buildMeshLayer(
+  devicePxPerUnit: number,
+  factory: MeshSurfaceFactory = defaultMeshSurfaceFactory,
+): MeshTile | null {
+  const tile = buildMeshTile(devicePxPerUnit, factory);
+  if (!tile) return null;
+
+  const widthPx = Math.ceil(MESH_BOX.width * devicePxPerUnit);
+  const heightPx = Math.ceil(MESH_BOX.height * devicePxPerUnit);
+  if (widthPx < 1 || heightPx < 1 || widthPx * heightPx > MAX_LAYER_PX) return null;
+
+  const surface = factory(widthPx, heightPx);
+  if (!surface) return null;
+  const ctx = surface.context;
+  if (typeof ctx.createPattern !== 'function') return null;
+  const pattern = ctx.createPattern(tile.image, 'repeat');
+  if (!pattern) return null;
+  ctx.fillStyle = pattern;
+  ctx.fillRect(0, 0, widthPx, heightPx);
+  return { image: surface.image, widthPx, heightPx };
+}
