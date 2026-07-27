@@ -48,18 +48,30 @@ export const PLATE_MASK = R_MASK;
  * (docs/evidence/vfd-appearance.md, section 5 and D1).
  *
  * This is the threshold that separates that from the sweep's own blanking
- * intervals, and the two do not overlap anywhere near it. Driving the ROM and
- * timing every interval with no grid driven, over 1400 slices of a played game:
+ * intervals, and the two do not merely fail to overlap - there is a wide empty
+ * band between them. Driving the ROM and timing every interval with no grid
+ * driven, over two independent runs (82 s of played and unattended game,
+ * n = 36,624; and 20 s, n = 13,453):
  *
- * | interval                                     | cycles        |
- * | -------------------------------------------- | ------------- |
- * | between grids, and between sweeps (n = 5526) | 13 to **660** |
- * | shortest note the ROM can play (warning beep) | **~4045**     |
- * | a march note                                  | ~28,400       |
+ * | interval                                    | cycles              |
+ * | ------------------------------------------- | ------------------- |
+ * | between grids, and between sweeps           | 13 to **707**       |
+ * | shortest sound blank (launcher warning beep) | **16,990** (42.5 ms) |
+ * | a march note                                 | 28,415 (71.0 ms)    |
+ * | the loss sequence                            | 254,754 (636.9 ms)  |
  *
- * 2000 is 3x the longest gap a running sweep produces and half the shortest a
- * sound produces, so neither ordinary sweep jitter nor a longer-than-average
- * pass through the game logic can reach it. 5 ms at the 400 kHz oscillator.
+ * **No interval at all falls between 707 and 16,990** - confirmed separately in
+ * both runs. 2000 therefore sits 2.8x above the longest gap a running sweep
+ * produces and 8.5x below the shortest a sound produces, so neither ordinary
+ * sweep jitter nor a longer-than-average pass through the game logic can reach
+ * it. 5 ms at the 400 kHz oscillator.
+ *
+ * An earlier revision of this table gave 13-660 and "shortest note ~4045". The
+ * 4045 was not observed in either run - the shortest blank is the *whole*
+ * two-beep warning at 16,990, because the sweep does not resume between its two
+ * beeps. The constant was well chosen either way; the numbers justifying it
+ * understated the margin fourfold, which would have made a future reader think
+ * 2000 was closer to the edge than it is.
  *
  * It is not a frame period and does not impose one: nothing here schedules a
  * refresh, this only decides how long a tube left undriven goes on being

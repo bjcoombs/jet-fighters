@@ -380,11 +380,27 @@ the decay a tube shows when its electrons stop. Nothing in the renderer changed 
 in the machine knows a sound is playing - the tube is dark because nothing is driving it,
 which is the same reason the real one is.
 
-The threshold is 2000 cycles, 5 ms. It is not a tuning choice: driving the ROM over 1400
-slices of a played game, the intervals with no grid driven are 13-660 cycles between grids
-and between sweeps (n = 5526), and the shortest a sound can produce is ~4045 (the 10 ms
-warning beep). 2000 is 3x the longest gap a running sweep makes and half the shortest a
-sound makes, so neither sweep jitter nor a longer pass through the game logic can reach it.
+The threshold is 2000 cycles, 5 ms. It is not a tuning choice, and the margin either side
+of it is wide. Two independent runs driving the ROM and timing every interval with no grid
+driven - 82 s of played and unattended game (n = 36,624) and a separate 20 s run
+(n = 13,453) - give:
+
+| interval | cycles |
+| --- | --- |
+| between grids, and between sweeps | 13 - 707 |
+| shortest sound blank (launcher warning) | 16,990 (42.5 ms) |
+| a march note | 28,415 (71.0 ms) |
+| the loss sequence | 254,754 (636.9 ms) |
+
+**Nothing at all falls between 707 and 16,990**, in either run. 2000 sits 2.8x above the
+longest gap a running sweep makes and 8.5x below the shortest a sound makes.
+
+An earlier revision of this paragraph said 13-660 and "the shortest a sound can produce is
+~4045 (the 10 ms warning beep)", making 2000 look like half the shortest blank rather than
+an eighth of it. No interval near 4045 was observed in either run: the sweep does not
+resume between the warning's two beeps, so the shortest blank is the whole 42.5 ms
+sequence. The constant is unchanged - only the evidence for it was wrong, and in the
+direction that would have made a future reader think it was marginal.
 
 The stalled interval also comes out of the frame period it fell in
 (`PwmAccumulator.exclude`). Duty is a segment's share of a *refresh* period and a stall is
