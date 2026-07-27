@@ -38,6 +38,16 @@ mesh signature at the same period and angle as the solid bursts beside it, so th
 texture in it is not a sparser print - it is the grid, and whatever makes the stipple a
 stipple is a coarser feature drawn on top.
 
+## What it looks like
+
+![One playfield cell: the renderer at 1x, the renderer magnified, and the tube photographed](tube-mesh-comparison.jpg)
+
+One cell of the playfield, all three panels resampled to the same 17.2 px per atlas unit
+so the textures are directly comparable. Left, the renderer at the size the case shell
+gives the tube - 2.2 device px per atlas unit, smooth shapes, no structure, and no mesh
+pass run at all. Centre, the same renderer at 7.9 device px per atlas unit, which is what
+a browser zoom hands it. Right, `assets/reference/tube-teardown/cell2.jpg`.
+
 ## Method
 
 Two independent measurements, because the first attempt - a row-wise autocorrelation -
