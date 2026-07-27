@@ -266,6 +266,37 @@ work that settles it. Until it is done, a sprite may be one cell out; the
 conformance test will not catch that, because both readings are internally
 consistent.
 
+### The lattice comes from the print, not from the sprites
+
+**The print is where the cells are; the phosphor is content placed inside them.**
+Deriving cell positions from sprite centroids inverts that: it makes the artwork
+define the cells it sits in, so any systematic offset in how the artwork was laid
+out becomes invisible by construction. The first version of this trace did
+exactly that, and the offset was real.
+
+Each printed boundary is a **triple** of dark runs - one cell's right rule, the
+gutter between the boxes, the next cell's left rule. Their centres:
+
+| Boundary | Dark runs, as cell index | Centre |
+| --- | --- | --- |
+| 3 \| 4 | 3.58 · 3.64-3.67 · 3.73-3.74 | 3.66 |
+| 4 \| 5 | 4.57-4.61 · 4.65-4.69 · 4.73-4.76 | 4.665 |
+| 5 \| 6 | 5.58-5.64 · 5.66-5.71 · 5.75-5.78 | 5.68 |
+
+Spacing 1.005 and 1.015, so the pitch taken from the sprites was right. **The
+phase was not**: every boundary sits at `n + 0.66` rather than `n + 0.5`, so the
+printed cell centres are at `n + 0.16` and the artwork sits about 0.16 of a cell
+- five atlas units - to their left. `atlas.test.ts` now pins that offset, because
+the tests that existed were all satisfied by a uniform shift and could not see it.
+
+**The last cell is not wider, and the measurement that says it is, is the wrong
+one.** Cell 6's printed *box* runs 0.95 of a pitch against 0.82-0.83 for its
+neighbours, which reads as a 15% wider cell. But the boxes are inset within
+their slots by half a gutter on each side, and cell 6 has no neighbour on its
+outer side - so there is no gutter to leave and its box simply runs on to the
+field border. Its **slot**, boundary centre to boundary centre and the thing
+`layout.ts` models, is 1.005 like every other. The field is seven equal cells.
+
 ### Converting to atlas units
 
 The catalogue measures in **reference-pose pixels** on a lattice of 74.5 px

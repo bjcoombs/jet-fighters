@@ -177,6 +177,35 @@ describe('geometry invariants', () => {
     }
   });
 
+  it('sits the aircraft left of centre in its cell, where the print puts them', () => {
+    // The frame, asserted rather than assumed - and this is the assertion whose
+    // absence let the atlas be built on the wrong one.
+    //
+    // The lattice was originally phased on jet centroids, which takes the
+    // artwork to be centred in its cell. It is not. The printed cell boundaries
+    // measure at n + 0.66 of that lattice on five boundaries, each a triple of
+    // dark runs - one cell's right rule, the gutter, the next cell's left rule -
+    // so the printed centres are at n + 0.16 and the aircraft sit about 0.16 of
+    // a cell left of them. Phasing on the sprites normalised that away, and
+    // every test still passed, because "inside its own cell" and "within a
+    // quarter of a cell of the lattice" are both true under a uniform shift.
+    //
+    // So the offset itself is pinned. A regeneration that re-centres the
+    // sprites - which is what happens if anyone re-derives the lattice from the
+    // artwork again - fails here rather than passing quietly.
+    const CELL_W = 31.114;
+    const FIELD_X = 95.832;
+    for (let col = 1; col <= 5; col += 1) {
+      const centre = FIELD_X + (col + 0.5) * CELL_W;
+      for (let lane = 0; lane < 3; lane += 1) {
+        const b = getSegmentById(`jet_lane${lane}_col${col}` as SegmentId).bounds;
+        const offset = b.x + b.width / 2 - centre;
+        expect(offset, `jet_lane${lane}_col${col} sits left of centre`).toBeLessThan(-1.5);
+        expect(offset, `jet_lane${lane}_col${col} is not a cell out`).toBeGreaterThan(-6.5);
+      }
+    }
+  });
+
   it('puts every jet inside its own cell, on the printed lattice', () => {
     // The jets are no longer centred on the column centre: they are where the
     // photograph has them, and the tube does not print them dead centre. What
