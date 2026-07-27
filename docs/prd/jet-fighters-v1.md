@@ -37,9 +37,34 @@ and photos of an original CGL unit plus documented research. The finished game i
    moments (announced by a distinctive lower-pitch buzz) and is worth 10.
 5. Jets fire rockets back down the lanes; a rocket that hits the player's launcher destroys
    it. The player has 3 launchers total.
-6. Game ends when: the player reaches 199 points (win - score display is 2-3 digit VFD),
-   OR all 3 launchers are destroyed by rockets, OR a jet reaches the G line and captures
-   the launcher (instant game over).
+6. A launcher is lost two ways, and both cost one of the three: a rocket destroying it, or
+   a jet reaching the G line and capturing it. Either way the loss is signalled by sound -
+   two beeps after the first, three after the second - and the game ends when the third is
+   gone. It also ends when the player reaches 199 points (win - score display is 2-3 digit
+   VFD).
+
+   > **Superseded reading, kept because a deleted wrong rule gets reinvented:** "Game ends
+   > when: the player reaches 199 points (win - score display is 2-3 digit VFD), OR all 3
+   > launchers are destroyed by rockets, OR a jet reaches the G line and captures the
+   > launcher (instant game over)."
+   >
+   > Source of the correction: the owner, playing the deployed build beside his own CGL
+   > unit - "you seem to end the game after one loss, there's no three lives working". This
+   > PRD is a reconstruction; he has the machine.
+   >
+   > Why the correction is coherent and the original was not: rule 5's three launchers and
+   > the owner-confirmed two-beep and three-beep warnings between hits (R6 Audio, below)
+   > only mean anything if there are hits to be *between*. Under the superseded reading a
+   > jet reaches the G line within seconds of power-on, so nearly every game ended there,
+   > and the second and third launchers could not be reached - the warnings were unreachable
+   > code describing a rule the game never ran.
+   >
+   > The back label, rule 7 below, is the one piece of manufacturer evidence and it is
+   > ambiguous rather than contradictory: "when all Missile Launchers are destroyed by
+   > Jet-Fighter's rockets or when Jet-Fighter captures your Missile Launcher". Read as two
+   > separate endings it gives the superseded rule; read as two ways of losing the last
+   > launcher - the label is a terse translation, and "your Missile Launcher" is singular -
+   > it gives this one. The owner's unit settles which reading is right.
 7. Back-label instructions verbatim: "1. Set skill control to desired level. Slide power
    on/off switch to 'on'. 2. Move the Missile launcher lever up and down to aim at
    Jet-Fighter or Battleship, and press Missile launch button. 3. Game ends when you

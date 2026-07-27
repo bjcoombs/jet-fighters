@@ -94,7 +94,8 @@ stack). Program structure per the device class:
 - Rules exactly as v1 PRD R2/R6 (owner-verified): 3 lanes, jets advance Invader-style with
   thin-out speed-up, battleship crossings worth 10, scoring 3/2/1 by zone, win at 199 with
   the transcribed jingle, two/three-beep launcher-hit warnings, full loss sound on the
-  third hit, capture at the G line, skill 1/2/3, power-cycle restart.
+  third hit, capture at the G line costing a launcher exactly as a rocket hit does (v1
+  rule 6 as amended - a capture is not an ending), skill 1/2/3, power-cycle restart.
 
 ### R4. Board model (`src/machine/board/`)
 

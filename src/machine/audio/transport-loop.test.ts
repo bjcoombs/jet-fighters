@@ -24,17 +24,22 @@
 //
 // ## The six-second cap is not arbitrary
 //
-// Every run here is six seconds because the machine stops making sound after
-// 5.66 s and nothing this file measures exists past that point. That is not an
-// audio fault and it is not fixed here: with no input at all the ROM's last D14
-// transition is at cycle 2,265,870, the lit-segment output is identical from
-// 6 s to 40 s, and a fire contact closed at 10 s, 15 s, 20 s or 30 s produces no
-// further transition. Reproduce with:
+// Every run here is six seconds because an unattended machine plays a whole
+// game and reaches an ending, after which the ROM never touches D14 again -
+// so past that point this file would be measuring silence, not the transport.
+// The exact moment moves whenever a game rule or a cadence constant does: it
+// was 5.66 s while a single capture ended the game and is around 10.9 s now
+// that three captures are survivable. Six seconds is inside both, which is why
+// it is the cap rather than the ending itself.
+//
+// That the sound stops is not an audio fault and is not fixed here. Reproduce
+// the ending with:
 //
 //   npx vite-node tools/probe/machine-probe.ts --cycles 24000000 --emit-edges
 //
-// Extending any run below past six seconds fails on the held level, and the
+// Extending any run below past the ending fails on the held level, and the
 // fault it would be reporting lives in the program, not in this directory.
+// tools/probe/game-lifetime.test.ts is where that argument is held down.
 //
 // Node-side test: no DOM, no browser globals, no AudioContext.
 

@@ -338,9 +338,11 @@
 ; --- FILE_JETS: one jet per lane, each flying its own step ---------------------
 ;
 ; A lane's jet nibble is the column it stands in *plus one*, so that zero can
-; mean "no jet in this lane" without stealing column 0 - a jet standing on the G
-; line has to be drawable, because that is the frame the player sees at the
-; moment of capture.
+; mean "no jet in this lane" without stealing column 0 - which is the G line, and
+; a jet has to be able to stand there for jet_move to notice it has arrived.
+; Nothing draws it there: draw_jet declines that column because the tube prints
+; no aircraft in the player's cell, and jm_capture clears the lane on the same
+; sweep. What the player sees at a capture is the burst in that cell.
 ;
 ; Each lane carries its own (lo, hi) step countdown, reloaded from the same
 ; PAT_STEP cadence every jet steps on. Same period, different phase: the jets
@@ -1820,9 +1822,28 @@ jls_next:
 ;
 ; In:  NIB_J_WORK = the lane. Out: nothing.
 ;
-; The step happens first and the capture test second, so the tube actually shows
-; a jet standing on the G line at the moment of capture - which is what the
-; player sees on the unit. PRD v1 rule 6: reaching G is an instant game over.
+; The step happens first and the capture test second, so a jet that arrives on
+; the G line is recognised on the sweep it arrives, not the one after.
+;
+; PRD v1 rule 6, as amended: reaching G costs a launcher rather than ending the
+; game. The jet is taken off the field here, on the same two nibbles a jet
+; shot down goes through in missile_hit - its lane nibble cleared and NIB_KILLS
+; incremented. Both are load bearing. Leaving the jet standing would cost the
+; player a second launcher on its next step, because a nibble of 1 fails the
+; same ALEI 1 again; and leaving NIB_KILLS alone would strand the wave, because
+; tick_jets renews a squadron on the kill count reaching JET_COUNT and only six
+; are ever sent. A captured jet is one of the six that has left the field, so
+; the count that decides the wave is over has to see it, whatever removed it.
+;
+; It scores nothing - only missile_kill reaches add_score - but it does move the
+; survivors down a rung of the thin-out ladder, which speed_index reads from the
+; same counter. A squadron that put a jet through the player's line has thinned
+; by one, so that is the right answer rather than an artefact.
+;
+; Nothing is drawn differently: draw_jet already declines to draw a jet in
+; column COL_LAUNCH, because the tube prints no aircraft in the player's cell.
+; What the player sees at a capture is the red starburst launcher_down lights in
+; that cell, which is the segment the tube does have for it.
 
 .PAGE
 jet_move:
@@ -1841,6 +1862,17 @@ jet_move:
         BR jm_capture
         JMPL jet_next
 jm_capture:
+        LXI FILE_JETS
+        LYI NIB_J_WORK
+        LAM
+        LYA                     ; Y <- the lane; its jet shares that index
+        LAI 0
+        XMA                     ; the jet has arrived and leaves the field
+        LXI FILE_STATE
+        LYI NIB_KILLS
+        LAM
+        AI 1
+        XMA                     ; one fewer jet in this squadron
         LXI FILE_JETS
         LYI NIB_J_FLAG
         SEM FLAG_CAPTURED
@@ -1867,7 +1899,16 @@ jn_lane:
 ;
 ; One march beep per sweep at most, however many jets stepped on it: the beep is
 ; the squadron's step, and audio-reference.md's jetMarch is one note, not a
-; chord. A capture beats it - the game is over and game_capture owns the speaker.
+; chord. A capture beats it - the warning beeps are what the player has to hear,
+; and launcher_down owns the speaker for the rest of the sweep.
+;
+; One launcher per sweep at most, too, for the same reason and by the same
+; mechanism: NIB_J_FLAG carries one capture bit however many jets set it. Two
+; jets arriving on the same sweep is one event to a player - they land inside
+; the same few milliseconds - and charging two launchers for it would make the
+; cost of a capture depend on whether two lanes' countdowns happened to be in
+; phase. Both jets still leave the field and both are still counted out of the
+; wave; it is only the charge that is capped.
 
 jet_swept:
         LXI FILE_JETS
@@ -1885,7 +1926,7 @@ js_march:
         CALL play_sound
         JMPL tick_rocket
 js_capture:
-        JMPL game_capture
+        JMPL launcher_down
 
 ; ============================================================================
 ; a fresh squadron
@@ -2137,6 +2178,18 @@ rf_none:
 ; PRD v1 R6 and audio-reference.md, launcherHitWarning: two beeps on the first
 ; hit, three on the second, and on the third the full loss sound. All three are
 ; owner-confirmed.
+;
+; Two ways in, because the player has two ways to lose a launcher and they cost
+; the same thing. `launcher_hit` is a rocket arriving at the station, and clears
+; the rocket that arrived. `launcher_down` is the launcher being destroyed by
+; whatever destroyed it, and is where jet_swept comes in when a jet reaches the
+; G line. Splitting the label rather than clearing NIB_RCOL on both paths is
+; deliberate: a capture is not a rocket, and zeroing that nibble from the
+; capture path would delete a rocket still in flight down another lane.
+;
+; Both entries are reached by JMPL from the `tick` chain, so both stand two
+; stack levels deep and the CALLs below can still reach note_half without
+; wrapping the four-level stack.
 
 launcher_hit:
         LXI FILE_STATE
@@ -2144,9 +2197,11 @@ launcher_hit:
         LAI 0
         XMA                     ; the rocket is spent
 
+launcher_down:
         ; --- the red starburst where the launcher stood ---
         ; The same three nibbles the jet-kill burst uses, on the capture line's
         ; own column, which is where the tube puts the player's destruction.
+        LXI FILE_STATE
         LYI NIB_LANE
         LBM
         LAI COL_LAUNCH
@@ -2415,25 +2470,26 @@ fire_missile:
 ; the end of the game
 ; ============================================================================
 ;
-; Three ways out, all of them terminal (PRD v1 rule 6): 199 points, three
-; launchers destroyed, or a jet reaching the G line. Nothing clears NIB_STATE -
-; the power switch is the only reset the unit has.
-
-; The two losing endings differ in the rules and not at all in the machine: a
-; jet reaching the G line and the third launcher being destroyed both stop the
-; game and play the same sound. They keep separate labels so the two callers
-; read as the two rules they implement.
+; Two ways out (PRD v1 rule 6, as amended): 199 points, or the third launcher
+; gone. Nothing clears NIB_STATE - the power switch is the only reset the unit
+; has.
+;
+; A jet reaching the G line used to be a third way out, and `game_capture` was
+; a second label on this address. It is not an ending any more: a capture costs
+; a launcher and goes through launcher_down like a rocket hit, so it reaches
+; here only as the third one. That label is gone rather than kept as an alias,
+; because the whole defect it caused was two names on one address reading as
+; two rules while implementing one.
 ;
 ; What an ending looks like from tools/probe/machine-probe.ts, which is worth
 ; knowing before a long run gets read as a fault: the sweep goes on turning and
 ; `tick` returns at its first test, so the machine keeps refreshing a picture
 ; that no longer changes and never touches the speaker again. An unattended
-; probe run therefore reports its last edge a few seconds in and identical lit
+; probe run therefore reports its last edge some seconds in and identical lit
 ; segments from there to the end of the run - which reads exactly like a delay
 ; loop that stopped terminating, and is not one. The distinction is held down by
 ; tools/probe/game-lifetime.test.ts.
 
-game_capture:
 game_lost:
         LXI FILE_STATE
         LYI NIB_STATE
@@ -2920,6 +2976,29 @@ skill_base:
 ; where `repeats` and `outer` are the stored values plus one. At the 400 kHz
 ; oscillator the frequency is 400000 / period. Every entry below is the closest
 ; this loop can land to its target, and the target is cited.
+;
+; **Two ways this arithmetic gets misread, both of which say the battleship buzz
+; is broken when it is not.** The buzz has been reported as unreachably high
+; twice now, and each time the reasoning ran off the same two facts:
+;
+;   - `outer` is the stored value *plus one*, because DB leaves the loop only
+;     after the counter borrows. Dropping the plus one on entry 2 gives 1309
+;     cycles and 306 Hz - above the measured band, and wrong. The real figure is
+;     1393 cycles and 287 Hz.
+;   - `$0FF` is the largest PAT_SND_A entry, but PAT_SND_A is not the floor.
+;     `rep` - PAT_SND_B's low nibble - multiplies the whole delay, which is how
+;     the loss sound's collapse reaches 96 Hz on a *smaller* PAT_SND_A entry
+;     than the buzz uses. Entry 2 stores rep 0; rep 1 would roughly double its
+;     period to about 145 Hz, far below the band. There is a great deal of room
+;     under this entry and no encoding change is needed to reach it.
+;
+; Neither is a matter of opinion. Drive the machine and reconstruct the tone
+; from D14 and the buzz reads 287.2 Hz against a measured 230-300, with the
+; march at 640.0 Hz against a measured 600-650 - the march being the calibration
+; point that says the model behind these numbers is the right one.
+; tools/probe/speaker-bands.test.ts asserts both, and separately asserts the
+; buzz below the march, which audio-reference.md records as the stronger
+; owner-confirmed constraint.
 ;
 ; One wrinkle, and it is real hardware behaviour rather than a defect: the period
 ; that straddles a burst boundary is **twelve cycles longer**, because note_loop
