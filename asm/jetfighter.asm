@@ -50,12 +50,28 @@
 ; --- Paging ------------------------------------------------------------------
 ;
 ; BR and CAL carry a five-bit offset against 32-word pages (memory.ts), so a
-; BR can only reach a target in its own page. Every routine below therefore
-; starts on a page boundary (`.PAGE`) and keeps each BR and its target inside the
-; first 32 words. A routine may run past 32 words - draw_jet and close_up do -
-; provided nothing past the boundary is a branch target. CAL additionally fixes
-; its page at 0, which is why page 0 holds only `dwell` and `find_contact`;
-; everything else is reached with the two-word CALL, which goes anywhere.
+; BR can only reach a target in its own page. `.PAGE` starts a routine on a page
+; boundary, which is the blunt way to guarantee that - and for a long time every
+; routine here carried one.
+;
+; **Most of them did not need it.** A routine only needs its own page if its
+; branches would otherwise straddle a boundary, and most of these are short
+; enough to fall inside one wherever they land. Sixty `.PAGE` directives cost
+; 783 words of alignment padding - more than half the program region - against
+; 1240 words of actual code, and the ROM was within ten words of the ceiling
+; while nearly a quarter of it was padding. Twenty-four remain, one for each
+; routine that genuinely reaches across a boundary without one.
+;
+; The check is the assembler's, not a convention: a BR whose target is on
+; another page is a hard assembly error naming both pages, so a routine that
+; grows past what its placement allows fails the build rather than
+; miscompiling. If you add code and the assembler complains about a branch,
+; putting `.PAGE` back on that routine is the fix.
+;
+; A routine may still run past 32 words - draw_jet and close_up do - provided
+; nothing past the boundary is a branch target. CAL additionally fixes its page
+; at 0, which is why page 0 holds only `dwell` and `find_contact`; everything
+; else is reached with the two-word CALL, which goes anywhere.
 ;
 ; --- Timing is provisional, and deliberately so -----------------------------
 ;
@@ -768,7 +784,6 @@ input_skill_ok:
 ; ends, and it also means the lever keeps moving something on the tube whatever
 ; else has happened, which is what contract criterion V4 observes.
 
-.PAGE
 render_field:
         ; --- clear all three plate files ---
         ; The file number comes out of B, so the assembler's static RAM
@@ -825,7 +840,6 @@ rf_nibble:
 ; The write ORs rather than overwrites: one grid's nibble can carry three jets,
 ; or a rocket alongside the battleship.
 
-.PAGE
 or_plate:
         P PAT_LANE              ; A <- the plate file, B <- the plate bit
         ALEI FILE_PLATE0
@@ -866,7 +880,6 @@ op_write:
 ; NIB_HITS itself is untouched: the count of destroyed launchers is real game
 ; state and drives the warnings and the loss. Only its display was phantom.
 
-.PAGE
 render_status:
         LAI PLATE_SC_LBL        ; the whole of grid 9's R0 nibble
         LXI FILE_PLATE0
@@ -887,7 +900,6 @@ render_status:
 ; assets/reference/device-front-gameplay.jpg has two jets airborne, in different
 ; lanes, at different distances. See jet_release and jet_advance.
 
-.PAGE
 render_actors:
         LXI FILE_JETS
         LYI 0
@@ -945,7 +957,6 @@ draw_jet:
 ; three PAT_LANE slots a fifth group would need are the ones that keep the other
 ; four groups a single AI apart, so the bit is branched out here instead.
 
-.PAGE
 render_bship:
         LXI FILE_STATE
         LYI NIB_BSLANE
@@ -1019,7 +1030,6 @@ rr_done:
 ; dart there - the video never catches one lit in that cell either. A shot in
 ; that column is in the air and about to hit or expire; it is simply not shown.
 
-.PAGE
 render_missile:
         LXI FILE_STATE
         LYI NIB_MCOL
@@ -1069,7 +1079,6 @@ rs_done:
 ; a kill there - a jet in that cell is one step from the capture line and the
 ; only shot that reaches it is one the player fired into it.
 
-.PAGE
 render_burst:
         LXI FILE_STATE
         LYI NIB_KCOL
@@ -1128,7 +1137,6 @@ rk_draw:
 ; cleared all three plate files, so a column nothing draws into stays dark for the
 ; whole sweep.
 
-.PAGE
 render_score:
         ; --- the units digit, which is never blanked ---
         LXI FILE_TIME
@@ -1177,7 +1185,6 @@ rs_tens_done:
 ; zero is always a leading zero. This is the tail of the render chain, so its RTN
 ; is the one that returns to the sweep.
 
-.PAGE
 render_hundreds:
         LXI FILE_TIME
         LYI NIB_SC_H
@@ -1232,7 +1239,6 @@ tk_playing:
 ; then it is not. It has no rule of its own beyond that - a jet-kill burst does
 ; not collide with anything and the player's own does not either.
 
-.PAGE
 tick_burst:
         LXI FILE_STATE
         LYI NIB_KCOL
@@ -1342,7 +1348,6 @@ mh_bship:
 ; on the glass. The player can now see which lane the ship is in, so that is the
 ; lane the shot has to be in. See render_bship.
 
-.PAGE
 missile_bship:
         LXI FILE_STATE
         LYI NIB_BSLANE
@@ -1372,7 +1377,6 @@ mb_none:
 ; that a missile hitting something makes the same sound as firing it, and that
 ; there is no separate explosion.
 
-.PAGE
 missile_kill:
         ; --- the burst the dying jet leaves, where it was standing ---
         ; Set before the score, because add_score can run off into the win
@@ -1420,7 +1424,6 @@ missile_kill:
 ; BCD digit, so it is added as a one in the tens place rather than as a ten in
 ; the units place - which is what add_score's scratch addend is for.
 
-.PAGE
 bship_kill:
         LXI FILE_STATE
         LYI NIB_BSLANE
@@ -1470,7 +1473,6 @@ bship_kill:
 ; 1 lists every instruction that does), so the chain is safe to read straight
 ; down.
 
-.PAGE
 add_score:
         LXI FILE_TIME
         LYI NIB_SC_U
@@ -1567,7 +1569,6 @@ tj_release:
 ; been sent that countdown stops mattering: what is left of the wave is whatever
 ; is still flying.
 
-.PAGE
 jet_release:
         LXI FILE_JETS
         LYI NIB_J_SENT
@@ -1599,7 +1600,6 @@ jr_done:
 ; press left it, the machine's only randomness (PRD R3) - which is what stops the
 ; entries settling into a fixed diagonal.
 
-.PAGE
 jet_enter:
         CALL speed_index
         P PAT_STEP              ; A <- the period's low nibble, B <- its high
@@ -1707,7 +1707,6 @@ jsp_place:
 ; the index needs A as well; the lane is read back from NIB_J_WORK each time
 ; rather than parked in a register that the lookup would take.
 
-.PAGE
 jet_reload:
         CALL speed_index
         P PAT_STEP              ; A <- sweeps low nibble, B <- high nibble
@@ -1746,7 +1745,6 @@ jet_reload:
 ; NIB_J_FLAG: whether any jet stepped, so the march beep sounds once a sweep
 ; rather than once a jet, and whether any jet reached the G line.
 
-.PAGE
 jet_advance:
         LXI FILE_JETS
         LYI NIB_J_FLAG
@@ -1770,7 +1768,6 @@ jet_lane:
 jl_next:
         JMPL jet_next
 
-.PAGE
 jet_lane_step:
         LXI FILE_JETS
         LYI NIB_J_WORK
@@ -1818,7 +1815,6 @@ jm_capture:
         SEM FLAG_CAPTURED
         JMPL jet_next
 
-.PAGE
 jet_next:
         LXI FILE_JETS
         LYI NIB_J_WORK
@@ -1842,7 +1838,6 @@ jn_lane:
 ; the squadron's step, and audio-reference.md's jetMarch is one note, not a
 ; chord. A capture beats it - the game is over and game_capture owns the speaker.
 
-.PAGE
 jet_swept:
         LXI FILE_JETS
         LYI NIB_J_FLAG
@@ -1896,7 +1891,6 @@ nw_rotor:
 ; and its place on the speed ladder
 ; ============================================================================
 
-.PAGE
 new_wave_count:
         LXI FILE_STATE
         LYI NIB_KILLS
@@ -1927,7 +1921,6 @@ nwc_bump:
 ; as a table walk. The bottom of the ladder is the floor: the sum saturates
 ; rather than wrapping, so the cadence can never reach zero.
 
-.PAGE
 speed_index:
         LXI FILE_STATE
         LYI NIB_SKILL
@@ -2045,7 +2038,6 @@ rm_missed:
 ; deciding to launch one
 ; ============================================================================
 
-.PAGE
 rocket_launch:
         LXI FILE_TIME
         LYI NIB_ROCK_LO
@@ -2115,7 +2107,6 @@ rf_none:
 ; hit, three on the second, and on the third the full loss sound. All three are
 ; owner-confirmed.
 
-.PAGE
 launcher_hit:
         LXI FILE_STATE
         LYI NIB_RCOL
@@ -2157,7 +2148,6 @@ lh_two:
 ; three beeps
 ; ============================================================================
 
-.PAGE
 warn_three:
         LAI SND_WARN
         LBI BURSTS_WARN
@@ -2188,7 +2178,6 @@ warn_three:
 ; the same sweep they also reach play_sound: the stack is four deep and wraps
 ; silently, and both of those blocks already spend three levels.
 
-.PAGE
 start_burst:
         AI 1                    ; A <- the column, plus one
         LXI FILE_STATE
@@ -2228,7 +2217,6 @@ wg_pass:
 ; the battleship's turn
 ; ============================================================================
 
-.PAGE
 tick_bship:
         LXI FILE_STATE
         LYI NIB_BSLANE
@@ -2256,7 +2244,6 @@ tb_done:
 ; read below the jet march - and the sound table at the foot of this file shows
 ; the two pitches this ROM produces, 287 Hz against the march's 640 Hz.
 
-.PAGE
 bship_enter:
         LXI FILE_STATE
         LYI NIB_BSLANE
@@ -2275,7 +2262,6 @@ bship_enter:
 ; and crosses it
 ; ============================================================================
 
-.PAGE
 bship_move:
         LXI FILE_TIME
         LYI NIB_BSTEP
@@ -2314,7 +2300,6 @@ bm_store:
 ; 48-63 sweeps apart. See the provisional-cadence block: the interval is
 ; unmeasured, and T6 has not established that the real one is random at all.
 
-.PAGE
 bship_wait:
         LXI FILE_STATE
         LYI NIB_RAND
@@ -2377,7 +2362,6 @@ ti_done:
 ; launching one
 ; ============================================================================
 
-.PAGE
 fire_missile:
         LXI FILE_STATE
         LYI NIB_LANE
@@ -2418,7 +2402,6 @@ fire_missile:
 ; loop that stopped terminating, and is not one. The distinction is held down by
 ; tools/probe/game-lifetime.test.ts.
 
-.PAGE
 game_capture:
 game_lost:
         LXI FILE_STATE
@@ -2438,7 +2421,6 @@ game_lost:
 ; single square-wave pin cannot produce noise. What is here is the tonal skeleton
 ; the measurement describes, not the whole recording.
 
-.PAGE
 play_loss:
         LAI SND_LOSS1
         LBI BURSTS_LOSS1
@@ -2516,7 +2498,6 @@ gw_pass:
 ; periods per burst. The whole sound system is one pin toggled in a timed loop,
 ; so a "note" is nothing more than those four numbers.
 
-.PAGE
 play_sound:
         LXI FILE_SOUND
         LYI NIB_BURST_LEFT
@@ -2677,7 +2658,6 @@ mn_nibble:
 ; the rest of reset
 ; ============================================================================
 
-.PAGE
 main_timers:
         LXI FILE_STATE
         LYI NIB_SKILL
