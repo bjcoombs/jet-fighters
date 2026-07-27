@@ -99,12 +99,33 @@ export const MEASURED_RESIDUAL: Readonly<Record<ColorRegion, number>> = {
  * residual is measured across.
  *
  * **This is an assumption, not a measurement, and it is the only one the decay
- * times rest on.** The sweep bracket that survives the video's aliasing is
- * 70.6-72.5 Hz (section 2), i.e. a sweep of ~13.5 ms, of which a grid holds
- * roughly a tenth; the rest of the sweep it is dark. The residuals do not move
- * with the sweep rate but the decay times do, so the derivation is done in code
- * from this named input rather than pasted in as two literals: if the sweep rate
- * moves again, change this and the constants follow.
+ * times rest on.**
+ *
+ *     T_off = T_sweep * (1 - grid duty)
+ *
+ * Section 3 takes T_sweep ~= 13.5 ms from the 70.6-72.5 Hz bracket that survives
+ * the video's aliasing (section 2), against the ten-grid ~10% duty that
+ * display.ts and ports.ts implement, and gets ~12 ms. That is the figure used
+ * here, so these constants reproduce the tau the document publishes.
+ *
+ * **This is the number to change if the sweep moves, and the only one.** The
+ * residuals are ratios and do not move with it; the decay times do, which is why
+ * they are inverted from the residuals in code rather than pasted in as two
+ * literals. Since the exponential term is negligible at these ratios the
+ * relationship is simply `decayTimeMs = ln(10) * residual * T_off`, i.e. linear
+ * - worked here so the next person does not have to:
+ *
+ * | T_off   | cyan decay | red decay | where it comes from                     |
+ * | ------- | ---------- | --------- | --------------------------------------- |
+ * | 14.0 ms | 1.13 ms    | 5.00 ms   | the ROM's current 64.5 Hz sweep         |
+ * | 12.6 ms | 1.02 ms    | 4.50 ms   | 71.5 Hz, the centre of D4's target band |
+ * | 12.0 ms | 0.97 ms    | 4.29 ms   | section 3's own figure - what ships      |
+ *
+ * D4 moves the ROM into 70.6-72.5 Hz on a separate branch, which shortens the
+ * off-time by about a tenth and lengthens both decay times by about a twentieth.
+ * Editing this constant is the whole change: the tests assert the residuals, and
+ * one of them re-derives the constants across a range of off-times to hold that
+ * true.
  */
 export const REFRESH_OFF_TIME_MS = 12;
 
