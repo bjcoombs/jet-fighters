@@ -582,10 +582,24 @@ describe('firing', () => {
 });
 
 describe('the pitched game sounds', () => {
-  // One long run, so both the march (once per squadron step) and the battleship
-  // (once per lane of a crossing) have happened several times.
+  // One long unattended run, so both the march and the battleship's arrival
+  // buzz land in the window and neither runs into anything else.
+  //
+  // Seven hundred sweeps, and both ends of that are load-bearing. It was 400,
+  // which used to hold several crossings and now holds none: the boat crossed 51
+  // times a minute and now crosses about once, so the only crossing a run of
+  // this order sees is the opening one, which `BSHIP_GAP_OPEN` puts at 512
+  // sweeps. And it cannot be much longer than 700, because an unattended machine
+  // loses three launchers at about 750 and `tick` returns at its first test from
+  // then on.
+  //
+  // Unattended rather than played, which is the other half of it: the fire
+  // contact worked steadily fills the gaps between march notes with missile
+  // blips, `BURST_GAP_CYCLES` groups a blip running into a march step as one
+  // sound, and the median period of that pair is the blip's. The march then
+  // vanishes from this list while sounding perfectly correctly.
   const board = romBoard();
-  board.runFrames(400);
+  board.runFrames(700);
   const pitches = burstPitches(board);
 
   it('made some noise at all', () => {

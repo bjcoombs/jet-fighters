@@ -304,7 +304,10 @@
 ; dec_timer takes the lo index in Y and finds hi at Y+1. A pair counts
 ; hi*16 + lo sweeps, which is the range a squadron cadence needs; the one-nibble
 ; timers never exceed fifteen sweeps.
-.EQU NIB_TICK,       0          ; sweeps counted, wrapping every sixteen
+.EQU NIB_TICK,       0          ; sweeps counted, wrapping every sixteen. It is
+                                ; also the battleship gap's prescaler: tick_bship
+                                ; steps that countdown only on the sweep this
+                                ; reads zero
 .EQU NIB_ENTRY_LO,   1          ; sweeps until the next jet enters, low nibble
 .EQU NIB_ENTRY_HI,   2          ;   "                               high nibble
 .EQU NIB_MSTEP,      3          ; sweeps until the player missile advances
@@ -637,16 +640,45 @@
 ; player has to see in order to shoot at it. See the sound table's battleship row
 ; for the note, and the falsifier if the real unit re-buzzes at every lane.
 ;
-; The gap between crossings is BSHIP_GAP_HI*16 plus the sampled counter, i.e.
-; 48-63 sweeps. **This is measurably far too frequent** - it puts a crossing on
-; the tube about 51 times a minute where the video shows about one - and it is
-; addressed separately, because the fix needs a prescaler rather than a different
-; constant: 63 sweeps is 0.85 s and the interval wanted is nearer 50, which two
-; nibbles of sweeps cannot express. T5 and T6 are no longer wholly unmeasured;
-; what remains unmeasured is whether the real interval is random at all.
+; **How often, and it was about fifty times too often.** The gap was
+; BSHIP_GAP_HI*16 plus the sampled counter counted in sweeps - 48 to 63 sweeps,
+; 0.65 to 0.85 s - which put a crossing on the tube 51 times a minute measured.
+; The owner: the battleship "shows up randomly and a lot less frequently". The
+; same recording that measures the descent measures the rate: **8 arrivals in
+; lane 0 over 407.9 s**, which is 1.18 crossings a minute, or one about every
+; 51 s. (Eight rather than seventeen because the seventeen are lane dwells; lane
+; 0 is where a descent starts, so counting those counts arrivals. The other
+; reading of the same data - all 17 episodes belonging to distinct crossings - is
+; excluded by the traced 9.3 s descent being longer than the longest episode.)
+;
+; Fifty seconds does not fit in two nibbles of sweeps, and it does not need to.
+; NIB_TICK already counts sweeps and wraps every sixteen, and until now nothing
+; read it. tick_bship steps the gap countdown only on the sweep NIB_TICK wraps,
+; so the pair counts sixteen-sweep units and reaches 255*16 = 4080 sweeps without
+; a nibble of RAM being added. BSHIP_GAP_HI = 11 gives 176 to 191 units, 2816 to
+; 3056 sweeps, 42 to 46 s; plus the ~8 s crossing that is an arrival every 50 to
+; 54 s, against the 51 s measured.
+;
+; **The opening crossing is deliberately not a full interval away.** Reset seeds
+; the countdown with BSHIP_GAP_OPEN rather than BSHIP_GAP_HI - 512 sweeps, about
+; seven seconds - which keeps this ROM's long-standing behaviour of showing the
+; boat early in a game. The owner's complaint was that it appears too often,
+; never that it appears too soon, and a first crossing a full interval away would
+; mean a short game showed no battleship at all. What would falsify it is a
+; recording whose first crossing is a full interval after power-on.
+;
+; **What this does not fix, and it is worth stating.** A game currently ends in
+; 20 to 45 s (the capture rule, docs/evidence/open-questions.md section 6), so a
+; player will now see one battleship a game, sometimes two. That is not the
+; interval being wrong: per second of *play* it is the unit's own rate. It is the
+; game being short, and it is that open question's to settle.
+;
+; The interval also is not **random**, whatever the low nibble suggests, and that
+; is a defect rather than a tuning question - see bship_wait.
 .EQU BSHIP_STEP_LO, 12          ; a lane step is BSHIP_STEP_HI*16 + BSHIP_STEP_LO
 .EQU BSHIP_STEP_HI, 10          ;   = 172 sweeps, ~2.5 s of played wall clock
-.EQU BSHIP_GAP_HI,   3
+.EQU BSHIP_GAP_HI,  11          ; steady gap: (11*16 + rand) sixteen-sweep units
+.EQU BSHIP_GAP_OPEN, 2          ; and the first one after power-on, 512 sweeps
 
 ; How long a burst stays on the glass, in sweeps. PROVISIONAL, and the only
 ; number this ROM has ever had for it: nothing drove a burst segment before, so
@@ -2344,6 +2376,18 @@ wg_pass:
 ; the battleship's turn
 ; ============================================================================
 
+;
+; The countdown to the next crossing runs at a sixteenth of the sweep rate. The
+; prescaler is NIB_TICK, the sweep counter tick already keeps and nothing read
+; until now: it wraps every sixteen sweeps, so stepping the pair only on the
+; sweep it reads zero turns hi*16 + lo from a count of sweeps into a count of
+; sixteen-sweep units, and 4080 sweeps of interval become expressible in the two
+; nibbles that are already there. See the battleship's entry in the
+; provisional-cadence block for why fifty seconds is the figure wanted.
+;
+; The prescaler is not applied to the lane step, which is a matter of sweeps and
+; fits.
+
 tick_bship:
         LXI FILE_STATE
         LYI NIB_BSLANE
@@ -2352,6 +2396,12 @@ tick_bship:
         BR tb_cross
 
         LXI FILE_TIME
+        LYI NIB_TICK
+        LAM
+        ALEI 0                  ; ST <- 1 only on the sweep the counter wrapped
+        BR tb_gap
+        JMPL tick_input
+tb_gap:
         LYI NIB_BS_LO
         CALL dec_timer
         ALEI 0
@@ -2413,7 +2463,11 @@ bship_step_timer:
 ; and the column the tube draws it in never changes. That is what the owner
 ; describes as moving "down the slots", and it is the succession the video traces
 ; - lane 0, then lane 1, then lane 2. draw_bship holds COL_BSHIP for all three.
+;
+; Its own page: `bm_step` branches to `bm_store`, and BR reaches only inside a
+; page.
 
+.PAGE
 bship_move:
         LXI FILE_TIME
         LYI NIB_BS_LO
@@ -2442,9 +2496,31 @@ bm_store:
 ; when the next crossing is due
 ; ============================================================================
 ;
-; BSHIP_GAP_HI*16 sweeps plus the sampled counter, so successive crossings are
-; 48-63 sweeps apart. See the provisional-cadence block: the interval is
-; unmeasured, and T6 has not established that the real one is random at all.
+; BSHIP_GAP_HI*16 sixteen-sweep units plus the sampled counter, so successive
+; crossings are 2816-3056 sweeps apart. See the provisional-cadence block.
+;
+; **"Shows up randomly" is a thing this ROM does not currently do, and the cause
+; is not here.** NIB_RAND is written in exactly one place - `ti_press`, which
+; samples the free-running timer on the sweep the player closes the fire contact
+; - so what this block reads is not chance, it is the phase of the player's last
+; button press. Two consequences, both measured by driving the machine:
+;
+;   - a player who never fires leaves NIB_RAND at zero for the whole game, and
+;     every gap is then exactly BSHIP_GAP_HI*16 units. The interval is not
+;     approximately regular, it is identical to the sweep;
+;   - a player who does fire produces values that cluster on his own rhythm -
+;     4, 5, 6 and 7 dominated a fifteen-crossing run - rather than spreading.
+;
+; And the low nibble is only a sixteenth of the interval, so even a uniform
+; sample would move a 176-unit gap by under 9%. Nothing here would read as random
+; to a player.
+;
+; **This is the same defect as `rocket_fire`'s lane** and it is deliberately not
+; fixed here: it is the subject of an open question with the owner
+; (docs/evidence/open-questions.md section 3) covering the machine's only
+; randomness source, and fixing one caller of NIB_RAND while the source itself is
+; under question would make the answer harder to see, not easier. T6 - whether
+; the real interval is random at all - is still unmeasured.
 
 bship_wait:
         LXI FILE_STATE
@@ -2816,11 +2892,13 @@ main_timers:
         LAB
         LMAIY
 
+        ; The opening crossing comes sooner than a steady interval - see the
+        ; battleship's entry in the provisional-cadence block.
         LXI FILE_TIME
         LYI NIB_BS_LO
         LAI 0
         LMAIY
-        LAI BSHIP_GAP_HI
+        LAI BSHIP_GAP_OPEN
         LMAIY
 
         ; --- start the timer free running ---

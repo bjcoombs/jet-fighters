@@ -391,13 +391,35 @@ describe('the speaker path under the page frame loop', () => {
     // The machine stops dead while the audio hardware keeps pulling, so on
     // return every edge is seconds behind the playhead - the shape of the fault
     // #41 fixed, arrived at from a running machine rather than a cold one.
-    const result = await runPage({ seconds: RUN_SECONDS, blackoutMs: [2000, 4000] });
+    //
+    // The dark stretch is one second now and used to be two, starting at two.
+    // The ceiling below has to sit under what a machine that never resumed would
+    // produce - flat from the start of the blackout to the end of the run - and
+    // over what a machine that did resume produces, which is the blackout plus
+    // however long the ROM was going to be quiet for anyway. Those two used to
+    // be far apart because the battleship buzzed 51 times a minute and nothing
+    // was quiet for long; with the boat crossing about once a minute the ROM's
+    // own quiet stretches run to a march step, and a 2 s blackout put the two
+    // bounds on top of each other. Halving the blackout and moving it earlier
+    // separates them again without changing what is asserted.
+    const BLACKOUT_MS = 1000;
+    const control = await runPage({ seconds: RUN_SECONDS });
+    const result = await runPage({
+      seconds: RUN_SECONDS,
+      blackoutMs: [1000, 1000 + BLACKOUT_MS],
+    });
 
     expect(result.peakToPeak).toBeGreaterThan(0.9);
     expect(result.stats.realignments).toBeGreaterThan(0);
-    // Sound after the blackout, not only before it: the run is 6 s and the dark
-    // stretch is 2 s, so a held level outlasting 3 s means it never resumed.
-    expect(result.longestFlatMs).toBeLessThan(3000);
+    // Sound after the blackout, not only before it. The ceiling is the ROM's own
+    // longest quiet stretch, measured on the same run without a blackout, plus
+    // the blackout and one realign's worth of held level - so a cadence change
+    // moves the control rather than this figure.
+    const ceilingMs = control.longestFlatMs + BLACKOUT_MS + 500;
+    // And the ceiling only means anything while it stays under what never
+    // resuming would look like: flat from the blackout to the end of the run.
+    expect(ceilingMs).toBeLessThan(RUN_SECONDS * 1000 - 1000);
+    expect(result.longestFlatMs).toBeLessThan(ceilingMs);
   }, 30_000);
 
   it('plays the fire blip when the contact closes', async () => {

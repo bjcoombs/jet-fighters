@@ -191,21 +191,45 @@ function notesOf(sound: Sound): Run[] {
   return sound.runs.filter((run) => run.periods >= MIN_RUN_PERIODS);
 }
 
+/** Sweeps the idle scenario runs for: past the loss sound an unattended machine reaches. */
+const IDLE_FRAMES = 400;
+
+/**
+ * Sweeps the played scenario runs for.
+ *
+ * The battleship's opening crossing arrives `BSHIP_GAP_OPEN * 16` prescaled
+ * units after reset - 512 sweeps - and it is the only crossing a run of any
+ * plausible length sees, because the steady interval is about 50 s and a game
+ * does not last that long. So the window has to clear 512 sweeps with the
+ * descent behind it. Both scenarios were 400 sweeps, which caught the buzz only
+ * because the boat used to cross 51 times a minute.
+ */
+const PLAYED_FRAMES = 1200;
+
 /**
  * Every sound two scenarios produce, and the raw edges behind them.
  *
- * Two, because the ROM's noises divide by trigger: firing produces the missile
- * blip, and simply leaving the machine alone produces the march, the battleship
- * crossing and eventually the loss sound. 400 frames is several of each.
+ * Two, because the ROM's noises divide by trigger: leaving the machine alone
+ * produces the march and eventually the loss sound, and working the controls
+ * produces the missile blip and keeps the game alive long enough for the
+ * battleship's opening crossing. The controls are worked throughout the second
+ * rather than tapped once at the start, for the reason game-lifetime.test.ts
+ * gives at length: an unattended machine loses three launchers in about 750
+ * sweeps, and `tick` returns at its first test from then on, so nothing sounds
+ * again however long the run.
  */
 function scenario(fire: boolean): { edges: ReturnType<Board['takeSpeakerEdges']>; sounds: Sound[] } {
   const board = romBoard();
-  if (fire) {
-    board.setFire(true);
-    board.runFrames(6);
-    board.setFire(false);
+  if (!fire) {
+    board.runFrames(IDLE_FRAMES);
+  } else {
+    const levers = ['up', 'centre', 'down'] as const;
+    for (let frame = 0; frame < PLAYED_FRAMES; frame += 1) {
+      board.setControl('lever', levers[Math.floor(frame / 9) % 3] as string);
+      board.setFire(frame % 2 === 0);
+      board.runFrames(1);
+    }
   }
-  board.runFrames(400);
   const edges = board.takeSpeakerEdges();
   return { edges, sounds: soundsIn(edges) };
 }

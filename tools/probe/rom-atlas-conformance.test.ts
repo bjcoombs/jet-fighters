@@ -62,13 +62,38 @@ const LEVERS = ['up', 'centre', 'down'] as const;
 interface Scenario {
   readonly what: string;
   readonly skill: string;
-  readonly lever: (frame: number) => (typeof LEVERS)[number];
+  /**
+   * Where to put the lever this frame.
+   *
+   * `boatLane` is the lane the battleship was last seen lit in, or null when it
+   * is not on the tube. Read off `getLitSegments()` - the same observation
+   * surface everything else here uses, and not the ROM's RAM.
+   */
+  readonly lever: (frame: number, boatLane: number | null) => (typeof LEVERS)[number];
   readonly fire: (frame: number) => boolean;
   readonly frames: number;
 }
 
 const cycling = (dwell: number) => (frame: number) => LEVERS[Math.floor(frame / dwell) % 3]!;
 const every = (period: number) => (frame: number) => frame % period === 0;
+
+/**
+ * A lever that cycles, but steps out of the battleship's lane while it is lit.
+ *
+ * The missile launches in whichever lane the lever is standing in, so a player
+ * who fires steadily and cycles the lever shoots the battleship down - now
+ * almost always in its first lane, because the boat holds a lane for ~2.5 s and
+ * a missile crosses the field in a fifth of one. That is the game working as
+ * intended and it is a coverage problem: `battleship_lane2` is a segment the
+ * tube has and no steady-firing scenario ever reaches.
+ *
+ * Standing out of the boat's lane is what a player does when he decides not to
+ * take the shot, and it lets the descent finish.
+ */
+const cyclingPastTheBoat =
+  (dwell: number) =>
+  (frame: number, boatLane: number | null): (typeof LEVERS)[number] =>
+    LEVERS[boatLane === null ? Math.floor(frame / dwell) % 3 : (boatLane + 1) % 3]!;
 
 /**
  * The scenarios known to cover the atlas, tried first because they are quick.
@@ -113,6 +138,27 @@ const KNOWN_GOOD: Scenario[] = [
     lever: cycling(40),
     fire: every(13),
     frames: 1500,
+  },
+  // The two below were added when the battleship's crossing went from 400 ms to
+  // ~8 s and its interval from 0.7 s to ~50 s. Both of the segments they reach
+  // used to come free: the boat crossed 51 times a minute, so lane 2 lit within
+  // a few hundred frames of any scenario, and ten points a kill at that rate
+  // carried the score into three digits without a jet being shot. Neither is
+  // reachable by accident now. `lane2@1132` and `hundreds@3021` are where they
+  // land, measured; the frame counts are those plus a margin.
+  {
+    what: 'letting the battleship past, so its descent finishes and lane 2 lights',
+    skill: '3',
+    lever: cyclingPastTheBoat(25),
+    fire: every(2),
+    frames: 1500,
+  },
+  {
+    what: 'a long hard game, for a score that reaches the hundreds column',
+    skill: '3',
+    lever: cyclingPastTheBoat(9),
+    fire: every(2),
+    frames: 3400,
   },
 ];
 
@@ -241,10 +287,12 @@ function sweepScenarios(): Coverage {
     scenariosRun += 1;
     const board = new Board(image);
     board.setControl('skill', scenario.skill);
+    let boatLane: number | null = null;
     for (let frame = 0; frame < scenario.frames; frame += 1) {
-      board.setControl('lever', scenario.lever(frame));
+      board.setControl('lever', scenario.lever(frame, boatLane));
       board.setFire(scenario.fire(frame));
       board.runFrames(1);
+      boatLane = null;
       for (const lit of board.getLitSegments()) {
         if (lit.duty <= 0) continue;
         const segment = getSegmentByAddress(lit.grid, lit.plate);
@@ -252,6 +300,8 @@ function sweepScenarios(): Coverage {
           unmapped.add(`${lit.grid}-${lit.plate}`);
           continue;
         }
+        const boat = /^battleship_lane([0-9])$/.exec(segment.id);
+        if (boat !== null) boatLane = Number(boat[1]);
         const family = familyOf(segment.id);
         record(grids, family, lit.grid);
         record(plates, family, lit.plate);
