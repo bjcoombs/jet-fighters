@@ -117,31 +117,53 @@ The beat's spectral peak is at **f_beat = 10.6 to 12.5 Hz**, with a half-power w
 Sampling a display of frequency `f_sweep` at 30 Hz aliases it to
 `f_beat = |f_sweep - 30n|`. Inverting, with f_beat = 10.6-12.5 Hz:
 
-| n | candidate f_sweep |
-| --- | --- |
-| 1 | 41 - 49 Hz |
-| 2 | 70 - 79 Hz |
-| 3 | 100 - 109 Hz |
-| 4 | 130 - 139 Hz |
+Each `n` admits **two disjoint intervals**, `30n + f_beat` and `30n - f_beat`, not one
+contiguous range:
+
+| n | f_sweep = 30n - f_beat | f_sweep = 30n + f_beat |
+| --- | --- | --- |
+| 1 | 17.5 - 19.4 Hz | 40.6 - 42.5 Hz |
+| 2 | 47.5 - 49.4 Hz | 70.6 - 72.5 Hz |
+| 3 | 77.5 - 79.4 Hz | 100.6 - 102.5 Hz |
+| 4 | 107.5 - 109.4 Hz | 130.6 - 132.5 Hz |
+
+An earlier revision of this table merged adjacent intervals into contiguous brackets
+("41 - 49", "70 - 79"). That was wrong and overstated the coverage: the gaps between
+these intervals are excluded by the measurement, not admitted by it.
 
 **A single sampling rate cannot choose between these.** What it can do is rule things out.
 
 **The sweep is not 64.5 Hz.** That is the figure `asm/jetfighter.asm` currently produces
 (6190 cycles at 400 kHz, from `DWELL_OUTER`/`DWELL_INNER` = 15). A 64.5 Hz sweep sampled
 at 30 Hz beats at |64.5 - 60| = **4.5 Hz**, a 6.7-frame period. The observed beat is
-10.6-12.5 Hz, a 2.4-2.9 frame period - 2.4x to 2.8x too fast. 64.5 Hz falls in the gap
-between the 41-49 and 70-79 brackets and is excluded by both.
+10.6-12.5 Hz, a 2.4-2.9 frame period - 2.4x to 2.8x too fast. 64.5 Hz sits in the gap
+between the 47.5-49.4 and 70.6-72.5 intervals and is excluded by both.
 
-**The nearest consistent bracket to what the ROM does today is 70-79 Hz**, about 10-20%
-faster than 64.5 Hz. That is the bracket to target absent better evidence, and it is
-consistent with the ROM comment's own uncorrected estimate of "~68 Hz".
+**The nearest admissible interval to what the ROM does today is 70.6 - 72.5 Hz**, about
+9-12% faster than 64.5 Hz. That is the interval to target absent better evidence, and it
+is consistent with the ROM comment's own uncorrected estimate of "~68 Hz".
+
+One caveat on how narrow to read these intervals. They bracket the **mean** sweep rate,
+derived from the position of the beat's peak. The next section shows the sweep is not
+frequency-stable, so individual passes range either side of that mean. The intervals
+constrain where the centre sits; they do not claim every pass falls inside one.
 
 ### The sweep is not frequency-stable
 
-The beat's half-power width of 5-11 Hz on a 12 Hz centre is the finding, not noise. A
-crystal-stable sweep observed over 600 samples would give a line of width ~0.05 Hz. A
-width of this order means **the sweep period varies by roughly +/-7 to +/-8% from pass to
-pass**.
+The beat's half-power width of 5-11 Hz is the finding, not noise. A crystal-stable sweep
+observed over 600 samples would give a line of width ~0.05 Hz, so a width two orders of
+magnitude wider means **the sweep is genuinely not periodic**.
+
+Quantifying it needs care, and an earlier revision of this section got it wrong. Because
+`f_beat = |f_sweep - 30n|`, a width in the beat is the *same absolute width in Hz* in the
+sweep. Against the 70.6-72.5 Hz candidate, 5-11 Hz is a **full-width** spread of 7% to
+15%, i.e. **+/-3.5% to +/-7.5%** about the centre - and only if the whole width is taken
+to be period variation. Some of it is not: a finite 600-sample window, drift in the
+oscillator over 20 s, and the varying camera exposure all broaden the peak independently.
+
+So the defensible statement is the weaker one: **the observed spectral spread is
+consistent with pass-to-pass period variation of up to roughly +/-7%, and rules out a
+stable period.** Do not quote a single jitter figure from this document.
 
 This is expected and should be preserved: the sweep is a software loop on a 4-bit MCU
 interleaved with game logic, so a pass that does more work is a longer pass. Our
@@ -207,7 +229,8 @@ is the phosphor's residual between refreshes.
 Cyan: **3.2 - 4.5%**, from 1,300-1,500 dark samples per window. Red: **13 - 21%**, from
 200+ samples per window. Both reproduced in every window that had enough data.
 
-Converting to a time constant requires assuming the off-time. Taking the 70-79 Hz bracket
+Converting to a time constant requires assuming the off-time. Taking the 70.6-72.5 Hz
+candidate
 (sweep ~13.5 ms) and ~10% duty, the off-time is ~12 ms, and the exposure averages the
 decay across it, so the expected residual is `(tau/T_off)(1 - e^(-T_off/tau))`. Solving:
 
@@ -338,13 +361,15 @@ roughly 4x longer. `PhosphorConstants` needs to be keyed by `ColorRegion`.
 **D4 - The sweep rate is outside the measured bracket. (Section 2.)**
 `asm/jetfighter.asm:418-428` produces a 6190-cycle sweep = 15.5 ms = 64.5 Hz at the
 400 kHz oscillator. A 64.5 Hz sweep beats at 4.5 Hz against a 30 Hz camera; the video
-shows 10.6-12.5 Hz. The candidate brackets are 41-49, 70-79, 100-109 and 130-139 Hz;
-**70-79 Hz** is the one adjacent to the current value. Changing this means changing
+shows 10.6-12.5 Hz. The admissible intervals are disjoint - 40.6-42.5, 47.5-49.4,
+70.6-72.5, 77.5-79.4, 100.6-102.5, 107.5-109.4, 130.6-132.5 Hz - and **70.6-72.5 Hz** is
+the one adjacent to the current value. Changing this means changing
 `DWELL_OUTER`/`DWELL_INNER`, not the TypeScript.
 
 **D5 - Sweep-period jitter: keep it. (Section 2.)**
 `display.ts:112-115` closes a frame when an already-driven grid rises again, so the period
-is whatever the ROM took. The measured beat width implies real jitter of ~+/-7-8%. This
+is whatever the ROM took. The measured spectral spread is consistent with real jitter of
+up to ~+/-7% and rules out a stable period (section 2). This
 is right. Do not replace it with a fixed period while fixing D4.
 
 **D6 - Supply sag: correctly absent. (Section 4.)**
@@ -373,8 +398,9 @@ amplitude. Relevant if D2 and D4 do not fully settle the look.
 
 Stated plainly so nobody cites this document for these.
 
-- **The sweep rate, uniquely.** 30 fps aliases a 40-140 Hz display. Four brackets survive
-  (section 2); 64.5 Hz is excluded, but 70-79 Hz is a preference, not a measurement.
+- **The sweep rate, uniquely.** 30 fps aliases a 40-140 Hz display. Seven disjoint
+  intervals survive (section 2); 64.5 Hz is excluded, but 70.6-72.5 Hz is a preference
+  for adjacency to the current value, not a measurement.
   Resolving it needs a genuine high-frame-rate capture, or a photodiode on the tube.
 - **The per-grid duty cycle, and the number of grids.** Only `T_on + T_exposure` is
   observable and the exposure is unknown (section 2). The ten-grid ~9.5% model is
