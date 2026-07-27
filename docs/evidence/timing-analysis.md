@@ -11,10 +11,12 @@ headline is that the ladder is about **twice too fast at both ends**, and that
 the premise its floor rested on - that the march beep fires once per squadron
 step - is contradicted by the video directly.
 
-One change was made on the strength of it: `WAVE_LAST`, which bounds how far a
-game walks the ladder. The `PAT_STEP` values themselves are left alone and the
-reason is recorded in [What is not changed, and
-why](#what-is-not-changed-and-why). T2, T5, T6, T8, T9 and T10 remain unmeasured.
+Two changes were made on the strength of it: `WAVE_LAST`, which bounds how far a
+game walks the ladder, and `PAT_STEP`, whose top rung is now the slowest march the
+video shows. What that assumes, and which end of the ladder is measured against
+which is merely inferred, is set out in [What was changed, and what the ladder now
+says](#what-was-changed-and-what-the-ladder-now-says). T2, T5, T6, T8, T9 and T10
+remain unmeasured.
 Read the [Evidence gap](#evidence-gap) before using any number from this
 document.
 
@@ -106,8 +108,8 @@ Each measured row lands in the table below and is cited from the ROM source:
 | ID | Quantity | Skill | Measured (s) | fps / frames | Sweeps (pre-round) | **Sweeps (ROM)** | Residual | Source clip / timestamp |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | T1-audio | *withdrawn - the premise is refuted, see below* | unknown | 0.205 +/- 0.022 | n/a - audio, 22050 Hz | 13.2 | ~~13~~ | - | `gameplay-audio.m4a`, 55-121 s |
-| T4 | Cadence floor - step at scores 164 and 188, cap 199 | unknown | 0.733 and 0.900 | 30 fps, 22 and 27 frames | see below | **15** (`PAT_STEP` 15), runs 365 ms wall clock | ROM 2.0-2.3x fast | `IMG_6113.mov`, t=391.9, t=396.8 |
-| T1 | Squadron step, slowest steady march observed | unknown | 2.033 and 2.050 | 30 fps, 61 and 61.5 frames | see below | ladder tops out near 1050 ms | ROM ~2x fast | `IMG_6113.mov`, t=64.4, t=90.2 |
+| T4 | Cadence floor - step at scores 164 and 188, cap 199 | unknown | 0.733 and 0.900 | 30 fps, 22 and 27 frames | see below | 30 (`PAT_STEP` 15), 652 ms wall clock - *not* anchored on these, see below | - | `IMG_6113.mov`, t=391.9, t=396.8 |
+| T1 | Squadron step, slowest steady march observed | unknown | 2.033 and 2.050 | 30 fps, 61 and 61.5 frames | see below | **110** (`PAT_STEP` entry 0), 1995 ms wall clock | -2% | `IMG_6113.mov`, t=64.4, t=90.2 |
 | T1 | Squadron step at score 87 | unknown | 1.067 | 30 fps, 32 frames | see below | - | - | `IMG_6113.mov`, t=291.3 |
 | T3 | Rungs a whole game descends | unknown | ~6 rungs over score 0-199 | 30 fps | - | **1** (`WAVE_LAST`) + 6 from kills | - | `IMG_6113.mov`, t=291-397 |
 | T1-video | One aircraft advancing one cell | unknown | 1.4 (range 1.2-1.9) | 30 fps, 42 frames (36-56) | see below | not yet mapped | - | `IMG_6113.mov`, whole file, n=12 |
@@ -375,8 +377,9 @@ at all - the dial is not in frame in any of 12,237 frames.
 1. **The floor is 2.0-2.3x too fast.** At scores 164 and 188 against a 199 cap, a
    game is at or near the bottom of the ladder however progress is modelled and
    whatever the dial says. The unit steps at 733 and 900 ms there; nothing in the
-   whole clip steps faster than 700 ms. `PAT_STEP` entry 15 runs at 365 ms of wall
-   clock.
+   whole clip steps faster than 700 ms. `PAT_STEP` entry 15 ran at 438 ms of wall
+   clock and now runs at 652 ms - still faster than anything observed, and still
+   unevidenced, because that game may never have reached bottom.
 2. **The ladder cannot reach the slowest march the unit was observed making.** Two
    chains give 2033 and 2050 ms, each three columns with two intervals agreeing to
    100 ms. This ROM cannot march slower than about 1050 ms at any setting or at any
@@ -393,24 +396,66 @@ per-wave term is bounded to one rung rather than one per wave. What that costs i
 recorded at `WAVE_LAST` in the ROM: PRD v1 rule 2's "each cleared squadron respawns
 faster" is not shown false by the video, only shown not to be needed to explain it.
 
-### What is not changed, and why
+### What was changed, and what the ladder now says
 
-(1) and (2) condemn the `PAT_STEP` values themselves, and they are still there.
-Retuning them is not a free edit to one table:
+(2) is a **refutation** of entry 0 and needs no knowledge of the dial: entry 0 *is*
+skill 1's entry point, so it is the slowest cadence the ROM can produce at any dial
+position and any point in a game, and the unit demonstrably marched slower than it.
+(1) is different in kind and is treated differently below.
 
-- **Cadence and sweep rate are coupled.** A sweep with more sprites lit costs more
-  cycles, and a slower squadron keeps more jets alive at once. A ladder slow enough
-  to reach 2040 ms drops the mean silent sweep to 70.46 Hz, below the 70.6 Hz floor
-  of the band `vfd-appearance.md` D4 admits and `sweep-timing.test.ts` pins. Closing
-  the gap therefore has to be decided together with the sweep period.
-- **It moves which game states the coverage fixtures reach.** Jets that live longer
-  are shot further out, so `rom-atlas-conformance.test.ts` stops seeing bursts in
-  the near columns and rockets in every lane. Those scenarios are calibrated against
-  the current cadence and need recalibrating with it, not around it.
+`PAT_STEP` entry 0 is now **110 sweeps, 1995 ms of measured wall clock**, 2% under
+the 2033/2050 ms anchor. The other fifteen rungs are the previous ladder's shape
+scaled by the same factor.
 
-Neither is a reason to keep the cadence wrong. They are the reason it is a
-coordinated change rather than this one, and the numbers it has to hit are the two
-bounds above.
+| Entry | Sweeps | Nominal | Measured wall clock | Was |
+| --- | --- | --- | --- | --- |
+| 0 (skill 1 fresh) | 110 | 1481 ms | **1995 ms** | 1075 ms |
+| 4 (skill 2 fresh) | 82 | 1104 ms | 1528 ms | 872 ms |
+| 9 (skill 3 fresh) | 56 | 754 ms | 1159 ms | 623 ms |
+| 15 (the floor) | 30 | 404 ms | 652 ms | 438 ms |
+
+**Wall clock, not `sweeps x 13.46 ms`.** `note_loop` stops sweeping while a sound
+plays, so a step lands 40-60% longer than nominal. The old entry 0 was 740 ms
+nominal but **1075 ms measured**, so the error at the top was 1.9x, not the 2.8x
+the nominal figures alone imply. Any comparison against the video has to be made in
+wall clock, because wall clock is what the video records.
+
+**The assumption, stated so it can be corrected.** Putting 2040 ms at entry 0
+assumes the session showing it was at **skill 1 and near the top of its ladder**.
+It was at score 42-45, so it had already made progress, and skill 1's true entry is
+if anything slower than this. If that session was at skill 2 or 3, every entry here
+is still too fast and by a larger factor. A recording with the dial in frame is what
+would replace the assumption with a measurement.
+
+**The floor is a consequence, not a claim - and that distinction is load-bearing.**
+Entry 15's 652 ms falls out of the scaling; nothing measures it. The video's long
+session was **still descending when it ended** - 733 ms at score 164 and 900 ms at
+score 188 against a 199 cap - so it may never have reached bottom, and the footage
+does not say where bottom is. Entry 15 is therefore *unevidenced* rather than
+refuted, unlike entry 0. Note it is faster than the fastest step seen anywhere in
+408 s (700 ms), so if it is wrong it is wrong in the fast direction. T4 settles it.
+
+### A consequence worth recording: the rocket's lane is not random
+
+Recalibrating `rom-atlas-conformance.test.ts` for the new cadence surfaced a
+property of the ROM that is not a timing matter at all. `rocket_fire` takes the
+rocket's lane from `NIB_RAND` **as the player's last keypress latched it**, folding
+every value above the last lane onto the centre. That counter wraps every sixteen
+sweeps, so a press pattern whose period shares a factor with sixteen can only ever
+latch half the residues, and which lanes a jet can shoot into is a function of how
+the player presses rather than of chance.
+
+At the old cadence the fixture's even press periods happened to reach every lane. At
+this one they reach only the centre, which left the launcher's own destruction burst
+and the outer lanes' rockets unreachable by any scenario - the fixture's frame
+budgets and press periods are doubled to hold shots-per-squadron-step constant, and
+the two lane-specific scenarios additionally use periods 11 and 13 so that every
+residue is latched. That restores the coverage its equality assertions require.
+
+This is recorded because it is a gameplay-rule question rather than a fixture one:
+whether the real unit's rocket lane is genuinely tied to the player's own input is
+not established by anything, and if it is not, `rocket_fire` is modelling the wrong
+thing.
 
 ### The holds, which no single-period model can express
 
@@ -478,7 +523,7 @@ as if measured:
 - **Closed: the cadence floor (T4).** 733 and 900 ms at scores 164 and 188 against a
   199 cap, and nothing faster than 700 ms anywhere in the clip. `PAT_STEP` entry 15
   does not yet answer to it - see
-  [What is not changed, and why](#what-is-not-changed-and-why).
+  [What was changed, and what the ladder now says](#what-was-changed-and-what-the-ladder-now-says).
 - Battleship crossing duration and interval distribution (T5, T6). The video adds that
   the battleship's **traversal is not established at all** - 17 sightings, never outside
   its own cell.
@@ -538,8 +583,10 @@ are 38 sweeps in 356.
 
 **A sweep count is not wall clock.** Because of those blanks, any cadence with a
 note inside it lands longer than `sweeps * 13.46 ms`. Measured off the tube at
-skill 1, a fresh squadron's nominal 740 ms step (55 sweeps) arrives every 1064 ms
-median. Quote both, or quote which.
+skill 1, a fresh squadron's nominal 1481 ms step (110 sweeps) arrives every 1995 ms
+median. Quote both, or quote which - and note this is why the ladder had to be
+compared against the video in wall clock: at 740 ms nominal the old entry 0 looked
+2.8x short of the observed 2040 ms march, when in wall clock it was 1.9x.
 
 ## Wall-clock pace of the current ROM, measured
 
@@ -549,10 +596,10 @@ and rocket dots by grid and plate), power-on to game over, no player input. Nomi
 
 | Quantity | Sweeps | Nominal | Measured (median) |
 | --- | --- | --- | --- |
-| Jet step, skill 1 fresh squadron | 55 | 740 ms | 1064 ms |
-| Jet step, skill 2 fresh squadron | 41 | 552 ms | 864 ms |
-| Jet step, skill 3 fresh squadron | 28 | 377 ms | 614 ms |
-| Jet step, ladder floor (`PAT_STEP` 15) | 15 | 202 ms | not re-measured; ran 365 ms before the sweep retune, **2.0-2.3x faster than the unit** (T4) |
+| Jet step, skill 1 fresh squadron | 110 | 1481 ms | **1995 ms** - the T1 anchor, 2% under 2033/2050 ms |
+| Jet step, skill 2 fresh squadron | 82 | 1104 ms | 1528 ms |
+| Jet step, skill 3 fresh squadron | 56 | 754 ms | 1159 ms |
+| Jet step, ladder floor (`PAT_STEP` 15) | 30 | 404 ms | 652 ms - unevidenced, see T4 |
 | Rocket, per column | 7 | 94 ms | 112 ms (range 111-254) |
 | Rocket, full-board flight | 42 | 565 ms | not re-measured |
 
@@ -560,19 +607,18 @@ The measured column runs long against the nominal for the reason the section abo
 gives: every march step fires a 70 ms note, and the tube is not swept while it
 plays, so a cadence counted in sweeps lands about 1.4x its nominal in wall clock.
 
-The two "not re-measured" rows need a run that descends the cadence ladder (six
-kills and cleared waves) or that lets a rocket cross the whole board unobstructed;
-the no-input run this table is taken from reaches neither, and nothing in this
-change makes them cheaper to reach. Their previous measured values - 365 ms and
-284-549 ms, taken when the sweep was 15.46 ms - are not carried forward, because a
-figure measured on a different sweep rate is not a figure for this one.
+The ladder rows are measured by pointing `PAT_SKILL`'s skill-1 entry at the rung
+under test, so `speed_index` stays on it with no player input, then timing the wall
+clock between column changes on grids 0-5. The rocket rows still need a run that
+lets a rocket cross the board unobstructed, which the no-input run does not reach.
 
 These are the figures after the pacing fix, re-measured at the 13.46 ms sweep. What
 they replaced, measured the same way on the same machine at the old 15.46 ms sweep:
 
 | Quantity | Was | Measured (median) | Now |
 | --- | --- | --- | --- |
-| Jet step, ladder floor | 5 sweeps, 77 ms nominal | 238 ms | 15 sweeps, 202 ms nominal |
+| Jet step, skill 1 fresh squadron | 55 sweeps, 740 ms nominal | 1075 ms | 110 sweeps, 1995 ms |
+| Jet step, ladder floor | 15 sweeps, 202 ms nominal | 438 ms | 30 sweeps, 652 ms |
 | Rocket, per column | 2 sweeps, 31 ms nominal | 48 ms | 7 sweeps, 112 ms |
 | Rocket, full-board flight | 12 sweeps | 235 ms mean, max 387 | 42 sweeps, 565 ms nominal |
 | Rocket fire interval, skill 3 | 11 sweeps, 171 ms nominal | - | 46 sweeps, 619 ms nominal |

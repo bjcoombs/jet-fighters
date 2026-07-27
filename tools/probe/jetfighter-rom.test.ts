@@ -332,7 +332,11 @@ describe('the score readout blanks leading digits, and only leading digits', () 
    */
   function boardAtFirstTensDigit(): Board {
     const board = romBoard();
-    for (let frame = 0; frame < 400; frame += 1) {
+    // 900 sweeps rather than 400: the squadron now steps every 110 sweeps, so
+    // jets arrive to be shot at half the rate this budget was written for and a
+    // 400-sweep run no longer scores ten. The budget is a search bound, not a
+    // property under test.
+    for (let frame = 0; frame < 900; frame += 1) {
       board.setFire(frame % 2 === 0);
       board.runFrames(1);
       if (platesUnder(board, GRID_SCORE_T).length > 0) {
@@ -444,12 +448,54 @@ describe('the squadron advances, and the skill dial sets how fast', () => {
     return Math.max(...jetColumns(board));
   }
 
+  /** Sweeps between the leading rank's column changes, over `frames` sweeps. */
+  function stepIntervals(skill: string, frames: number): number[] {
+    const board = romBoard();
+    board.setControl('skill', skill);
+    const out: number[] = [];
+    let lead = -1;
+    let since = 0;
+    for (let i = 0; i < frames; i += 1) {
+      board.runFrames(1);
+      since += 1;
+      const columns = jetColumns(board);
+      if (columns.length === 0) continue;
+      const now = Math.max(...columns);
+      if (now > lead) {
+        if (lead >= 0) out.push(since);
+        lead = now;
+        since = 0;
+      } else if (now < lead) {
+        lead = now;
+        since = 0;
+      }
+    }
+    return out;
+  }
+
   it('walks the squadron toward the missile station', () => {
-    // PROVISIONAL cadence: skill 1 steps every 54 sweeps (see the ROM's
-    // provisional-cadence block), so 160 frames is three steps or so. The test
-    // asserts the direction of travel, not the number of steps - the number is
-    // unmeasured and will change when the reference video arrives.
-    expect(leadingGridAfter('1', 160)).toBeGreaterThan(1);
+    // Skill 1's fresh squadron steps every 110 sweeps, so 400 frames is three
+    // steps or so. This asserts the direction of travel; the next one asserts
+    // the rate.
+    expect(leadingGridAfter('1', 400)).toBeGreaterThan(1);
+  });
+
+  it('steps a fresh skill-1 squadron on PAT_STEP entry 0', () => {
+    // 110 sweeps is entry 0 after the ladder was scaled to the slowest steady
+    // march the gameplay video shows - 2033 and 2050 ms, two three-column
+    // traverses (docs/evidence/timing-analysis.md T1). This guards the sweep
+    // count, which is the ROM's own unit; the wall clock it produces depends on
+    // how much sound a given game plays.
+    //
+    // Every cadence here is denominated in sweeps, so if the sweep period is
+    // retuned again this number has to move with it or the wall clock silently
+    // changes. That this test fails on such a change is the point.
+    const intervals = stepIntervals('1', 700);
+    expect(intervals.length).toBeGreaterThanOrEqual(3);
+    for (const sweeps of intervals) {
+      expect(sweeps).toBeGreaterThanOrEqual(108);
+      expect(sweeps).toBeLessThanOrEqual(113);
+    }
   });
 
   it('advances no faster at skill 1 than at skill 3', () => {
