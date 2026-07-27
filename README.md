@@ -1,21 +1,106 @@
 # Jet Fighters
 
-An emulation of the 1979 Gakken/CGL Jet Fighters tabletop VFD game, running in a browser.
+A browser emulation of the 1979 Gakken/CGL Jet Fighters tabletop game.
 
 **[Play it here](https://bjcoombs.github.io/jet-fighters/)**
 
-<img src="assets/reference/device-front-gameplay.jpg" alt="Jet Fighters - original CGL unit during gameplay" width="480">
-
-> The photo above is the original CGL unit. Paths in this file are relative to the
-> repository root.
+| The original 1979 CGL unit | This emulator |
+| :---: | :---: |
+| <img src="assets/reference/readme-real-tube.jpg" alt="The scope of an original CGL Jet Fighters unit, powered on"> | <img src="assets/reference/readme-emulated-tube.jpg" alt="The same view of this emulator running in a browser"> |
 
 This is not a re-implementation of the game's rules. It is a cycle-accurate emulation of
 the machine that played it: a Hitachi HMCS44 microcontroller executing a 2 KB program,
 scanning a two-phosphor vacuum fluorescent tube one grid at a time, and making sound by
-toggling a single pin. The rules live in `asm/jetfighter.asm` - assembly source in this
-repository - and the timing, the display shimmer and the sound emerge from running it,
-rather than being approximated. See `docs/prd/jet-fighters-v2.md` for the full rationale
-and the hardware research behind it.
+toggling a single pin.
+
+The rules live in `asm/jetfighter.asm` - HMCS44 assembly source in this repository, under
+the real chip's 2048-word program and 160-nibble RAM ceilings. The timing, the display
+shimmer and the sound are not approximated; they fall out of running it. When the machine
+plays a note it stops scanning the tube, because it has one core and no sound hardware -
+so on the real unit, and on this one, **every beep is also a visible blink of the whole
+display**.
+
+## What the teardown changed
+
+Most of what this emulator knows about the tube, it learned late, and by being wrong first.
+
+Until late on, every sprite came from photographs and video of the unit *playing* - which
+means through a smoked filter, in sunlight, sampled slower than the tube refreshes. Then
+the owner took the unit apart and photographed the bare glass, unpowered, at 46.7
+megapixels. Every segment visible at once, no filter, no multiplexing to defeat.
+
+Almost everything downstream of that turned out to be an assumption we had promoted to a
+test:
+
+- **Five score segments were phosphor the glass does not have.** The hundreds digit is not
+  a seven-segment digit - it is two printed strokes, because the score caps at 199 and it
+  only ever needs to draw a `1`. A conformance test had already flagged those five as
+  never-driven, and had been given the wrong reason; the photograph supplied the right one.
+- **The jets are fifteen distinct shapes**, one per lane per column, not one outline
+  translated across the field. Within a single cell the top lane banks one way, the middle
+  flies level with a forked twin tail, the bottom banks the other. The animation is printed
+  on the glass; the program only chooses which area to light.
+- **The sprite lattice had been derived from the sprites themselves**, which silently
+  assumed they sit centred in their printed cells. They do not - they sit 16% left of
+  centre. Every test passed, because "each jet is inside its own cell" is true of any
+  self-consistent frame, right or wrong.
+- **The "march beep" we had tuned the game's speed against was the player's own gun.** Its
+  pulses fall in the gaps between the squadron's steps. The cadence floor had been anchored
+  to it, so the game ran roughly twice as fast as the real one at every skill level.
+- **The battleship's buzz was never missing** - it was playing at the right pitch, and every
+  note reached the speaker. It was a tenth of its measured length, so three of them landed
+  far enough apart to be indistinguishable from jet-march blips. The fault was in the
+  spacing, and every single-layer test was green.
+
+The tube had one more thing to give. Magnify the display and it resolves a dot screen in
+the phosphor and a honeycomb in the dark field - and those turn out to be **the same
+structure**: the control grid, an etched mesh in front of the anode, measured at a
+10.83 px period on a 31 degree axis in the red phosphor, the cyan phosphor and the dark
+field alike. One mesh, composited as a shadow, produces both appearances. Zoom in and you
+can see it.
+
+Everything asserted above is a measurement with its provenance recorded. Where the video
+and the bare tube disagree, the teardown wins, and the disagreements are written down
+rather than absorbed - see [`docs/evidence/`](docs/evidence/) for the audio bands, the tube's
+refresh and persistence, the timing analysis, and an explicit list of what is still
+unsettled.
+
+## How this was built
+
+Every line of this repository was written by Claude, working in Claude Code - Opus 5 and
+Fable 5, across the days in the commit log. The owner supplied the machine, the
+photographs, the recordings, and the judgement about what the real unit does.
+
+That was the point of attempting it. This is a project I had wanted to try for a while and
+had held off on, because agentic coding did not feel ready for something with this shape:
+no reference implementation to copy, a correctness standard that lives in a physical object
+on a desk, and thousands of small decisions that are each individually plausible and
+collectively wrong if nobody checks them against the thing itself.
+
+What made it work is not that the model got things right. The section above is a list of
+things it got confidently, thoroughly wrong - and those are the ones that were caught.
+What made it work is that it could be **held to evidence**: made to measure rather than
+assert, made to record how it knows each thing, and made to say plainly what it could not
+determine.
+
+Some of that came from the model refusing instructions. Told to remap the sprite grid one
+way, it measured, disagreed, and held its ground - obeying would have mirrored the
+playfield and deleted three real segments. Told the battleship's pitch encoding was capped
+and to redesign it, it measured, found the pitch already correct, and declined to build the
+change. Told that a path-simplification step was throwing away sprite detail, it measured
+that step at a tenth of the error and went looking elsewhere. Every one of those was a
+lead-agent instruction that was simply wrong, and each would have shipped.
+
+The rest came from method. Findings carry their provenance and the count of samples behind
+them. Assertions are checked by mutation - break the thing on purpose and confirm the test
+notices. Where two sources disagree, the disagreement is written down rather than averaged
+away. And the two ways this project has repeatedly gone wrong are named in the notes so
+they can be recognised on sight: **phantom segments**, phosphor the glass does not have,
+found three times; and **beliefs promoted to constraints**, an assertion describing what we
+decided rather than what the machine does, found four.
+
+None of that is specific to emulation. It is what it takes to trust work you did not do by
+hand.
 
 ## Controls
 
@@ -132,6 +217,21 @@ helper decided to keep.
 In a dev build the running machine is also reachable from the browser console as
 `window.jetFighters` (`board`, `renderer`, and the assembler's symbol table), which is how
 you inspect RAM or step the core while debugging a ROM change.
+
+## Evidence
+
+Nothing in the machine layer is tuned by eye. Each of these records what was measured, how,
+and what it does *not* establish:
+
+| Document | What it pins down |
+| --- | --- |
+| [`docs/evidence/audio-reference.md`](docs/evidence/audio-reference.md) | Every sound's frequency band, measured from recordings of the real unit, with the one figure that turned out to be a note name substituted for a reading |
+| [`docs/evidence/vfd-appearance.md`](docs/evidence/vfd-appearance.md) | The tube's refresh rate, phosphor persistence per colour, brightness under load, and the blanking that fires with every sound |
+| [`docs/evidence/tube-mesh.md`](docs/evidence/tube-mesh.md) | The control grid's period and angle, and why the dot screen and the honeycomb are one structure |
+| [`docs/evidence/timing-analysis.md`](docs/evidence/timing-analysis.md) | Squadron cadence and battleship crossings, measured frame by frame |
+| [`assets/reference/sprites/README.md`](assets/reference/sprites/README.md) | Every sprite on the glass, its size, its cell and its lanes |
+| [`src/machine/tube/ATLAS-COORDINATES.md`](src/machine/tube/ATLAS-COORDINATES.md) | The tracing method, the five approaches that failed, and the two ways this atlas has gone wrong |
+| [`docs/evidence/open-questions.md`](docs/evidence/open-questions.md) | What is still unsettled, and what would settle it |
 
 ## Credits
 
