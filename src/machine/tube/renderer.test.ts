@@ -6,7 +6,7 @@ import type { PwmFrame, SegmentDuty } from '../board/display.js';
 import { callsOf, createFakeCanvas, createFakeContext, type FakeCanvasContext } from './fake-canvas.js';
 import { VIEWBOX } from './layout.js';
 import { BACKGROUND, GHOST_ALPHA, SILKSCREEN, TUBE_PALETTE, ghostFill } from './palette.js';
-import { PHOSPHOR } from './phosphor.js';
+import { PHOSPHOR, REFRESH_OFF_TIME_MS, type PhosphorSet } from './phosphor.js';
 import { createTubeRenderer, type TubeRenderer } from './renderer.js';
 
 /** A PWM frame lighting the named segments at the given duty. */
@@ -18,8 +18,11 @@ function frameOf(entries: readonly { id: SegmentId; duty: number }[]): PwmFrame 
   return { startCycle: 0, endCycle: 1000, cycles: 1000, segments };
 }
 
-/** The duty a segment driven for the whole of its grid's slot accumulates. */
-const FULL_DUTY = PHOSPHOR.referenceDuty;
+/**
+ * The duty a segment driven for the whole of its grid's slot accumulates. The
+ * reference duty is a property of the sweep, so both regions carry the same one.
+ */
+const FULL_DUTY = PHOSPHOR.cyan.referenceDuty;
 
 const EMPTY_FRAME: PwmFrame = { startCycle: 0, endCycle: 1000, cycles: 1000, segments: [] };
 
@@ -201,7 +204,7 @@ describe('phosphor persistence', () => {
 
     const trail: number[] = [];
     for (let i = 0; i < 4; i += 1) {
-      renderer.draw(EMPTY_FRAME, 4);
+      renderer.draw(EMPTY_FRAME, 0.5);
       trail.push(renderer.brightnessOf('rocket_lane1_col2'));
     }
 
@@ -213,10 +216,50 @@ describe('phosphor persistence', () => {
     }
   });
 
+  it('fades each region on its own measured residual', () => {
+    // The renderer end of the section 3 measurement: light a red segment and a
+    // cyan one, stop driving both, and average what is left over one grid
+    // off-interval. The two must land in different bands, which is only possible
+    // if the field resolves its constants per colour region.
+    const { renderer, recorder } = setup();
+    settle(
+      renderer,
+      recorder,
+      frameOf([
+        { id: 'jet_lane0_col0', duty: FULL_DUTY },
+        { id: 'launcher_lane0', duty: FULL_DUTY },
+      ]),
+    );
+
+    // 200 steps, not more: each one paints the whole atlas, and the trapezoid
+    // average over a smooth exponential has converged by then. Measured against
+    // a 4000-step run it agrees to four significant figures - red 0.15501 vs
+    // 0.15500, cyan 0.03506 vs 0.03500 - both far inside the bands asserted
+    // below. The larger count only cost wall clock, and timed this test out in
+    // CI at 5 s while passing locally.
+    const steps = 200;
+    const dt = REFRESH_OFF_TIME_MS / steps;
+    let red = renderer.brightnessOf('jet_lane0_col0') / 2;
+    let cyan = renderer.brightnessOf('launcher_lane0') / 2;
+    for (let i = 0; i < steps; i += 1) {
+      renderer.draw(EMPTY_FRAME, dt);
+      red += renderer.brightnessOf('jet_lane0_col0');
+      cyan += renderer.brightnessOf('launcher_lane0');
+    }
+    red = (red - renderer.brightnessOf('jet_lane0_col0') / 2) / steps;
+    cyan = (cyan - renderer.brightnessOf('launcher_lane0') / 2) / steps;
+
+    // vfd-appearance.md section 3: red 13-21%, cyan 3.2-4.5%.
+    expect(red).toBeGreaterThanOrEqual(0.13);
+    expect(red).toBeLessThanOrEqual(0.21);
+    expect(cyan).toBeGreaterThanOrEqual(0.032);
+    expect(cyan).toBeLessThanOrEqual(0.045);
+  });
+
   it('still paints a decaying segment after its duty is gone', () => {
     const { renderer, recorder } = setup();
     settle(renderer, recorder, frameOf([{ id: 'rocket_lane1_col2', duty: FULL_DUTY }]));
-    renderer.draw(EMPTY_FRAME, 4);
+    renderer.draw(EMPTY_FRAME, 1);
     // Ghost pair plus the fading segment (bloom fill and core fill).
     expect(phosphorFills(recorder).length).toBeGreaterThan(2);
   });
@@ -248,22 +291,35 @@ describe('phosphor persistence', () => {
 
   it('produces flicker rather than a clean square under rapid on/off', () => {
     const { renderer } = setup();
-    const lit = frameOf([{ id: 'missile_lane0_dot0', duty: FULL_DUTY }]);
-    const samples: number[] = [];
-    for (let i = 0; i < 60; i += 1) {
-      renderer.draw(i % 2 === 0 ? lit : EMPTY_FRAME, 4);
-      samples.push(renderer.brightnessOf('missile_lane0_dot0'));
+    // Half a millisecond a side, inside both phosphors' time constants.
+    const lit = frameOf([
+      { id: 'missile_lane0_dot0', duty: FULL_DUTY },
+      { id: 'jet_lane0_col0', duty: FULL_DUTY },
+    ]);
+    const cyan: number[] = [];
+    const red: number[] = [];
+    for (let i = 0; i < 120; i += 1) {
+      renderer.draw(i % 2 === 0 ? lit : EMPTY_FRAME, 0.5);
+      cyan.push(renderer.brightnessOf('missile_lane0_dot0'));
+      red.push(renderer.brightnessOf('jet_lane0_col0'));
     }
 
-    const tail = samples.slice(-20);
-    const min = Math.min(...tail);
-    const max = Math.max(...tail);
-    expect(min).toBeGreaterThan(0);
-    expect(max).toBeLessThan(1);
-    expect(max - min).toBeGreaterThan(0.05);
-    // The ripple rides high rather than averaging the drive away: the eye sees a
-    // lit segment that shimmers, not one blinking between black and full.
-    expect(min).toBeGreaterThan(0.4);
+    for (const samples of [cyan, red]) {
+      const tail = samples.slice(-20);
+      const min = Math.min(...tail);
+      const max = Math.max(...tail);
+      // Never fully on, never fully off - a shimmering ripple, not a square wave.
+      expect(min).toBeGreaterThan(0);
+      expect(max).toBeLessThan(1);
+      expect(max - min).toBeGreaterThan(0.05);
+    }
+
+    // Red rides the higher for it: at the same cadence the slower phosphor loses
+    // less between drives, which is the asymmetry the video measured.
+    const trough = (samples: readonly number[]): number => Math.min(...samples.slice(-20));
+    expect(trough(red)).toBeGreaterThan(trough(cyan));
+    // The slower one still holds well above the floor.
+    expect(trough(red)).toBeGreaterThan(0.4);
   });
 });
 
@@ -332,7 +388,11 @@ describe('phosphor colour and bloom', () => {
   });
 
   it('honours custom phosphor constants', () => {
-    const { renderer } = setup({ phosphor: { ...PHOSPHOR, riseTimeMs: 0.001 } });
+    const instant: PhosphorSet = {
+      cyan: { ...PHOSPHOR.cyan, riseTimeMs: 0.001 },
+      red: { ...PHOSPHOR.red, riseTimeMs: 0.001 },
+    };
+    const { renderer } = setup({ phosphor: instant });
     renderer.draw(frameOf([{ id: 'jet_lane0_col0', duty: FULL_DUTY }]), 16);
     expect(renderer.brightnessOf('jet_lane0_col0')).toBeCloseTo(1, 6);
   });
