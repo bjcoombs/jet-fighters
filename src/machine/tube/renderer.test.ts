@@ -231,7 +231,13 @@ describe('phosphor persistence', () => {
       ]),
     );
 
-    const steps = 4000;
+    // 200 steps, not more: each one paints the whole atlas, and the trapezoid
+    // average over a smooth exponential has converged by then. Measured against
+    // a 4000-step run it agrees to four significant figures - red 0.15501 vs
+    // 0.15500, cyan 0.03506 vs 0.03500 - both far inside the bands asserted
+    // below. The larger count only cost wall clock, and timed this test out in
+    // CI at 5 s while passing locally.
+    const steps = 200;
     const dt = REFRESH_OFF_TIME_MS / steps;
     let red = renderer.brightnessOf('jet_lane0_col0') / 2;
     let cyan = renderer.brightnessOf('launcher_lane0') / 2;

@@ -108,6 +108,33 @@ describe('the measured residual', () => {
     }
   });
 
+  it('survives the off-time moving, because the residual is what is asserted', () => {
+    // The off-time is the derivation's one assumption and it is in play: D4 is
+    // moving the sweep from 64.5 Hz into 70.6-72.5 Hz, which shortens it. Re-derive
+    // the constants across every off-time that bracket and the current ROM admit,
+    // and the measured residual comes back unchanged at each - that invariance is
+    // the reason the constants are inverted from the residuals in code rather
+    // than written down. Only the decay times move, and they move together.
+    const previous: Record<ColorRegion, number> = { cyan: 0, red: 0 };
+    for (const offTimeMs of [10, 11, 12, 12.6, 13, 14, 15.5]) {
+      for (const region of ['cyan', 'red'] as const) {
+        const decayTimeMs = decayTimeForResidual(MEASURED_RESIDUAL[region], offTimeMs);
+        const field = fieldOf([region], {
+          ...PHOSPHOR,
+          [region]: { ...PHOSPHOR[region], decayTimeMs },
+        });
+        settleAll(field);
+        const [residual] = residualsOverOffTime(field, offTimeMs);
+        expect(residual).toBeGreaterThanOrEqual(MEASURED_BAND[region].min);
+        expect(residual).toBeLessThanOrEqual(MEASURED_BAND[region].max);
+        // Longer off-time, slower phosphor - strictly, so a mistake in the
+        // inversion cannot hide behind the width of the bands.
+        expect(decayTimeMs).toBeGreaterThan(previous[region]);
+        previous[region] = decayTimeMs;
+      }
+    }
+  });
+
   it('excludes the single 15 ms constant this replaced', () => {
     // The old judgement call, measured the way the video measured the real tube:
     // it leaves 46% of the drive between refreshes against a measured 3.5% and
