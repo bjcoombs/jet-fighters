@@ -68,6 +68,13 @@
 ; miscompiling. If you add code and the assembler complains about a branch,
 ; putting `.PAGE` back on that routine is the fix.
 ;
+; One warning for anyone checking a paging change by diffing the assembled
+; words: **the word streams will not match, and that is expected.** JMPL and
+; CALL carry absolute addresses, so moving code necessarily changes their
+; operands. What must match is the emitted word *count* and the cycle timing;
+; comparing grid-on intervals between two builds is the check that actually
+; means something.
+;
 ; A routine may still run past 32 words - draw_jet and close_up do - provided
 ; nothing past the boundary is a branch target. CAL additionally fixes its page
 ; at 0, which is why page 0 holds only `dwell` and `find_contact`; everything

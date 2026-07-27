@@ -250,9 +250,26 @@ per sprite below rather than hidden.
   change with position.
 
 - **The jet-kill burst** is two spiky cyan blobs stacked vertically, the upper
-  broader than the lower, their jagged edges facing away from each other. One
-  segment with two sub-paths, for the colon's reason. At 0.84 of the lane pitch
-  it is the largest thing in its cell but it stays inside its own lane.
+  broader than the lower, their jagged edges facing away from each other. At
+  0.84 of the lane pitch it is the largest thing in its cell but it stays inside
+  its own lane.
+
+  **One segment with two sub-paths, and this was tested rather than assumed.**
+  The alternative was real: the owner's account is that animation on this tube
+  comes from lighting different areas within a cell, so two blobs could have
+  been two frames of an explosion lit in sequence, which would be two segments.
+  The two hypotheses differ in something the video can answer - whether any
+  frame shows one blob lit without the other. Across a burst episode sampled at
+  30 fps and tracked as cyan connected components, the pair reads as one merged
+  component in eleven frames and separates in exactly one, **with both parts
+  present in that frame**. No frame anywhere shows a lone blob. The animation
+  reading predicts frames with exactly one lit; there are none.
+
+  What that does not amount to: it is **one episode**, the blobs usually merge
+  so the check leans on the frames where they happen not to, and a 30 fps frame
+  integrates a ~71 Hz multiplex rather than sampling an instant. Good evidence,
+  not proof. A lone blob in any future episode reverses this and the family
+  doubles from 15 addresses to 30.
 
 - **The battleship** is a warship in side profile: a long low hull with the
   superstructure and funnel rising amidships toward the stern. It is drawn in
