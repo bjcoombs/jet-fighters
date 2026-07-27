@@ -131,8 +131,8 @@ carried-over outline as a retraced one.**
 | --- | --- |
 | Jets, cells 1-5 | `tube-teardown/tube-unlit-full.jpg`, 15 distinct outlines |
 | Attacker colons, cells 1-5 | the same, two dots straddling the fuselage at the nose |
-| Missile darts | gameplay video, awaiting retrace |
-| Jet-kill bursts | gameplay video, awaiting retrace |
+| Missile darts, cells 1-5 | `tube-teardown/tube-unlit-full.jpg` |
+| Jet-kill bursts, cells 1-5 | the same, two blobs in one segment |
 | Battleship | gameplay video, awaiting retrace |
 | Printed sea | not in the atlas yet |
 | Launcher, player's burst | the two lit close-ups, awaiting retrace |
@@ -155,6 +155,16 @@ threshold, and merges neighbouring sprites into one component; narrowing it
 clips the sprites that sit hard against the cell's right-hand edge. **The
 threshold is computed over a tight window and applied to a wide one**, and a
 component belongs to whichever cell its centroid falls in.
+
+**Locate families by position, do not rank them by size.** A jet cell holds
+three white shapes - two burst blobs and the dart between them - and they are
+identified by where they sit: all three are in the cell's right-hand half, and
+ordering them down the lane names each one. Ranking by a property instead (the
+flattest of the three is the dart) picks wrongly the moment two of them merge,
+which they do in about half the cells at any single threshold. The size is then
+an independent check on the assignment rather than the thing that made it: each
+traced dart converts back to 23.9 x 9.6 of the video's own pixels against the
+catalogue's 26 x 12 for the missile in flight.
 
 Scale: the printed lattice measures 259 px across and 152 px down at the working
 resolution against the atlas cell's 31.114 x 17.68 units, so 0.1201 and 0.1163
