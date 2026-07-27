@@ -398,21 +398,26 @@
 ; working values" table precisely so the v2 ROM would not guess a second time,
 ; adjusted where the machine was measurably unplayable. v1 ran logic at 60 Hz, so
 ; its tick counts convert to seconds as ticks/60; this ROM's sweep is its only
-; clock and runs at 13.86 ms, i.e. 72.2 Hz nominal and 71.2 Hz mean over the
-; sweeps that carry no sound (measured by driving the emulated machine, not off
-; the unit - see DWELL below), so seconds convert back to sweeps at roughly 72
-; per second. The conversion is arithmetic on an approximation - it does not make
-; the result a measurement.
+; clock and runs at 13.46 ms with an idle playfield (measured by driving the
+; emulated machine, not off the unit - see DWELL below), so seconds convert back
+; to sweeps at roughly 74 per second. That is the figure every ms in this block
+; converts through, for the same reason the old block used the old 15.46 ms: it
+; is the sweep the ROM's own arithmetic produces, reproducibly, with nothing
+; drawn. A sweep during play is longer - see DWELL for the spread - so these
+; nominal figures run short of wall clock even before a sound stops the sweep.
+; The conversion is arithmetic on an approximation - it does not make the result
+; a measurement.
 ;
 ; Every sweep count in this block was re-derived when the sweep rate moved from
-; 64.5 Hz to 72.2 Hz (D4 of docs/evidence/vfd-appearance.md). The wall-clock
-; figures are what the anchors are stated in - v1's tuning, a human reaction
-; window, the march beep's measured 205 ms - so the ms figures were held and the
-; sweep counts recomputed against the shorter sweep, not the other way round.
+; 64.5 Hz to 71.5 Hz during play (D4 of docs/evidence/vfd-appearance.md). The
+; wall-clock figures are what the anchors are stated in - v1's tuning, a human
+; reaction window, the march beep's measured 205 ms - so the ms figures were held
+; and the sweep counts recomputed against the shorter sweep, not the other way
+; round.
 ;
 ; A sweep count is not the whole story in wall clock, and the gap matters here:
 ; note_loop does not sweep the tube while a sound plays, so a cadence of N sweeps
-; lands longer than N * 13.86 ms whenever a note fires inside it. The measured
+; lands longer than N * 13.46 ms whenever a note fires inside it. The measured
 ; figures quoted below are wall clock off the probe; the nominal figures are the
 ; sweep arithmetic. Both are given, because only the first is what a player
 ; experiences and only the second is what the ROM stores.
@@ -423,16 +428,18 @@
 ; last entry. When the video arrives, only the numbers move.
 
 ; DWELL: how long one grid stays lit, and with it the sweep rate. The loop below
-; costs (DWELL_OUTER + 1) * (2 * DWELL_INNER + 5) + 4 machine cycles, so
-; 16 * 31 + 4 = 500, and one grid costs about 522 cycles including the sweep's
-; own work. A whole sweep is
+; costs (DWELL_OUTER + 1) * (2 * DWELL_INNER + 6) + 4 machine cycles - the 6
+; rather than 5 being the pad NOP, see below - so 15 * 32 + 4 = 484, and one grid
+; costs about 506 cycles including the sweep's own work. A whole sweep with an
+; idle playfield is
 ;
-;   10 * ((DWELL_OUTER + 1) * (2 * DWELL_INNER + 5) + 4) + 543
+;   10 * ((DWELL_OUTER + 1) * (2 * DWELL_INNER + 6) + 4) + 543
 ;
 ; machine cycles - the 543 being the ten grids' own port and matrix work plus
-; input_scan, render_field and tick between sweeps. At 15/15 that was 6183
-; cycles = 15.46 ms = 64.7 Hz; at 15/13 it is 5543 cycles = 13.86 ms = 72.2 Hz.
-; Both figures are measured off the emulated machine, not derived.
+; input_scan, render_field and tick between sweeps with nothing on the tube. That
+; is 5383 cycles = 13.46 ms; a sweep during play runs about 210 cycles longer,
+; because render_field has jets, rockets and a score to lay out, so the rate that
+; matters lands near 71.5 Hz. Both figures are measured off the emulated machine.
 ;
 ; 64.5 Hz is **excluded by the reference video**. docs/evidence/vfd-appearance.md
 ; section 2 measures the beat between the tube's refresh and the camera's 30 fps
@@ -442,20 +449,32 @@
 ; falls in the gap between the second and the third. 70.6-72.5 Hz is the interval
 ; adjacent to what this ROM used to do, and is the one targeted here.
 ;
-; Why 72.2 Hz and not the middle of that interval: the dwell loop is two nibbles,
-; so the reachable sweep periods are coarse. (DWELL_OUTER + 1) * (2 * DWELL_INNER
-; + 5) has to land near 500 for a period inside 5517-5666 cycles, and the only
-; products that come close are 16 * 31 = 496 (5543 cycles, 72.2 Hz, inside) and
-; 15 * 33 = 495 (5533 cycles, 72.3 Hz, inside); the next rung up, 16 * 33 = 528,
-; is 5863 cycles = 68.2 Hz and lands back in the excluded gap. So the band's fast
-; end is as close to its centre as this loop can be tuned.
+; **Which sweeps the interval is a statement about.** It brackets the *mean*
+; refresh rate of a tube being watched during play, so that is the population
+; tuned to here: the ROM playing a game, over the sweeps that carry no sound. A
+; sweep with a note in it is the note's length longer - note_loop does not strobe
+; the grids - and vfd-appearance.md excludes blanked frames from its own refresh
+; figures for the same reason. The spread across populations is real and is wider
+; than the interval: this ROM runs 74.3 Hz with nothing on the tube, 71.9 Hz on
+; an unattended game and 71.5 Hz on a played one. Quoting one number without the
+; population is what would make this look tuned to two decimal places.
 ;
-; The interval brackets the *mean* sweep rate, not every pass: the video also
-; shows the sweep is not frequency-stable, and this ROM's is not either - a sweep
-; with a sound in it runs the length of the note longer, because note_loop does
-; not strobe the grids. src/machine/board/display.ts derives the frame period
-; from the ROM rather than imposing one, which is what keeps that true.
-.EQU DWELL_OUTER,   15
+; Why the extra NOP in the dwell loop. Both counters are nibbles, so
+; (DWELL_OUTER + 1) * (2 * DWELL_INNER + 5) can only take the values 465, 490,
+; 495 and 496 anywhere near the target, and the gaps between them are 1.8 Hz -
+; almost the whole width of the interval. Every one of those rungs puts a played
+; game at 69.5-70.2 Hz, below the interval, and the rung above overshoots it
+; entirely. One NOP inside the outer pass makes the multiplier even, which moves
+; the reachable set, and 15 * 32 + 4 = 484 lands the played-game mean at 71.5 Hz,
+; the middle of the interval. It is a timing pad in a delay loop, which is what
+; the loop is - the same device as the seven NOPs in note_half.
+;
+; The interval brackets the mean, not every pass: the video also shows the sweep
+; is not frequency-stable, and this ROM's is not either - the between-sweep game
+; work varies with what is on the tube, and a sound stops the sweep outright.
+; src/machine/board/display.ts derives the frame period from the ROM rather than
+; imposing one, which is what keeps that true.
+.EQU DWELL_OUTER,   14
 .EQU DWELL_INNER,   13
 
 ; How many sweeps a shot spends in each column. PROVISIONAL: v1 moved both a
@@ -470,16 +489,16 @@
 ; ~150 ms - at or below the ~250 ms floor for a simple human reaction, and well
 ; below the 300-500 ms a see-decide-move-the-lever response costs. That is the
 ; measured reason the game could not be played, and it is the anchor for the new
-; figure: 7 sweeps is ~97 ms nominal per column, so a full-board flight is a
+; figure: 7 sweeps is ~94 ms nominal per column, so a full-board flight is a
 ; little over half a second and a mid-board one is inside the reaction band.
 ; The anchor is human reaction time, not the unit - still not a measurement of
 ; the real machine. It was 6 sweeps at the old 15.46 ms sweep, which is the same
-; 93-97 ms window; the count moved with the sweep so the window would not.
+; 93-94 ms window; the count moved with the sweep so the window would not.
 ;
 ; The player's missile keeps the fast figure. Nothing has to be dodged in
 ; response to it, so slowing it would only take time away from the player, and
 ; the complaint being fixed here is that the game is too fast. Two sweeps is
-; 27.7 ms, which already rounds up from v1's ~16.7 ms, so it did not move.
+; 26.9 ms, which already rounds up from v1's ~16.7 ms, so it did not move.
 .EQU MISSILE_SWEEPS, 2
 .EQU ROCKET_SWEEPS,  7
 
@@ -487,10 +506,10 @@
 ; three lanes of this geometry is ~9 sweeps per lane step (8 at the old 15.46 ms
 ; sweep - the count moved with the sweep so the 400 ms would not). The gap
 ; between crossings is BSHIP_GAP_HI*16 plus the sampled counter, i.e. 48-63
-; sweeps, 665-873 ms, straddling v1's ~833 ms mean, with the spread coming from
+; sweeps, 646-848 ms, straddling v1's ~833 ms mean, with the spread coming from
 ; the only randomness source the machine has rather than from a measured
 ; distribution. That constant did not move: the gap is expressible only as
-; HI*16 + 0..15, and the next rung up is 64-79 sweeps, 887-1095 ms, which
+; HI*16 + 0..15, and the next rung up is 64-79 sweeps, 861-1063 ms, which
 ; overshoots v1 by more than 3 understates it. T5 and T6 remain unmeasured,
 ; including whether the real interval is random at all.
 .EQU BSHIP_SWEEPS,   9
@@ -499,11 +518,11 @@
 ; The gap between launcher-hit warning beeps. This one is *measured*: 25-28 ms
 ; (docs/evidence/audio-reference.md, launcherHitWarning.gapMs). The loop runs
 ; WARN_GAP + 1 passes of two dwells plus two cycles. It is counted in dwells, so
-; it moved when DWELL_INNER did: a pass costs 1004 cycles now against 1132
-; before, so WARN_GAP = 8 would have given 9041 cycles = 22.6 ms, below the
-; measured band. Eleven passes is 11049 cycles = 27.6 ms, inside it; ten passes
-; is 10045 = 25.1 ms, also inside but with a tenth of a millisecond of margin
-; against the floor. All three figures are counted off the machine.
+; it moved when the dwell did: a pass costs 972 cycles now against 1132 before,
+; so WARN_GAP = 8 would have given 8757 cycles = 21.9 ms, below the measured
+; band. Eleven passes is 10697 cycles = 26.7 ms, near the middle of it; ten is
+; 24.3 ms and twelve is 29.2 ms, both outside. All four figures are counted off
+; the machine.
 .EQU WARN_GAP,      10
 
 ; PRESCALE: the timer runs free from reset and is read only by tick_input, which
@@ -538,6 +557,8 @@ reset:  JMPL main
 dwell:  XSP                     ; caller's X/Y -> SPX/SPY
         LBI DWELL_OUTER
 dw_out: LYI DWELL_INNER
+        NOP                     ; timing pad - see DWELL above for why one cycle
+                                ; per outer pass is the knob the sweep rate needs
 dw_in:  DY                      ; ST <- 1 until Y wraps out of four bits
         BR dw_in
         DB                      ; ST <- 1 until B wraps
@@ -1950,7 +1971,7 @@ warn_three:
 ; In:  nothing. Out: nothing. Clobbers B; preserves X and Y through dwell's own
 ; shadow-pair discipline, which is why the counter can live in Y.
 ;
-; Two dwells per pass so eleven passes land on 27.6 ms - inside the measured
+; Two dwells per pass so eleven passes land on 26.7 ms - inside the measured
 ; 25-28 ms gap (audio-reference.md, launcherHitWarning.gapMs). One dwell per pass
 ; would need nineteen, and the counter is a nibble.
 
@@ -2529,7 +2550,7 @@ column_plates:
 ; Sweeps between rocket launches, as A = low nibble and B = high nibble.
 ; PROVISIONAL - no measurement, see docs/evidence/timing-analysis.md (T9).
 ; v1's per-tick fire chances gave mean intervals of ~556 / ~278 / ~167 ms, which
-; at this ROM's ~72 sweeps per second are ~40 / ~20 / ~12 sweeps. Those means
+; at this ROM's ~74 sweeps per second are ~41 / ~21 / ~12 sweeps. Those means
 ; came from v1's tuning, not from the unit, and they were shorter than a rocket's
 ; own flight: at 7 sweeps per column (ROCKET_SWEEPS) a full-board flight is 42
 ; sweeps, so skill 3 launched a second rocket into a lane while the first was
@@ -2544,9 +2565,9 @@ column_plates:
 .PATTERN PAT_ROCKET
 rocket_interval:
         .DW $000                ; 0: unused - the dial reads 1..3
-        .DW $043                ; skill 1: 67 sweeps, ~929 ms
-        .DW $036                ; skill 2: 54 sweeps, ~748 ms
-        .DW $02D                ; skill 3: 45 sweeps, ~624 ms
+        .DW $045                ; skill 1: 69 sweeps, ~929 ms
+        .DW $037                ; skill 2: 55 sweeps, ~740 ms
+        .DW $02E                ; skill 3: 46 sweeps, ~619 ms
         .DW $000, $000, $000, $000
         .DW $000, $000, $000, $000
         .DW $000, $000, $000, $000
@@ -2558,21 +2579,21 @@ rocket_interval:
 ;
 ; PROVISIONAL. The top of the ladder is unmeasured; its floor is now derived.
 ;
-; Entry 0 comes from v1's 750 ms per step at ~72 sweeps per second: 54 sweeps,
-; 748 ms nominal. That rung still stands for v1's 750 ms and remains a v1
+; Entry 0 comes from v1's 750 ms per step at ~74 sweeps per second: 55 sweeps,
+; 740 ms nominal. That rung still stands for v1's 750 ms and remains a v1
 ; approximation - T1 at skill 1 is still video-only. It was 48 sweeps at the old
-; 15.46 ms sweep, the same 743-748 ms; the count moved with the sweep rate.
+; 15.46 ms sweep, the same 740-742 ms; the count moved with the sweep rate.
 ;
 ; Entry 15, the floor, is **derived** from the march beep in
 ; assets/reference/gameplay-audio.m4a (docs/evidence/timing-analysis.md T1-audio;
 ; 205 ms mean, sd 22 ms, n = 21, over 55-121 s of that recording). The beep fires
 ; once per sweep in which any jet stepped, so 205 ms is how fast the real unit's
 ; squadron was observed to step - a rate it was never seen to exceed in 65 s of
-; play. 15 sweeps is 208 ms, the closest integer to it at the current sweep rate
-; and on the slow side of it, which is the side the bound is on. It was 13 sweeps
-; - 201 ms - at the old 15.46 ms sweep; leaving it at 13 while the sweep shortened
-; would have put the floor at 180 ms, faster than the unit was ever recorded
-; stepping, so the count moved with the sweep. The floor before that was 5 sweeps
+; play. 15 sweeps is 202 ms, the closest integer under it at the current sweep rate
+; - the same rule the old floor was picked by. It was 13 sweeps - 201 ms - at the
+; old 15.46 ms sweep; leaving it at 13 while the sweep shortened would have put
+; the floor at 175 ms, faster than the unit was ever recorded stepping, so the
+; count moved with the sweep. The floor before that was 5 sweeps
 ; - 77 ms nominal - 2.6x faster than anything on the recording, and it is the rung
 ; the game descends to after roughly six kills and cleared waves, which is where
 ; it stopped being playable.
@@ -2581,24 +2602,24 @@ rocket_interval:
 ; at a time on the same period at different phases, so a per-jet period cannot be
 ; recovered from it without knowing how many jets were flying. It bounds the
 ; floor and nothing else. The rungs between are v1's decrement per dead jet
-; (4 ticks, ~67 ms) relaxed to a steady 2-4 sweeps (~28-55 ms) so the ladder
+; (4 ticks, ~67 ms) relaxed to a steady 1-4 sweeps (~13-54 ms) so the ladder
 ; spans entry 0 to the derived floor across all sixteen rungs. Whether the real
 ; curve is linear at all is exactly what T2 exists to settle, and it has not been
 ; measured.
 .PATTERN PAT_STEP
 step_cadence:
-        .DW 54, 50, 47, 44      ; 0-3   (0 = skill 1's fresh squadron, 748 ms)
-        .DW 40, 38, 36, 33      ; 4-7   (4 = skill 2's fresh squadron, 554 ms)
-        .DW 30, 27, 25, 22      ; 8-11  (9 = skill 3's fresh squadron, 374 ms)
-        .DW 20, 18, 16, 15      ; 12-15 (15 = the floor, 208 ms, audio-derived)
+        .DW 55, 52, 48, 45      ; 0-3   (0 = skill 1's fresh squadron, 740 ms)
+        .DW 41, 39, 37, 34      ; 4-7   (4 = skill 2's fresh squadron, 552 ms)
+        .DW 31, 28, 25, 23      ; 8-11  (9 = skill 3's fresh squadron, 377 ms)
+        .DW 21, 18, 16, 15      ; 12-15 (15 = the floor, 202 ms, audio-derived)
 
 ; --- Skill -> where on that ladder a fresh squadron starts ------------------
 .PATTERN PAT_SKILL
 skill_base:
         .DW $000                ; 0: unused - the dial reads 1..3
-        .DW $000                ; skill 1: 54 sweeps per step, 748 ms nominal
-        .DW $004                ; skill 2: 40, 554 ms
-        .DW $009                ; skill 3: 27, 374 ms
+        .DW $000                ; skill 1: 55 sweeps per step, 740 ms nominal
+        .DW $004                ; skill 2: 41, 552 ms
+        .DW $009                ; skill 3: 28, 377 ms
         .DW $000, $000, $000, $000
         .DW $000, $000, $000, $000
         .DW $000, $000, $000, $000

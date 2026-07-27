@@ -138,9 +138,10 @@ Pooled: **mean 205.1 ms, median 203.2 ms, sd 22.1 ms, n = 21**, min 151, max 253
 The first-half and second-half means are 206.9 and 203.4 ms, so there is no drift
 across the recording that would suggest the level changed mid-take.
 
-At the emulated machine's measured sweep period of 13.86 ms (below), 205 ms is 14.8
-sweeps; the ROM stores 15, a residual of +1.4%. It stored 13 while the sweep was
-15.46 ms, which was the same 201 ms; the count moved when the sweep rate did.
+At the emulated machine's measured nominal sweep period of 13.46 ms (below), 205 ms
+is 15.2 sweeps; the ROM stores 15, the closest integer under it, a residual of
+-1.5%. It stored 13 while the nominal sweep was 15.46 ms, which was the same 201 ms
+by the same rule; the count moved when the sweep rate did.
 
 ### What the audio row does and does not say
 
@@ -203,51 +204,61 @@ message is "not yet measured", not a number.
 Read off the emulated board (`Board.runFrames(1)` in a loop, cycle-stamped; the same
 machine `tools/probe/machine-probe.ts` drives):
 
-| Quantity | Value |
-| --- | --- |
-| Machine cycles per completed display sweep | 5543 shortest, 5620 mean over sweeps carrying no sound (n = 569 of 585 in 10 s), 5871 longest |
-| Oscillator | 400 kHz (`src/machine/cpu/cpu.ts`, `OSCILLATOR_HZ`) |
-| Sweep period | **13.86 ms** nominal, 14.05 ms mean |
-| Sweep rate | **72.2 Hz** nominal, **71.0 Hz** mean |
+The sweep is not periodic, so there is no single number. Three populations, all
+taken over the sweeps that carry no sound (see below for why those are separated
+out):
 
-Every sweeps-to-milliseconds conversion in this document and in the ROM's cadence
-block uses this figure. It is a measurement of the emulator, not of the unit.
+| Population | Cycles per sweep | Period | Rate |
+| --- | --- | --- | --- |
+| Nothing on the tube - after game over, or before the first jet | 5383 | 13.46 ms | 74.3 Hz |
+| Unattended game, power-on to game over (n = 133) | 5564 | 13.91 ms | 71.9 Hz |
+| **Game being played, controls worked throughout (n = 318)** | **5598** | **14.00 ms** | **71.5 Hz** |
 
-It was 6190 cycles, 15.5 ms, 64.5 Hz until D4 of
-`docs/evidence/vfd-appearance.md` excluded that rate: sampled by a 30 fps camera a
-64.5 Hz sweep beats at 4.5 Hz, and the video measures the beat at 10.6-12.5 Hz.
-`DWELL_INNER` moved from 15 to 13 to put the sweep inside the adjacent admissible
-interval, 70.6-72.5 Hz. Every sweep-denominated constant in the ROM moved with it,
-so the milliseconds each one stands for are unchanged.
+Oscillator: 400 kHz (`src/machine/cpu/cpu.ts`, `OSCILLATOR_HZ`).
 
-**Two figures, because the sweep is not periodic.** A sweep that does more game
-work is a longer sweep, so the sound-free sweeps alone span 5543-5871 cycles - and
-the ROM does not strobe the tube at all while a note plays, so a sweep with a note
-in it runs the length of the note longer (a 70 ms march note gives a 5543 + 28,400
-cycle sweep). The interval the video brackets is the *mean* refresh rate, which is
-the 71.0 Hz figure above, taken over sweeps that carry no sound; the blanked ones
-are excluded for the same reason `vfd-appearance.md` excludes blanked frames from
-its own refresh statistics.
+**Which one is which.** The played-game figure is the one D4 of
+`docs/evidence/vfd-appearance.md` constrains - the video is of a game being played,
+and the interval it admits brackets the mean refresh rate of a tube being watched.
+`tools/probe/sweep-timing.test.ts` asserts on that population. The 13.46 ms nominal
+is the deterministic figure the ROM's own dwell arithmetic produces with nothing
+drawn, and it is what every sweeps-to-milliseconds conversion in this document and
+in the ROM's cadence block converts through, as the old 15.46 ms did before it.
+Both are measurements of the emulator, not of the unit.
 
-**A sweep count is not wall clock.** `note_loop` does not sweep the tube while a
-sound plays, so any cadence with a note inside it lands longer than
-`sweeps * 13.86 ms`. Measured off the tube at skill 1, a fresh squadron's nominal
-748 ms step (54 sweeps) arrives every 1072 ms median. Quote both, or quote which.
+It was 6183 cycles, 15.46 ms nominal and 62.9 Hz on a played game, until D4
+excluded that rate: sampled by a 30 fps camera a 64.5 Hz sweep beats at 4.5 Hz, and
+the video measures the beat at 10.6-12.5 Hz. `DWELL_OUTER`/`DWELL_INNER` moved from
+15/15 to 14/13, with one NOP added inside the dwell's outer pass because the two
+nibbles alone cannot reach the interval's middle, to put the played-game mean at
+71.5 Hz. Every sweep-denominated constant in the ROM moved with it, so the
+milliseconds each one stands for are unchanged.
+
+**Why the sound-free sweeps are separated out.** The ROM does not strobe the tube
+at all while a note plays, so a sweep with a note in it runs the length of the note
+longer - a 70 ms march note gives a 5383 + 28,000 cycle sweep. Those are the blanks
+D1 of `vfd-appearance.md` measures, and `vfd-appearance.md` excludes blanked frames
+from its own refresh figures for the same reason. Over the played game above they
+are 38 sweeps in 356.
+
+**A sweep count is not wall clock.** Because of those blanks, any cadence with a
+note inside it lands longer than `sweeps * 13.46 ms`. Measured off the tube at
+skill 1, a fresh squadron's nominal 740 ms step (55 sweeps) arrives every 1064 ms
+median. Quote both, or quote which.
 
 ## Wall-clock pace of the current ROM, measured
 
 Taken off the tube (`Board.getLitSegments()` per completed frame, tracking the jet
 and rocket dots by grid and plate), power-on to game over, no player input. Nominal
-= sweeps x 13.86 ms; measured = median wall clock between column changes.
+= sweeps x 13.46 ms; measured = median wall clock between column changes.
 
 | Quantity | Sweeps | Nominal | Measured (median) |
 | --- | --- | --- | --- |
-| Jet step, skill 1 fresh squadron | 54 | 748 ms | 1072 ms |
-| Jet step, skill 2 fresh squadron | 40 | 554 ms | 867 ms |
-| Jet step, skill 3 fresh squadron | 27 | 374 ms | 545 ms |
-| Jet step, ladder floor (`PAT_STEP` 15) | 15 | 208 ms | not re-measured |
-| Rocket, per column | 7 | 97 ms | 116 ms (range 114-257) |
-| Rocket, full-board flight | 42 | 582 ms | not re-measured |
+| Jet step, skill 1 fresh squadron | 55 | 740 ms | 1064 ms |
+| Jet step, skill 2 fresh squadron | 41 | 552 ms | 864 ms |
+| Jet step, skill 3 fresh squadron | 28 | 377 ms | 614 ms |
+| Jet step, ladder floor (`PAT_STEP` 15) | 15 | 202 ms | not re-measured |
+| Rocket, per column | 7 | 94 ms | 112 ms (range 111-254) |
+| Rocket, full-board flight | 42 | 565 ms | not re-measured |
 
 The measured column runs long against the nominal for the reason the section above
 gives: every march step fires a 70 ms note, and the tube is not swept while it
@@ -260,15 +271,15 @@ change makes them cheaper to reach. Their previous measured values - 365 ms and
 284-549 ms, taken when the sweep was 15.46 ms - are not carried forward, because a
 figure measured on a different sweep rate is not a figure for this one.
 
-These are the figures after the pacing fix, re-measured at the 13.86 ms sweep. What
+These are the figures after the pacing fix, re-measured at the 13.46 ms sweep. What
 they replaced, measured the same way on the same machine at the old 15.46 ms sweep:
 
 | Quantity | Was | Measured (median) | Now |
 | --- | --- | --- | --- |
-| Jet step, ladder floor | 5 sweeps, 77 ms nominal | 238 ms | 15 sweeps, 208 ms nominal |
-| Rocket, per column | 2 sweeps, 31 ms nominal | 48 ms | 7 sweeps, 116 ms |
-| Rocket, full-board flight | 12 sweeps | 235 ms mean, max 387 | 42 sweeps, 582 ms nominal |
-| Rocket fire interval, skill 3 | 11 sweeps, 171 ms nominal | - | 45 sweeps, 624 ms nominal |
+| Jet step, ladder floor | 5 sweeps, 77 ms nominal | 238 ms | 15 sweeps, 202 ms nominal |
+| Rocket, per column | 2 sweeps, 31 ms nominal | 48 ms | 7 sweeps, 112 ms |
+| Rocket, full-board flight | 12 sweeps | 235 ms mean, max 387 | 42 sweeps, 565 ms nominal |
+| Rocket fire interval, skill 3 | 11 sweeps, 171 ms nominal | - | 46 sweeps, 619 ms nominal |
 
 The old rocket flight is why the game could not be played: the only defence against
 a rocket is moving the lever out of its lane, and a 235 ms mean flight is at or
