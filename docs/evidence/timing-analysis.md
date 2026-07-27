@@ -3,12 +3,20 @@
 How the v2 ROM's cadence constants will be derived from the reference video, and
 what is currently blocked.
 
-**Status: one figure is derived from audio; T2-T10 remain unmeasured.** The march
-beep in `gameplay-audio.m4a` has now been measured, which bounds the *floor* of the
-jet step cadence (row `T1-audio` in the [measured timings](#output-format) table).
-Nothing else in this document has a measurement behind it, and the per-skill
-gameplay video that T2-T10 need still does not exist. Read the
-[Evidence gap](#evidence-gap) section before using any number from this document.
+**Status: the squadron's step cadence is measured against known scores, and the
+audio row that `PAT_STEP`'s floor was derived from is withdrawn.** `IMG_6113.mov`
+has been analysed frame by frame with the score read at each measurement - see
+[The cadence against progress](#the-cadence-against-progress-measured). The
+headline is that the ladder is about **twice too fast at both ends**, and that
+the premise its floor rested on - that the march beep fires once per squadron
+step - is contradicted by the video directly.
+
+One change was made on the strength of it: `WAVE_LAST`, which bounds how far a
+game walks the ladder. The `PAT_STEP` values themselves are left alone and the
+reason is recorded in [What is not changed, and
+why](#what-is-not-changed-and-why). T2, T5, T6, T8, T9 and T10 remain unmeasured.
+Read the [Evidence gap](#evidence-gap) before using any number from this
+document.
 
 ## Why sweep counts, not milliseconds
 
@@ -74,13 +82,14 @@ gets its own measurement at **each of skill 1, 2, and 3** unless marked otherwis
    sweep period. Round to the nearest integer and **record the pre-rounding value and
    the residual**. A residual above a few percent means either the fps is wrong, the
    sweep rate is wrong, or the ROM's master loop does not cost what it is assumed to.
-6. **Cross-check against audio - T1 only.** The jet march beep fires once per
-   squadron step, and `gameplay-audio.m4a` is a 130 s recording with an audible
-   march. The beep onsets in that recording give an independent read on T1 for
-   whichever skill level was being played, at audio sample resolution rather than
-   frame resolution. Use it to validate the video-derived figure. It cannot replace
-   the video, because the recording's skill level is not documented and it covers one
-   level only.
+6. **Do not cross-check against audio.** This step used to read "the jet march beep
+   fires once per squadron step, so the beep onsets give an independent read on T1 at
+   audio sample resolution". **That premise is refuted** - see
+   [What the audio row does and does not say](#what-the-audio-row-does-and-does-not-say).
+   In the one window where both can be measured against each other, the column steps
+   run at 1.07-1.20 s and the 590-720 Hz band repeats at 0.763 s. An audio period is
+   a game period only once something visual has shown which event it belongs to, and
+   for these recordings nothing has.
 
    **This is the only row the audio can cross-check.** The recordings capture sounds,
    not game state, so they cannot time anything whose boundaries are visual - a
@@ -96,7 +105,11 @@ Each measured row lands in the table below and is cited from the ROM source:
 
 | ID | Quantity | Skill | Measured (s) | fps / frames | Sweeps (pre-round) | **Sweeps (ROM)** | Residual | Source clip / timestamp |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| T1-audio | Squadron step rate, fastest observed | unknown | 0.205 +/- 0.022 | n/a - audio, 22050 Hz | 13.2 | **13** (`PAT_STEP` entry 15, the floor) | -1.5% | `gameplay-audio.m4a`, 55-121 s |
+| T1-audio | *withdrawn - the premise is refuted, see below* | unknown | 0.205 +/- 0.022 | n/a - audio, 22050 Hz | 13.2 | ~~13~~ | - | `gameplay-audio.m4a`, 55-121 s |
+| T4 | Cadence floor - step at scores 164 and 188, cap 199 | unknown | 0.733 and 0.900 | 30 fps, 22 and 27 frames | see below | **15** (`PAT_STEP` 15), runs 365 ms wall clock | ROM 2.0-2.3x fast | `IMG_6113.mov`, t=391.9, t=396.8 |
+| T1 | Squadron step, slowest steady march observed | unknown | 2.033 and 2.050 | 30 fps, 61 and 61.5 frames | see below | ladder tops out near 1050 ms | ROM ~2x fast | `IMG_6113.mov`, t=64.4, t=90.2 |
+| T1 | Squadron step at score 87 | unknown | 1.067 | 30 fps, 32 frames | see below | - | - | `IMG_6113.mov`, t=291.3 |
+| T3 | Rungs a whole game descends | unknown | ~6 rungs over score 0-199 | 30 fps | - | **1** (`WAVE_LAST`) + 6 from kills | - | `IMG_6113.mov`, t=291-397 |
 | T1-video | One aircraft advancing one cell | unknown | 1.4 (range 1.2-1.9) | 30 fps, 42 frames (36-56) | see below | not yet mapped | - | `IMG_6113.mov`, whole file, n=12 |
 | T5-video | Missile step, one cell | unknown | 0.500 | 30 fps, 15 frames | see below | not yet mapped | - | `IMG_6113.mov`, whole file, n=744 |
 | T-march | March beep interval | unknown | 0.71 median | n/a - audio, 22050 Hz | - | - | - | `IMG_6113.mov`, t=180-270 s, n=111 |
@@ -150,9 +163,46 @@ by the same rule; the count moved when the sweep rate did.
 
 ### What the audio row does and does not say
 
-**Says:** the real unit's squadron was never observed to step faster than ~205 ms,
-across 65 s of one recording. The march beep fires once per sweep in which any jet
-stepped, so the beep rate *is* the squadron step rate, whatever the skill was.
+**The load-bearing claim below was wrong, and the video is what showed it.** It is
+kept, struck through, because a ROM constant was derived from it.
+
+> ~~**Says:** the real unit's squadron was never observed to step faster than
+> ~205 ms, across 65 s of one recording. The march beep fires once per sweep in
+> which any jet stepped, so the beep rate *is* the squadron step rate, whatever
+> the skill was.~~
+
+**The premise does not hold.** The open question the section below poses - "either
+the beep pulses twice per squadron step, or the beep is a per-aircraft rate and
+two aircraft alternate phase" - has a third answer, and it is the one the video
+supports: **the beep is not on the step's clock at all.** Over t=122-128 there are
+four consecutive squadron column steps, timed frame by frame at 1067, 1200 and
+1167 ms, in two lanes simultaneously. In that same window:
+
+- the 590-720 Hz envelope's autocorrelation peaks at lags of **0.763 s and
+  1.550 s** - not at 1.1-1.2 s, and 1.550 is that peak's second harmonic;
+- exactly one gated note in the band falls inside the window at all, 1.14 s from
+  the nearest step;
+- the step onsets land on troughs of that envelope.
+
+Clip-wide the gated march-band note interval has its mode at 700-800 ms. Missile
+launches - a cyan onset at column 1, directly observable in the picture - have
+their mode at 600-1000 ms. So the ~760 ms period in that band tracks **how often
+the player fires**, not how often the squadron steps.
+
+Two consequences. First, the "twice as slowly as the march beep" ratio in the
+section below is a coincidence of the player's firing rate and needs no
+explanation. Second, whatever produced the 205 ms figure in `gameplay-audio.m4a`
+is unidentified: that recording has no picture to check against, so the row is
+withdrawn rather than reinterpreted. 205 ms is a real repetition rate of something
+real, and nothing here says what.
+
+**A method note worth keeping, because it nearly produced a wrong answer twice.**
+The 205 ms analysis peak-picked the band envelope with a 120 ms refractory window.
+Re-run on this video's audio, that method produces a large population of intervals
+at exactly 119-134 ms - the refractory period itself - because the notes are
+longer than 120 ms and one note is chopped into several "onsets". Gating the
+envelope with a Schmitt trigger and taking each note's rising edge removes the
+artefact; the note then measures 148 ms mean, 168 ms median.
 
 **Does not say** anything about the per-jet step period. Jets step one at a time on
 a common period at different phases, so a squadron rate of 205 ms is one jet at 205
@@ -223,11 +273,171 @@ contradiction - the record of that is in the sprite README.
   cell**, so the video gives its dwell (2.5 s median, 5.9 s longest) but no crossing
   duration, and does not establish that it crosses at all.
 
+## The cadence against progress, measured
+
+The section above measures how fast one aircraft steps. This one measures how that
+rate changes as a game is won, which is what the sixteen-rung ladder exists to
+model, and it needs the **score** read at every measurement.
+
+### Method, and three traps in it
+
+**Isolate phosphor by colour excess, never luminance** - red is
+`R - max(G,B) > thr`, cyan `min(G,B) - R > thr`. Every figure here was recomputed
+at thr = 28 and thr = 40 and is unchanged.
+
+**Anchor the cell lattice per chunk, in both axes.** Positions fall on a lattice of
+pitch 76.5 px in x and 43 px in y, anchored on the cyan `SCORE` label's left edge
+`ax` and top edge `ay`, re-measured every 5 s and median-filtered over 45 s. Red jet
+centre for ROM column k is `ax + 569.5 - 76.5k`; lanes are at `ay-4..+33`,
+`ay+36..+76`, `ay+79..+120`. Checked at t=15 (`ax`=960) and t=205 (`ax`=1024):
+observed centres land within 2 px.
+
+> **Trap 1.** The camera drifts 68 px in x *and 28 px in y* across the clip. 28 px
+> is two thirds of the lane pitch, so a lane band fixed in frame coordinates mixes
+> lanes, and one jet straddling the boundary reads as *a pair of sprites in
+> adjacent lanes at the same column*. An earlier pass of this analysis produced
+> exactly that artefact and came close to recording it as a finding.
+
+**Tell sprites apart by lit width.** Jets measure 34-42 px and sit on integer
+columns; the battleship measures 58-60 px and sits at column 5.8, half a column
+out, because it is wider than a cell.
+
+> **Trap 2.** Without that check, a jet holding one column for seconds is
+> indistinguishable from a battleship episode. Width was checked at eight separate
+> timestamps before any dwell below was believed.
+
+**Gap-fill presence over 9 frames.** The room was daylit, so the shutter is short
+and one frame catches only part of one multiplex scan: a stationary jet is detected
+in about 70% of frames, with the colour excess reading 70-138 when present and ~14
+when absent. It is a sampling problem, not a threshold one.
+
+**Read the score from magnified accumulated crops** over 0.30 s windows, using
+monotonicity to separate `0` from `8`.
+
+> **Trap 3.** A partially detected `8` also reads as `3`, which is how t=400 first
+> read 183 between two 188s. Cross-check: `assets/reference/sprites/README.md` read
+> 38, 40, 41 frame by frame over t=205-208; this pass reads 41 at t=210.
+
+### What is in the clip
+
+At least two games. The tube goes completely dark for 11.4 s and 4.5 s across
+t=95.7-112.7, and the score is 45 before it and back to single figures after: a
+power cycle. Shorter dark runs of 1.4-6.2 s occur during play without resetting the
+score, so they are not session boundaries. Separately there are **eight complete
+tube blanks of 0.87-0.90 s**, evenly scattered; three launcher hits per game across
+the clip's games would be about that many, which would make them the post-hit
+warning sequence - but a count is not a measurement and T10 stays open.
+
+Scores, read as above:
+
+| t (s) | 64 | 90 | 168 | 200 | 210 | 240 | 270 | 291 | 320 | 360 | 392 | 396-402 | 406 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| score | 42 | 45 | 11 | 28 | 41 | 61 | 77 | 87 | 110 | 126 | 164 | 188 | 199 |
+
+Glare makes the score illegible from t=112 to t=165, which is why no measurement
+below sits at a known *low* score.
+
+### The cadence
+
+A step is a **handoff**: an occupancy episode at `(lane, k)` ending and one at
+`(lane, k-1)` starting within -0.10 to +0.35 s of it, the overlap allowing for
+phosphor holding the vacated cell lit for a few frames. Chained handoffs are one
+jet crossing several columns, so a chain of two or more gives two or more
+independent reads of the same cadence. Only six exist in 408 s, because most jets
+are shot down before completing two steps: 111 dwells in the clip end with a cyan
+burst lighting the cell the red sprite just left.
+
+| video t | columns | lane | step intervals (ms) | median | score |
+| --- | --- | --- | --- | --- | --- |
+| 64.4 | 5 -> 4 -> 3 | 0 | 2033, 2033 | 2033 | 42 |
+| 90.2 | 5 -> 4 -> 3 | 0 | 2000, 2100 | 2050 | 45 |
+| 123.0 | 3 -> 2 -> 1 -> 0 | 0 | 1067, 1200, 1167 | 1167 | illegible |
+| 123.0 | 3 -> 2 -> 1 -> 0 | 1 | 1067, 1200, 1167 | 1167 | illegible |
+| 134.5 | 5 -> 4 -> 3 | 0 | 1367, 1333 | 1350 | illegible |
+| 291.3 | 4 -> 3 -> 2 -> 1 | 2 | 700, 1300, 1067 | 1067 | 87 |
+
+Single handoffs add two readings at high score: **733 ms at t=391.9 (score 164)**
+and **900 ms at t=396.8 (score 188)**. Across the whole clip there are 36 single
+handoffs, median 1167 ms, and **the fastest interval measured anywhere is 700 ms**.
+
+The two chains at t=123.0 are the same instant in two lanes and agree interval for
+interval, which is the direct observation that jets step **in lockstep** rather
+than at staggered phases - the alternative the section above could not rule out.
+
+Robustness: the same six chains with the same intervals come out at colour-excess
+thresholds 28 and 40 and at cell-occupancy minima of 10, 12, 16 and 24 px.
+
+### What that says about the ladder
+
+Two of these need no knowledge of the skill dial, which is what makes them usable
+at all - the dial is not in frame in any of 12,237 frames.
+
+1. **The floor is 2.0-2.3x too fast.** At scores 164 and 188 against a 199 cap, a
+   game is at or near the bottom of the ladder however progress is modelled and
+   whatever the dial says. The unit steps at 733 and 900 ms there; nothing in the
+   whole clip steps faster than 700 ms. `PAT_STEP` entry 15 runs at 365 ms of wall
+   clock.
+2. **The ladder cannot reach the slowest march the unit was observed making.** Two
+   chains give 2033 and 2050 ms, each three columns with two intervals agreeing to
+   100 ms. This ROM cannot march slower than about 1050 ms at any setting or at any
+   point in a game.
+3. **The descent is spent far too early.** At score 87 the unit steps at 1067 ms and
+   is *still descending* - 733-900 ms by scores 164-188. Under `speed_index` as it
+   stood, entry point plus kills plus cleared waves saturating at 15, a game reached
+   entry 15 at around score 30 and stayed pinned there for the remaining 85% of the
+   game.
+
+(3) is what `WAVE_LAST` now bounds. The whole measured descent across a game is
+about six rungs, and the thin-out term supplies six on its own, so the permanent
+per-wave term is bounded to one rung rather than one per wave. What that costs is
+recorded at `WAVE_LAST` in the ROM: PRD v1 rule 2's "each cleared squadron respawns
+faster" is not shown false by the video, only shown not to be needed to explain it.
+
+### What is not changed, and why
+
+(1) and (2) condemn the `PAT_STEP` values themselves, and they are still there.
+Retuning them is not a free edit to one table:
+
+- **Cadence and sweep rate are coupled.** A sweep with more sprites lit costs more
+  cycles, and a slower squadron keeps more jets alive at once. A ladder slow enough
+  to reach 2040 ms drops the mean silent sweep to 70.46 Hz, below the 70.6 Hz floor
+  of the band `vfd-appearance.md` D4 admits and `sweep-timing.test.ts` pins. Closing
+  the gap therefore has to be decided together with the sweep period.
+- **It moves which game states the coverage fixtures reach.** Jets that live longer
+  are shot further out, so `rom-atlas-conformance.test.ts` stops seeing bursts in
+  the near columns and rockets in every lane. Those scenarios are calibrated against
+  the current cadence and need recalibrating with it, not around it.
+
+Neither is a reason to keep the cadence wrong. They are the reason it is a
+coordinated change rather than this one, and the numbers it has to hit are the two
+bounds above.
+
+### The holds, which no single-period model can express
+
+Red sprites hold one column for **3 to 16 s** in several stretches: t=206-217 at
+column 3, t=259-300 at columns 3-5 in lane 1, t=336-350. Lit widths of 40-42 px
+confirm these are jets, not the battleship. The score climbs and missiles fly
+throughout, so the game is live. Column-presence time is not uniform either: red is
+lit for 49, 66, 69 and 107 s at columns 6, 5, 4 and 3.
+
+So the real machine's squadron does not step on a metronome, and a table of periods
+cannot say so. Recorded as a known divergence and deliberately not encoded; what
+would settle it is footage in which jets can be tracked individually and counted.
+
 ## Evidence gap
 
 **Still blocked on: the owner-supplied per-skill gameplay video, 15-20 s per skill
 level.** PRD R7 lists it as pending. `IMG_6113.mov` is one recording at one unknown
 skill, which supplies the rows above but not a per-skill ladder.
+
+What that clip lacks is not length but *control*: the skill dial is never in frame,
+glare makes the score illegible for the first minute of every session, and the
+daylit room forces a shutter short enough that a sprite is detected in only ~70% of
+frames. **30 s per skill level, recorded in a dark room with the camera on a support
+and the dial photographed before each take**, turns T1-per-skill, T2, T3 and T9 from
+unmeasurable into arithmetic - it makes jets individually trackable and puts a known
+level and a known score against every interval. That one recording is worth more
+than anything else on this list.
 
 Consequently the following **cannot be stated** and must not be written into the ROM
 as if measured:
@@ -236,9 +446,16 @@ as if measured:
   squadron was ever seen to step and the video row gives one aircraft's step at one
   unknown skill; neither gives a per-skill cadence, and `PAT_STEP` entries 0-14 are still
   v1 approximations.
-- The thin-out speed-up curve, including whether it is linear (T2)
-- The wave respawn speed-up (T3)
-- The cadence floor (T4)
+- The thin-out speed-up curve, including whether it is linear (T2). Detection in
+  this footage is not clean enough to count jets per wave, so the thin-out term and
+  the per-wave term cannot be separated. `WAVE_LAST` bounds their *combined* reach
+  without claiming which does the walking.
+- The wave respawn speed-up **as a size** (T3). Its reach is now bounded by
+  measurement; how big a single cleared wave's contribution really is is not.
+- **Closed: the cadence floor (T4).** 733 and 900 ms at scores 164 and 188 against a
+  199 cap, and nothing faster than 700 ms anywhere in the clip. `PAT_STEP` entry 15
+  does not yet answer to it - see
+  [What is not changed, and why](#what-is-not-changed-and-why).
 - Battleship crossing duration and interval distribution (T5, T6). The video adds that
   the battleship's **traversal is not established at all** - 17 sightings, never outside
   its own cell.
@@ -312,7 +529,7 @@ and rocket dots by grid and plate), power-on to game over, no player input. Nomi
 | Jet step, skill 1 fresh squadron | 55 | 740 ms | 1064 ms |
 | Jet step, skill 2 fresh squadron | 41 | 552 ms | 864 ms |
 | Jet step, skill 3 fresh squadron | 28 | 377 ms | 614 ms |
-| Jet step, ladder floor (`PAT_STEP` 15) | 15 | 202 ms | not re-measured |
+| Jet step, ladder floor (`PAT_STEP` 15) | 15 | 202 ms | not re-measured; ran 365 ms before the sweep retune, **2.0-2.3x faster than the unit** (T4) |
 | Rocket, per column | 7 | 94 ms | 112 ms (range 111-254) |
 | Rocket, full-board flight | 42 | 565 ms | not re-measured |
 
