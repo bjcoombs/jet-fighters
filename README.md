@@ -24,18 +24,18 @@ display**.
 
 Most of what this emulator knows about the tube, it learned late, and by being wrong first.
 
-For months the sprites came from photographs and video of the unit *playing* - which means
-through a smoked filter, in sunlight, sampled slower than the tube refreshes. Then the
-owner took the unit apart and photographed the bare glass, unpowered, at 46.7 megapixels.
-Every segment visible at once, no filter, no multiplexing to defeat.
+Until late on, every sprite came from photographs and video of the unit *playing* - which
+means through a smoked filter, in sunlight, sampled slower than the tube refreshes. Then
+the owner took the unit apart and photographed the bare glass, unpowered, at 46.7
+megapixels. Every segment visible at once, no filter, no multiplexing to defeat.
 
 Almost everything downstream of that turned out to be an assumption we had promoted to a
 test:
 
 - **Five score segments were phosphor the glass does not have.** The hundreds digit is not
   a seven-segment digit - it is two printed strokes, because the score caps at 199 and it
-  only ever needs to draw a `1`. A conformance test had been flagging those five as
-  never-driven for weeks; what was missing was the reason.
+  only ever needs to draw a `1`. A conformance test had already flagged those five as
+  never-driven, and had been given the wrong reason; the photograph supplied the right one.
 - **The jets are fifteen distinct shapes**, one per lane per column, not one outline
   translated across the field. Within a single cell the top lane banks one way, the middle
   flies level with a forked twin tail, the bottom banks the other. The animation is printed
