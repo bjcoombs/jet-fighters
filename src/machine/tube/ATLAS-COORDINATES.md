@@ -120,127 +120,137 @@ measuring the playfield height off the photos gives height/width ratios between
 line, where the foreshortening is close to uniform, were taken from the photos.
 Every vertical proportion comes from v1's already-tuned layout instead.
 
-### Shapes
+### Shapes, and where each one comes from
 
-The score digits and the battleship are still the v1 shape tables from
-`src/render/sprites.ts` (`BATTLESHIP_SHAPE` and the seven-segment rectangle map
-in `drawSevenSegment`), scaled and translated into atlas units. Digit height is
-v1's `cellH * 0.6`.
+The score digits and the SCORE label are still the v1 shape tables from
+`src/render/sprites.ts`, scaled and translated into atlas units. The player's
+ship and the burst that marks its destruction are the outlines traced off the
+two lit close-ups.
 
-**The jets, the player's ship, the missile bursts, the explosion and the rocket
-dots were traced from the photographs**, replacing v1's `JET_SHAPE`,
-`LAUNCHER_SHAPE` and `LIFE_DART_SHAPE`. The v1 tables rendered the jets as
-eight-point chevrons and the launcher as a filled right triangle; neither is what
-the unit shows, and the owner rejected the v2.11 build on exactly that. The
-v2.12 atlas then drew the jets too small, the launcher as a rack of rails at the
-field's right-hand edge, the missile as two dots side by side, and the printed
-white marks as lit phosphor; the two lit close-ups corrected all four. See
-"Sprite silhouettes" below for the method and the numbers.
+**Every other playfield sprite is traced from the gameplay video**, from the
+per-cell crops in `assets/reference/sprites/video/`. That set supersedes the
+outlines taken from the two handheld stills, which could prove that the sprites
+were not what v1 drew but could not recover what they are.
+
+### Tracing from the video crops
+
+The crops are point-sampled magnifications of the video's own pixels, at a
+factor that differs per crop (8x, 9x and 10x among the ones used here); the
+factor is recovered from the run lengths of a few scanlines rather than assumed,
+so the mask is at the video's resolution and no resampler is in the path.
+
+Phosphor is isolated the way `assets/reference/sprites/README.md` isolates it:
+red as `R - max(G, B) >= 45`. **Cyan needed a different rule.** The accumulated
+cyan cores saturate toward white, where `min(G, B) - R` collapses to nearly
+zero and selects the fringe instead of the sprite, so cyan is taken as
+`min(G, B) >= 150` against a dark background. That threshold is what separates
+the jet-kill burst's two blobs, which a colour-excess mask joins through a
+four-pixel neck.
+
+Each family's outline is the **per-pixel majority of every crop of that
+sprite**, normalised to a common box - the catalogue's accumulation method one
+level up, applied across the cells that carry the same shape rather than across
+the frames of one cell. A shape is then what the samples agree on rather than
+what one sample happened to catch. The boundary of the majority mask is walked
+and simplified (Douglas-Peucker, 1.2 px), which is where the vertex counts in
+`atlas.json` come from.
+
+**Reading the crops' column numbers.** The crop filenames run `col0` to `col5`
+while the catalogue's prose numbers columns 0 (the G line) to 6 (farthest), and
+the prose was not updated when the crop set was replaced - it still cites
+filenames that no longer exist. The reading used here is that **crop `colN` is
+atlas grid `N - 1`**, with crop `col0` the battleship's cell, which has no grid
+of its own. Three families corroborate it independently: darts appear at crop
+col1-col5 and the atlas gives them five columns, jet-kill bursts at col1-col4
+and the atlas gives them four, the battleship at col0 alone. It is a reading and
+not a statement from the catalogue, and it is the first thing to check if a
+sprite turns out to be a cell out.
+
+### Converting to atlas units
+
+The catalogue measures in **reference-pose pixels** on a lattice of 74.5 px
+column pitch and 44 px lane pitch. The atlas cell is 36.3 x 17.68 units
+(`layout.ts` `CELL`), so:
+
+```text
+units_x = px * 36.3 / 74.5   = px * 0.487248
+units_y = px * 17.68 / 44    = px * 0.401818
+```
+
+The two factors differ because the atlas spreads its three lanes further apart,
+relative to the column pitch, than the unit does: the reference cell is 1.69:1
+and the atlas cell 2.05:1. Earlier revisions kept each sprite's photographed
+aspect ratio and let its cell-fraction go; this revision **honours the cell
+fraction on both axes** and lets the aspect ratio flatten by that same 1.21.
+The reason the trade went the other way is that the measurements are no longer
+eyeballed off a handheld frame - they are accumulated masks on a lattice
+anchored to the launcher - and a sprite that occupies the wrong share of its
+cell reads wrong next to the printed ghost it sits on. The flattening is stated
+per sprite below rather than hidden.
 
 ### Sprite silhouettes
 
-Sizes were measured off `tube-closeup-score0.webp` and `tube-closeup-score10.webp`,
-the two lit close-ups; the earlier `device-front-*.jpg` frames set the outlines.
-All are handheld frames, so no absolute pixel measurement is trustworthy;
-instead **each axis is expressed as a ratio against a printed feature on that
-same axis**, which cancels the foreshortening:
+| Sprite | Video px | Of a cell (w x h) | Atlas units | Crops |
+| --- | --- | --- | --- | --- |
+| Jet, level pose | 36 x 28 | 0.48 x 0.64 | 17.54 x 11.25 | `video/jet-col*-lane*.png`, 7 of them |
+| Jet, raked pose | 39 x 20 | 0.52 x 0.45 | 19.00 x 8.04 | the other 6 |
+| Attacker colon | 8 x 17 | 0.11 x 0.39 | 3.90 x 6.83 | `video/attacker-colon-2.png` |
+| Missile dart | 25 x 10 | 0.34 x 0.23 | 12.18 x 4.02 | `video/player-missile-col*-lane*.png`, 15 |
+| Jet-kill burst | 33 x 37 | 0.44 x 0.84 | 16.08 x 14.87 | `video/jet-kill-burst-col*-lane*.png`, 5 |
+| Battleship | 50 x 18 | 0.67 x 0.41 | 24.36 x 7.23 | `video/battleship-col0-lane*.png`, 3 |
 
-| Axis | Sprite measurement | Divided by |
-| --- | --- | --- |
-| Horizontal | Sprite bounding width | Printed distance-column width (`(right border - inner rule) / 6`) |
-| Vertical | Sprite bounding height | Lane pitch (spacing of the three border ticks / two lit jets two lanes apart) |
+- **The jet has two poses, and which cell gets which is not free.** Thirteen
+  per-cell crops, clustered by intersection-over-union of their normalised
+  masks, fall into two groups with no ambiguous member: within a group they
+  agree at ~0.85 and across groups at ~0.6-0.7. The groups are exactly the two
+  parities of (column + lane) - the level-winged delta where that sum is even,
+  the raked wedge where it is odd. Stepping between them is the wing-beat the
+  owner described, and it is in the phosphor rather than in the program. The two
+  poses do not share proportions: the level one is deeper and shorter, the raked
+  one longer and flatter, which is most of what makes them read as attitudes
+  rather than as one shape jittering.
 
-Sprites were isolated before measuring rather than eyeballed: the red phosphor
-separates cleanly on an `R - B` channel difference, and the bounding box was read
-off a threshold sweep (25%-45%) so the bloom halo could be bracketed rather than
-guessed.
+  **Two poses is the floor, not the count.** Within-group IoU of 0.85 leaves
+  real residual differences, and this video cannot say whether they are 18
+  subtly distinct outlines or measurement noise. The angled-light photograph of
+  the dark tube is still the thing that would settle it.
 
-| Sprite | Photo, cell fractions | v2.12 atlas | Now |
-| --- | --- | --- | --- |
-| Jet | 0.54 w x 0.61 h | 0.42 x 0.38 (18 x 12) | 0.60 x 0.54 (26.1 x 17.4) |
-| Player's ship | 0.44 x 0.54 | 0.33 x 0.34 (14.5 x 11) | 0.46 x 0.41 (20 x 13) |
-| Missile upper burst | 0.48 x 0.44 | 0.14 x 0.20 (6.3 dia) | 0.38 x 0.27 (16.5 x 8.5) |
-| Missile lower burst | 0.38 x 0.44 | 0.10 x 0.14 (4.4 dia) | 0.30 x 0.27 (13.2 x 8.5) |
-| Explosion | 0.54 x 0.57 | absent | 0.53 x 0.41 (23 x 13) |
+- **The attackers' shot is a colon**, exactly as the owner has always described
+  it: two red blobs one directly above the other with clear dark glass between,
+  8 x 17 px. It is **one segment with two sub-paths**, not two segments. A
+  machine has no reason to light half a colon, and at two segments the family
+  would need 36 addresses instead of 18 and would not fit the tube.
 
-Widths are fractions of a printed cell; the "photo" heights are fractions of the
-lane pitch and the "now" heights are fractions of the atlas cell height, which
-are not the same denominator. The atlas lane cell is 1.35:1 while the
-photographed cell is closer to 2:1 - the atlas spreads the three lanes further
-apart than the unit does - so every sprite is drawn at its **photographed aspect
-ratio** rather than at its photographed cell-fraction on both axes. Honouring
-the vertical cell-fraction would flatten the aircraft into something that no
-longer reads as one. Lane centres are layout, not sprite geometry, and were not
-touched.
+- **The missile dart** points left, the direction the player fires, with a
+  flared tail at its right. Fifteen crops measure 23-28 x 9-12 px - a pixel or
+  two of bloom around one shape - so it is one outline in fifteen placements,
+  which is the negative result the catalogue records: unlike the jet it does not
+  change with position.
 
-What the photographs show, and what the paths now draw:
+- **The jet-kill burst** is two spiky cyan blobs stacked vertically, the upper
+  broader than the lower, their jagged edges facing away from each other. One
+  segment with two sub-paths, for the colon's reason. At 0.84 of the lane pitch
+  it is the largest thing in its cell but it stays inside its own lane.
 
-- **Jets** are plan-view fighter silhouettes with the nose at +x (flying toward
-  the missile station). A needle nose and slim forward fuselage, main wings whose
-  leading edge sweeps back to maximum span about a third of the length from the
-  tail, a waisted rear fuselage, and stepped tailplanes at roughly 0.7 of the
-  wing span. The outline is unchanged from the trace off
-  `device-front-gameplay.jpg`; what changed is its **size**. A lit jet in
-  `tube-closeup-score0.webp` measures ~0.54 of a printed cell wide and the unlit
-  ghost in every cell reads wider still, against the 0.42 the v2.12 atlas drew,
-  which left the field reading as mostly bare glass rather than the woven
-  tapestry of nearly-touching shapes the real tube shows. The outline is scaled
-  1.45x and stays centred on the printed column centre, because `layout.ts`
-  `columnCenterX` drives the silkscreen and the phosphor has to line up with it.
-- **The jet silhouette varies by column.** Owner-confirmed: the jet is not one
-  shape repeated across the field. It **changes from column to column** so that a
-  jet stepping toward the missile station appears to beat its wings, and the
-  animation is a property of the physical phosphor, not of the program. Adjacent
-  ghost cells carry perceptibly different outlines - some flatter and wider in
-  the wing, others more swept. **The two action photographs prove the variation
-  exists without being sharp enough to recover the six shapes**, so the atlas
-  still holds one outline translated across the lattice. That is a known gap, not
-  a claim: `atlas.test.ts` permits up to one distinct outline per column and only
-  requires the three lanes of a column to agree, which is the part that stays
-  true once the variants are traced. The test that asserted all 18 jets share one
-  outline has been removed - it encoded the misunderstanding this paragraph
-  corrects. Recovering the variants needs the angled-light photograph of the dark
-  tube listed under "Reference material still wanted" in
-  `assets/reference/sprites/README.md`.
-- **The player's ship** is the cyan shape inside the playfield near the G line,
-  at one of three lane positions, and it is what fires the missile. Owner-
-  confirmed. It is a ship-like silhouette - a long hull with a raked bow
-  projecting left, a raised superstructure above it and a keel band below,
-  three bands separated by dark glass - not the rack of pointed rails plus a
-  vertical spine the v2.12 atlas drew, which read as a gun battery. The ids keep
-  the `launcher_` prefix so the ROM's plate map does not move.
-- **The missile is two bursts stacked vertically**, not two dots side by side.
-  Owner-reported and confirmed in `tube-closeup-score10.webp`: two cyan
-  starbursts, one directly above the other in the same column, spiky rather than
-  round, and **not identical** - the upper is broader than the lower. `dot0` is
-  now the upper burst and `dot1` the lower; the "head / trail" reading the ids
-  were named for is what the horizontal layout implied and is wrong.
-- **The explosion** is a red-orange starburst thrown up where the player's ship
-  is hit (`sprites/explosion-red-lit.png`). It is centred on the ship's own lane
-  position and drawn wider than the ship, on the assumption that the ship segment
-  goes out as the burst comes on - which is what the photograph catches, the
-  ship being lit at a different lane from the burst.
-- **The three marks at the right-hand edge are white paint, not phosphor.**
-  Owner-confirmed. They are bullet shapes, **nose up**, sitting between the right
-  rail and the glass edge at each lane. They were modelled as lit cyan segments
-  lying horizontal (`life_0..2`); they have left the atlas entirely and are
-  `silkscreen.ts`'s to draw. Their measured place is x 346.4-359.4 in atlas
-  units, one at each lane centre, about 13 wide by 8 tall.
-- **There is no lives display.** Owner-confirmed and important: the unit has no
-  way to show remaining lives. Damage is signalled **only by sound**, the two-
-  and three-beep warnings between hits, which is why that sequence carries so
-  much weight in `docs/evidence/audio-reference.md`. `life_0..2` were phantom
-  segments - the tube has no such phosphor - the same class of fault as the
-  phantom ground line fixed in #32.
+- **The battleship** is a warship in side profile: a long low hull with the
+  superstructure and funnel rising amidships toward the stern. It is drawn in
+  the far cell on the same column centre as that cell's jet, in each of the
+  three lanes, because the video finds it in all three and stationary in
+  whichever one it is lit in.
 
-### Still unresolved: the battleship's width
+### Still unresolved: which cell the battleship is really in
 
-The atlas draws the battleship 43.3 units wide against a jet's 26.1, but the
-seven printed cells read as roughly equal width and every one of them carries
-three ghost jets. Neither close-up catches a battleship crossing, so its sprite
-is still untraced and its size unevidenced; it was left alone rather than
-changed on a guess. It is the second item on the reference wish-list in
-`assets/reference/sprites/README.md`.
+The video puts the battleship in a **seventh** cell, beyond the far distance
+column, and the atlas models six. It is therefore drawn in the far cell, sharing
+that glass with the column-5 jet, the colon, the dart and the burst - five
+segments in one cell, which is why that grid needs plates above 11.
+
+This is the same unresolved question `assets/reference/sprites/README.md` raises
+under "The far-left cell: it is both", and no column-count change is made on the
+strength of it. What has changed is that the ship is no longer one segment in
+the centre lane: three lanes is direct observation, and the ROM already stepped
+`NIB_BSLANE` through all three with nowhere to show it.
+
 
 ## Colour regions
 
@@ -265,8 +275,13 @@ two phosphor regions a segment sits in.
 
 | Region | Segments |
 | --- | --- |
-| `red` | jets (18), jet rockets (18), battleship (1), explosions (3) - everything the machine attacks with, plus the burst it makes of the player |
-| `cyan` | player missile bursts (6), the player's ship (3), score digits (21), SCORE label (1) |
+| `red` | jets (18), attacker colons (18), battleship (3), the player's destruction (3) - everything the machine attacks with, plus the burst it makes of the player |
+| `cyan` | missile darts (15), jet-kill bursts (12), the player's ship (3), score digits (21), SCORE label (1) |
+
+94 segments in all. The two burst families are the same three plates under
+different grids and are opposite colours, which is only possible because colour
+is a property of the glass rather than of the address: `red` under D5, `cyan`
+under D0-D3.
 
 ## Grid and plate mapping
 
@@ -282,22 +297,44 @@ expect:
 
 | Grid | Region | Plates |
 | --- | --- | --- |
-| D0 | Distance column 0 (BATTLE SHIP ZONE, ruler "10") | 0-2 jets lanes 0-2, 3-5 rockets lanes 0-2, 6 battleship |
-| D1 | Distance column 1 | 0-2 jets, 3-5 rockets |
-| D2 | Distance column 2 | 0-2 jets, 3-5 rockets |
-| D3 | Distance column 3 | 0-2 jets, 3-5 rockets |
-| D4 | Distance column 4 | 0-2 jets, 3-5 rockets, 6-11 missile bursts (lane 0 upper/lower, lane 1, lane 2) |
-| D5 | Distance column 5 (the G / capture line) | 0-2 jets, 3-5 rockets, 6-8 the player's ship at lanes 0-2, 9-11 the explosion at lanes 0-2 |
+| D0 | Distance column 0 (BATTLE SHIP ZONE, ruler "10") | 0-2 jets, 3-5 colons, 6-8 missile darts, 9-11 jet-kill bursts, 12-14 battleship lanes 0-2 |
+| D1 | Distance column 1 | 0-2 jets, 3-5 colons, 6-8 darts, 9-11 bursts |
+| D2 | Distance column 2 | as D1 |
+| D3 | Distance column 3 | as D1 |
+| D4 | Distance column 4 | 0-2 jets, 3-5 colons, 6-8 darts |
+| D5 | Distance column 5 (the G / capture line) | 0-2 jets, 3-5 colons, 6-8 the player's ship at lanes 0-2, 9-11 the burst where it is destroyed |
 | D6 | SCORE digit 0 (hundreds) | 0-6 = seven-segment a-g |
 | D7 | SCORE digit 1 (tens) | 0-6 = seven-segment a-g |
 | D8 | SCORE digit 2 (units) | 0-6 = seven-segment a-g |
 | D9 | Status | 0 SCORE label |
 
-The plate assignment is deliberately regular: **on every playfield grid, plate
-`n` is the jet in lane `n` and plate `n + 3` is that lane's rocket dot**. A ROM
-routine that steps the squadron therefore writes the same bit pattern shifted
-between grids, which is how the real program almost certainly worked given 2 KB
-of ROM.
+The plate assignment is deliberately regular, and the regularity is now four
+roles rather than two. **On every playfield grid, plate `n` is lane `n`'s jet,
+`n + 3` its attacker colon, `n + 6` the player's own object in that cell, and
+`n + 9` the burst that happens there.** The last two each mean different things
+under different grids - `n + 6` is the missile dart under D0-D4 and the launcher
+itself under D5, `n + 9` the cyan jet-kill burst under D0-D3 and the player's
+red destruction under D5 - which is what a multiplexed tube is, not an overload.
+A ROM routine that steps the squadron writes the same bit pattern shifted
+between grids, and `PAT_LANE` needs one group per role rather than one per
+actor, which is how the whole playfield fits four table entries wide.
+
+Two holes in that lattice are deliberate: D4 has no plates 9-11 and D5 no dart.
+The video finds no jet, and therefore no kill, in the two cells nearest the
+launcher, and no dart in the launcher's own cell.
+
+### Twelve plates a grid was the ROM's habit, not the tube's
+
+`PLATE_COUNT` is 20 here and in `src/machine/board/display.ts`, where the board
+wires the whole twenty-line plate bus to R0-R4. The game ROM declared only
+`R_PLATE0..2` - R0, R1, R2, twelve plates - for as long as every grid fitted in
+twelve, and that made the twelve look like a hardware ceiling. It is not one.
+
+The far column does not fit: it carries a jet, a colon, a dart, a burst and the
+battleship, which is fifteen segments. **No consolidation recovers those three
+plates** - each of the five families is placed there by direct observation - so
+the battleship sits at plates 12-14 and the ROM drives a fourth plate file onto
+R3. It is the only actor on the tube above plate 11.
 
 ### Assumptions - read this before depending on an address
 
@@ -318,35 +355,32 @@ arrives.
    (v1 PRD R2 expected 5-7). The dotted ruler in `screen-overlay-closeup.jpg`
    appears to have more than six dot groups, so the real column count may be
    higher. If it changes, the atlas and this table change with it.
-4. **A single battleship segment.** The brief for this task specifies one. It is
-   placed in column 0, lane 1 (centre). A crossing therefore has to be modelled
-   as the segment lighting and extinguishing rather than as motion. If the real
-   tube has a battleship segment per lane or per sub-position, that is a gap.
-5. **The missile trail is modelled at one position per lane.** Ids are
-   `missile_lane{L}_dot0` (head, leading) and `dot1` (trail, toward the
-   launcher), staged in column 4. **A missile that visibly travels the length of
-   the field needs a dot pair per column** (or per inter-column gutter), which
-   this six-segment inventory cannot express. This is the atlas's most likely
-   omission, and task 6 or the ROM work will hit it first.
-6. **Rocket dots sit at `cellW * 0.38` right of their jet.** Photos cannot
-   resolve dot positions, and no reference frame shows a rocket in flight at
-   all. The offset was chosen to clear the jet nose while staying inside the
-   cell. The radius (2.8 units) is likewise unevidenced: it preserves v1's
-   `rocketR = jetSize * 0.18` proportion against the re-traced aircraft, so that
-   shrinking the jets did not leave the dots looking like the larger object.
-7. **The explosion's address.** The three `explosion_lane{0-2}` segments are
-   placed on grid 5 - the grid that already carries the player's ship, which is
-   what they mark the destruction of - at plates 9-11, the first free plates
-   there. The photographs show the burst; nothing shows where the MCU drives it
-   from, and the ROM does not drive it at all yet.
+4. **The battleship shares the far column's grid.** The video puts it in a
+   seventh cell that this atlas does not model, so its three segments hang under
+   D0 alongside that column's own five. If the real tube gives the far cell its
+   own grid - which is what a seventh printed cell suggests - these three
+   addresses move.
+5. **Plates 12-14, and R3 with them.** The board wires twenty plate lines, so
+   nothing here is out of range, but no observation says the far column's grid
+   is the one with more plates on it. It is the column that needs them.
+6. **The colon's placement, though no longer its shape.** The shape is now
+   traced (`video/attacker-colon-2.png`). Where it sits inside its cell is not:
+   no frame locates a colon against the jet that fired it, so it keeps the
+   offset the old round dot had, `cellW * 0.358` toward the player, chosen to
+   clear the jet nose while staying inside the cell. It is the only playfield
+   segment that overlaps nothing else in its own cell, and the only one whose
+   position is a choice rather than a measurement.
 
-   The `life_0..2` segments this assumption used to hedge about are **gone**:
-   the marks they modelled are printed paint, and the unit has no lives display
-   to drive. **The ROM has not caught up** - it still writes a launcher tally
-   into grid 9's R0 nibble (`LIFEP_BASE` in `asm/jetfighter.asm`), so it drives
-   addresses 9-1, 9-2 and 9-3 into thin air. `tools/probe/jetfighter-rom.test.ts`
-   pins exactly those three as a named allowance that fails once the ROM stops
-   writing them; removing the write is ROM work in its own change.
+   **Which columns carry a colon is also unevidenced.** All six do here, by
+   symmetry with the jets, because a shot travelling from a jet to the player
+   crosses every cell between them. The video never caught a colon in flight at
+   a known column, so this is the ROM's model rather than the tube's.
+7. **The player's destruction keeps its address and its outline.** The three
+   `explosion_lane{0-2}` segments are still on D5 plates 9-11, and the video
+   corroborates them: `video/player-hit-lane0.png` and `-lane2.png` catch the
+   burst at two of the three lanes. The outline is still the one traced off
+   `sprites/explosion-red-lit.png` - retracing it was not in this change's scope.
+   **The ROM now drives it**, which it did not before.
 8. **`score_label` is an extra segment beyond this task's brief.**
    `device-front-lit.jpg` clearly shows the word SCORE lit in cyan, so it is a
    phosphor segment and it is in the atlas as a single block on D9 plate 0. Its
@@ -355,21 +389,47 @@ arrives.
 
 ### Known segment overlaps
 
-Seventeen pairs of segments have overlapping bounding boxes. Each is a case
-where the game can never light both meaningfully, so they are accepted rather
-than nudged apart:
+Sixty pairs of segments have overlapping bounding boxes, and every one of them
+is two things drawn in the same cell: a jet and the dart that kills it, the
+burst it leaves, the launcher and the burst that marks its destruction, the
+battleship and the far cell's own occupants. Bounding boxes overlap; the drawn
+paths overlap less.
 
-| Pair | Why |
-| --- | --- |
-| `battleship` <-> `jet_lane1_col0`, `rocket_lane1_col0` | Both occupy the far zone's centre lane |
-| `launcher_lane{0,1,2}` <-> `jet_lane{0,1,2}_col5` | A jet reaching the G line has taken the player's ship - game over |
-| `explosion_lane{0,1,2}` <-> `jet_lane{0,1,2}_col5` | Same glass, same reason |
-| `explosion_lane{0,1,2}` <-> `launcher_lane{0,1,2}` | The burst marks where the ship was: the ship goes out as the burst comes on |
-| `missile_lane{0,1,2}_dot{0,1}` <-> `jet_lane{0,1,2}_col4` | A missile crossing a column a jet is flying in is the hit that removes the jet |
+`atlas.test.ts` no longer keeps a list of tolerated pairs. It asserts that **the
+segments whose bounding boxes intersect are exactly the segments whose ids name
+the same (lane, column)** - an equality between the geometry and the naming, so
+a shape that grows into its neighbour's cell fails and so does one that shrinks
+out of its own. The one exception is stated separately and is a placement
+decision rather than a consequence: the colon is offset clear of its own
+cell-mates and touches nothing but the battleship, which is drawn half again as
+wide as a jet and reaches it.
 
-Bounding boxes overlap; the drawn paths overlap less. No other pair touches.
-`atlas.test.ts` pins the list, so a geometry change that creates an eighteenth
-fails rather than passing silently.
+### Known gaps, so they are not lost
+
+Three things this revision leaves undone, recorded rather than dropped:
+
+1. **The battleship's destruction burst is not in the atlas.** The crop set
+   carries `video/battleship-kill-burst-lane0.png` and `-lane2.png` - the pair
+   of cyan blobs arranged side by side that the catalogue's prose still calls
+   the "column-6 burst" and still calls inference rather than observation. It
+   would fit at D0 plates 15-17, but that drags in a fifth plate file and a
+   battleship-destroyed display the ROM does not have. It was not commissioned
+   and is not built.
+2. **The colon in the launcher's own cell can never light.** `NIB_RCOL` in the
+   ROM spends zero on "no rocket in flight", so column 0 is not a value the
+   nibble can hold, and a shot arriving at the player is resolved on the sweep
+   it lands rather than drawn there first. The tube has the segment;
+   `tools/probe/rom-atlas-conformance.test.ts` subtracts it by name so the gap
+   is visible rather than silent.
+3. **Five hundreds-digit segments can never light either**, because the score
+   caps at 199 and the hundreds column therefore only ever shows a `1`. That is
+   a game rule meeting a three-digit readout, not a fault, and the readout is
+   three digits on the evidence of `tube-closeup-score10.webp`.
+
+Also worth knowing: `assets/reference/sprites/README.md`'s prose was not updated
+when its crop set was replaced, so it cites filenames that no longer exist and
+still lists the colon and the player's red burst as untraced when both are now
+traced. Trust the crops over the prose until that is reconciled.
 
 ## Tracing workflow
 
@@ -394,16 +454,22 @@ arrives:
      -compose MinusSrc -composite -threshold 35% -format "%@\n" info:
    ```
 
-4. Convert to atlas units: `units = fraction * 363` horizontally,
-   `fraction * 300` vertically. Where a sprite's photographed cell-fractions and
-   its photographed aspect ratio disagree - they do, because the atlas lane cell
-   is taller than the unit's - keep the aspect ratio and say so.
+4. Convert to atlas units with the factors in "Converting to atlas units"
+   above. Where a sprite's measured cell-fractions and its measured aspect ratio
+   disagree - they do, because the atlas spreads its lanes further apart than
+   the unit does - keep the cell fractions and state the flattening. That is the
+   opposite of what earlier revisions did, and "Converting to atlas units" says
+   why the trade went the other way.
 5. Edit `atlas.json` directly. Keep `bounds` consistent with `path` - it is the
    axis-aligned bounding box of the path, and consumers trust it rather than
    parsing the path.
-6. Run `npm test` (`src/machine/tube/atlas.test.ts` checks the schema, the
-   counts, address uniqueness, and that every segment stays inside the viewBox)
-   and re-render a preview to eyeball it against the photo:
+6. Run `npm test`. `src/machine/tube/atlas.test.ts` checks the schema, the
+   counts, address uniqueness, the two jet poses against the parity that places
+   them, and that every segment stays inside the viewBox;
+   `tools/probe/rom-atlas-conformance.test.ts` plays the machine and checks that
+   the ROM drives every address the atlas defines and no address it does not,
+   which is what catches a new segment nothing lights. Then re-render a preview
+   to eyeball it against the reference:
 
    ```bash
    node -e "const a=require('./src/machine/tube/atlas.json');
