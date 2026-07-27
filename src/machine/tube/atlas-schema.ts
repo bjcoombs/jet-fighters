@@ -123,6 +123,23 @@ export type ExplosionSegmentId = `explosion_lane${LaneIndex}`;
  * carry, and a crossing is segments lighting rather than a sprite moving.
  */
 export type BattleshipSegmentId = `battleship_lane${LaneIndex}`;
+/**
+ * The printed sea the battleship sits on: two rows of small wave glyphs below
+ * the hull, one segment per lane with a sub-path for each glyph (3 total).
+ *
+ * Nothing had accounted for it - it is phosphor the atlas had never carried,
+ * found by tracing the bare tube. The ROM does not drive it yet.
+ */
+export type SeaSegmentId = `sea_lane${LaneIndex}`;
+/**
+ * The cyan burst behind the battleship, one per lane (3 total).
+ *
+ * On the bare tube it is a single wide starburst wrapping over and behind the
+ * hull, not the side-by-side pair the video-derived catalogue describes; the
+ * teardown wins on shape. The ROM scores a battleship kill already and does not
+ * draw it.
+ */
+export type BattleshipBurstSegmentId = `battleship_burst_lane${LaneIndex}`;
 
 /**
  * Every addressable segment on the tube. Exhaustive by construction: a typo in
@@ -137,6 +154,8 @@ export type SegmentId =
   | ScoreSegmentId
   | ExplosionSegmentId
   | BattleshipSegmentId
+  | SeaSegmentId
+  | BattleshipBurstSegmentId
   | 'score_hundreds'
   | 'score_label';
 
@@ -193,6 +212,8 @@ export const EXPECTED_SEGMENT_COUNTS = {
   scoreHundreds: 1,
   explosion: 3,
   battleship: 3,
+  sea: 3,
+  battleshipBurst: 3,
   scoreLabel: 1,
 } as const;
 

@@ -133,8 +133,9 @@ carried-over outline as a retraced one.**
 | Attacker colons, cells 1-5 | the same, two dots straddling the fuselage at the nose |
 | Missile darts, cells 1-5 | `tube-teardown/tube-unlit-full.jpg` |
 | Jet-kill bursts, cells 1-5 | the same, two blobs in one segment |
-| Battleship | gameplay video, awaiting retrace |
-| Printed sea | not in the atlas yet |
+| Battleship, cell 0 | `tube-teardown/tube-unlit-full.jpg` |
+| Printed sea, cell 0 | the same - new, nothing had accounted for it |
+| Battleship-kill burst, cell 0 | the same - new to the atlas |
 | Launcher, player's burst | the two lit close-ups, awaiting retrace |
 | Cell 6's smoke and second burst | not in the atlas yet |
 | Score digits, SCORE label | v1 shape tables |
@@ -155,6 +156,14 @@ threshold, and merges neighbouring sprites into one component; narrowing it
 clips the sprites that sit hard against the cell's right-hand edge. **The
 threshold is computed over a tight window and applied to a wide one**, and a
 component belongs to whichever cell its centroid falls in.
+
+**Where a threshold cannot find a family, locate it and threshold inside it.**
+The printed sea is two rows of small wave glyphs under the battleship's hull,
+and a cell-wide adaptive threshold drops them as noise - they are faint and the
+hull beside them is not. Profiling the cell down the lane finds them without
+help: the hull runs to about +21 of the lane centre, then a gap, then wave rows
+at +25..+38 and +40..+52, the same in all three lanes. Splitting on that gap
+names the hull and the sea without asking a threshold to tell them apart.
 
 **Locate families by position, do not rank them by size.** A jet cell holds
 three white shapes - two burst blobs and the dart between them - and they are

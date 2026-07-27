@@ -144,7 +144,9 @@ describe('geometry invariants', () => {
     const cellOf = (id: string): number | null => {
       const column = /_col([0-6])/.exec(id);
       if (column) return Number(column[1]);
-      if (id.startsWith('battleship_')) return 0;
+      // The battleship's cell also holds the sea it sits on and the burst
+      // behind it; the player's cell holds the launcher and its own burst.
+      if (id.startsWith('battleship_') || id.startsWith('sea_')) return 0;
       if (id.startsWith('launcher_') || id.startsWith('explosion_')) return 6;
       return null;
     };
@@ -464,16 +466,30 @@ describe('sprite proportions', () => {
     for (let lane = 0; lane < 3; lane += 1) {
       const ship = boundsOf(`battleship_lane${lane}`);
       const jet = boundsOf(`jet_lane${lane}_col1`);
+      // Half again as wide as a jet and not as deep, which is the comparison
+      // both the video and the bare tube make. Where it sits is asserted by the
+      // cell-containment test rather than as a distance from the jet: both are
+      // now drawn where the tube prints them, so a gap between two of them is
+      // an observation about the artwork and not a rule.
       expect(ship.width, `battleship_lane${lane} width`).toBeGreaterThan(jet.width * 1.2);
-      expect(ship.height, `battleship_lane${lane} height`).toBeLessThan(jet.height);
-      // It has a cell of its own, one to the far side of the first jet column.
-      // The gap is not exactly a cell pitch because the two are not centred the
-      // same way: the ship is still the carried-over outline centred on its
-      // column, and the jets are now where the photograph puts them, which is
-      // slightly right of centre. Retracing the ship closes that.
-      const gap = jet.x + jet.width / 2 - (ship.x + ship.width / 2);
-      expect(gap, `battleship_lane${lane} cell`).toBeGreaterThan(CELL.width * 0.9);
-      expect(gap, `battleship_lane${lane} cell`).toBeLessThan(CELL.width * 1.2);
+      // Against the deepest aircraft in the neighbouring cell, not against the
+      // one in the matching lane. The fifteen jets are fifteen shapes and they
+      // differ most in depth - the level poses run half again as deep as the
+      // raked ones - so a per-lane comparison would be asserting which pose the
+      // tube happens to print in that lane.
+      const deepestJet = Math.max(
+        ...[0, 1, 2].map((other) => boundsOf(`jet_lane${other}_col1`).height),
+      );
+      expect(ship.height, `battleship_lane${lane} height`).toBeLessThan(deepestJet);
+      // The sea sits under the hull, in the same cell, and is wider than it is
+      // deep - two rows of wave glyphs rather than a block.
+      const sea = boundsOf(`sea_lane${lane}`);
+      expect(sea.y, `sea_lane${lane} below the hull`).toBeGreaterThan(ship.y);
+      expect(sea.width, `sea_lane${lane}`).toBeGreaterThan(sea.height);
+      expect(
+        getSegmentById(`sea_lane${lane}` as SegmentId).path.match(/M /g)?.length ?? 0,
+        `sea_lane${lane} wave glyphs`,
+      ).toBeGreaterThan(3);
     }
   });
 });
@@ -561,9 +577,13 @@ describe('semantic segment coverage', () => {
     for (let lane = 0; lane < 3; lane += 1) {
       expect(ids.has(`explosion_lane${lane}`)).toBe(true);
       expect(ids.has(`battleship_lane${lane}`)).toBe(true);
+      expect(ids.has(`sea_lane${lane}`)).toBe(true);
+      expect(ids.has(`battleship_burst_lane${lane}`)).toBe(true);
     }
     expect(countMatching(/^explosion_/)).toBe(EXPECTED_SEGMENT_COUNTS.explosion);
-    expect(countMatching(/^battleship_/)).toBe(EXPECTED_SEGMENT_COUNTS.battleship);
+    expect(countMatching(/^battleship_lane/)).toBe(EXPECTED_SEGMENT_COUNTS.battleship);
+    expect(countMatching(/^sea_/)).toBe(EXPECTED_SEGMENT_COUNTS.sea);
+    expect(countMatching(/^battleship_burst_/)).toBe(EXPECTED_SEGMENT_COUNTS.battleshipBurst);
     expect(ids.has('score_label')).toBe(true);
   });
 
