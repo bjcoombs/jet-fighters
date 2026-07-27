@@ -332,7 +332,11 @@ describe('the score readout blanks leading digits, and only leading digits', () 
    */
   function boardAtFirstTensDigit(): Board {
     const board = romBoard();
-    for (let frame = 0; frame < 400; frame += 1) {
+    // 900 sweeps rather than 400: the squadron now steps every 110 sweeps, so
+    // jets arrive to be shot at half the rate this budget was written for and a
+    // 400-sweep run no longer scores ten. The budget is a search bound, not a
+    // property under test.
+    for (let frame = 0; frame < 900; frame += 1) {
       board.setFire(frame % 2 === 0);
       board.runFrames(1);
       if (platesUnder(board, GRID_SCORE_T).length > 0) {
