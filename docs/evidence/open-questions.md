@@ -43,8 +43,37 @@ one shot:
 - ~~The **battleship sprite**, entirely untraced.~~ **Traced**: a red-orange warship in
   side profile, 48 x 20 px, in the far cell, in all three lanes -
   `assets/reference/sprites/video/battleship-col0-lane{0,1,2}.png`. Its **10-point score
-  is confirmed** by reading the digits either side of one destruction (28 to 38). What is
-  **not** traced is any crossing: 17 sightings, never outside its own cell.
+  is confirmed** by reading the digits either side of one destruction (28 to 38).
+- ~~Whether the battleship **traverses**, and in which direction.~~ **Settled, and it
+  needed the owner rather than the video.** The two halves of the question have different
+  answers and were being run together:
+  - **Across the columns: it does not.** Never found outside cell 0 in 17 episodes, and
+    the tube carries a battleship-shaped segment for that cell only.
+  - **Down the lanes: it does.** The video traced the succession lane 0 (frames 524-561)
+    to lane 1 (565-626) to lane 2 (628-802) and recorded, correctly, that it "cannot
+    separate one battleship moving from three in succession". The owner, playing beside
+    his own unit, supplies the half the video could not: the battleship *"moves slowly
+    down the the slots which gives you time to shoot at it"*. One boat, descending, top
+    to bottom - which is the succession the video saw, in the order it saw it.
+
+  The reference's own numbers become readable once an *episode* is understood as a
+  contiguous run of sightings in **one lane** rather than a whole crossing. On that
+  reading the 17 episodes are lane dwells: median 2.5 s, longest 5.9 s - and the longest
+  is that traced descent's own last lane, 5.83 s, which is the check. The alternative
+  reading, an episode as a crossing, is excluded outright: the traced descent runs 9.3 s
+  end to end, longer than the longest episode.
+
+  So a crossing is about **7.5 s** and arrivals come about **1.18 a minute** - eight
+  lane-0 episodes over 407.9 s, lane 0 being where a descent starts.
+  `asm/jetfighter.asm` now answers to both: 172 sweeps a lane, ~8 s a descent, 1.16-1.25
+  crossings a minute measured off the machine.
+
+  **Still open: the lane split, 8 / 2 / 7.** A boat that always descends all three lanes
+  should give three roughly equal counts. Lane 1 giving two where its neighbours give
+  eight and seven is either detection loss in the transit lane - it is the shortest dwell
+  of the traced descent, and the tube blanks for every sound - or a boat that does not
+  always start at the top. The ROM assumes the first. A recording in which one crossing
+  can be watched start to finish settles it.
 - ~~Whether the far-left cell is a **battleship-only zone or a seventh jet column**.~~
   **Answered: battleship-only.** Every red object found in that cell across 12,237 frames
   is the battleship; the narrower sightings that looked jet-sized are partially-lit
@@ -75,6 +104,19 @@ does not predict.
 
 The game is now *playable* - the rocket flight was the thing making it impossible,
 not the jet cadence - but playable is not the same as accurate.
+
+**A second measurement now points at the same beep cadence, from the tube rather than the
+speaker.** `vfd-appearance.md` measures **14-17% of camera frames fully dark** during
+active play - the blanking `note_loop` causes, since the sweep stops for the whole of
+every sound. This ROM measures **5.9%**. Roughly three times too little blanking against
+roughly three times too few beeps (0.71 s measured against this ROM's slowest rung of
+1995 ms), which is the same shortfall counted two independent ways.
+
+It was hidden until now, and worth knowing how: the battleship used to cross 51 times a
+minute and blank the tube three times a crossing, which carried the figure over 10% on its
+own. `sweep-timing.test.ts` and `blank-to-glass.test.ts` were both asserting a floor of
+0.1 and both were being held up by that. Their floors are now 0.04 with this note attached
+to each. **The fix is the beep cadence, not putting the battleship back.**
 
 ### 2c. A closer photograph of the JET FIGHTERS sticker
 
@@ -191,6 +233,41 @@ certifying. V7's failure and its six defects are recorded in `criteria_results`.
 This lives in the ai-native-toolkit plugin, affects every project using it, and is a
 floor artifact - the marathon retrospective is explicitly forbidden from self-applying
 a fix. It needs the maintainer's out-of-band decision.
+
+### 3d. The machine's only randomness is the player's own rhythm
+
+Sections 6 and the battleship work both point here, and until now the reference was
+dangling.
+
+`NIB_RAND` is written in exactly one place - `ti_press`, which samples the free-running
+timer on the sweep the player closes the fire contact. It is read in four: the jet entry
+countdown, the lane a fresh squadron's rotor starts on, `rocket_fire`'s lane, and the gap
+between battleship crossings. So none of those is chance. All four are the phase of the
+player's last button press, and two consequences are measured by driving the machine:
+
+- **A player who never fires leaves it at zero for the whole game.** Every value derived
+  from it is then fixed. An unattended machine's battleship gap is identical to the sweep,
+  crossing after crossing.
+- **A player who does fire produces values that cluster on his own rhythm.** Four, five,
+  six and seven dominated a fifteen-crossing run of a steady player.
+
+The two callers feel it differently, and it is worth separating them:
+
+- **`rocket_fire`'s lane is the severe one.** With the lever parked in lane 1 or 2, no
+  rocket ever reaches the launcher (section 6). A whole game rule is decided by the
+  player's press pattern.
+- **The battleship's gap is the mild one.** The sampled nibble is only a sixteenth of the
+  interval, so even a uniform sample would move a ~50 s gap by under 9%. Nothing a player
+  would read as random. The owner's *"shows up randomly"* is therefore something this ROM
+  does not currently do at all, and no change to the battleship's own constants can make
+  it - the source has to change.
+
+**The owner's question, and it is one question for all four callers:** does the real unit
+vary these, and by how much? A machine whose only entropy is a keypress-sampled counter
+is a real HMCS44 constraint and may well be exactly what the unit does. If it is, "shows
+up randomly" describes a gap whose *phase* wanders rather than its length, and nothing
+needs fixing. If it is not, the fix belongs at the source and lands on all four callers at
+once - which is why the battleship's was deliberately left alone.
 
 ## 4. Review coverage - worth knowing before trusting the diff
 

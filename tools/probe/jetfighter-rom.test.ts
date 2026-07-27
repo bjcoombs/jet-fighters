@@ -323,12 +323,18 @@ describe('the score readout blanks leading digits, and only leading digits', () 
    * The board at the first sweep on which the tens column lights.
    *
    * Reaching a two-digit score means actually scoring: the lever rests in the
-   * centre lane, which is the lane the battleship crosses, and a battleship is
-   * ten points (the printed ruler's "10" over its zone). Firing on alternate
-   * sweeps re-triggers the edge-triggered launch each time a shot is spent, so
-   * the run lands one on the ship within a few dozen sweeps. Nothing here is
-   * timed to a frame number - the loop stops on what the tube shows - so a
-   * cadence change moves when this happens without breaking the assertion.
+   * centre lane, and firing on alternate sweeps re-triggers the edge-triggered
+   * launch each time a shot is spent, so jets and eventually the battleship are
+   * hit. Nothing here is timed to a frame number - the loop stops on what the
+   * tube shows - so a cadence change moves when this happens without breaking
+   * the assertion.
+   *
+   * It used to land on the battleship within a few dozen sweeps: the boat
+   * crossed 51 times a minute and the centre lane is one it passed through. It
+   * now crosses about once a minute and the first crossing is at sweep 512, so
+   * the ten points come from jets over several hundred sweeps instead - which is
+   * why the tests below carry a timeout. The work is the same per sweep; there
+   * are simply many more of them, and 5 s is not enough for it on CI.
    */
   function boardAtFirstTensDigit(): Board {
     const board = romBoard();
@@ -361,7 +367,7 @@ describe('the score readout blanks leading digits, and only leading digits', () 
     expect(platesUnder(board, GRID_SCORE_T)).toEqual(DIGIT_ONE_PLATES);
     expect(platesUnder(board, GRID_SCORE_U).length).toBeGreaterThan(0);
     expect(platesUnder(board, GRID_SCORE_T)).not.toContain(PLATE_SCORE_HUNDREDS);
-  });
+  }, 30_000);
 
   it('never blanks the units column, at any score it reaches', () => {
     // The units digit is never a leading digit. Whatever the score, and however
@@ -582,10 +588,24 @@ describe('firing', () => {
 });
 
 describe('the pitched game sounds', () => {
-  // One long run, so both the march (once per squadron step) and the battleship
-  // (once per lane of a crossing) have happened several times.
+  // One long unattended run, so both the march and the battleship's arrival
+  // buzz land in the window and neither runs into anything else.
+  //
+  // Seven hundred sweeps, and both ends of that are load-bearing. It was 400,
+  // which used to hold several crossings and now holds none: the boat crossed 51
+  // times a minute and now crosses about once, so the only crossing a run of
+  // this order sees is the opening one, which `BSHIP_GAP_OPEN` puts at 512
+  // sweeps. And it cannot be much longer than 700, because an unattended machine
+  // loses three launchers at about 750 and `tick` returns at its first test from
+  // then on.
+  //
+  // Unattended rather than played, which is the other half of it: the fire
+  // contact worked steadily fills the gaps between march notes with missile
+  // blips, `BURST_GAP_CYCLES` groups a blip running into a march step as one
+  // sound, and the median period of that pair is the blip's. The march then
+  // vanishes from this list while sounding perfectly correctly.
   const board = romBoard();
-  board.runFrames(400);
+  board.runFrames(700);
   const pitches = burstPitches(board);
 
   it('made some noise at all', () => {

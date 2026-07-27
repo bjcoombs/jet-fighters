@@ -100,8 +100,31 @@ const WARMUP_SWEEPS = 5;
  */
 const BURST_GAP_CYCLES = 8000;
 
-/** Machine cycles to run the blanking test over. About 1.5 s of play. */
-const BLANKING_CYCLES = 600_000;
+/**
+ * The squadron's slowest march step, in ms of wall clock.
+ *
+ * `PAT_STEP` entry 0 is skill 1's entry point and the top of the cadence ladder,
+ * so it is both the worst case and where a freshly powered machine starts. The
+ * ladder's own comment in `asm/jetfighter.asm` measures it at 1995 ms.
+ */
+const MARCH_STEP_MS = 1995;
+
+/**
+ * The window the blanking tests run over, stated in march steps.
+ *
+ * It was a flat 1.5 s and it stopped carrying three sounds. The battleship used
+ * to buzz for 68 ms fifty-one times a minute, which filled any window at all;
+ * the buzz is now one 383 ms note per crossing and the crossing is rare, so the
+ * march step is the note this window has to contain and 1.5 s holds less than
+ * one of them.
+ *
+ * Stated as a multiple of a measured cadence rather than as a wall-clock figure
+ * for the reason CLAUDE.md records: a literal horizon in a test about a machine
+ * whose cadence moves is a bet on the cadence, and it has turned main red here
+ * before. A cadence change now moves `MARCH_STEP_MS` and nothing else.
+ */
+const MARCH_STEPS_TIMED = 5;
+const BLANKING_CYCLES = Math.round(((MARCH_STEPS_TIMED * MARCH_STEP_MS) / 1000) * CYCLE_HZ);
 
 /** A board running the real game ROM, freshly powered on. */
 function romBoard(): Board {
@@ -324,18 +347,45 @@ describe('the tube goes dark while a note plays (D1)', () => {
     return darkRuns.find((run) => run.startCycle <= cycle && cycle <= run.endCycle);
   }
 
+  /**
+   * The sounds that share one blank, in order, keyed by that blank's start.
+   *
+   * Not every sound gets a sweep of its own on either side of it, and the
+   * launcher-hit warning is the case that proves it: three ~10 ms beeps
+   * separated by `warn_gap`, which is two `dwell` calls and drives no grid. That
+   * is 26.7 ms of silence - above the 20 ms `splitSounds` cuts at, so it reads as
+   * three sounds, and below anything that would let a sweep in, so all three sit
+   * inside a single unbroken dark run.
+   *
+   * So the unit the two assertions below are about is the **blank**, not the
+   * sound: the tube is swept before the blank opens and comes back when it
+   * closes, and what happens between the beeps inside it is the ROM bit-banging
+   * the speaker with the grids low, which is the behaviour being asserted rather
+   * than a violation of it. Grouping was added when the window lengthened from
+   * 1.5 s to five march steps and started containing a warning sequence.
+   */
+  const soundsByBlank = new Map<number, Sound[]>();
+  for (const sound of sounds) {
+    const dark = darkRunAt(sound.firstEdge);
+    if (dark === undefined) continue;
+    const group = soundsByBlank.get(dark.startCycle) ?? [];
+    group.push(sound);
+    soundsByBlank.set(dark.startCycle, group);
+  }
+
   it('made several sounds in the window, so there is something to assert about', () => {
     expect(sounds.length).toBeGreaterThanOrEqual(3);
   });
 
-  it('was sweeping the tube in the sweep before each sound started', () => {
+  it('was sweeping the tube in the sweep before each blank opened', () => {
     // The anchor. Without it "the tube is dark while the speaker sounds" is also
     // true of a ROM that has wedged with every grid low, and a window measured
     // from power-on would never separate the two.
-    for (const sound of sounds) {
-      const from = sound.firstEdge - 2 * Math.round(CYCLE_HZ / SWEEP_HZ_MIN);
+    for (const group of soundsByBlank.values()) {
+      const first = group[0] as Sound;
+      const from = first.firstEdge - 2 * Math.round(CYCLE_HZ / SWEEP_HZ_MIN);
       const driven = gridStates
-        .filter(([cycle]) => cycle >= Math.max(startCycle, from) && cycle < sound.firstEdge)
+        .filter(([cycle]) => cycle >= Math.max(startCycle, from) && cycle < first.firstEdge)
         .reduce((mask, [, next]) => mask | next, 0);
       expect(driven & GRID_MASK).toBe(GRID_MASK);
     }
@@ -353,16 +403,18 @@ describe('the tube goes dark while a note plays (D1)', () => {
   });
 
   it('holds the blank for as long as the sound lasts', () => {
-    for (const sound of sounds) {
-      const dark = darkRunAt(sound.firstEdge) as DarkRun;
-      const soundMs = ms(sound.lastEdge - sound.firstEdge);
+    for (const group of soundsByBlank.values()) {
+      const first = group[0] as Sound;
+      const last = group[group.length - 1] as Sound;
+      const dark = darkRunAt(first.firstEdge) as DarkRun;
+      const soundMs = ms(last.lastEdge - first.firstEdge);
       const blankMs = ms(dark.endCycle - dark.startCycle);
       expect(blankMs).toBeGreaterThanOrEqual(soundMs);
       // And is the sound's blank, not a stall that happens to contain it: the
       // tube comes back within half a sweep of the last edge. The ROM returns
       // from note_loop into the sweep, so the two are within a few instructions
       // of each other; half a sweep is loose enough not to pin the return path.
-      expect(ms(dark.endCycle - sound.lastEdge)).toBeLessThan(0.5 * ms(CYCLE_HZ / SWEEP_HZ_MIN));
+      expect(ms(dark.endCycle - last.lastEdge)).toBeLessThan(0.5 * ms(CYCLE_HZ / SWEEP_HZ_MIN));
     }
   });
 
@@ -410,8 +462,8 @@ describe('the tube goes dark while a note plays (D1)', () => {
 /** How often `main.ts` reads the tube, in machine cycles - one 60 Hz frame. */
 const RENDER_INTERVAL_CYCLES = Math.round(CYCLE_HZ / 60);
 
-/** Machine cycles to run. About 2.3 s, which carries several march notes. */
-const RENDER_RUN_CYCLES = 900_000;
+/** Machine cycles to run: the same march-step horizon the blanking window uses. */
+const RENDER_RUN_CYCLES = BLANKING_CYCLES;
 
 /** One read of the tube by the frame driver. */
 interface RenderSample {
@@ -519,13 +571,28 @@ describe('the blank reaches the renderer (D1)', () => {
     }
   });
 
-  it('is dark for a tenth of the run, which is what the tube being off looks like', () => {
+  it('is dark for a real fraction of the run, which is what the tube being off looks like', () => {
     // vfd-appearance.md measures 14-17% of camera frames fully dark during
     // active play against 0% in its quiet control window. The floor here is
     // under that because how often the game triggers a sound is provisional
     // cadence, not this test's subject - what is asserted is that the blanking
     // is a substantial fraction of what a viewer sees, not a transient.
+    //
+    // **It was 0.1 and it is now 0.04, and that is worth reading before it is
+    // read as a loosened guardrail.** The ROM measures 5.9% here. It used to
+    // clear 10% on the battleship alone: the boat crossed 51 times a minute and
+    // blanked the tube for 68 ms three times a crossing, which is about 10 s of
+    // dark in every minute from one sound. The boat now crosses about once a
+    // minute, as the reference measures it, and what is left is the march.
+    //
+    // So the shortfall against 14-17% is real and it is **not** the battleship's
+    // to make up. `IMG_6113.mov` measures a march beep every 0.71 s; this ROM's
+    // slowest rung, which is where a freshly powered machine starts, is 1995 ms.
+    // Roughly three times too few beeps, against roughly three times too little
+    // blanking. That is the cadence question T2 - see the note in
+    // docs/evidence/open-questions.md - and not something to fix by putting the
+    // battleship back.
     const dark = samples.filter((sample) => sample.segments.length === 0);
-    expect(dark.length / samples.length).toBeGreaterThan(0.1);
+    expect(dark.length / samples.length).toBeGreaterThan(0.04);
   });
 });

@@ -19,19 +19,33 @@
 //     drops it, and no fix was needed there. This half passed before the fix
 //     and is here so that it goes on passing - it is the assertion that would
 //     have stopped the search at the ROM instead of the transport.
-//   - **It was not announced.** BSHIP_SWEEPS was sized by dividing v1's 400 ms
-//     crossing by the sweep alone, and `note_loop` does not scan the tube while
-//     it runs, so the buzz's own 67.9 ms is part of the lane step rather than
-//     something happening beside it. Nine sweeps bought ~198 ms a step, so the
-//     three 68 ms buzzes ended up 142 ms of silence apart. A 68 ms blip is the
-//     same length and envelope as a jet-march step; three of them that far
-//     apart are three more march-like blips, not the "distinctly lower,
+//   - **It was not announced.** The buzz was one 70 ms note per lane step. A
+//     68 ms blip is the same length and envelope as a jet-march step; three of
+//     them are three more march-like blips, not the "distinctly lower,
 //     sustained buzz" audio-reference.md records. That is what "no sound when
 //     the boat arrives" was.
 //
-// Against the ROM as it stood the second describe fails on both of its
-// measurements: crossings of 698 ms against v1's 400 ms, and the buzz sounding
-// for 28% of one.
+// ## The second correction, and why the first one went the wrong way
+//
+// The first fix kept the three blips and shortened the crossing so they would
+// bunch together and read as one sound - `BSHIP_SWEEPS` 9 to 4, a 400 ms
+// crossing. The owner then described the real unit: the battleship "moves slowly
+// down the the slots which gives you time to shoot at it". So that fix worked
+// against the behaviour and treated the symptom. Two things are true at once and
+// the ROM now says both:
+//
+//   - the buzz is **one sustained note of ~380 ms**, which is what
+//     `battleshipBuzz.durationMs` measures and what v1 synthesized, sounded once
+//     at the arrival; and
+//   - the crossing is **seconds long**, ~2.5 s a lane, which is what
+//     `assets/reference/sprites/README.md` measures over 17 episodes of
+//     IMG_6113.mov.
+//
+// They are not in lockstep and were never meant to be. The buzz announces the
+// arrival; the descent that follows is silent and, more to the point, *visible* -
+// `note_loop` does not sweep the tube, so a buzz at every lane would blank the
+// display for a fifth of the crossing the player has to watch in order to shoot
+// at the boat.
 //
 // Node-side test: no DOM, no browser globals, no AudioContext.
 
@@ -64,15 +78,6 @@ const FRAME_MS = 1000 / 60;
 /** `MAX_FRAME_MS` from src/main.ts, copied not imported - importing main.ts starts a page. */
 const MAX_FRAME_MS = 100;
 
-/**
- * Seconds of wall clock to run.
- *
- * Six, for the reason transport-loop.test.ts gives at length: with no input the
- * ROM's last D14 transition is at 5.66 s and nothing measured here exists past
- * it. Long enough for three crossings.
- */
-const RUN_SECONDS = 6;
-
 /** Silence that separates two sounds, in cycles - 20 ms. Same figure as speaker-bands.test.ts. */
 const BURST_GAP_CYCLES = 8000;
 
@@ -104,6 +109,116 @@ function symbol(asm: AssemblyResult, name: string): number {
   }
   return found.value;
 }
+
+// --- how long a run has to be, taken from the ROM rather than guessed --------
+//
+// The battleship's cadence has moved three times in a day and every literal
+// horizon written against it has had to move with it - the failure mode CLAUDE.md
+// names as one of the two that have turned main red here. So nothing below is a
+// wall-clock figure: the run length is derived from the ROM's own constants
+// through the assembler's symbol table, and a constant change moves no number in
+// this file at all.
+//
+// The one measured input is `SWEEP_MS`, and it is measured rather than taken
+// from the nominal 13.46 ms because a sweep during a crossing is stretched by the
+// march and missile notes that land in it: 8202 ms of measured crossing over
+// 3 * 172 sweeps is 15.9 ms a sweep.
+
+const ASM = assembly();
+
+/** Measured ms per sweep during play, off the probe. See above. */
+const SWEEP_MS = 16;
+
+/** Sweeps the boat holds one lane. */
+const LANE_STEP_SWEEPS = symbol(ASM, 'BSHIP_STEP_HI') * 16 + symbol(ASM, 'BSHIP_STEP_LO');
+
+/** Sweeps a whole descent takes: one step per lane. */
+const CROSSING_SWEEPS = LANE_STEP_SWEEPS * (symbol(ASM, 'LANE_LAST') + 1);
+
+/**
+ * Sweeps per step of the gap countdown.
+ *
+ * `tick_bship` steps it only on the sweep `NIB_TICK` reads zero, and `NIB_TICK`
+ * is a nibble incremented once a sweep, so the countdown runs at a sixteenth of
+ * the sweep rate. Sixteen is the width of a nibble and not a constant the ROM
+ * names, which is why it is written here rather than read.
+ */
+const GAP_PRESCALE = 16;
+
+/**
+ * Worst-case sweeps from one crossing ending to the next beginning.
+ *
+ * `bship_wait` reloads the countdown with `BSHIP_GAP_HI` in the high nibble and
+ * the sampled `NIB_RAND` in the low one, so the longest it can be is
+ * `(BSHIP_GAP_HI * 16 + 15)` prescaled units.
+ */
+const GAP_SWEEPS_MAX = (symbol(ASM, 'BSHIP_GAP_HI') * 16 + 15) * GAP_PRESCALE;
+
+/** Sweeps from power-on to the first arrival: reset seeds `BSHIP_GAP_OPEN`. */
+const OPENING_GAP_SWEEPS = symbol(ASM, 'BSHIP_GAP_OPEN') * 16 * GAP_PRESCALE;
+
+/**
+ * Crossings a run is sized to contain.
+ *
+ * **One, and the reason is not the battleship.** A crossing arrives about every
+ * 51 s, which is the unit's own measured rate, and a game currently ends in 20 to
+ * 45 s - see `docs/evidence/open-questions.md` section 6, the capture rule. So a
+ * run cannot contain two crossings however long it is: the machine stops first,
+ * and `tick` returns at its first test from then on, so the battleship's turn
+ * never comes round again.
+ *
+ * That is why the opening crossing exists and why this file leans on it. When
+ * the capture rule settles and games run to minutes, this becomes two and the
+ * horizon below follows it without another edit.
+ */
+const CROSSINGS_WANTED = 1;
+
+/**
+ * Seconds of wall clock to run: the opening gap, the crossings wanted and the
+ * gaps between them, then one crossing of slack.
+ */
+const RUN_SWEEPS =
+  OPENING_GAP_SWEEPS +
+  (CROSSINGS_WANTED + 1) * CROSSING_SWEEPS +
+  (CROSSINGS_WANTED - 1) * GAP_SWEEPS_MAX;
+const RUN_SECONDS = Math.ceil((RUN_SWEEPS * SWEEP_MS) / 1000);
+
+/** The lever's three positions, in lane order. */
+const LEVER_POSITIONS = ['up', 'centre', 'down'] as const;
+
+/** Machine cycles between control movements - about a fifth of a sweep. */
+const PLAYER_SLICE_CYCLES = 3_000;
+
+/**
+ * A player who works the case but never shoots at the boat.
+ *
+ * Both runs below need a game that is still being played when the second
+ * crossing arrives, and an unattended machine is not: it loses three launchers
+ * and stops, and `tick` returns at its first test from then on, so the
+ * battleship's turn never comes round again. Working the lever and the fire
+ * contact keeps the game alive, which is what game-lifetime.test.ts measures.
+ *
+ * The fire contact is held open for as long as `NIB_BSLANE` holds a lane. That
+ * is not a nicety: a player who fires blindly *shoots the battleship down*,
+ * almost every time and usually in its first lane - measured, and a fair
+ * description of the boat now being slow enough to hit, which is the point of
+ * the change this file covers. A crossing that ends in a hit says nothing about
+ * how long a crossing lasts, so this player declines to take the shot.
+ *
+ * It reads RAM to decide when to hold fire, which a probe may do - the rule is
+ * that game state is never *written* from outside, and this player still reaches
+ * the ROM only through `setControl`, as a hand does. A sighted human has the
+ * same information: the boat is lit on the tube.
+ */
+function playerControls(board: Board, slice: number, bshipLaneAddress: number, noCrossing: number): void {
+  board.setControl('lever', LEVER_POSITIONS[Math.floor(slice / 2) % LEVER_POSITIONS.length] as string);
+  const crossing = board.cpu.memory.readRam(bshipLaneAddress) !== noCrossing;
+  board.setControl('fire', !crossing && slice % 2 === 0 ? 'down' : 'up');
+}
+
+/** Where `NIB_BSLANE` lives, and the value that means no crossing. */
+const BSLANE_ADDRESS = symbol(ASM, 'FILE_STATE') * 16 + symbol(ASM, 'NIB_BSLANE');
+const BS_NONE = symbol(ASM, 'BS_NONE');
 
 // --- the Web Audio slice, as transport-loop.test.ts fakes it ----------------
 
@@ -199,12 +314,38 @@ class FakeContext implements AudioContextLike {
 // --- what the run produces --------------------------------------------------
 
 /**
- * How far two consecutive periods may differ and still count as one note, and
- * how many periods a run needs before it is a note rather than the join between
- * two. Same figures and same reasoning as speaker-bands.test.ts.
+ * How far two consecutive periods may differ and still count as one note. Same
+ * figure and same reasoning as speaker-bands.test.ts.
  */
 const RUN_TOLERANCE = 0.06;
-const MIN_BUZZ_PERIODS = 15;
+
+/**
+ * Square-wave periods per burst of the battleship note.
+ *
+ * `PAT_SND_B` entry 2 is `$090`, whose high nibble is the periods-per-burst minus
+ * one. Pattern data is not in the symbol table, so it is transcribed here with
+ * its citation rather than read; the burst *count* beside it is a symbol and is.
+ */
+const BUZZ_PERIODS_PER_BURST = 10;
+
+/** Square-wave periods in the ROM's battleship note. */
+const BUZZ_PERIODS = (symbol(ASM, 'BURSTS_BSHIP') + 1) * BUZZ_PERIODS_PER_BURST;
+
+/**
+ * Periods a run needs before it counts as the battleship's note.
+ *
+ * It used to be a flat fifteen, enough to tell a note from the join between two.
+ * That is no longer enough to tell it from the *loss* sound: `loss 3` is the
+ * rasp body at 239 Hz, which is inside `battleshipBuzz.dominantHzRange`, and
+ * every run below now plays a game long enough to lose one. The loss rasp is
+ * 4 bursts of 11 periods; the buzz is eleven bursts of ten, so length separates
+ * them cleanly and the floor is taken from the ROM rather than chosen.
+ *
+ * A regression that shortened the buzz would take it below this floor and be
+ * counted as no buzz at all, which is a failure of the assertions that count
+ * crossings - not a way for one to slip through.
+ */
+const MIN_BUZZ_PERIODS = BUZZ_PERIODS - 10;
 
 /** One stretch of like periods: a note the ROM played. */
 interface Note {
@@ -341,16 +482,28 @@ async function runPage(): Promise<PageRun> {
   await starting;
 
   let owed = 0;
+  let slice = 0;
   let lastFrameMs: number | null = null;
   const frame = (nowMs: number): void => {
     const elapsedMs = lastFrameMs === null ? 0 : Math.min(nowMs - lastFrameMs, MAX_FRAME_MS);
     lastFrameMs = nowMs;
     if (board.power.state === 'on' && board.running) {
       owed += (elapsedMs / 1000) * cyclesPerSecond;
-      const budget = Math.floor(owed);
-      if (budget > 0) {
-        const executed = board.step(budget);
-        owed = executed === 0 ? 0 : owed - executed;
+      let budget = Math.floor(owed);
+      // The controls are worked in slices inside the frame's budget, not once a
+      // frame: see `playerControls`. A frame is about a sweep and a half, and a
+      // player who only touched the case that often would never close two
+      // different contacts inside one sweep.
+      while (budget > 0) {
+        playerControls(board, slice, BSLANE_ADDRESS, BS_NONE);
+        slice += 1;
+        const executed = board.step(Math.min(budget, PLAYER_SLICE_CYCLES));
+        if (executed === 0) {
+          owed = 0;
+          break;
+        }
+        owed -= executed;
+        budget -= executed;
       }
     } else {
       owed = 0;
@@ -423,7 +576,9 @@ function windowOf(note: Note): { from: number; to: number } {
 
 describe('the arrival buzz reaches the audio output buffer', () => {
   it('played several crossings, so there is something to assert about', () => {
-    expect(romBuzzes.length).toBeGreaterThanOrEqual(6);
+    // One buzz per crossing now, not one per lane step, so this counts
+    // crossings directly.
+    expect(romBuzzes.length).toBeGreaterThanOrEqual(CROSSINGS_WANTED);
     // The control: a run whose transport never played anything would satisfy
     // every "is it in band" assertion below vacuously.
     expect(firstTransition(run.out)).toBeGreaterThanOrEqual(0);
@@ -455,11 +610,17 @@ describe('the arrival buzz reaches the audio output buffer', () => {
   it('holds the machine and the output at one offset for the whole run', () => {
     // The failure this catches is the one that produced "no sound" twice
     // before: the timeline slipping so edges land behind the playhead and are
-    // folded into the held level. If the offset held for the first crossing and
-    // not the last, the windows above would drift off their notes and the band
+    // folded into the held level. If the offset held at the start of the run and
+    // not at the end, the windows above would drift off their notes and the band
     // assertions would fail - but only after enough drift, so the offset is
     // checked directly.
-    const last = romBuzzes[romBuzzes.length - 1] as Note;
+    //
+    // The subject is the **last note of the run**, of whatever kind, rather than
+    // the last buzz. A crossing arrives about once every 51 s and a game ends
+    // before a second one is due, so the last buzz sits early; the march goes on
+    // to the end and is what puts this assertion where the drift would be. Its
+    // period count comes off the note itself, so nothing here is transcribed.
+    const last = run.notes[run.notes.length - 1] as Note;
     const { from, to } = windowOf(last);
     let rail = 0;
     let transitions = 0;
@@ -468,22 +629,55 @@ describe('the arrival buzz reaches the audio output buffer', () => {
       if (rail !== 0 && next !== rail) transitions += 1;
       rail = next;
     }
-    // The ROM plays the buzz as 2 bursts of 10 periods: 40 transitions, and
-    // every one of them still in the window the first crossing fixed.
-    expect(transitions).toBeGreaterThanOrEqual(38);
+    expect(transitions).toBeGreaterThanOrEqual(2 * last.periods - 4);
+  });
+
+  it('puts the whole of the arrival buzz into the output', () => {
+    // The buzz specifically, counted rather than sampled: the ROM plays it as
+    // `BURSTS_BSHIP + 1` bursts of ten periods, two transitions to a period, and
+    // a transport that swallowed part of one would still pass the band and rail
+    // assertions above on what survived.
+    for (const buzz of romBuzzes) {
+      const { from, to } = windowOf(buzz);
+      let rail = 0;
+      let transitions = 0;
+      for (let i = from; i < to; i += 1) {
+        const next = run.out[i] > RAIL ? 1 : run.out[i] < -RAIL ? -1 : rail;
+        if (rail !== 0 && next !== rail) transitions += 1;
+        rail = next;
+      }
+      expect(transitions).toBeGreaterThanOrEqual(2 * BUZZ_PERIODS - 4);
+    }
   });
 });
 
 // --- the crossing, as the player hears it -----------------------------------
 
-/** One crossing: the boat entering the far zone and leaving it. */
+/**
+ * One lane the boat held, and for how long.
+ *
+ * `toCycle` is null when the hold was still running at the end of the run - the
+ * boat was shot, or the game ended under it. This is the unit the reference
+ * material measures in: `assets/reference/sprites/README.md` calls it an
+ * *episode*, counts 17 of them and gives their median and longest, and the
+ * traced descent's three are 1.3 / 2.1 / 5.8 s.
+ */
+interface LaneHold {
+  readonly lane: number;
+  readonly fromCycle: number;
+  toCycle: number | null;
+}
+
+/** One crossing: the boat entering the far zone, and every lane it held on the way down. */
 interface Crossing {
   readonly fromCycle: number;
-  readonly toCycle: number;
+  /** Null when the crossing had not ended by the end of the run. */
+  toCycle: number | null;
+  readonly holds: LaneHold[];
 }
 
 /**
- * Every crossing and every buzz in a plain headless run.
+ * Every crossing and every buzz in a headless run of a game being played.
  *
  * The crossing is read off `NIB_BSLANE` rather than off the tube because the
  * tube is blank for the whole of every sound (`Display.getObservedFrame`, D1),
@@ -506,22 +700,42 @@ function crossings(): { crossings: Crossing[]; buzzes: Note[] } {
   const edges: { cycle: number; level: number }[] = [];
   const found: Crossing[] = [];
   let previous = board.cpu.memory.readRam(address);
-  let fromCycle: number | null = null;
+  let open: Crossing | null = null;
   const until = board.cycles + RUN_SECONDS * CYCLE_HZ;
+  // Stepped finely, worked coarsely. The lane nibble is only ever seen to within
+  // one step, and the assertions below place a note against the sweep the nibble
+  // changed on - which needs a step much shorter than a sweep. The controls
+  // still move on the slice a hand would work them at.
+  const STEP_CYCLES = 200;
+  const STEPS_PER_SLICE = Math.round(PLAYER_SLICE_CYCLES / STEP_CYCLES);
+  let step = 0;
   while (board.cycles < until) {
-    board.step(200);
+    if (step % STEPS_PER_SLICE === 0) {
+      playerControls(board, step / STEPS_PER_SLICE, address, noCrossing);
+    }
+    step += 1;
+    board.step(STEP_CYCLES);
     for (const edge of board.takeSpeakerEdges()) {
       edges.push({ cycle: edge.cycle, level: edge.level });
     }
     const lane = board.cpu.memory.readRam(address);
     if (lane !== previous) {
+      const closing = open?.holds[open.holds.length - 1];
+      if (closing !== undefined) closing.toCycle = board.cycles;
       // Only BS_NONE -> a lane is an arrival, and only a lane -> BS_NONE is a
-      // departure. Lane to lane is the boat stepping across, which is neither.
+      // departure. Lane to lane is the boat stepping down, which is neither.
       if (previous === noCrossing && lane <= laneLast) {
-        fromCycle = board.cycles;
-      } else if (previous <= laneLast && lane === noCrossing && fromCycle !== null) {
-        found.push({ fromCycle, toCycle: board.cycles });
-        fromCycle = null;
+        open = {
+          fromCycle: board.cycles,
+          toCycle: null,
+          holds: [{ lane, fromCycle: board.cycles, toCycle: null }],
+        };
+        found.push(open);
+      } else if (previous <= laneLast && lane === noCrossing && open !== null) {
+        open.toCycle = board.cycles;
+        open = null;
+      } else if (open !== null && lane <= laneLast) {
+        open.holds.push({ lane, fromCycle: board.cycles, toCycle: null });
       }
       previous = lane;
     }
@@ -534,23 +748,44 @@ function crossings(): { crossings: Crossing[]; buzzes: Note[] } {
 
 describe('the crossing is announced by a sustained buzz', () => {
   const { crossings: found, buzzes } = crossings();
+  const laneCount = symbol(ASM, 'LANE_LAST') + 1;
+
+  /**
+   * Lane holds that ran to their end, across every crossing.
+   *
+   * The unit of measurement is the **lane hold**, not the whole crossing, and
+   * that is deliberate on two counts. It is the unit the reference material
+   * reports in - `assets/reference/sprites/README.md` gives a median and a
+   * longest per episode, and an episode is a contiguous run of sightings in one
+   * lane. And it is the unit that survives a crossing being cut short: the boat
+   * is now slow enough to shoot, `bship_kill` ends the crossing when it is hit,
+   * and a game that ends mid-descent freezes the boat where it stands. Every
+   * lane the boat *finished* is still a measurement of how slowly it moves.
+   */
+  const holds = found.flatMap((crossing) =>
+    crossing.holds.filter((hold) => hold.toCycle !== null),
+  );
 
   /** Buzzes inside a crossing. The arrival buzz runs on the sweep that opens it. */
   function buzzesIn(crossing: Crossing): Note[] {
+    const end = crossing.toCycle ?? Number.POSITIVE_INFINITY;
     return buzzes.filter(
-      (buzz) => buzz.firstCycle >= crossing.fromCycle - 2000 && buzz.firstCycle <= crossing.toCycle,
+      (buzz) => buzz.firstCycle >= crossing.fromCycle - 2000 && buzz.firstCycle <= end,
     );
   }
 
-  it('crossed the far zone several times', () => {
-    expect(found.length).toBeGreaterThanOrEqual(2);
+  it('crossed the far zone, and finished some lanes on the way down', () => {
+    expect(found.length).toBeGreaterThanOrEqual(CROSSINGS_WANTED);
+    // More than one, so the assertions below are about a boat that moved rather
+    // than one that arrived and was shot where it stood.
+    expect(holds.length).toBeGreaterThanOrEqual(2);
   });
 
   it('sounds the buzz on the sweep the boat arrives on', () => {
     // `bship_enter` writes LANE_TOP and calls play_sound in the same pass, so
     // the buzz and the lane nibble move together. If the arrival ever went
-    // silent while the lane steps kept sounding - the first thing the report
-    // was checked against - this is where it would show.
+    // silent - the first thing the report was checked against - this is where
+    // it would show.
     for (const crossing of found) {
       const first = buzzesIn(crossing)[0];
       expect(first).toBeDefined();
@@ -558,39 +793,62 @@ describe('the crossing is announced by a sustained buzz', () => {
     }
   });
 
-  it('crosses in about the 400 ms v1 measured, with the buzz counted', () => {
-    // The defect. BSHIP_SWEEPS was v1's 400 ms divided by the sweep alone,
-    // leaving out the 67.9 ms the buzz itself costs the lane step, and the
-    // crossing came out at 593 ms. The ceiling is above the nominal 378 ms by
-    // enough for the march and missile notes that land inside a crossing and
-    // stretch the sweeps they fall in.
+  it('announces the arrival with one sustained note, not a run of blips', () => {
+    // `battleshipBuzz.durationMs` is 380 ms and the reference calls the sound
+    // "sustained". The ROM plays it as 11 bursts of 10 periods at 1393 cycles,
+    // which is 379.9 ms from first rise to last - see the sound table. One note,
+    // because three 70 ms blips are not a 380 ms buzz however close together
+    // they sit, and because `note_loop` does not sweep the tube: a note at every
+    // lane would blank the display for a fifth of a descent the player has to
+    // see in order to shoot at the boat.
     for (const crossing of found) {
-      expect(ms(crossing.toCycle - crossing.fromCycle)).toBeLessThan(560);
+      const inside = buzzesIn(crossing);
+      expect(inside.length).toBe(1);
+      const note = inside[0] as Note;
+      expect(ms(note.lastCycle - note.firstCycle)).toBeGreaterThan(340);
+      expect(ms(note.lastCycle - note.firstCycle)).toBeLessThan(420);
     }
   });
 
-  it('sounds for most of the crossing rather than blipping three times', () => {
-    // `battleshipBuzz` is "a distinctly lower, sustained buzz". Three 68 ms
-    // notes are what the machine can play without freezing the tube for the
-    // whole crossing, so "sustained" here is a coverage floor: at 26% - the
-    // figure before the fix - they are three isolated blips the same length as
-    // a march step, which is exactly what was reported as no sound at all.
-    for (const crossing of found) {
-      const sounding = buzzesIn(crossing).reduce(
-        (total, buzz) => total + ms(buzz.lastCycle - buzz.firstCycle),
-        0,
-      );
-      const span = ms(crossing.toCycle - crossing.fromCycle);
-      expect(sounding / span).toBeGreaterThan(0.4);
+  it('holds each lane for seconds, so there is time to shoot at it', () => {
+    // The owner, against his own unit: it "moves slowly down the the slots which
+    // gives you time to shoot at it". `assets/reference/sprites/README.md`
+    // measures the same thing over 17 episodes of IMG_6113.mov - median 2.5 s in
+    // a lane, longest 5.9 s - and one traced descent runs 1.3 / 2.1 / 5.8 s a
+    // lane. Against the 133 ms a lane this ROM used to give, and the 126 ms it
+    // was cut to.
+    //
+    // The bounds are the ROM's own arithmetic with slack for the sweeps a note
+    // lands in, not a transcription of those figures: a lane hold is
+    // LANE_STEP_SWEEPS long and a sweep costs at least its nominal 13.46 ms.
+    const nominalMs = LANE_STEP_SWEEPS * 13.46;
+    for (const hold of holds) {
+      const span = ms((hold.toCycle as number) - hold.fromCycle);
+      expect(span).toBeGreaterThan(nominalMs);
+      expect(span).toBeLessThan(nominalMs * 1.6);
     }
   });
 
-  it('buzzes three times inside every crossing, one to a lane', () => {
-    // The coverage floor is a ratio, so a crossing that ran short would satisfy
-    // it on one note. There are three lanes and `bship_enter` and `bm_store`
-    // between them sound one buzz each, so three is what a whole crossing is.
+  it('descends the lanes, top to bottom, without leaving its column', () => {
+    // The claim the video could not settle on its own: it traced the succession
+    // lane 0 -> lane 1 -> lane 2 and recorded that "the video cannot separate one
+    // battleship moving from three in succession". The owner's "moves slowly
+    // down the the slots" is the missing half. This asserts the ROM does what
+    // both describe - one boat, walking down the lanes in order from the top.
+    //
+    // A crossing cut short by a hit or by the end of the game gives a prefix of
+    // that walk, which is still a statement about direction, so the assertion is
+    // on the prefix rather than on there being three of them.
+    //
+    // The *column* is the other half of "down the slots, not across them", and
+    // it is not asserted here because it is not a variable: `draw_bship` takes
+    // COL_BSHIP with no path that varies it, and there is nowhere for the boat
+    // to go - the video found it outside cell 0 in none of 17 episodes, and the
+    // tube carries a battleship segment for that cell only.
     for (const crossing of found) {
-      expect(buzzesIn(crossing).length).toBe(3);
+      const lanes = crossing.holds.map((hold) => hold.lane);
+      expect(lanes.length).toBeLessThanOrEqual(laneCount);
+      expect(lanes).toEqual([...Array(lanes.length).keys()]);
     }
   });
 });
