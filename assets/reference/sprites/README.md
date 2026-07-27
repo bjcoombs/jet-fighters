@@ -4,6 +4,35 @@ Traced-from-photograph reference for every lit segment on the tube. These crops 
 the authority for sprite shape, colour and layout - `src/machine/tube/atlas.json`
 should match them, not the other way round.
 
+## The owner's account of the mechanics
+
+Stated by the owner, who has the physical unit. **This is the authority.** Where a
+section below disagrees with it, the section is wrong and is marked so.
+
+1. **We are the defenders, and we are on the right.** We fire **green (cyan) bullets
+   that travel right to left**.
+2. **The attackers are red.** They **travel left to right**, advancing toward us.
+3. **The attackers shoot back**, firing **red dots that look exactly like a colon
+   `:`** - two dots, one directly above the other.
+4. **Each cell has its own set of lightable areas.** The illusion of animation comes
+   from lighting different areas within a cell, not from moving one shape across the
+   glass. Every distinct appearance a sprite has is a separate physical segment.
+
+Point 4 is the structural one. It means the atlas is a set of **per-cell segment
+groups**, and any test asserting that one outline is translated across a row encodes a
+misunderstanding of how the tube works.
+
+Two crops corroborate points 1 and 2 directly, in the sprite shapes themselves:
+`video/jet-column-4.png` is a red jet with its **nose to the right**;
+`video/missile-column-4.png` is a cyan dart with its **point to the left**.
+
+**This supersedes section 4 below.** That section attributes the two vertically
+stacked bursts to the player's missile. The colon-shaped pair the owner describes is
+**red and belongs to the attackers**. The stacked bursts in `missile-lit.png` and
+`video/explosion-burst-pair.png` are unmistakably **cyan**, so they are a different
+object from the attackers' colon - which one they are is unresolved and is the first
+question for the sprite catalogue.
+
 ## Source photographs
 
 Both are close-ups of a real CGL Jet Fighters unit, powered on, supplied by the owner.
