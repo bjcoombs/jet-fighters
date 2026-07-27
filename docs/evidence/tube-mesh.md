@@ -38,6 +38,15 @@ mesh signature at the same period and angle as the solid bursts beside it, so th
 texture in it is not a sparser print - it is the grid, and whatever makes the stipple a
 stipple is a coarser feature drawn on top.
 
+**That coarser feature has since been traced, and it is about eleven separate curl
+marks.** The stipple is drawn, not screened - the grid is simply in front of it as it is
+in front of everything else. Worth stating plainly for a later reader, because the natural
+next step from this page is to try demodulating the grid to make the stipple separate, and
+that does not work and does not need to: over the smoke the grid's ripple measures 3.5
+grey levels of standard deviation against 74 levels of curl-to-glass contrast, twenty
+times too small to have been what defeated a threshold. See ATLAS-COORDINATES.md, "Cell
+6's smoke, and why five attempts missed it".
+
 ## What it looks like
 
 ![One playfield cell: the renderer at 1x, the renderer magnified, and the tube photographed](tube-mesh-comparison.jpg)

@@ -105,4 +105,11 @@ changed, because changing it moves every sprite in the atlas and every column in
   It is in the cyan phosphor and sits at the player's end, which fits the player's
   launcher, but it does not obviously look like the "blocky cyan shape" the video shows
   there. Identify it before drawing it.
-- **What the yellow smoke/cloud in cell 6 is.** No lit reference has ever caught it.
+- **What the yellow smoke/cloud in cell 6 is.** Its *shape* is no longer open - it is
+  traced, about eleven separate curl marks per lane, and it is drawn as part of
+  `capture_lane*` on the reading that the owner's lit photograph shows it glowing in the
+  same event as the starburst beside it. What that photograph shows is all that says the
+  smoke is lit at all, and it is not in this directory: `lit-capture-burst.jpg` is cited
+  by `src/machine/tube/ATLAS-COORDINATES.md` and `docs/evidence/open-questions.md` and has
+  never been committed. What the smoke *depicts*, and whether it is one address with the
+  starburst or two, are both still open.

@@ -208,23 +208,32 @@ Recorded when the atlas work finished, so these do not evaporate with the agent 
 found them. All three are honest gaps rather than loose ends: each is documented where
 someone will meet it, and each names what would settle it.
 
-### 5a. The capture burst's smoke - a path gap, not an address gap
+### 5a. The capture burst's smoke - **closed**, with two things left over
 
-`assets/reference/tube-teardown/lit-capture-burst.jpg` shows the stippled curls glowing in
-the same event as the starburst beside them, as one connected region. So the smoke is a
-lit segment, and the parsimonious reading is that it belongs in the capture burst's own
-path - the fourth family on this tube with a two-part structure, alongside the colon's two
-dots, the jet-kill burst's two blobs and the sea's wave glyphs.
+The smoke is traced. It is in `capture_lane*`'s path, about eleven curl marks per lane,
+and `docs/evidence/tube-sprite-detail.jpg` shows it against the glass at matched
+magnification.
 
-It is not traced: the stipple is the same pigment printed as a dot screen, so it separates
-on neither brightness, hue nor saturation, and erosion destroys what little survives. Five
-approaches and their results are in `src/machine/tube/ATLAS-COORDINATES.md`.
+It was never merged with anything and never needed separating: at a per-lane threshold it
+comes out as eleven marks that touch neither starburst. Five approaches missed it because
+they were all hunting a pixel property that would tell a stipple from a solid area, and
+then dropping everything that was not one of the cell's largest components. What it needed
+was a name and a place to be. `src/machine/tube/ATLAS-COORDINATES.md`, "Cell 6's smoke,
+and why five attempts missed it", has the detail - including that removing the control
+grid's modulation, which was the promising lead, is not what unblocked it: over the smoke
+the grid's ripple is 3.5 grey levels against 74 levels of curl-to-glass contrast.
 
-**Falsifier, and it changes the size of the problem:** a lit frame showing the stipple
-without the starburst, or the starburst without the stipple. Bloom in a lit photograph can
-join separately-addressed segments, so the co-lighting reading is strongly evidenced
-rather than proved. If it is wrong, that cell needs **two addresses** rather than one
-incomplete path.
+**A photograph the reading rests on is not in this repository.**
+`assets/reference/tube-teardown/lit-capture-burst.jpg` is cited in two documents and no
+commit has ever added it. That the curls are lit at all, and lit *with* the starburst
+rather than separately, comes entirely from it - so the outline is now measured but its
+membership of `capture_lane*` still rests on a file nobody here can open. Please supply
+it, or say if it was never meant to be committed.
+
+**The falsifier is unchanged, and acting on it is now cheap.** A lit frame showing the
+stipple without the starburst, or the starburst without the stipple, would mean the cell
+needs two addresses rather than one path. The outline is measured either way, so what that
+frame would cost is splitting one path in two - not another attempt at the trace.
 
 ### 5b. `capture_lane*` is undriven
 
