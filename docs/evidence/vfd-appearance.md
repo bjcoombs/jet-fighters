@@ -342,10 +342,40 @@ active layer and silkscreen every call; `blank()` (`renderer.ts:243`) only zeroe
 phosphor field and is only called on a power transition (`main.ts:104`). There is no path
 by which a sound darkens the tube. The real machine blanks fully for 133-167 ms on every
 sound, 14-17% of all frames during active play.
-This is a **ROM-layer fix, not a renderer fix**: `asm/jetfighter.asm`'s sound routines
-must stop refreshing the grids for the duration of the sound, and the existing
-`display.ts` frame machinery will then blank the tube on its own. Do not special-case it
-in TypeScript.
+
+**Correction, made when this was implemented.** The prescription originally written here -
+that `asm/jetfighter.asm`'s sound routines must stop refreshing the grids, after which the
+existing `display.ts` frame machinery would blank the tube on its own - was half wrong,
+and the half that was wrong is the half that would have fixed it.
+
+*The ROM already stops.* `sweep` drops each grid with `REDY` after its dwell, so all ten
+are low when the sweep ends, and `tick` -> `play_sound` -> `note_loop` runs between sweeps
+touching only D14. Driving the machine headlessly and tapping D0-D9, the intervals with no
+grid driven at all are 71.0-72.2 ms for a march note (70.4 ms of tone), 141.7 ms for a
+two-beep launcher warning and 636.9 ms for the loss sequence. The blank already tracks the
+sound one-for-one; there was no interleaving to remove.
+`tools/probe/sweep-timing.test.ts` now pins this.
+
+*What stops it reaching the glass is the observation surface.* `Display.getFrame()` returns
+the most recently *completed* frame period, and a period completes only when a grid rises
+that has already risen (`display.ts:112-115`). No grid rises during a blank, so no period
+completes, so `Board.getLitSegments()` (`board.ts:176-181`) hands `main.ts` the last fully
+lit sweep for the whole blank and `renderer.draw` paints it. The one effect that does
+survive is a dilution: the frame that *contains* a sound spans one sweep plus the blank, so
+its duty falls from 0.090 to about 0.016 and the renderer shows a single ~30%-brightness
+frame *after* the sound. A dip, once the blink is over, rather than the blink.
+
+*No ROM change can close that*, and the reason is structural rather than a missing trick: a
+"last completed frame" is stale by construction while the sweep is stalled. Forcing a
+boundary from the ROM closes the frame either before the blank - leaving the same lit frame
+on screen through it - or after it, one diluted frame late. Reporting a dark tube *during*
+the blank requires the observation surface to consult the live tube.
+
+The remaining work is therefore one change in `src/machine/board/board.ts`, and it is not a
+sound special case: `getLitSegments()` already falls back to a live `sampleFrame()` when
+`frameCount === 0`, "so a caller that reads too early sees what is on the tube rather than
+an empty list that looks like a dark machine". A stalled sweep is the same situation. That
+fallback is not made here, because it was outside the mandate of the change that found this.
 
 **D2 - Phosphor decay is 3x to 15x too slow. (Section 3.)**
 `PHOSPHOR.decayTimeMs = 15` (`phosphor.ts:55-60`), i.e. tau = 15/ln(10) = 6.51 ms.
@@ -358,19 +388,31 @@ as "judgement calls, not measurements" - they now have measurements.
 13-21% for red against 3.2-4.5% for cyan, reproduced in every window - red persists
 roughly 4x longer. `PhosphorConstants` needs to be keyed by `ColorRegion`.
 
-**D4 - The sweep rate is outside the measured bracket. (Section 2.)**
-`asm/jetfighter.asm:418-428` produces a 6190-cycle sweep = 15.5 ms = 64.5 Hz at the
+**D4 - The sweep rate is outside the measured bracket. (Section 2.) FIXED.**
+`asm/jetfighter.asm:418-428` produced a 6190-cycle sweep = 15.5 ms = 64.5 Hz at the
 400 kHz oscillator. A 64.5 Hz sweep beats at 4.5 Hz against a 30 Hz camera; the video
 shows 10.6-12.5 Hz. The admissible intervals are disjoint - 40.6-42.5, 47.5-49.4,
 70.6-72.5, 77.5-79.4, 100.6-102.5, 107.5-109.4, 130.6-132.5 Hz - and **70.6-72.5 Hz** is
 the one adjacent to the current value. Changing this means changing
 `DWELL_OUTER`/`DWELL_INNER`, not the TypeScript.
 
+Done: 15/15 -> 14/13, with one NOP added inside the dwell's outer pass. The two nibbles
+alone reach only 69.5, 70.2 and 71.8 Hz on a played game - either side of the interval,
+because the reachable rungs are 1.8 Hz apart and the interval is 1.9 Hz wide - and the pad
+is what reaches its middle. The mean is 71.5 Hz over the sound-free sweeps of a game being
+played, which is the population this interval is a statement about;
+`docs/evidence/timing-analysis.md` records the same figure for two other populations,
+because the spread between them is wider than the interval and quoting one without the
+others would overstate the precision. Every sweep-denominated cadence constant in the ROM
+moved with the rate, so the milliseconds each one stands for are unchanged.
+
 **D5 - Sweep-period jitter: keep it. (Section 2.)**
 `display.ts:112-115` closes a frame when an already-driven grid rises again, so the period
 is whatever the ROM took. The measured spectral spread is consistent with real jitter of
 up to ~+/-7% and rules out a stable period (section 2). This
-is right. Do not replace it with a fixed period while fixing D4.
+is right. Do not replace it with a fixed period while fixing D4. Kept: the retuned ROM's
+sound-free sweeps still span 5514-5709 cycles on a played game, because the between-sweep
+game work varies with what is on the tube, and the sound blanks are on top of that.
 
 **D6 - Supply sag: correctly absent. (Section 4.)**
 `power.ts` is a binary on/off state with no load term, and nothing in `renderer.ts` scales
