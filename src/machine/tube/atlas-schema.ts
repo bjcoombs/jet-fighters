@@ -140,6 +140,18 @@ export type SeaSegmentId = `sea_lane${LaneIndex}`;
  * draw it.
  */
 export type BattleshipBurstSegmentId = `battleship_burst_lane${LaneIndex}`;
+/**
+ * The burst a jet makes when it reaches the capture line, one per lane
+ * (3 total).
+ *
+ * The player's cell prints **two** bursts and they are different events, which
+ * the owner settled: one is "when the plane reaches right hand side" and the
+ * other "when the `:`". {@link ExplosionSegmentId} is the second - being hit by
+ * the attackers' colon - and this is the first. They are near the same size but
+ * clearly different shapes, the capture burst deeper and the rocket burst
+ * flatter, and each is consistent across its own three lanes.
+ */
+export type CaptureSegmentId = `capture_lane${LaneIndex}`;
 
 /**
  * Every addressable segment on the tube. Exhaustive by construction: a typo in
@@ -156,6 +168,7 @@ export type SegmentId =
   | BattleshipSegmentId
   | SeaSegmentId
   | BattleshipBurstSegmentId
+  | CaptureSegmentId
   | 'score_hundreds'
   | 'score_label';
 
@@ -214,6 +227,7 @@ export const EXPECTED_SEGMENT_COUNTS = {
   battleship: 3,
   sea: 3,
   battleshipBurst: 3,
+  capture: 3,
   scoreLabel: 1,
 } as const;
 

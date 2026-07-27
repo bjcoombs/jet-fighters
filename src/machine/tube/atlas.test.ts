@@ -111,10 +111,17 @@ describe('geometry invariants', () => {
     // Nothing lit sits outside the border any more. The three marks between the
     // right rail and the glass edge are white paint on the overlay, not
     // phosphor (owner-confirmed), so they left the atlas entirely.
+    // Two units of latitude on the right-hand edge, and it is a stated
+    // disagreement rather than slack. PLAYFIELD comes from the lit close-ups
+    // and the cell lattice from the bare tube, measured independently; the
+    // player's cell runs to the field border and its launcher ends about 1.6
+    // units past where the close-ups put that border. That is 5% of a cell
+    // between two sources, not a sprite in the wrong place.
+    const EDGE_SLACK = 2;
     for (const s of atlas.segments) {
       expect(s.bounds.x, s.id).toBeGreaterThanOrEqual(PLAYFIELD.x);
       expect(s.bounds.x + s.bounds.width, s.id).toBeLessThanOrEqual(
-        PLAYFIELD.x + PLAYFIELD.width,
+        PLAYFIELD.x + PLAYFIELD.width + EDGE_SLACK,
       );
       expect(s.bounds.y, s.id).toBeGreaterThanOrEqual(PLAYFIELD.y);
       expect(s.bounds.y + s.bounds.height, s.id).toBeLessThanOrEqual(
@@ -148,6 +155,7 @@ describe('geometry invariants', () => {
       // behind it; the player's cell holds the launcher and its own burst.
       if (id.startsWith('battleship_') || id.startsWith('sea_')) return 0;
       if (id.startsWith('launcher_') || id.startsWith('explosion_')) return 6;
+      if (id.startsWith('capture_')) return 6;
       return null;
     };
     for (const segment of atlas.segments) {
@@ -173,6 +181,35 @@ describe('geometry invariants', () => {
         const overlap =
           a.bounds.x < b.bounds.x + b.bounds.width && b.bounds.x < a.bounds.x + a.bounds.width;
         expect(overlap, `${a.id} <-> ${b.id}`).toBe(false);
+      }
+    }
+  });
+
+  it('sits the aircraft left of centre in its cell, where the print puts them', () => {
+    // The frame, asserted rather than assumed - and this is the assertion whose
+    // absence let the atlas be built on the wrong one.
+    //
+    // The lattice was originally phased on jet centroids, which takes the
+    // artwork to be centred in its cell. It is not. The printed cell boundaries
+    // measure at n + 0.66 of that lattice on five boundaries, each a triple of
+    // dark runs - one cell's right rule, the gutter, the next cell's left rule -
+    // so the printed centres are at n + 0.16 and the aircraft sit about 0.16 of
+    // a cell left of them. Phasing on the sprites normalised that away, and
+    // every test still passed, because "inside its own cell" and "within a
+    // quarter of a cell of the lattice" are both true under a uniform shift.
+    //
+    // So the offset itself is pinned. A regeneration that re-centres the
+    // sprites - which is what happens if anyone re-derives the lattice from the
+    // artwork again - fails here rather than passing quietly.
+    const CELL_W = 31.114;
+    const FIELD_X = 95.832;
+    for (let col = 1; col <= 5; col += 1) {
+      const centre = FIELD_X + (col + 0.5) * CELL_W;
+      for (let lane = 0; lane < 3; lane += 1) {
+        const b = getSegmentById(`jet_lane${lane}_col${col}` as SegmentId).bounds;
+        const offset = b.x + b.width / 2 - centre;
+        expect(offset, `jet_lane${lane}_col${col} sits left of centre`).toBeLessThan(-1.5);
+        expect(offset, `jet_lane${lane}_col${col} is not a cell out`).toBeGreaterThan(-6.5);
       }
     }
   });
@@ -313,15 +350,15 @@ describe('sprite proportions', () => {
     }
   });
 
-  it("draws the player's ship as a hull, superstructure and keel, not one block", () => {
-    // Three bands separated by dark glass, not a solid body and not the rack of
-    // pointed rails the v2.12 atlas drew here. The rails were a gun battery at
-    // the field's right-hand edge; the photographs show a ship-like silhouette -
-    // a long hull with a raised superstructure - inside the field near the G
-    // line, and the owner confirmed that is the object the player controls.
+  it("draws the player's ship as one object, which is what the tube prints", () => {
+    // This asserted three bands - hull, superstructure, keel - separated by dark
+    // glass, read off the lit close-up where bloom breaks a single shape into
+    // bright patches. The bare tube shows one connected object per lane. The
+    // three bands were an artefact of looking at a lit sprite through smoked
+    // glass, and the assertion froze them.
     for (let lane = 0; lane < 3; lane += 1) {
       const path = getSegmentById(`launcher_lane${lane}` as SegmentId).path;
-      expect(path.match(/M/g)?.length, `launcher_lane${lane}`).toBe(3);
+      expect(path.match(/M /g)?.length, `launcher_lane${lane}`).toBe(1);
     }
   });
 
@@ -420,15 +457,31 @@ describe('sprite proportions', () => {
     }
   });
 
-  it("puts the explosion over the player's ship position in every lane", () => {
+  it("prints the player's two losses as different bursts, beside the ship", () => {
+    // This asserted the burst was centred on the launcher, on the reasoning
+    // that a burst marks where the ship was. The tube does not do that: the
+    // cell prints the ship and two bursts side by side, all three at fixed
+    // positions, and lights whichever the event calls for.
+    //
+    // The two bursts are two different losses, which the owner settled: one is
+    // a jet reaching the capture line, the other is being hit by the colon.
+    // They are close in area and clearly different in shape - the capture burst
+    // deeper, the rocket burst flatter - and each is consistent across its own
+    // three lanes.
     for (let lane = 0; lane < 3; lane += 1) {
       const ship = boundsOf(`launcher_lane${lane}`);
-      const burst = boundsOf(`explosion_lane${lane}`);
-      const centre = (b: typeof ship) => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 });
-      expect(centre(burst).x, `lane ${lane} x`).toBeCloseTo(centre(ship).x, 3);
-      expect(centre(burst).y, `lane ${lane} y`).toBeCloseTo(centre(ship).y, 3);
-      // The burst throws wider than the ship it consumes.
-      expect(burst.width, `lane ${lane} width`).toBeGreaterThan(ship.width);
+      const capture = boundsOf(`capture_lane${lane}`);
+      const rocket = boundsOf(`explosion_lane${lane}`);
+      // The capture burst is the one to the ship's left; that is the
+      // discriminator the lit photograph gave, and it does not depend on
+      // reading a lane off a photograph that spans three.
+      expect(capture.x + capture.width / 2, `capture_lane${lane} is left of the ship`).toBeLessThan(
+        ship.x + ship.width / 2,
+      );
+      // Deeper than the rocket burst, which is the shape difference between them.
+      expect(capture.height, `capture_lane${lane} is the deeper burst`).toBeGreaterThan(
+        rocket.height,
+      );
     }
   });
 

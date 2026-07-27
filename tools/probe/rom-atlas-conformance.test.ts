@@ -169,6 +169,12 @@ const ROM_CANNOT_REACH = {
     // The ROM scores a battleship kill already - bship_kill, ten points - and
     // has never drawn one.
     ['battleship_burst', 'the burst behind the battleship: scored, never drawn'],
+    // The player's cell prints two bursts for two different losses - a jet
+    // reaching the capture line, and being hit by the colon. The ROM draws the
+    // same segment for both, so the capture burst is never lit. Distinguishing
+    // them is a change to the launcher-destroyed path rather than to the
+    // display map, and it belongs with whoever owns that code.
+    ['capture', 'the capture burst: the ROM draws the rocket burst for both losses'],
   ]),
   /**
    * Addresses inside an otherwise driven family that the ROM cannot reach.
