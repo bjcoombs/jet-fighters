@@ -277,17 +277,28 @@ per sprite below rather than hidden.
   three lanes, because the video finds it in all three and stationary in
   whichever one it is lit in.
 
-### Still unresolved: which cell the battleship is really in
+### Settled: the battleship's cell is its own, and carries no jet
 
-The video puts the battleship in a **seventh** cell, beyond the far distance
-column, and the atlas models six. It is therefore drawn in the far cell, sharing
-that glass with the column-5 jet, the colon, the dart and the burst - five
-segments in one cell, which is why that grid needs plates above 11.
+Three independent sources agree, so this is no longer hedged anywhere in this
+document:
 
-This is the same unresolved question `assets/reference/sprites/README.md` raises
-under "The far-left cell: it is both", and no column-count change is made on the
-strength of it. What has changed is that the ship is no longer one segment in
-the centre lane: three lanes is direct observation, and the ROM already stepped
+1. **The teardown photographs.** Seven printed cell boxes. The far one carries a
+   battleship over printed sea with a burst behind it, and **no aircraft**.
+2. **The catalogue's whole-file video measurement.** The jet-sized red sightings
+   in that cell are partially-lit battleships - IoU 0.75 against the full hull
+   against 0.55 against a real jet. It withdraws the earlier "it is both"
+   reading, which `assets/reference/sprites/README.md` had raised as an open
+   question.
+3. **The owner, directly**: "The ship has its own left-hand side; jet fighters do
+   not start on that column."
+
+So the jet field is five cells, not six or seven, and `jet_lane*_col0` is not a
+segment the tube has. The atlas used to draw one because the playfield had six
+grids and the battleship shared the far jet column's; the seventh grid separated
+them.
+
+The ship has a segment per lane because the video finds it in all three and
+stationary in whichever one it is lit in - and the ROM already stepped
 `NIB_BSLANE` through all three with nowhere to show it.
 
 
