@@ -39,7 +39,7 @@ import {
  * From the segment atlas (src/machine/tube/atlas.json, `launcher_lane0..2`),
  * which is also where jetfighter.asm's GRID_LAUNCH and PAT_LANE take them from.
  */
-const LAUNCH_GRID = 5;
+const LAUNCH_GRID = 6;
 const LANE_PLATES = [6, 7, 8];
 
 /** The band contract V5 measures the missile-fire blip against, in hertz. */

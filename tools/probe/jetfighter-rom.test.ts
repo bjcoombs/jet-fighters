@@ -41,8 +41,8 @@ import { ROM_PROGRAM_SIZE } from '../../src/machine/cpu/memory.js';
  */
 const PLATE_JET = [0, 1, 2];
 const PLATE_ROCKET = [3, 4, 5];
-/** Grid 0 only: the battleship, one plate per lane - the tube's only R3 segments. */
-const PLATE_BSHIP = [12, 13, 14];
+/** Grid 0 only: the battleship, which has a cell of its own and no jet in it. */
+const PLATE_BSHIP = [0, 1, 2];
 /**
  * The player's own object in a cell: the missile dart under grids 0-4, the
  * launcher under grid 5. One plate per lane, and the grid says which it is.
@@ -59,14 +59,20 @@ const PLATE_BURST = [9, 10, 11];
 const PLATE_SCORE_LABEL = 0;
 
 /** Playfield geometry, mirroring the ROM's "Playfield geometry" block. */
-const GRID_COLUMN_LAST = 5;
+const GRID_COLUMN_LAST = 6;
+/** The battleship's own cell, at the far end. No jet is printed in it. */
 const GRID_BSHIP = 0;
+/** The far jet column: where a jet enters the field. */
+const GRID_JET_FAR = 1;
 /** The column a shot launches into, as a grid: the cell next to the launcher. */
-const GRID_MISSILE_START = 4;
-const GRID_LAUNCH = 5;
-const GRID_SCORE_H = 6;
+const GRID_MISSILE_START = 5;
+/** The player's own cell, at the G line. No jet is printed in it either. */
+const GRID_LAUNCH = 6;
+/** Two digit cells, not three: the tens shares its cell with the hundreds. */
 const GRID_SCORE_T = 7;
 const GRID_SCORE_U = 8;
+/** The hundreds half-digit, on the tens digit's own grid. */
+const PLATE_SCORE_HUNDREDS = 7;
 const GRID_STATUS = 9;
 
 /**
@@ -121,19 +127,22 @@ function platesUnder(board: Board, grid: number): number[] {
 }
 
 /**
- * The distance columns showing a jet, left (far) to right (the G line).
+ * The cells that carry a jet, as grids: 1 to 5.
  *
- * Restricted to the six playfield grids on purpose: plates 0-2 mean a jet under
- * grids 0-5 and the digit segments a-c under 6-8, which is what a multiplexed
- * tube is.
+ * Restricted to those on purpose, because plates 0-2 mean different things
+ * under different grids and that is what a multiplexed tube is: a jet under
+ * grids 1-5, the **battleship** under grid 0, and the digit segments a-c under
+ * 7-8. Counting grid 0 here would read a battleship as three jets.
  */
+const isJetCell = (grid: number) => grid >= GRID_JET_FAR && grid < GRID_LAUNCH;
+
 function jetColumns(board: Board): number[] {
-  return gridsShowing(board, PLATE_JET).filter((grid) => grid <= GRID_COLUMN_LAST);
+  return gridsShowing(board, PLATE_JET).filter(isJetCell);
 }
 
-/** The distance columns showing a jet in one lane, as grids. */
+/** The cells showing a jet in one lane, as grids. */
 function laneColumns(board: Board, lane: number): number[] {
-  return gridsShowing(board, [PLATE_JET[lane]!]).filter((grid) => grid <= GRID_COLUMN_LAST);
+  return gridsShowing(board, [PLATE_JET[lane]!]).filter(isJetCell);
 }
 
 /** How many columns of one lane are showing a jet. */
@@ -148,7 +157,7 @@ function jetSegmentCount(board: Board): number {
     .segments
     .filter(
       (segment) =>
-        segment.duty > 0 && segment.grid <= GRID_COLUMN_LAST && PLATE_JET.includes(segment.plate),
+        segment.duty > 0 && isJetCell(segment.grid) && PLATE_JET.includes(segment.plate),
     ).length;
 }
 
@@ -255,10 +264,23 @@ describe('the field the ROM puts up at power-on', () => {
   });
 
   it('brings the first jet in at the far column, in one lane only', () => {
-    // A jet enters from the battleship side, which is grid 0, and it enters
+    // A jet enters from the battleship side, which is grid 1 - the battleship
+    // has grid 0 to itself and no jet is printed in that cell - and it enters
     // alone: the rest of the wave follows on its own countdown.
-    expect(jetColumns(board)).toEqual([0]);
-    expect(platesUnder(board, 0).filter((plate) => PLATE_JET.includes(plate))).toHaveLength(1);
+    expect(jetColumns(board)).toEqual([GRID_JET_FAR]);
+    expect(
+      platesUnder(board, GRID_JET_FAR).filter((plate) => PLATE_JET.includes(plate)),
+    ).toHaveLength(1);
+  });
+
+  it('prints no jet in the battleship cell or the player cell, so drives none', () => {
+    // The two end cells carry no aircraft on the glass. Their jet plates are
+    // unwired, and a jet drawn there would be the phantom-segment fault again.
+    for (const grid of [GRID_BSHIP, GRID_LAUNCH]) {
+      for (const plate of PLATE_JET) {
+        expect(platesUnder(board, grid), `grid ${grid} plate ${plate}`).not.toContain(plate);
+      }
+    }
   });
 
   it('leaves the battleship dark until a crossing starts', () => {
@@ -278,7 +300,7 @@ describe('the field the ROM puts up at power-on', () => {
   });
 
   it('holds no jet rocket in the air before the jets have fired one', () => {
-    expect(gridsShowing(board, PLATE_ROCKET).filter((grid) => grid <= GRID_COLUMN_LAST)).toEqual([]);
+    expect(gridsShowing(board, PLATE_ROCKET).filter(isJetCell)).toEqual([]);
   });
 
   it('reads a single 0 at zero, with both leading columns blanked', () => {
@@ -290,7 +312,9 @@ describe('the field the ROM puts up at power-on', () => {
     // leading digit, so zero is a lit `0` and never a blank readout.
     expect(platesUnder(board, GRID_SCORE_U)).toEqual(DIGIT_ZERO_PLATES);
     expect(platesUnder(board, GRID_SCORE_T)).toEqual(DIGIT_BLANK_PLATES);
-    expect(platesUnder(board, GRID_SCORE_H)).toEqual(DIGIT_BLANK_PLATES);
+    // The hundreds is a half-digit sharing the tens digit's cell, so "blank"
+    // means its one plate is dark rather than a whole column being dark.
+    expect(platesUnder(board, GRID_SCORE_T)).not.toContain(PLATE_SCORE_HUNDREDS);
   });
 });
 
@@ -332,7 +356,7 @@ describe('the score readout blanks leading digits, and only leading digits', () 
     const board = boardAtFirstTensDigit();
     expect(platesUnder(board, GRID_SCORE_T)).toEqual(DIGIT_ONE_PLATES);
     expect(platesUnder(board, GRID_SCORE_U).length).toBeGreaterThan(0);
-    expect(platesUnder(board, GRID_SCORE_H)).toEqual(DIGIT_BLANK_PLATES);
+    expect(platesUnder(board, GRID_SCORE_T)).not.toContain(PLATE_SCORE_HUNDREDS);
   });
 
   it('never blanks the units column, at any score it reaches', () => {

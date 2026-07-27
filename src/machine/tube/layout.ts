@@ -107,8 +107,19 @@ export const FIELD_BAND_FRACTION = {
  */
 export const SCORE_BOX_FRACTION = 0.2;
 
-/** Distance columns across the field. atlas-schema.ts `ColumnIndex` is 0..5. */
-export const COLUMN_COUNT = 6;
+/**
+ * Distance cells across the field. atlas-schema.ts `ColumnIndex` is 0..6.
+ *
+ * Seven, counted off the printed cell boxes in
+ * `assets/reference/tube-teardown/tube-unlit-full.jpg`: cell 0 the battleship
+ * over printed sea, cells 1-5 the jet columns, cell 6 the player's end at the
+ * `G` line. Six was never a claim about the glass - the ROM has modelled seven
+ * columns all along and `PAT_COLUMN` mapped its columns 5 and 6 onto the same
+ * display grid, which is the collapse this count removes. A cell and a grid are
+ * now the same thing, which is also what makes the ROM/atlas conformance test
+ * able to see a one-cell error at all.
+ */
+export const COLUMN_COUNT = 7;
 
 /** Lanes down the field. atlas-schema.ts `LaneIndex` is 0..2. */
 export const LANE_COUNT = 3;
@@ -197,15 +208,20 @@ export interface RulerTick {
 }
 
 /**
- * The printed 10 / 3 / 2 / 1 / G ruler. Unchanged from v1's `rulerTicks`: 10
- * marks the battleship zone, 3 / 2 / 1 the jet scoring bands, and G the capture
- * line at the last column.
+ * The printed 10 / 3 / 2 / 1 / G ruler: 10 marks the battleship zone, 3 / 2 / 1
+ * the jet scoring bands, and G the capture line at the last cell.
+ *
+ * Now placed from the ROM's own scoring table rather than from v1's spacing.
+ * `PAT_COLUMN` awards 3 points in its column 5, 2 in columns 4 and 3, 1 in
+ * columns 2 and 1, and the battleship's zone carries the printed 10; a ROM
+ * column maps to cell `6 - column`. So 3 sits over cell 1, 2 spans cells 2-3,
+ * 1 spans cells 4-5, and G is the player's own cell.
  */
 export const RULER_TICKS: readonly RulerTick[] = [
   { label: '10', column: 0 },
-  { label: '3', column: 1.5 },
-  { label: '2', column: 3 },
-  { label: '1', column: 4 },
+  { label: '3', column: 1 },
+  { label: '2', column: 2.5 },
+  { label: '1', column: 4.5 },
   { label: 'G', column: COLUMN_COUNT - 1 },
 ];
 

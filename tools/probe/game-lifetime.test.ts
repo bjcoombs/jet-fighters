@@ -250,16 +250,35 @@ describe("a machine whose controls are worked keeps playing", () => {
         }
       });
 
-      // Sound across the whole run, not just its first six seconds. Ten buckets of
-      // two seconds each: an ending anywhere inside the run empties every bucket
-      // after it, so this fails for a machine that stopped at 5.66 s.
+      // Sound across the run, not just its first six seconds. Ten buckets of
+      // two seconds each.
+      //
+      // The bug this guards is a machine that stops *dead* at 5.66 s - the
+      // unattended one, whose picture is byte-identical from six seconds on. A
+      // blind player being destroyed is not that: the game ends, correctly, and
+      // the tube goes on being swept and redrawn. This used to require all ten
+      // buckets, which also required the blind player to survive the whole
+      // twenty seconds, and that is not a property of the machine - it depends
+      // on the sampled counter the game takes its randomness from, so any change
+      // that moves the cycle stream by a few cycles a sweep moves it.
+      //
+      // So the assertion is on the shape of the sound, not on its last bucket:
+      // no silent gap anywhere inside the sounding part of the run, and the
+      // sound reaching at least three times the 5.66 s the bug stopped at.
       const buckets = bucketByCycle(edges, horizon, 10);
-      expect(buckets.filter((count) => count > 0)).toHaveLength(buckets.length);
+      const lastHeard = buckets.reduce((last, count, i) => (count > 0 ? i : last), -1);
+      expect(lastHeard, "sound reached past 16 s").toBeGreaterThanOrEqual(7);
+      expect(
+        buckets.slice(0, lastHeard + 1).filter((count) => count > 0),
+        "no silent stretch before the game ends",
+      ).toHaveLength(lastHeard + 1);
 
-      // And a tube that keeps changing. The unattended machine's picture is
-      // byte-identical from 6 s onwards; this one must not be.
+      // And a tube that keeps changing, and is still being swept at the
+      // horizon whatever the game did - which is the half of this the bucket
+      // count above no longer carries.
       expect(new Set(signatures).size).toBeGreaterThan(1);
       expect(signatures[signatures.length - 1]).not.toEqual(signatures[0]);
+      expect(board.getStrobedGrids()).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     },
     LONG_RUN_TIMEOUT_MS,
   );

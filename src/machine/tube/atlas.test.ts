@@ -144,9 +144,9 @@ describe('geometry invariants', () => {
       const column = /_col([0-5])/.exec(id)?.[1];
       if (column !== undefined) return `${lane}-${column}`;
       // The launcher and the burst that replaces it stand on the G line, which
-      // is column 5; the battleship is drawn in the far cell, column 0.
+      // is cell 6; the battleship has cell 0 to itself.
       if (id.startsWith('battleship_')) return `${lane}-0`;
-      return `${lane}-5`;
+      return `${lane}-6`;
     };
     const found: string[] = [];
     const expected: string[] = [];
@@ -164,39 +164,39 @@ describe('geometry invariants', () => {
         if (overlap) found.push(pair);
         const shared = cell(a.id);
         // The colon is deliberately offset toward the player, clear of the
-        // aircraft that fired it, so it does not overlap its own cell-mates -
-        // except the battleship, which is drawn half again as wide as a jet and
-        // reaches it. See ATLAS-COORDINATES.md, assumption 6.
+        // aircraft that fired it, so it overlaps none of its own cell-mates.
+        // It used to reach the battleship, which was drawn in the same cell as
+        // the far jet column; the battleship has a cell of its own now.
+        // See ATLAS-COORDINATES.md, assumption 6.
         const colon = a.id.startsWith('rocket_') !== b.id.startsWith('rocket_');
-        const ship = a.id.startsWith('battleship_') || b.id.startsWith('battleship_');
-        if ((!colon || ship) && shared !== null && shared === cell(b.id)) expected.push(pair);
+        if (!colon && shared !== null && shared === cell(b.id)) expected.push(pair);
       }
     }
     expect(found.sort()).toEqual(expected.sort());
     // Stated on its own because it is the placement decision, not a consequence
-    // of the cell rule: the only thing the colon touches is the battleship.
-    expect(found.filter((pair) => pair.includes('rocket_')).length).toBe(3);
+    // of the cell rule: the colon touches nothing at all.
+    expect(found.filter((pair) => pair.includes('rocket_'))).toEqual([]);
     // The score readout shares no glass with anything, which is what the atlas
     // separated the SCORE box from the distance columns to guarantee.
     expect(found.filter((pair) => pair.includes('score'))).toEqual([]);
   });
 
-  it('lays the jets out on a regular 6 x 3 lattice', () => {
+  it('lays the jets out on a regular 5 x 3 lattice', () => {
     const centre = (id: string) => {
       const b = getSegmentById(id as SegmentId).bounds;
       return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
     };
-    const step = centre('jet_lane0_col1').x - centre('jet_lane0_col0').x;
+    const step = centre('jet_lane0_col2').x - centre('jet_lane0_col1').x;
     for (let lane = 0; lane < 3; lane += 1) {
-      for (let col = 1; col < 6; col += 1) {
+      for (let col = 2; col < 6; col += 1) {
         const dx = centre(`jet_lane${lane}_col${col}`).x - centre(`jet_lane${lane}_col${col - 1}`).x;
         expect(dx, `lane ${lane} col ${col}`).toBeCloseTo(step, 3);
       }
       // Lanes share the same column x positions.
       expect(centre(`jet_lane${lane}_col3`).x).toBeCloseTo(centre('jet_lane0_col3').x, 3);
     }
-    const laneStep = centre('jet_lane1_col0').y - centre('jet_lane0_col0').y;
-    expect(centre('jet_lane2_col0').y - centre('jet_lane1_col0').y).toBeCloseTo(laneStep, 3);
+    const laneStep = centre('jet_lane1_col1').y - centre('jet_lane0_col1').y;
+    expect(centre('jet_lane2_col1').y - centre('jet_lane1_col1').y).toBeCloseTo(laneStep, 3);
   });
 });
 
@@ -207,11 +207,13 @@ describe('sprite proportions', () => {
   // layout.ts CELL: the field's width over COLUMN_COUNT, and the cell band's
   // height over LANE_COUNT. The band is FIELD_BAND_FRACTION of the frame, not the
   // whole frame, so the cell is far shorter than the rectangle v1 handed down.
-  const CELL = { width: 36.3, height: 17.68 };
+  const CELL = { width: 31.114, height: 17.68 };
 
   const boundsOf = (id: string) => getSegmentById(id as SegmentId).bounds;
+  /** Cells 1-5. Neither end cell carries a jet. */
+  const JET_CELLS = [1, 2, 3, 4, 5];
   const jetIds = Array.from({ length: 3 }, (_, lane) =>
-    Array.from({ length: 6 }, (_, col) => `jet_lane${lane}_col${col}`),
+    JET_CELLS.map((col) => `jet_lane${lane}_col${col}`),
   ).flat();
 
   /** A path with its bounds origin subtracted: the outline, position removed. */
@@ -271,18 +273,23 @@ describe('sprite proportions', () => {
     // the owner described, and it is built into the phosphor, not produced by
     // the program - so the atlas has to carry both shapes, in the right cells.
     //
-    // This is an equality on the whole 6 x 3 lattice: exactly two outlines, each
+    // This is an equality on the whole 5 x 3 lattice: exactly two outlines, each
     // in exactly the cells the parity names. A third outline fails it, and so
     // does putting the right two shapes in the wrong cells.
-    const level = outlineOf('jet_lane0_col0');
-    const raked = outlineOf('jet_lane1_col0');
+    //
+    // Two poses is the floor, not the count. The teardown photographs show the
+    // three lanes of a single cell carrying three different outlines, so this
+    // is what the video could establish and not what the glass holds; retracing
+    // against the photographs is what replaces it.
+    const level = outlineOf('jet_lane0_col1');
+    const raked = outlineOf('jet_lane1_col1');
     expect(sameOutline(level, raked), 'the two poses are different shapes').toBe(false);
-    for (let col = 0; col < 6; col += 1) {
+    for (const col of JET_CELLS) {
       for (let lane = 0; lane < 3; lane += 1) {
-        const want = (col + lane) % 2 === 0 ? level : raked;
+        const isLevel = (col + lane) % 2 === 1;
         expect(
-          sameOutline(outlineOf(`jet_lane${lane}_col${col}`), want),
-          `jet_lane${lane}_col${col} carries the ${(col + lane) % 2 === 0 ? 'level' : 'raked'} pose`,
+          sameOutline(outlineOf(`jet_lane${lane}_col${col}`), isLevel ? level : raked),
+          `jet_lane${lane}_col${col} carries the ${isLevel ? 'level' : 'raked'} pose`,
         ).toBe(true);
       }
     }
@@ -293,8 +300,8 @@ describe('sprite proportions', () => {
     // flatter one - 36 x 28 px against 39 x 20. If the two outlines were ever
     // swapped between parities this is what would catch it, because the
     // proportions travel with the shape.
-    const level = boundsOf('jet_lane0_col0');
-    const raked = boundsOf('jet_lane1_col0');
+    const level = boundsOf('jet_lane0_col1');
+    const raked = boundsOf('jet_lane1_col1');
     expect(level.height, 'level pose is the deeper one').toBeGreaterThan(raked.height);
     expect(raked.width, 'raked pose is the longer one').toBeGreaterThan(level.width);
   });
@@ -330,8 +337,8 @@ describe('sprite proportions', () => {
     // the dart does not change with position. Fifteen crops
     // (video/player-missile-col*-lane*.png) measure 23-28 x 9-12 px, a spread of
     // a pixel or two of bloom around one shape. One outline, fifteen placements.
-    const first = outlineOf('missile_lane0_col0');
-    for (let col = 0; col < 5; col += 1) {
+    const first = outlineOf('missile_lane0_col1');
+    for (let col = 1; col <= 5; col += 1) {
       for (let lane = 0; lane < 3; lane += 1) {
         expect(
           sameOutline(outlineOf(`missile_lane${lane}_col${col}`), first),
@@ -346,7 +353,7 @@ describe('sprite proportions', () => {
     // right to left. The dart's point is at its left end and its flared tail at
     // its right, so the silhouette itself carries the direction of travel - the
     // widest part of the shape sits in its right-hand half.
-    const dart = getSegmentById('missile_lane1_col2' as SegmentId);
+    const dart = getSegmentById('missile_lane1_col3' as SegmentId);
     const xs = [...dart.path.matchAll(/(-?[\d.]+),(-?[\d.]+)/g)].map((m) => ({
       x: Number(m[1]),
       y: Number(m[2]),
@@ -365,7 +372,7 @@ describe('sprite proportions', () => {
     // (video/jet-kill-burst-col*-lane*.png). One segment, two sub-paths: the
     // pair is never seen half-lit, so the machine has no reason to address the
     // blobs separately, and one address is what makes the family fit the tube.
-    for (let col = 0; col < 4; col += 1) {
+    for (const col of JET_CELLS) {
       for (let lane = 0; lane < 3; lane += 1) {
         const id = `burst_lane${lane}_col${col}`;
         const path = getSegmentById(id as SegmentId).path;
@@ -373,7 +380,7 @@ describe('sprite proportions', () => {
       }
     }
     // Measured on the sub-paths of one segment: the upper blob is the wider.
-    const path = getSegmentById('burst_lane0_col0' as SegmentId).path;
+    const path = getSegmentById('burst_lane0_col1' as SegmentId).path;
     const halves = path.split('M ').filter((part) => part.trim().length > 0);
     const extent = (part: string) => {
       const xs = [...part.matchAll(/(-?[\d.]+),(-?[\d.]+)/g)].map((m) => ({
@@ -396,7 +403,7 @@ describe('sprite proportions', () => {
     // A circle is two arc commands; a burst is a many-sided polygon. The v2.12
     // atlas drew round dots.
     const spiky = [
-      'burst_lane0_col0',
+      'burst_lane0_col1',
       'burst_lane1_col2',
       'burst_lane2_col3',
       'explosion_lane0',
@@ -430,7 +437,7 @@ describe('sprite proportions', () => {
     // the atlas used to draw here - and it is one segment with two sub-paths,
     // because a machine has no reason to light half a colon.
     for (let lane = 0; lane < 3; lane += 1) {
-      for (let col = 0; col < 6; col += 1) {
+      for (const col of JET_CELLS) {
         const id = `rocket_lane${lane}_col${col}`;
         const path = getSegmentById(id as SegmentId).path;
         expect(path.match(/M /g)?.length, `${id} sub-paths`).toBe(2);
@@ -452,14 +459,15 @@ describe('sprite proportions', () => {
     // crossing is segments lighting rather than a sprite moving.
     for (let lane = 0; lane < 3; lane += 1) {
       const ship = boundsOf(`battleship_lane${lane}`);
-      const jet = boundsOf(`jet_lane${lane}_col0`);
+      const jet = boundsOf(`jet_lane${lane}_col1`);
       expect(ship.width, `battleship_lane${lane} width`).toBeGreaterThan(jet.width * 1.2);
       expect(ship.height, `battleship_lane${lane} height`).toBeLessThan(jet.height);
-      // It stands in the far cell, on the same column centre as that cell's jet.
-      expect(ship.x + ship.width / 2, `battleship_lane${lane} column`).toBeCloseTo(
-        jet.x + jet.width / 2,
-        3,
-      );
+      // It has a cell of its own now, one to the far side of the first jet
+      // column, so it sits a whole cell pitch left of that column's jet.
+      expect(
+        jet.x + jet.width / 2 - (ship.x + ship.width / 2),
+        `battleship_lane${lane} cell`,
+      ).toBeCloseTo(CELL.width, 2);
     }
   });
 });
@@ -468,45 +476,53 @@ describe('semantic segment coverage', () => {
   const ids = new Set<string>(listAllIds());
   const countMatching = (re: RegExp) => atlas.segments.filter((s) => re.test(s.id)).length;
 
-  it('has all 18 jets, one per lane per distance column', () => {
+  it('has a jet in every lane of the five cells that carry one, and no other', () => {
+    // Neither end cell has a jet: cell 0 is the battleship's own and cell 6 is
+    // the player's, and the teardown photographs show no aircraft printed in
+    // either. Two independent sources agree - the bare-tube photographs and the
+    // whole-file video measurement, which found the far cell's jet-sized red
+    // sightings to be partially-lit battleships.
     for (let lane = 0; lane < 3; lane += 1) {
-      for (let col = 0; col < 6; col += 1) {
+      for (let col = 1; col <= 5; col += 1) {
         expect(ids.has(`jet_lane${lane}_col${col}`)).toBe(true);
       }
+      expect(ids.has(`jet_lane${lane}_col0`)).toBe(false);
+      expect(ids.has(`jet_lane${lane}_col6`)).toBe(false);
     }
     expect(countMatching(/^jet_/)).toBe(EXPECTED_SEGMENT_COUNTS.jet);
   });
 
-  it('has all 18 jet rockets, one per lane per distance column', () => {
+  it('has an attacker colon wherever there is a jet to fire it', () => {
     for (let lane = 0; lane < 3; lane += 1) {
-      for (let col = 0; col < 6; col += 1) {
+      for (let col = 1; col <= 5; col += 1) {
         expect(ids.has(`rocket_lane${lane}_col${col}`)).toBe(true);
       }
+      expect(ids.has(`rocket_lane${lane}_col0`)).toBe(false);
+      expect(ids.has(`rocket_lane${lane}_col6`)).toBe(false);
     }
     expect(countMatching(/^rocket_/)).toBe(EXPECTED_SEGMENT_COUNTS.rocket);
   });
 
-  it('has the missile dart in every lane of the five columns it crosses', () => {
-    // Columns 0-4 and not column 5: the launcher stands on the G line and the
-    // video never finds a dart lit in that cell.
+  it('has the missile dart in every cell it crosses', () => {
+    // The five jet cells, and neither end cell: the shot is launched into cell
+    // 5 and steps away as far as cell 1.
     for (let lane = 0; lane < 3; lane += 1) {
-      for (let col = 0; col < 5; col += 1) {
+      for (let col = 1; col <= 5; col += 1) {
         expect(ids.has(`missile_lane${lane}_col${col}`)).toBe(true);
       }
-      expect(ids.has(`missile_lane${lane}_col5`)).toBe(false);
+      expect(ids.has(`missile_lane${lane}_col0`)).toBe(false);
+      expect(ids.has(`missile_lane${lane}_col6`)).toBe(false);
     }
     expect(countMatching(/^missile_/)).toBe(EXPECTED_SEGMENT_COUNTS.missile);
   });
 
-  it('has the jet-kill burst in every lane of the four columns it appears in', () => {
-    // Columns 0-3. The video finds no burst in the two cells nearest the
-    // launcher, and finds no jet there to be killed either.
+  it('has a jet-kill burst wherever there is a jet to kill', () => {
     for (let lane = 0; lane < 3; lane += 1) {
-      for (let col = 0; col < 4; col += 1) {
+      for (let col = 1; col <= 5; col += 1) {
         expect(ids.has(`burst_lane${lane}_col${col}`)).toBe(true);
       }
-      expect(ids.has(`burst_lane${lane}_col4`)).toBe(false);
-      expect(ids.has(`burst_lane${lane}_col5`)).toBe(false);
+      expect(ids.has(`burst_lane${lane}_col0`)).toBe(false);
+      expect(ids.has(`burst_lane${lane}_col6`)).toBe(false);
     }
     expect(countMatching(/^burst_/)).toBe(EXPECTED_SEGMENT_COUNTS.burst);
   });
@@ -518,13 +534,21 @@ describe('semantic segment coverage', () => {
     expect(countMatching(/^launcher_/)).toBe(EXPECTED_SEGMENT_COUNTS.launcher);
   });
 
-  it('has all 21 score segments, a-g on three digits', () => {
-    for (let digit = 0; digit < 3; digit += 1) {
-      for (const key of ['a', 'b', 'c', 'd', 'e', 'f', 'g']) {
-        expect(ids.has(`score_digit${digit}_seg${key}`)).toBe(true);
-      }
+  it('has two full digits and a half-digit, which is what the tube carries', () => {
+    // assets/reference/tube-teardown/score-block.jpg: the SCORE legend in its
+    // own box, then two digit cells - the left holding a two-stroke half-digit
+    // and a full seven-segment digit, the right holding one full digit. The
+    // hundreds position is not a seven-segment digit, so the five segments the
+    // atlas used to define there were phosphor the glass does not have.
+    for (const key of ['a', 'b', 'c', 'd', 'e', 'f', 'g']) {
+      expect(ids.has(`score_tens_seg${key}`)).toBe(true);
+      expect(ids.has(`score_units_seg${key}`)).toBe(true);
     }
-    expect(countMatching(/^score_digit/)).toBe(EXPECTED_SEGMENT_COUNTS.score);
+    expect(countMatching(/^score_(tens|units)_/)).toBe(EXPECTED_SEGMENT_COUNTS.score);
+    expect(ids.has('score_hundreds')).toBe(true);
+    // Two strokes, one address: the readout caps at 199, so the half-digit is
+    // only ever wholly lit or wholly dark.
+    expect(getSegmentById('score_hundreds' as SegmentId).path.match(/M /g)?.length).toBe(2);
   });
 
   it('has an explosion per lane, a battleship per lane, and the SCORE label', () => {
@@ -550,13 +574,13 @@ describe('semantic segment coverage', () => {
   it('puts the attacker segments in the red region and the defender segments in cyan', () => {
     const red = new Set(getSegmentsByColor('red').map((s) => s.id));
     const cyan = new Set(getSegmentsByColor('cyan').map((s) => s.id));
-    expect(red.has('jet_lane0_col0')).toBe(true);
+    expect(red.has('jet_lane0_col1')).toBe(true);
     expect(red.has('rocket_lane2_col5')).toBe(true);
     expect(red.has('battleship_lane1')).toBe(true);
     expect(cyan.has('launcher_lane1')).toBe(true);
-    expect(cyan.has('missile_lane0_col0')).toBe(true);
+    expect(cyan.has('missile_lane0_col1')).toBe(true);
     expect(cyan.has('burst_lane2_col3')).toBe(true);
-    expect(cyan.has('score_digit0_sega')).toBe(true);
+    expect(cyan.has('score_tens_sega')).toBe(true);
     expect(cyan.has('score_label')).toBe(true);
     expect(red.has('explosion_lane0')).toBe(true);
     expect(red.size + cyan.size).toBe(TOTAL_SEGMENT_COUNT);

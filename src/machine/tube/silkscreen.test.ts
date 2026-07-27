@@ -219,7 +219,11 @@ describe('drawSilkscreen', () => {
     // The run overhangs the right rail, and stays on the glass.
     const last = dashes[dashes.length - 1];
     expect(last.x1).toBeGreaterThan(right);
-    expect(last.x1).toBeLessThan(right + CELL.width * 0.3);
+    // The dash run is a fixed pitch that does not scale with the cell, so the
+    // overhang is pinned in atlas units rather than as a share of a cell -
+    // splitting the field seven ways instead of six must not move it.
+    expect(last.x1 - right).toBeGreaterThan(0);
+    expect(last.x1 - right).toBeLessThan(10);
 
     // Heavier than every other printed line, and the stretch under the SCORE box
     // stays at the normal weight.

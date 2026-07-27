@@ -70,16 +70,19 @@ describe('the copied scope geometry', () => {
   });
 
   it('derives the documented cell size', () => {
-    expect(CELL.width).toBeCloseTo(36.3, 3);
+    // 217.8 / 7. The field is split seven ways, not six: the teardown
+    // photographs count seven printed cell boxes.
+    expect(CELL.width).toBeCloseTo(31.114, 3);
     expect(CELL.height).toBeCloseTo(17.68, 3);
   });
 });
 
 describe('columnCenterX and laneCenterY', () => {
   it('reproduces the documented column centres', () => {
-    const centres = [0, 1, 2, 3, 4, 5].map((c) => columnCenterX(c));
-    // ATLAS-COORDINATES.md quotes these to one decimal place.
-    const expected = [114.0, 150.3, 186.6, 222.9, 259.2, 295.5];
+    const centres = [0, 1, 2, 3, 4, 5, 6].map((c) => columnCenterX(c));
+    // ATLAS-COORDINATES.md quotes these to one decimal place. Seven cells at a
+    // 31.114 pitch, starting half a cell into the field at x = 95.832.
+    const expected = [111.4, 142.5, 173.6, 204.7, 235.8, 267.0, 298.1];
     centres.forEach((centre, index) => {
       expect(Math.abs(centre - expected[index]), `column ${index}`).toBeLessThan(0.1);
     });

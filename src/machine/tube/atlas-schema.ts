@@ -37,23 +37,21 @@ export type ColorRegion = 'cyan' | 'red';
 /** Lane index: 0 = top, 2 = bottom, matching the game grid and the case lever. */
 export type LaneIndex = 0 | 1 | 2;
 
-/** Distance column: 0 = battleship / far zone, 5 = the G (capture) line. */
-export type ColumnIndex = 0 | 1 | 2 | 3 | 4 | 5;
+/**
+ * Distance cell: 0 = the battleship's own cell, 6 = the G (capture) line where
+ * the player stands. Seven, counted off the printed cell boxes in the teardown
+ * photographs; a cell and a display grid are the same thing.
+ */
+export type ColumnIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 /**
- * Columns the player's missile is drawn in. The gameplay video finds it in five
- * of the six cells - it is launched into the cell next to the launcher and steps
- * away as far as the far column, and it is never lit in the launcher's own cell,
- * which is where the launcher is. See ATLAS-COORDINATES.md.
+ * The five cells that carry a jet, and everything that happens to one. Neither
+ * end cell has a jet: cell 0 is the battleship's and cell 6 is the player's,
+ * and the teardown photographs show no aircraft printed in either.
  */
-export type MissileColumnIndex = 0 | 1 | 2 | 3 | 4;
+export type JetCellIndex = 1 | 2 | 3 | 4 | 5;
 
-/**
- * Columns the cyan jet-kill burst is drawn in: the four the video ever shows it
- * in. There is no burst in the two cells nearest the launcher, and the video
- * finds no jet there either.
- */
-export type BurstColumnIndex = 0 | 1 | 2 | 3;
+
 
 /** Seven-segment keys in the conventional a-g order (a = top, g = middle). */
 export type SevenSegmentKey = 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g';
@@ -69,20 +67,20 @@ export type ScoreDigitIndex = 0 | 1 | 2;
  * level-winged pose and an odd one the raked pose, which is the parity the
  * gameplay video measured across thirteen cells. See ATLAS-COORDINATES.md.
  */
-export type JetSegmentId = `jet_lane${LaneIndex}_col${ColumnIndex}`;
+export type JetSegmentId = `jet_lane${LaneIndex}_col${JetCellIndex}`;
 /**
  * The attackers' shot: a colon, two red dots one directly above the other, one
  * per lane per distance column (18 total). It travels toward the player, so it
  * is drawn in every cell it can cross.
  */
-export type RocketSegmentId = `rocket_lane${LaneIndex}_col${ColumnIndex}`;
+export type RocketSegmentId = `rocket_lane${LaneIndex}_col${JetCellIndex}`;
 /**
  * The player's missile in flight: a cyan dart pointing left, the direction it
  * travels, one per lane in each of the five columns it crosses (15 total). The
  * same outline in every column - unlike the jet it does not change with
  * position, which the video records as a negative result.
  */
-export type MissileSegmentId = `missile_lane${LaneIndex}_col${MissileColumnIndex}`;
+export type MissileSegmentId = `missile_lane${LaneIndex}_col${JetCellIndex}`;
 /**
  * The burst a jet leaves when the missile kills it: two spiky cyan blobs
  * stacked vertically in one cell, the upper broader than the lower, their
@@ -90,7 +88,7 @@ export type MissileSegmentId = `missile_lane${LaneIndex}_col${MissileColumnIndex
  * the pair always appears together, so the machine has no reason to light half
  * of it, and the path carries both blobs as disjoint sub-paths.
  */
-export type BurstSegmentId = `burst_lane${LaneIndex}_col${BurstColumnIndex}`;
+export type BurstSegmentId = `burst_lane${LaneIndex}_col${JetCellIndex}`;
 /**
  * The player's ship, inside the field at the G line, one segment per lane
  * position (3 total). Owner-confirmed as the object the player controls and
@@ -98,8 +96,20 @@ export type BurstSegmentId = `burst_lane${LaneIndex}_col${BurstColumnIndex}`;
  * addresses the ROM writes have not moved. See ATLAS-COORDINATES.md.
  */
 export type LauncherSegmentId = `launcher_lane${LaneIndex}`;
-/** Seven-segment SCORE readout: 3 digits x 7 segments (21 total). */
-export type ScoreSegmentId = `score_digit${ScoreDigitIndex}_seg${SevenSegmentKey}`;
+/**
+ * The SCORE readout: two full seven-segment digits, plus the hundreds as a
+ * two-stroke half-digit that reads 1 or nothing (15 total).
+ *
+ * The tube has **two** digit cells, not three - the left one carries the
+ * half-digit and the tens together, the right one the units
+ * (`assets/reference/tube-teardown/score-block.jpg`). The hundreds is not a
+ * seven-segment digit at all: five of the segments the atlas used to define
+ * there are phosphor the glass does not have, which is why the ROM/atlas
+ * conformance test could never get them lit.
+ */
+export type ScoreSegmentId =
+  | `score_tens_seg${SevenSegmentKey}`
+  | `score_units_seg${SevenSegmentKey}`;
 /**
  * The red starburst thrown up where the player's ship is hit, one per lane
  * position (3 total). Photographed in
@@ -127,6 +137,7 @@ export type SegmentId =
   | ScoreSegmentId
   | ExplosionSegmentId
   | BattleshipSegmentId
+  | 'score_hundreds'
   | 'score_label';
 
 /** Axis-aligned bounding box of a segment's path, in atlas units. */
@@ -173,12 +184,13 @@ export interface Atlas {
 
 /** Expected segment counts, asserted by the atlas tests and by `validateAtlas`. */
 export const EXPECTED_SEGMENT_COUNTS = {
-  jet: 18,
-  rocket: 18,
+  jet: 15,
+  rocket: 15,
   missile: 15,
-  burst: 12,
+  burst: 15,
   launcher: 3,
-  score: 21,
+  score: 14,
+  scoreHundreds: 1,
   explosion: 3,
   battleship: 3,
   scoreLabel: 1,

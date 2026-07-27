@@ -114,31 +114,64 @@ const SCENARIOS: readonly {
     fire: (frame) => frame % 3 === 0,
     frames: 1320,
   },
+  {
+    what: 'firing rarely, so a jet survives deep into the field and dies there',
+    // The cell nearest the player only shows a jet-kill burst if a jet gets
+    // that far, which needs a player who is not clearing the field as it
+    // arrives.
+    skill: '3',
+    lever: (frame) => LEVERS[Math.floor(frame / 9) % 3]!,
+    fire: (frame) => frame % 13 === 0,
+    frames: 260,
+  },
+  {
+    what: 'a long game that ends with the launcher destroyed in the bottom lane',
+    skill: '2',
+    lever: (frame) => LEVERS[Math.floor(frame / 25) % 3]!,
+    fire: (frame) => frame % 2 === 0,
+    frames: 1400,
+  },
+  {
+    what: 'a long, slow game that gets a colon fired down the bottom lane',
+    skill: '1',
+    lever: (frame) => LEVERS[Math.floor(frame / 9) % 3]!,
+    fire: (frame) => frame % 13 === 0,
+    frames: 700,
+  },
 ];
 
 /**
- * Addresses the atlas defines that this ROM cannot reach at all, and why.
+ * Addresses the atlas defines that this ROM cannot reach. **There are none.**
  *
- * Pinned by equality rather than tolerated: the expectations below subtract
- * exactly these, so a ROM that starts driving one fails this file until the
- * entry is deleted. Each is a real gap between the glass and the program, not a
- * gap in the scenarios above.
+ * There was one, and the seventh grid dissolved it rather than fixing it.
+ * `NIB_RCOL` spends zero on "no rocket in flight", so the ROM cannot express a
+ * colon standing in column 0 - and while the atlas gave the playfield six grids,
+ * column 0 was the G-line cell and the atlas put a colon there, so the tube
+ * carried a segment the program could not light. The teardown photographs show
+ * no colon printed in the player's own cell at all: the attackers' shot is
+ * drawn in the five jet cells and nowhere else. The sentinel and the glass
+ * agree, and the exception that used to live here is gone.
+ *
+ * Kept as an empty pair rather than deleted so that the next real gap has an
+ * obvious place to be written down, with its reason, instead of being tolerated
+ * by loosening an assertion.
  */
 const ROM_CANNOT_REACH = {
   /**
-   * The colon in the launcher's own cell, grid 5.
+   * The jet-kill burst in cell 5, the cell nearest the player.
    *
-   * `NIB_RCOL` spends zero on "no rocket in flight", so column 0 - the capture
-   * line, which is where the launcher stands - is not a value the nibble can
-   * hold. A shot that reaches the player is resolved by `rocket_move` on the
-   * sweep it arrives, and is drawn one column short of the player for its whole
-   * flight. The tube has the segment; nothing can light it.
+   * A newly visible bug rather than a missing sprite, and the seventh grid is
+   * what made it visible. `tick_missile` advances the shot and *then* tests
+   * what it reached, so the column it is launched into - cell 5 - is never hit
+   * tested at all. Fire at a jet standing directly in front of the launcher and
+   * the shot appears in its cell, leaves, and misses it.
    *
-   * Fixing it means giving `NIB_RCOL` the column-plus-one convention the jets
-   * and the burst already use, which touches four blocks and the ROM has ten
-   * words of program space left. It is recorded here rather than done quietly.
+   * The tube has the burst printed there: the teardown photographs show the
+   * same pair of white bursts in all five jet cells. Fixing it means testing
+   * before advancing as well as after, which is a change to the hit chain
+   * rather than to the display, so it is not folded into the map change.
    */
-  grids: new Map([['rocket', [5]]]),
+  grids: new Map([['burst', [5]]]),
   plates: new Map<string, number[]>(),
 } as const;
 
