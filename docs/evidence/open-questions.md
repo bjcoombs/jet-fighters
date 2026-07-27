@@ -258,3 +258,53 @@ fit the new atlas. The entire registration error found here was a frame that was
 self-consistent - every existing test passed from inside it, because they compared the
 atlas against `layout.ts` and both had inherited the same wrong phase. The only assertion
 that could see out of it was one anchored on something the atlas does not control.
+## 6. The capture rule is unsettled, and #74 may need reverting
+
+**This is the largest open gameplay question and it is the owner's to settle.**
+
+`launcher_down` currently makes a jet reaching the G line **cost one launcher**, so a game
+survives two captures and ends on the third. That landed in #74 on the strength of the
+owner's report that *"you seem to end the game after one loss, there's no three lives
+working"*, and `docs/prd/jet-fighters-v1.md` rule 6 was amended to match.
+
+**His later description points the other way.** Describing the two events on his own unit:
+
+> the bullets if it hits me makes the green of me flash briefly and plays sound then i can
+> continue. The image of when the plan reaches i loose with no lives left
+
+Read literally, that is **bullets cost lives** (flash, sound, continue) and **a capture
+ends the game** - which is the original rule 6, and the reverse of what is implemented.
+
+If so, his original complaint had a different cause than was diagnosed: `rocket_fire`
+takes the rocket's lane from `NIB_RAND` as the player's last keypress latched it, and with
+the lever parked in lane 1 or 2 **no rocket ever reaches the launcher** (section 3). Every
+loss is then a capture, the three lives never come into play, and "no three lives working"
+follows without the capture path being wrong at all.
+
+**The question that settles it:** on the real unit, if a jet reaches the G line while
+launchers remain, does the game end there, or does play continue with one fewer?
+
+### If it reverses, what to change and what to keep
+
+- **The revert is small and the PRD was written to survive it.** The superseded wording is
+  kept inline as a block quote, so restoring it is an edit to one block plus putting
+  `JMPL game_lost` back in `jet_swept`. `launcher_down` can stay as a label - it costs
+  nothing and documents that the two losses are different events, which the tube confirms
+  by printing two different bursts for them.
+- **Keep `tools/probe/launcher-lives.test.ts`.** Its method is rule-independent: never
+  pressing fire means no missile exists, so a jet leaving the deepest jet cell can only be
+  a capture. Under the reversed rule its expectations invert - lane 0's rocket deaths
+  become the two-beep/three-beep path and a capture becomes an immediate loss - rather
+  than the file being deleted.
+- **The `rocket_fire` lane asymmetry gets *more* important, not less.** If bullets are what
+  cost lives, then a rocket's lane coming from the player's own keypress pattern decides
+  how many lives a player gets. That moves it from an oddity to something the owner would
+  feel directly in every game.
+- The liveness fix and `tubeSignature` in `game-lifetime.test.ts` are independent of the
+  rule and unaffected either way.
+
+### Also unimplemented, from the same description
+
+**The player's ship flashes when a bullet hits it.** Nothing in the ROM or the renderer
+does this. It is the visible half of a damage signal that has always been described as
+sound-only, and it is unaffected by which way the capture rule goes.
