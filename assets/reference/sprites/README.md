@@ -273,9 +273,11 @@ one lane apart.
 ### What this video does not settle
 
 - **The attackers' red colon shot.** The owner describes red dots like a `:` fired back
-  at the player. No stacked pair of small red components was found anywhere in ~106 s of
-  sampled frames. Either it is rarer than the sampling, or it happens at a scale the
-  colour-excess threshold rejects. Its shape, size and colour remain untraced.
+  at the player. No stacked pair of small red components was found anywhere in the
+  ~132 s of frames sampled across the whole clip, and **no red pixel of any kind** was
+  found in columns 0 or 1 - the cells a shot aimed at the player would have to cross.
+  Either it is rarer than the sampling, or it is drawn somewhere the search did not look.
+  Its shape, size and colour remain untraced.
 - **A red explosion.** One unidentified red mark was found at column 0, top lane, at file
   t=107 - a plain bar 30 x 12 px, no burst structure, one sighting only. Saved as
   `video/unidentified-red-mark-column-0.png` and deliberately not named. Whether the
@@ -389,7 +391,18 @@ Two consequences:
 enough to prove the variation exists, not to recover each outline faithfully. See
 "Reference material still wanted" below.
 
+> **Video, partly.** One jet stepping across four columns is now traced directly - see
+> "The jet changes shape between columns" above. It confirms the variation and shows two
+> distinct poses alternating on the parity of (lane + column). The count of *21 distinct*
+> outlines remains unproven: two poses is the floor the video establishes, not the total.
+
 ### 4. The missile is two vertically-stacked bursts
+
+> **Wrong, corrected by the video.** The stacked cyan pair is the **burst a jet leaves
+> when the missile kills it**, not the missile. The missile in flight is a single cyan
+> dart pointing left - `video/missile-column-1..5.png`. Evidence in "The two cyan stacked
+> bursts are a jet dying, not a missile" above. `missile-lit.png` is misnamed; the name is
+> kept so the commit history lines up.
 
 `missile-lit.png`.
 
@@ -485,17 +498,19 @@ To finish the atlas faithfully, the most valuable additions would be, in order:
    phosphor segment** - the standard way to recover a complete segment atlas in one
    shot. This would settle all 21 jet variants, the battleship, and every segment the
    two action photographs happen not to light.
-2. **A photograph of a battleship crossing** - its sprite is entirely untraced.
-3. Anything showing the field with **many jets lit at once**, which would confirm the
-   per-column variation directly rather than through the ghosts.
+2. ~~**A photograph of a battleship crossing**~~ - **obtained**. The gameplay video
+   traces it: `video/battleship-lane-{top,middle,bottom}.png`. It does not cross columns.
+3. ~~Anything showing the field with **many jets lit at once**~~ - **obtained**, and it
+   confirms the per-column variation directly. Item 1 is still wanted, and is now the
+   only way to settle how many distinct jet outlines exist.
 
 ## What these photographs do not settle
 
 - Anything about **timing** - these are stills. Cadence remains blocked on the
-  per-skill gameplay video, per `docs/evidence/timing-analysis.md`.
-- The battleship. Neither photograph catches one crossing the far zone, so its sprite
-  is still untraced. It is worth 10 points per the rules and has a documented buzz in
-  `audio-reference.md`, but its shape is unknown.
+  per-skill gameplay video, per `docs/evidence/timing-analysis.md`. The gameplay video
+  above supplies cadence in *file* time; converting it to real time depends on an
+  unresolved capture frame rate.
+- ~~The battleship.~~ Traced from the video - see the sprite catalogue above.
 
 The two questions the first draft left open - the identity of the cyan shape, and
 whether the white marks were a third phosphor - were both answered by the owner and are
