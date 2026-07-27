@@ -33,19 +33,25 @@ The single most valuable artifact outstanding. A VFD at the right angle under a
 low light shows every phosphor segment at once, lit or not. It would settle, in
 one shot:
 
-- The **21 per-column jet variants**. The jet sprite changes shape column to column
-  so a flying jet appears to beat its wings - the animation is in the phosphor, not
-  the program. Confirmed by the owner and visible in the ghost field, but these
-  photographs cannot resolve 21 distinct outlines. The atlas currently repeats one
-  outline.
-- The **battleship sprite**, entirely untraced. Neither photograph catches a
-  crossing. It is worth 10 points and has a documented buzz, but nobody knows what
-  it looks like.
-- Whether the far-left cell is a **battleship-only zone or a seventh jet column**.
-  The atlas draws the battleship 43.3 units wide against a jet's 26.1, while the
-  seven printed cells read as roughly equal width. The ghost field leans toward the
-  seventh-column reading - every one of the seven cells carries three jet ghosts,
-  including the far-left - but that is suggestive, not conclusive.
+- ~~The **21 per-column jet variants**.~~ **Answered by the gameplay video, and the
+  count was wrong.** The silhouette varies by **cell and lane together, by the parity of
+  `(cell + lane)`**, taking one of **two** poses - not 21. An unsupervised split of the
+  shape-similarity matrix over the thirteen recoverable jet cells agrees with that parity
+  13 times out of 13. See `assets/reference/sprites/README.md`, "The jet changes shape
+  between cells". The atlas needs two outlines on a checkerboard. Whether anything subtler
+  sits on top of the two poses is still open and still wants the angled-light photograph.
+- ~~The **battleship sprite**, entirely untraced.~~ **Traced**: a red-orange warship in
+  side profile, 48 x 20 px, in the far cell, in all three lanes -
+  `assets/reference/sprites/video/battleship-col0-lane{0,1,2}.png`. Its **10-point score
+  is confirmed** by reading the digits either side of one destruction (28 to 38). What is
+  **not** traced is any crossing: 17 sightings, never outside its own cell.
+- ~~Whether the far-left cell is a **battleship-only zone or a seventh jet column**.~~
+  **Answered: battleship-only.** Every red object found in that cell across 12,237 frames
+  is the battleship; the narrower sightings that looked jet-sized are partially-lit
+  battleships (IoU 0.75 against the full hull, 0.55 against a real jet), and the printed
+  `BATTLE SHIP ZONE` bracket spans exactly that one cell. The jet field is the five cells
+  between it and the missile station. The ghost jets printed in the far-left cell are
+  decoration, not a statement of what is drawn there. No `COLUMN_COUNT` change follows.
 
 ### 2b. Gameplay video, 15-20 s per skill level
 
@@ -57,6 +63,15 @@ T1 (the march step) is the exception and **has** now been measured, from the mar
 beep onsets in `gameplay-audio.m4a`: 205.1 ms mean, sd 22.1, n=21 across five
 uninterrupted runs. That is the only cadence figure in the ROM derived rather than
 chosen. Everything else remains marked `PROVISIONAL`.
+
+**Partly relieved by `IMG_6113.mov`**, the owner's 407.9 s recording of real play at 30 fps
+real time. It supplies, at one unknown skill level: one aircraft advancing one cell every
+1.4 s (n=12), the missile stepping one cell every 500 ms (n=744), and a march beep every
+0.71 s (n=111). See `timing-analysis.md`, "What the gameplay video supplies". It does not
+supply a per-skill ladder, a thin-out curve, or a battleship crossing, so this item stays
+open. It also raises a question the ROM currently assumes away: **one aircraft steps about
+twice as slowly as the march beep sounds**, which the ROM's one-beep-per-`PAT_STEP` model
+does not predict.
 
 The game is now *playable* - the rocket flight was the thing making it impossible,
 not the jet cadence - but playable is not the same as accurate.
