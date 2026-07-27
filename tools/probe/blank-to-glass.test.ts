@@ -68,8 +68,31 @@ const FRAME_CYCLES = Math.round(CYCLE_HZ / 60);
  */
 const SLICE_CYCLES = 200;
 
-/** Machine cycles to run. About 2.3 s, which carries several march notes. */
-const RUN_CYCLES = 900_000;
+/**
+ * The squadron's slowest march step, in ms of wall clock.
+ *
+ * `PAT_STEP` entry 0 is skill 1's entry point and the top of the cadence ladder,
+ * so it is both the worst case and where a freshly powered machine starts. The
+ * ladder's own comment in `asm/jetfighter.asm` measures it at 1995 ms.
+ */
+const MARCH_STEP_MS = 1995;
+
+/**
+ * Machine cycles to run, stated in march steps.
+ *
+ * It was a flat 2.3 s and it stopped carrying three march notes. The battleship
+ * used to buzz for 68 ms fifty-one times a minute and those notes fell inside
+ * the march band below, so any window at all held several; the buzz is now one
+ * 383 ms note per crossing and the crossing is rare, so this window has to be
+ * long enough to hold march steps of the ROM's own.
+ *
+ * Stated as a multiple of a measured cadence rather than as a wall-clock figure
+ * for the reason CLAUDE.md records: a literal horizon in a test about a machine
+ * whose cadence moves is a bet on the cadence, and it has turned main red here
+ * before. A cadence change now moves `MARCH_STEP_MS` and nothing else.
+ */
+const MARCH_STEPS_DRAWN = 5;
+const RUN_CYCLES = Math.round(((MARCH_STEPS_DRAWN * MARCH_STEP_MS) / 1000) * CYCLE_HZ);
 
 /** Sweeps run off before sampling: the reset and RAM-clear passes. */
 const WARMUP_SWEEPS = 5;
