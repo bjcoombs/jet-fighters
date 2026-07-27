@@ -4,6 +4,345 @@ Traced-from-photograph reference for every lit segment on the tube. These crops 
 the authority for sprite shape, colour and layout - `src/machine/tube/atlas.json`
 should match them, not the other way round.
 
+## The owner's account of the mechanics
+
+Stated by the owner, who has the physical unit. **This is the authority.** Where a
+section below disagrees with it, the section is wrong and is marked so.
+
+1. **We are the defenders, and we are on the right.** We fire **green (cyan) bullets
+   that travel right to left**.
+2. **The attackers are red.** They **travel left to right**, advancing toward us.
+3. **The attackers shoot back**, firing **red dots that look exactly like a colon
+   `:`** - two dots, one directly above the other.
+4. **Each cell has its own set of lightable areas.** The illusion of animation comes
+   from lighting different areas within a cell, not from moving one shape across the
+   glass. Every distinct appearance a sprite has is a separate physical segment.
+
+Point 4 is the structural one. It means the atlas is a set of **per-cell segment
+groups**, and any test asserting that one outline is translated across a row encodes a
+misunderstanding of how the tube works.
+
+Two crops corroborate points 1 and 2 directly, in the sprite shapes themselves:
+`video/jet-column-4.png` is a red jet with its **nose to the right**;
+`video/missile-column-4.png` is a cyan dart with its **point to the left**.
+
+**This supersedes section 4 below.** That section attributes the two vertically
+stacked bursts to the player's missile. The colon-shaped pair the owner describes is
+**red and belongs to the attackers**. The stacked bursts in `missile-lit.png` and
+`video/explosion-jet-column-4.png` are unmistakably **cyan**, so they are a different
+object from the attackers' colon - which one they are is unresolved and is the first
+question for the sprite catalogue.
+
+**Answered by the video**: the cyan stacked pair is the **burst a jet leaves when the
+missile kills it**. See "The gameplay video" below.
+
+## The gameplay video
+
+`IMG_6113.mov` (not committed - 580 MB, held by the owner). 1920x1080 HEVC, 12,237
+frames, 407.9 s at a 30 fps container, of the real unit being played in daylight. It is
+the first material showing the tube **lit and in motion**, and for anything about shape,
+arrangement or animation it supersedes the stills.
+
+Every figure below is measured in the frame of a **reference camera pose**, the one held
+over file seconds 205-215, identified by the `SCORE` label's left edge at x=1026. The
+camera drifts through the clip (that label runs from x=962 early to x=1030 late) so
+positions are always quoted relative to it: the player's launcher sits a constant
+574 px to its right, +/- 2 px across every sample, which is what makes the drift a pure
+translation and the lattice below comparable between runs.
+
+### What the recording actually is, and what that costs
+
+**The recording is 30 fps real time.** One container frame is 1/30 s = 33.33 ms, and the
+clip is 6 min 48 s of real play. Every spatial figure below is unaffected by this; the
+timing figures are stated in file time, which is now also real time.
+
+The brief for this work asserted 240 fps slow-motion. It is not that either.
+
+**How it was settled.** `audio-reference.md` records the win jingle as measured from the
+owner's real-time recordings: F#5/A#5/D#6 at 750/940/1240 Hz, durations 200/150/150 ms,
+that arpeggio three times over, 1830 ms total. The jingle occurs in this video at file
+t = 403 s. Measured there:
+
+| Arpeggio | Measured | Reference |
+| --- | --- | --- |
+| 1st | 750, 936, 1248 Hz / 190, 180, 160 ms | 750, 940, 1240 Hz / 200, 150, 150 ms |
+| 2nd | 749, 936, 1248 Hz / 260, 180, 160 ms | as above |
+| 3rd | 749, 937, 1249 Hz / 260, 180, 180 ms | as above |
+
+Pitch exact, **duration 1:1**. This is the decisive test because a tone burst has both a
+pitch and a length: real time preserves both, a naive slow-motion export drops the pitch,
+and a pitch-preserving time-stretch keeps the pitch but stretches the length. Only real
+time fits. Under the 4x reading each of these notes would run 600-800 ms.
+
+### The wrong reading this replaces, and why it looked right
+
+An earlier revision of this section concluded **120 fps**, i.e. that the file ran 4x slow
+with audio time-stretched but not pitched down. It is recorded here rather than deleted
+because it was very nearly acted on, and because the reasoning was sound given what was
+known.
+
+The argument was: the measured march-beep interval is 23.3 container frames (median
+0.776 s, n = 89 over a 90 s window), against 205.1 ms in `timing-analysis.md`. A ratio
+near 4 pointed straight at a 4x time base, and the audio being at true pitch was
+explained by a pitch-preserving stretch.
+
+**The flaw was in the comparison, not the measurement.** 205.1 ms is the *floor* of the
+cadence ladder, not a typical rate. `PAT_STEP` in `asm/jetfighter.asm` runs 48 sweeps
+(743 ms) for a fresh squadron at skill 1, 36 (558 ms) at skill 2, 27 (372 ms) at skill 3,
+descending to 13 sweeps (201 ms) as jets are killed and waves cleared. A file-time
+interval of 600-776 ms is a fresh-to-mid squadron sitting near the *top* of that ladder.
+There was never a 4x discrepancy to explain - two figures from opposite ends of one ramp
+were being compared as though they measured the same thing.
+
+That reframing is worth more than the correction. The video is the **first direct evidence
+of where real play sits on the cadence ladder**, which `docs/evidence/timing-analysis.md`
+carries as an open evidence gap. Whether our ramp descends at the right *rate* is a
+separate question and is under measurement.
+
+**Consequence for the reader:** 33.33 ms per frame is longer than one sweep of the tube,
+so no single frame shows a whole sprite (see Method, below) - but that was already true
+under either reading and the accumulation method below handles it.
+
+### Method
+
+Two things had to be got right before anything was measurable.
+
+**Isolate phosphor by colour excess, not luminance.** The case is red plastic and the
+glass is scratched and glary; a luminance threshold selects the case. Red phosphor is
+`R - max(G,B) >= 45`, cyan is `min(G,B) - R >= 45`. Both hold across the whole clip.
+
+**Accumulate across frames, because one frame is not one sprite.** The tube is
+multiplexed and a single frame's exposure catches only the scan slots that happened to
+be live. Masks taken from single frames of the *same* sprite disagree with each other
+badly - one frame of the column-4 jet reads as a symmetric delta, another as a raked
+wedge. Every outline below is the **per-pixel maximum of the colour excess over a window
+in which the sprite is stationary** (typically 0.3-1.2 s of file time, 9-36 frames),
+which recovers the union of all scan slots. This matters for whoever specifies the
+flicker as much as it did here: **no single frame of this video shows a whole sprite.**
+
+### The field: seven columns, three lanes, and which cells hold what
+
+Sprite positions fall on one lattice, pitch **74.5 px**, anchored on the player's
+launcher. Numbering columns 0 (the launcher, at the `G` end) to 6 (farthest), the
+occupancy observed across ~106 s of sampled footage is:
+
+| Column | Jet | Battleship | Missile in flight | Player's launcher | Cyan burst |
+| --- | --- | --- | --- | --- | --- |
+| 0 (G) | - | - | - | yes, 3 lanes | - |
+| 1 | - | - | yes | - | - |
+| 2 | yes | - | yes | - | yes |
+| 3 | yes | - | yes | - | yes |
+| 4 | yes | - | yes | - | yes |
+| 5 | yes | - | yes | - | yes |
+| 6 | yes | yes, 3 lanes | - | - | yes (different shape) |
+
+Three lanes, pitch **44 px**, measured on the launcher's three rest positions.
+
+Two facts in that table are worth stating plainly because they are new:
+
+- **Jets never enter columns 0 or 1.** Not one red sprite was found there in any sampled
+  frame. The two cells nearest the launcher are missile-flight cells only.
+- **The missile is never seen in column 6.** It launches into column 1 and steps left as
+  far as column 5, then expires. A missile that reaches column 5 without hitting
+  anything simply stops being drawn.
+
+The printed overlay runs on a slightly different lattice: the ruler's cell-divider bars
+are **78.3 px** apart, 5% wider than the phosphor's 74.5 px. That is parallax, and it is
+in the right direction - the phosphor plane sits behind the front glass, so it subtends a
+smaller angle. Do not expect a printed cell edge and a phosphor cell edge to coincide;
+they are on different planes and the offset grows across the field.
+
+### Sprite catalogue
+
+Sizes are the lit extent in reference-pose pixels, including phosphor bloom, which
+inflates each edge by a pixel or two. The "of a cell" columns divide by the phosphor
+column pitch (74.5) and lane pitch (44).
+
+| Sprite | Colour | Size (px) | Of a cell (w x h) | Crops |
+| --- | --- | --- | --- | --- |
+| Jet | red-orange | 40 x 26 | 0.54 x 0.59 | `video/jet-column-2..5.png` |
+| Battleship | red-orange | 54 x 24 | 0.72 x 0.55 | `video/battleship-lane-*.png` |
+| Missile in flight | cyan | 28 x 12 | 0.38 x 0.27 | `video/missile-column-1..5.png` |
+| Player's launcher | cyan | 36 x 26 | 0.48 x 0.59 | `video/player-ship-lane-*.png` |
+| Jet-kill burst pair | cyan | 42 x 46 | 0.56 x 1.05 | `video/explosion-jet-column-4.png` |
+| Column-6 burst pair | cyan | 56 x 24 | 0.75 x 0.55 | `video/explosion-column-6.png` |
+| `SCORE` label | cyan | 70 x 24 | - | `video/score-field.png` |
+| Score digit | cyan | 24 x 32 | - | `video/score-field.png` |
+
+**Jet.** A top-down fighter, nose to the right, in every sighting - which corroborates
+the owner's point 2, since jets advance left to right. Detailed airframe: pointed nose,
+swept wings, and in one of its two poses a distinct forked twin tail. Confirms the
+existing description.
+
+**Battleship - first sighting.** `battleship-lane-{top,middle,bottom}.png`. Previously
+untraced; there is now a clean one. It is a **warship in side profile**: a long low hull
+with a raised superstructure and funnel amidships, drawn red-orange, 54 x 24 px - half
+again as wide as a jet and slightly shorter. It appears **only in column 6**, in any of
+the three lanes. Four separate episodes (file t=168-170, 199-203, 259-265, 311-316) each
+hold it in one lane for 4.4 to 6 s and then it vanishes.
+
+**Whether it traverses is NOT settled, and an earlier revision of this section said it
+was.** That revision concluded "it does not move", and that reading was checked
+independently by tracking red blobs through the t=259-266 s episode at 500 ms intervals:
+
+```
+wide blob   (w~48 px, the battleship): x66-116, x70-116, x72-114, x68-116, x68-116
+narrow blob (w~34 px, a jet):          x212-248, x212-246, x216-242, x212-246
+```
+
+The battleship holds position, which looks like confirmation - **but the control failed.**
+The narrow blob is a jet, and jets certainly do advance; at ~600 ms per column it should
+have crossed several columns in seven seconds, and it did not move either. A window in
+which a known-moving object does not move cannot be used to prove another object is
+stationary. Whether that stretch falls between waves, in an ended state, or is defeated
+by the sound blanking is unresolved.
+
+So: the battleship's **shape, colour, size, column and three lanes are well attested**;
+its **motion is not**. Do not build a stationary battleship into the ROM on the strength
+of this section. It is recorded this way rather than deleted because the stationary
+reading contradicts the PRD's "battleship crossing", and acting on it would have changed
+a game rule on a measurement that could not carry the claim.
+
+The general lesson is worth more than the instance: **motion analysis in this video needs
+a control** - something whose behaviour is known, measured in the same window. If the
+control does not do what it must do, the window is unusable.
+
+**Missile in flight.** `missile-column-1..5.png`. A cyan dart, **point to the left**,
+with a short tapering tail to the right - the direction it travels, corroborating the
+owner's point 1. It is **the same shape in all five columns**; unlike the jet it does not
+change with position. Recorded as a negative result because it constrains the atlas: one
+missile outline, five placements.
+
+**The two cyan stacked bursts are a jet dying, not a missile.** This is the correction
+the lead asked for and the question the owner's note left open. Two spiky bursts, one
+above the other in the same column, the upper broader than the lower and their jagged
+edges facing away from each other. It is not the missile:
+
+- It appears at a column **immediately after a red jet at that column disappears**, and
+  it persists there while a *newly fired* missile is separately visible flying in another
+  lane. Two objects, not one.
+- The score increments across it. Reading the digits frame by frame through file seconds
+  205-208: 38 before, 40 after a column-4 kill, 41 after a column-3 kill. Farther kills
+  score more, which is what a distance-zone scoring rule predicts.
+- The missile itself is elsewhere in those same frames, and is the dart above.
+
+So `missile-lit.png` in the stills set is **mislabelled**: it is an explosion, not a
+missile. Section 4 below is wrong on this point and is corrected here.
+
+**The column-6 burst is a different shape.** `explosion-column-6.png`. Also cyan, also a
+pair of spiky bursts, but arranged **side by side horizontally** and 56 px wide rather
+than stacked and 42 wide. It occurs only in column 6, the battleship's column. The
+natural reading is that it is the battleship's destruction burst, matched to the wider
+sprite - but no frame in the sample catches the transition from battleship to burst
+directly, so that is inference, not observation.
+
+**Player's launcher.** `player-ship-lane-{top,middle,bottom}.png`. The blocky cyan shape
+by the `G` line, at one of three lane positions, 36 x 26 px. It changes lane in a single
+frame - it does not slide, it is redrawn - so the three lanes are three segments. This
+confirms the existing identification.
+
+**The lead's t=210 question, settled.** The two cyan objects visible then are the
+**launcher** (blocky, at column 0) and the **missile in flight** (a dart, at column 2,
+same lane). The lead's reading was right. It did not contradict "two bursts stacked
+vertically" because those bursts are a third object entirely.
+
+### The jet changes shape between columns - what the video shows
+
+This was the headline the lead asked for, and the video answers it directly.
+
+**One jet, stepping.** Over file seconds 15-19 a single jet in the bottom lane steps
+column 5 -> 4 -> 3 -> 2 while the camera does not move. `jet-column-5.png`,
+`jet-column-4.png`, `jet-column-3.png`, `jet-column-2.png` are that one aircraft at its
+four successive positions. **The outline is grossly different between adjacent columns**
+and it alternates:
+
+- Columns 5 and 3: a **symmetric level-winged** delta - vertically symmetric about the
+  fuselage, with a detached twin tail at the rear.
+- Columns 4 and 2: a **raked** outline - asymmetric, wings swept down and back toward a
+  long thin nose at the lower right, a single fin at the upper left.
+
+Stepping between them is what produces the wing-beat the owner described. This is direct
+observation of a single aircraft, not an inference from the ghost field.
+
+**It varies by lane too, in a checkerboard.** `jet-lane-{top,middle,bottom}-column-3.png`
+are three jets in the same column at the same moment, and they are not the same shape
+either: top level, middle raked, bottom level. Across ten accumulated masks covering
+columns 2-5 and all three lanes, **every sample fits the parity of (lane + column)** with
+lanes numbered 0 top to 2 bottom: odd gives the level pose, even gives the raked pose.
+
+Quantitatively, after normalising each mask to a common box, mean IoU is **0.83 within a
+parity class and 0.65 across** (n=21 and 24 pairs). The two-pose model explains most of
+the variance and every sample's gross shape.
+
+**What that does and does not license.** It confirms the owner's claim that the
+silhouette changes cell to cell, and it confirms the structural point that the atlas
+needs per-cell segment groups rather than one outline translated across a row. The
+`sprite proportions` test that asserts *"all 18 jets sharing one translated outline"* is
+refuted by the four crops above and must be replaced.
+
+It does **not** establish that there are exactly two outlines. Within-class IoU of 0.83
+leaves real residual differences, and this video cannot say whether those are 21 subtly
+distinct segment groups or measurement noise: the accumulation windows differ in length,
+the camera views cells at the far left and far right of the field at different angles,
+and phosphor bloom varies with how long a segment was lit. **Two poses is the floor, not
+the count.** The angled-light photograph of the dark tube is still the thing that would
+settle it, and it is still worth asking for.
+
+### The far-left cell: it is both
+
+`open-questions.md` asks whether the far-left cell is a battleship-only zone or a
+seventh jet column. The video says **both**. Column 6 carries jet-sized red sprites
+(32-44 px wide, in frames where no battleship is lit anywhere) *and* the 46-56 px
+battleship, in the same three lanes. Recorded here as evidence only - no code or
+`COLUMN_COUNT` change is made on the strength of it, and the ROM's distance-zone mapping
+is untouched.
+
+Note this narrows the jet field rather than widening it: jets occupy columns **2 to 6**,
+five columns, and never columns 0 or 1.
+
+### Cadence, in file time
+
+Recorded because the video is the only source for these, but see the frame-rate caveat
+above before converting any of them to milliseconds. All figures are container frames at
+30 fps.
+
+| Event | File time | Container frames | Basis |
+| --- | --- | --- | --- |
+| March beep interval (squadron step) | 0.776 s median | 23.3 | 89 intervals, 600-730 Hz band, file t=180-270 |
+| Missile step, one column | 0.50 s | 15 | Four consecutive steps, file t=207-209, exact |
+| Jet step, one aircraft | ~1.4 s | ~42 | Two steps of one jet, file t=15-17 |
+| Battleship episode, stationary | 4.4-6 s | 130-180 | Four episodes |
+
+The jet step being about twice the march beep interval is consistent with
+`timing-analysis.md`'s reading that the beep is the *squadron* rate and that two jets
+were in the air - which is what the frames show, two or three jets stepping in lockstep
+one lane apart.
+
+### What this video does not settle
+
+- **The attackers' red colon shot.** The owner describes red dots like a `:` fired back
+  at the player. No stacked pair of small red components was found anywhere in the
+  ~132 s of frames sampled across the whole clip, and **no red pixel of any kind** was
+  found in columns 0 or 1 - the cells a shot aimed at the player would have to cross.
+  Either it is rarer than the sampling, or it is drawn somewhere the search did not look.
+  Its shape, size and colour remain untraced.
+- **A red explosion.** One unidentified red mark was found at column 0, top lane, at file
+  t=107 - a plain bar 30 x 12 px, no burst structure, one sighting only. Saved as
+  `video/unidentified-red-mark-column-0.png` and deliberately not named. Whether the
+  player's launcher shows a red burst when hit is not established by this video.
+- **The battleship's destruction burst.** The column-6 side-by-side burst is the obvious
+  candidate but no frame catches the transition.
+- **The count of jet outlines.** Two poses confirmed; 21 neither confirmed nor refuted.
+- **Whether the score field is three digits.** Only two digit positions were ever lit -
+  the scores observed run 8 to 41 - so the hundreds position was never exercised.
+- **The real-time scale**, per the frame-rate section. Everything above is in file time.
+
+### Crops in `video/`
+
+Produced by the accumulation method above and magnified 12x point-sampled (no
+interpolation) except `score-field.png` at 7x and `playfield-overview.png` at 2.5x, so
+the pixels are the video's.
+
 ## Source photographs
 
 Both are close-ups of a real CGL Jet Fighters unit, powered on, supplied by the owner.
@@ -100,7 +439,18 @@ Two consequences:
 enough to prove the variation exists, not to recover each outline faithfully. See
 "Reference material still wanted" below.
 
+> **Video, partly.** One jet stepping across four columns is now traced directly - see
+> "The jet changes shape between columns" above. It confirms the variation and shows two
+> distinct poses alternating on the parity of (lane + column). The count of *21 distinct*
+> outlines remains unproven: two poses is the floor the video establishes, not the total.
+
 ### 4. The missile is two vertically-stacked bursts
+
+> **Wrong, corrected by the video.** The stacked cyan pair is the **burst a jet leaves
+> when the missile kills it**, not the missile. The missile in flight is a single cyan
+> dart pointing left - `video/missile-column-1..5.png`. Evidence in "The two cyan stacked
+> bursts are a jet dying, not a missile" above. `missile-lit.png` is misnamed; the name is
+> kept so the commit history lines up.
 
 `missile-lit.png`.
 
@@ -196,17 +546,19 @@ To finish the atlas faithfully, the most valuable additions would be, in order:
    phosphor segment** - the standard way to recover a complete segment atlas in one
    shot. This would settle all 21 jet variants, the battleship, and every segment the
    two action photographs happen not to light.
-2. **A photograph of a battleship crossing** - its sprite is entirely untraced.
-3. Anything showing the field with **many jets lit at once**, which would confirm the
-   per-column variation directly rather than through the ghosts.
+2. ~~**A photograph of a battleship crossing**~~ - **obtained**. The gameplay video
+   traces it: `video/battleship-lane-{top,middle,bottom}.png`. It does not cross columns.
+3. ~~Anything showing the field with **many jets lit at once**~~ - **obtained**, and it
+   confirms the per-column variation directly. Item 1 is still wanted, and is now the
+   only way to settle how many distinct jet outlines exist.
 
 ## What these photographs do not settle
 
 - Anything about **timing** - these are stills. Cadence remains blocked on the
-  per-skill gameplay video, per `docs/evidence/timing-analysis.md`.
-- The battleship. Neither photograph catches one crossing the far zone, so its sprite
-  is still untraced. It is worth 10 points per the rules and has a documented buzz in
-  `audio-reference.md`, but its shape is unknown.
+  per-skill gameplay video, per `docs/evidence/timing-analysis.md`. The gameplay video
+  above supplies cadence in *file* time; converting it to real time depends on an
+  unresolved capture frame rate.
+- ~~The battleship.~~ Traced from the video - see the sprite catalogue above.
 
 The two questions the first draft left open - the identity of the cyan shape, and
 whether the white marks were a third phosphor - were both answered by the owner and are
