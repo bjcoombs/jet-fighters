@@ -29,9 +29,18 @@ export const RAM_ADDRESS_MASK = RAM_WORD_COUNT - 1;
 /** Bits in a RAM nibble, i.e. the range of the SBIT/RBIT/TBIT index. */
 export const RAM_BITS_PER_WORD = 4;
 
+/**
+ * Bits Y occupies in a RAM address, i.e. how far X is shifted above it.
+ *
+ * Equal to {@link RAM_BITS_PER_WORD} on this core, which is a coincidence of
+ * both being four and not a relationship: one is how wide a word is, the other
+ * is how many words a file holds.
+ */
+export const RAM_FILE_SHIFT = Math.log2(RAM_WORDS_PER_FILE);
+
 /** Compose the only RAM address this core can form: `X:Y`. */
 export function ramAddress(x: number, y: number): number {
-  return (((x & X_MASK) << RAM_BITS_PER_WORD) | (y & NIBBLE_MASK)) & RAM_ADDRESS_MASK;
+  return (((x & X_MASK) << RAM_FILE_SHIFT) | (y & NIBBLE_MASK)) & RAM_ADDRESS_MASK;
 }
 
 /**
