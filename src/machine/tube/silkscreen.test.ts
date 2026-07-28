@@ -5,15 +5,16 @@ import { callsOf, createFakeContext } from './fake-canvas.js';
 import {
   CELL,
   CIRCLE,
-  COLUMN_COUNT,
   FIELD,
   LANE_COUNT,
   PLAYFIELD,
   RECT,
+  RULER_MARK_COUNT,
   RULER_TICKS,
+  RULER_TICK_COUNT,
   VIEWBOX,
-  columnCenterX,
   laneCenterY,
+  rulerTickX,
 } from './layout.js';
 import { SILKSCREEN } from './palette.js';
 import { drawSilkscreen } from './silkscreen.js';
@@ -38,12 +39,14 @@ function near(a: number, b: number): boolean {
 const RULER_DOT_RADIUS_MAX = 2.5;
 
 /**
- * How far an elbow bracket reaches sideways, as a fraction of a cell.
+ * The least an elbow arm may hold its numeral clear of the drop, in atlas units.
  *
- * Short of the half cell that would land it on a column-boundary tick, because
- * RULER_TICKS labels two adjacent columns - see the constant in silkscreen.ts.
+ * The arm measures 7.7-9.0 units across the eight readable brackets in the two
+ * close-ups and silkscreen.ts draws 8.5, plus half the glyph advance. This is a
+ * floor, not the figure: the point is that the numeral is beside its drop rather
+ * than on it.
  */
-const ELBOW_REACH = 0.38;
+const RULER_ELBOW_ARM_MIN = 8;
 
 /** One straight stroked segment, with the pen width and alpha it was drawn at. */
 interface Segment {
@@ -61,7 +64,7 @@ interface Segment {
  *
  * `FakeCanvasContext` snapshots colour and alpha per call but not `lineWidth`,
  * and line weight is half of what the photographs pin here: the bottom rail is
- * the heaviest ink on the face and the lattice the lightest. Rather than change
+ * the heaviest ink on the face and the SCORE digit boxes the lightest. Rather than change
  * the shared recorder, this drives it through a proxy that samples `lineWidth`
  * alongside each call.
  */
@@ -186,7 +189,7 @@ describe('drawSilkscreen', () => {
 
   it('draws no full-height rule between the SCORE box and the field', () => {
     // The bright inner rule this layer used to draw is not on the real face - the
-    // separation is the faint lattice plus the three row marks.
+    // separation is the three row marks.
     const rules = trace().segments.filter(
       (seg) =>
         seg.alpha === 1 &&
@@ -261,7 +264,7 @@ describe('drawSilkscreen', () => {
     }
   });
 
-  it('groups the ruler dots in fours, separated by a tick at every column boundary', () => {
+  it('groups the ruler dots in fours, separated by seven ticks on the ruler pitch', () => {
     const drawn = trace();
     const dots = ops(drawn.calls, 'arc')
       .filter((call) => near(call.args[1], PLAYFIELD.y) && call.args[2] <= RULER_DOT_RADIUS_MAX)
@@ -270,20 +273,20 @@ describe('drawSilkscreen', () => {
       .filter((call) => Math.abs(call.args[1] + call.args[3] / 2 - PLAYFIELD.y) < 1e-9)
       .map((call) => call.args[0] + call.args[2] / 2);
 
-    // One tick per interior column boundary.
-    expect(ticks.length).toBe(COLUMN_COUNT - 1);
-    for (let column = 1; column < COLUMN_COUNT; column += 1) {
-      const boundary = FIELD.x + column * CELL.width;
-      expect(ticks.some((x) => Math.abs(x - boundary) < 1e-9), `tick at column ${column}`).toBe(
-        true,
-      );
+    // Seven ticks, on the ruler's own pitch. Counted off score10 and *not* the
+    // cell boundaries - the run overshoots the seventh cell by half a pitch.
+    expect(ticks.length).toBe(RULER_TICK_COUNT);
+    for (let tick = 1; tick <= RULER_TICK_COUNT; tick += 1) {
+      expect(ticks.some((x) => Math.abs(x - rulerTickX(tick)) < 1e-9), `tick ${tick}`).toBe(true);
     }
-    // Four dots between consecutive ticks, and four leading the first tick.
-    expect(dots.length).toBe(COLUMN_COUNT * 4);
+    // Four dots between consecutive ticks, four leading the first, and a lone
+    // trailing dot before the right crosshair.
+    expect(dots.length).toBe(RULER_MARK_COUNT - RULER_TICK_COUNT);
     const bounds = [FIELD.x, ...ticks, FIELD.x + FIELD.width];
     for (let group = 0; group + 1 < bounds.length; group += 1) {
       const inGroup = dots.filter((x) => x > bounds[group] && x < bounds[group + 1]);
-      expect(inGroup.length, `dots in group ${group}`).toBe(4);
+      const expected = group === bounds.length - 2 ? 1 : 4;
+      expect(inGroup.length, `dots in group ${group}`).toBe(expected);
     }
     // Chunky: a dot is wider than a printed line.
     const radii = ops(drawn.calls, 'arc')
@@ -295,10 +298,11 @@ describe('drawSilkscreen', () => {
     for (const radius of radii) expect(radius * 2).toBeGreaterThan(frameWidth);
   });
 
-  it('hangs an elbow bracket off every ruler numeral', () => {
-    // Each numeral carries a horizontal arm off its shoulder that turns down and
-    // drops toward the rail - `10` reads as `10⌐`. The last label's bracket
-    // mirrors, because its own column boundary is the right rail.
+  it('drops every ruler numeral onto its tick', () => {
+    // The bug this pins: the numerals were placed at cell centres while the ticks
+    // were drawn on the ruler's own pitch, so no bracket landed on a mark. Each
+    // numeral carries a horizontal arm off its shoulder that turns down and drops
+    // onto a tick - `10` reads as `10⌐`. `G`'s bracket mirrors.
     const drawn = trace();
     // 'G' also occurs in the arc title (SIGHT), whose characters are drawn at the
     // origin under a translate - match on the rail position, not the text alone.
@@ -311,15 +315,28 @@ describe('drawSilkscreen', () => {
     const segments = drawn.segments.filter((seg) => seg.alpha === 1);
     const drops: number[] = [];
 
+    // The tick centres the ruler actually drew, straight off the call log - so
+    // this compares the two coordinate systems rather than trusting either.
+    const drawnTicks = ops(drawn.calls, 'fillRect')
+      .filter((call) => Math.abs(call.args[1] + call.args[3] / 2 - PLAYFIELD.y) < 1e-9)
+      .map((call) => call.args[0] + call.args[2] / 2);
+
     for (let index = 0; index < RULER_TICKS.length; index += 1) {
       const tick = RULER_TICKS[index];
       const side = index === RULER_TICKS.length - 1 ? -1 : 1;
-      const centre = columnCenterX(tick.column);
-      const dropX = centre + side * CELL.width * ELBOW_REACH;
-      const numeral = numerals.find(
-        (call) => call.text === tick.label && near(call.args[0], centre),
-      );
+      const dropX = rulerTickX(tick.tick);
+      expect(
+        drawnTicks.some((x) => Math.abs(x - dropX) < 1e-9),
+        `${tick.label} drops on a drawn tick`,
+      ).toBe(true);
+      const numeral = numerals.find((call) => call.text === tick.label);
       expect(numeral, `numeral ${tick.label}`).toBeDefined();
+      // The numeral hangs off the far end of the arm, on the side away from the
+      // field for `G` and toward it for the rest.
+      expect(
+        (dropX - numeral!.args[0]) * side,
+        `${tick.label} sits clear of its drop`,
+      ).toBeGreaterThan(RULER_ELBOW_ARM_MIN);
 
       // The numeral sits well clear of the rail - a seventh of the playfield
       // height, not a twelfth.
@@ -343,9 +360,9 @@ describe('drawSilkscreen', () => {
       drops.push(dropX);
     }
 
-    // No two brackets share a drop line: `1` and `G` sit in adjacent ruler
-    // columns, and at a half-cell reach they would land on the same line and read
-    // as a single T.
+    // No two brackets share a drop line. On the measured ticks `1` and `G` are
+    // two pitches apart, so this is slack now - it was tight when the labels sat
+    // in adjacent cells.
     expect(new Set(drops).size).toBe(RULER_TICKS.length);
     const sorted = [...drops].sort((a, b) => a - b);
     for (let index = 1; index < sorted.length; index += 1) {
@@ -353,34 +370,41 @@ describe('drawSilkscreen', () => {
     }
   });
 
-  it('divides the playfield into seven countable cells per row, three rows deep', () => {
-    // The critique's highest-value finding: the real face carries a faint printed
-    // lattice, and without it the field reads as empty black rather than a radar
-    // screen. Seven rectangles per row across the playfield - the SCORE box plus
-    // one per distance column - and three rows.
+  it('draws no cell lattice over the playfield', () => {
+    // This layer used to print a faint hash across the glass - a vertical on
+    // every cell boundary and a horizontal on every lane boundary. It went in
+    // with #48 because "the field was empty black between the frame and the
+    // phosphor"; the renderer's ghost layer now draws every segment at the
+    // unlit-phosphor level, so the field carries the tube's own artwork and the
+    // hash was a brighter second copy of a division already visible. Removed at
+    // the owner's request against the real unit.
+    //
+    // Asserted as an absence rather than deleted, because a redraw of this layer
+    // that reintroduces the grid should fail here rather than pass quietly.
     const faint = draw().calls.filter((call) => call.globalAlpha < 1);
     const moves = faint.filter((call) => call.op === 'moveTo');
+    expect(moves, 'faint strokes across the field').toEqual([]);
 
-    const columnEdges = moves
-      .filter((call) => Math.abs(call.args[1] - FIELD.y) < 1e-9)
-      .map((call) => call.args[0]);
-    // COLUMN_COUNT verticals: the SCORE box's right edge and every interior cell
-    // edge. The seventh boundary is the playfield's own right border.
-    expect(columnEdges.length).toBe(COLUMN_COUNT);
-    for (let column = 0; column < COLUMN_COUNT; column += 1) {
-      expect(columnEdges).toContain(FIELD.x + column * CELL.width);
-    }
-
-    const rowEdges = moves
-      .filter((call) => Math.abs(call.args[0] - PLAYFIELD.x) < 1e-9)
-      .map((call) => call.args[1]);
-    expect(rowEdges.length).toBe(LANE_COUNT - 1);
-    for (let lane = 1; lane < LANE_COUNT; lane += 1) {
-      expect(rowEdges).toContain(FIELD.y + lane * CELL.height);
+    // And nothing at full strength has replaced it: no vertical spanning the
+    // cell band on a cell boundary, no horizontal on a lane boundary.
+    for (const seg of trace().segments) {
+      const onColumnEdge =
+        near(seg.x0, seg.x1) &&
+        Math.abs((seg.x0 - FIELD.x) % CELL.width) < 1e-9 &&
+        seg.y0 >= FIELD.y - 1e-9 &&
+        seg.y1 <= FIELD.y + FIELD.height + 1e-9;
+      expect(onColumnEdge, `stroke down a cell boundary at x=${seg.x0}`).toBe(false);
+      for (let lane = 1; lane < LANE_COUNT; lane += 1) {
+        const onLaneEdge =
+          near(seg.y0, seg.y1) &&
+          near(seg.y0, FIELD.y + lane * CELL.height) &&
+          Math.abs(seg.x1 - seg.x0) > CELL.width;
+        expect(onLaneEdge, `stroke along lane boundary ${lane}`).toBe(false);
+      }
     }
   });
 
-  it('prints the lattice far fainter than the frame', () => {
+  it('prints the faintest ink far fainter than the frame', () => {
     const alphas = draw().calls.filter((call) => call.globalAlpha < 1).map((c) => c.globalAlpha);
     expect(alphas.length).toBeGreaterThan(0);
     for (const alpha of alphas) {
