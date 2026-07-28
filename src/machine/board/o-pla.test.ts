@@ -11,9 +11,11 @@
 //
 // The other two are elsewhere by design. The *structural* conjunct - that the
 // core's O write path is indexed by five bits and cannot express a mask absent
-// from the table - is `src/machine/cpu/tms1370/opla.ts` and its own suite; this
-// file must not weaken it and does not test it. The board conjunct - plates 8-11
-// from R11-R14 - is the port layer's.
+// from the table - is `src/machine/cpu/tms1370/opla.ts` and its own suite, and
+// nothing here weakens or restates it. What this file adds is the *join*: that
+// this table loads into `Tms1370OutputPla` whole, decodes through its five-bit
+// index, and gives the core exactly the vocabulary designed and no wider one.
+// The board conjunct - plates 8-11 from R11-R14 - is the port layer's.
 //
 // The honest limit: `asm/jetfighter.asm` is still HMCS44 source until task 8
 // rewrites it, so "every mask the ROM drives" has no ROM to be quantified over.
@@ -66,6 +68,12 @@ import {
   unreachablePlateMasks,
 } from './o-pla.js';
 import { O_MASK, O_PLATE_COUNT, O_PLA_INDEX_COUNT } from '../cpu/tms1370/ports.js';
+import {
+  O_INDEX_MASK,
+  O_PLA_ENTRY_COUNT,
+  O_RESET_INDEX,
+  Tms1370OutputPla,
+} from '../cpu/tms1370/opla.js';
 import { loadAtlas } from '../tube/atlas.js';
 
 const atlas = loadAtlas();
@@ -104,6 +112,37 @@ describe('the table has the shape the hardware fixes', () => {
     );
     expect(undeclared).toEqual([RESERVED_INDEX]);
     expect(O_PLA_TABLE[RESERVED_INDEX]).toBe(0);
+  });
+});
+
+describe('the table loads into the core the contract requires', () => {
+  // The structural conjunct of V4 lives in src/machine/cpu/tms1370/opla.ts and is
+  // tested there. What is asserted here is the join: this table is a legal one
+  // for that type, every mask it holds is reachable only through a five-bit
+  // index, and the vocabulary the core would have is exactly the vocabulary
+  // designed. A table that had to be widened to fit would show up here.
+  const pla = new Tms1370OutputPla(O_PLA_TABLE);
+
+  it('fits the core table without truncation', () => {
+    expect(O_PLA_SLOT_COUNT).toBe(O_PLA_ENTRY_COUNT);
+    expect(pla.entries).toEqual([...O_PLA_TABLE]);
+  });
+
+  it('decodes every five-bit index to the mask this design assigns it', () => {
+    for (let index = 0; index <= O_INDEX_MASK; index += 1) {
+      expect(pla.decode(index), `index ${index}`).toBe(O_PLA_TABLE[index]);
+    }
+  });
+
+  it('gives the core exactly this table vocabulary and no wider one', () => {
+    expect([...pla.vocabulary].sort((left, right) => left - right)).toEqual(
+      [...new Set(O_PLA_TABLE)].sort((left, right) => left - right),
+    );
+  });
+
+  it('drives darkness at the index reset writes', () => {
+    expect(O_RESET_INDEX).toBe(O_PLA_DARK_INDEX);
+    expect(pla.decode(O_RESET_INDEX)).toBe(0);
   });
 });
 
