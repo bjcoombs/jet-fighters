@@ -12,6 +12,7 @@ import {
 import { CYCLES_PER_INSTRUCTION, encodeInstruction, Mnemonic } from './isa.js';
 import { Tms1370Rom } from './memory.js';
 import { O_INDEX_MASK, O_LINE_MASK, O_PLA_ENTRY_COUNT, Tms1370OutputPla } from './opla.js';
+import { Tms1370Ports } from './ports.js';
 import { RAM_FILE_COUNT, RAM_WORD_COUNT, RAM_WORDS_PER_FILE, Tms1370Ram } from './ram.js';
 import {
   pcForOrdinal,
@@ -451,6 +452,35 @@ describe('the O write path', () => {
     expect(Object.keys(cpu.snapshot())).toContain('oIndex');
     expect(Object.keys(cpu.snapshot())).not.toContain('o');
     expect(Object.keys(cpu.snapshot())).not.toContain('oLines');
+  });
+
+  it('reaches the port file only through the table, whatever the ROM does', () => {
+    // The core and the port file meet here: ports.ts's writeO takes "the pattern
+    // the output PLA resolved", and this is where the index is chosen. Driving a
+    // real Tms1370Ports through the core shows the two compose, and shows the
+    // port file never sees a byte the table does not hold - the constraint
+    // survives the boundary rather than stopping at it.
+    const table = [0x00, 0b0000_0011, 0b1100_0000, 0b0001_1000];
+    const pla = new Tms1370OutputPla(table);
+    const ports = new Tms1370Ports();
+    const seen: number[] = [];
+    ports.onOChange = (pattern) => seen.push(pattern);
+
+    const cpu = coreRunning(
+      [op(Mnemonic.TDO), op(Mnemonic.ANAAC, 1), op(Mnemonic.TDO), op(Mnemonic.ANAAC, 1), op(Mnemonic.TDO)],
+      {
+        outputPla: pla,
+        pins: {
+          writeOIndex: (index) => ports.writeO(pla.decode(index)),
+          writeR: (index, on) => (on ? ports.setR(index) : ports.resetR(index)),
+        },
+      },
+    );
+    cpu.run(5);
+
+    expect(seen).toEqual([0b0000_0011, 0b1100_0000]);
+    expect(ports.o).toBe(0b1100_0000);
+    expect(seen.every((pattern) => pla.vocabulary.has(pattern))).toBe(true);
   });
 
   it('drives darkness rather than an arbitrary pattern when no table is supplied', () => {

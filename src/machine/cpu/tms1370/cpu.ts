@@ -19,6 +19,11 @@
 //   - `isa.ts` / `decoder.ts` - the opcode table and its decode cache.
 //   - `opla.ts` - the 32-slot output PLA, and with it the fact that this core's
 //     O state is a 5-bit index and never an 8-bit mask.
+//   - `ports.ts` - the pin budget: which R lines are grids, strobes, plates and
+//     speaker, and how wide K is. The engine drives pins by index and takes no
+//     position on what they are wired to; `Tms1370Ports` is what a board adapts
+//     {@link Tms1370Pins} to, and cpu.test.ts drives one to show they compose
+//     rather than compete.
 //   - `timing.ts` - the oscillator frequency and the divide-by-six. **No rate
 //     appears in this file.** `runOscillatorPulses` divides by
 //     {@link OSCILLATOR_PULSES_PER_INSTRUCTION}, which is `CLOCK_DIVIDER`, so
@@ -38,6 +43,7 @@ import {
   Tms1370OutputPla,
   type Tms1370OutputSink,
 } from './opla.js';
+import { K_MASK } from './ports.js';
 import { Tms1370Ram } from './ram.js';
 import { Tms1370Rom } from './memory.js';
 import {
@@ -61,11 +67,13 @@ import { CLOCK_DIVIDER } from './timing.js';
  */
 export const OSCILLATOR_PULSES_PER_INSTRUCTION = CLOCK_DIVIDER;
 
-/** Width of the K input port, in bits. */
-export const K_INPUT_BITS = 4;
-
-/** Mask of the K input port. */
-export const K_MASK = (1 << K_INPUT_BITS) - 1;
+/**
+ * Mask of the K input port, from the port file's pin budget.
+ *
+ * Re-exported rather than restated: `ports.ts` owns which pins exist and what
+ * they are wired to, and this engine only samples them.
+ */
+export { K_MASK, K_PIN_COUNT } from './ports.js';
 
 /**
  * Bit of X that SETR/RSTR use as a fifth R-index bit.

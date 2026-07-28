@@ -25,6 +25,7 @@
 //
 // Pure data only: no DOM, no timers, no Web APIs.
 
+import { O_MASK, O_PIN_COUNT } from './ports.js';
 import { O_INDEX_BITS, O_INDEX_MASK } from './registers.js';
 
 /**
@@ -36,14 +37,21 @@ import { O_INDEX_BITS, O_INDEX_MASK } from './registers.js';
  */
 export { O_INDEX_BITS, O_INDEX_MASK } from './registers.js';
 
-/** Entries in the output PLA: one per value the 5-bit index can take. */
+/**
+ * Entries in the output PLA: one per value the 5-bit index can take.
+ *
+ * Derived from the index width rather than written as 32, so the table's size
+ * and the core's index width cannot drift apart. `ports.ts` states the same
+ * ceiling as `O_PLA_INDEX_COUNT` from the pin budget's side; `opla.test.ts`
+ * asserts the two agree.
+ */
 export const O_PLA_ENTRY_COUNT = O_INDEX_MASK + 1;
 
-/** O output lines on this part - 8 pins (research doc §1). */
-export const O_LINE_COUNT = 8;
+/** O output lines on this part - the 8 O pins the port file counts. */
+export const O_LINE_COUNT = O_PIN_COUNT;
 
-/** Mask of the decoded O output word. */
-export const O_LINE_MASK = (1 << O_LINE_COUNT) - 1;
+/** Mask of the decoded O output word, i.e. the port file's `O_MASK`. */
+export const O_LINE_MASK = O_MASK;
 
 /**
  * The index reset writes.

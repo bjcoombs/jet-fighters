@@ -8,6 +8,7 @@ import {
   O_RESET_INDEX,
   Tms1370OutputPla,
 } from './opla.js';
+import { O_MASK, O_PIN_COUNT, O_PLA_INDEX_COUNT } from './ports.js';
 import { O_INDEX_BITS, O_INDEX_MASK } from './registers.js';
 
 describe('TMS1370 output PLA', () => {
@@ -17,6 +18,14 @@ describe('TMS1370 output PLA', () => {
     expect(O_PLA_ENTRY_COUNT).toBe(32);
     expect(O_LINE_COUNT).toBe(8);
     expect(O_LINE_MASK).toBe(0xff);
+  });
+
+  it('agrees with the port file, which states the same ceiling from the pin budget', () => {
+    // Two modules reach 32 by different routes - this one from the index width,
+    // ports.ts from the O port's own PLA description. They must not drift.
+    expect(O_PLA_ENTRY_COUNT).toBe(O_PLA_INDEX_COUNT);
+    expect(O_LINE_COUNT).toBe(O_PIN_COUNT);
+    expect(O_LINE_MASK).toBe(O_MASK);
   });
 
   it('leaves undeclared slots dark rather than undefined', () => {
