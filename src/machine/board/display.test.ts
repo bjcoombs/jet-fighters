@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import rawAtlas from '../tube/atlas.json';
 import { GRID_COUNT as ATLAS_GRID_COUNT, PLATE_COUNT as ATLAS_PLATE_COUNT } from '../tube/atlas-schema.js';
+import { validateAtlas } from '../tube/atlas.js';
+import { TMS1370_TOPOLOGY } from '../topology.js';
 import {
   Display,
   GRID_COUNT,
@@ -32,16 +35,71 @@ function sweep(display: Display, plates: number, dwell: number, from = 0): numbe
 }
 
 describe('Display - geometry', () => {
-  it('matches the segment atlas the tube renderer addresses', () => {
-    expect(GRID_COUNT).toBe(ATLAS_GRID_COUNT);
-    expect(PLATE_COUNT).toBe(ATLAS_PLATE_COUNT);
+  it('addresses every segment the tube renderer can ask it for', () => {
+    // This asserted equality with the atlas, and equality is not the invariant
+    // - it was true only while there was one candidate topology. There are two
+    // now and they are different facts: ten is a count of *grid pins the HMCS44
+    // bonds out*, nine is a count of *electrodes on the glass*, and the atlas
+    // moved onto the second (src/machine/topology.ts) ahead of the board, which
+    // v3 task 11.3 moves over with the core and the ROM.
+    //
+    // What has to hold in the meantime, and what still has to hold afterwards,
+    // is containment: every address the atlas defines must be one this board can
+    // drive. A board with fewer grids than the tube cannot light the whole tube,
+    // and that is the failure worth catching.
+    expect(GRID_COUNT).toBeGreaterThanOrEqual(ATLAS_GRID_COUNT);
+    expect(PLATE_COUNT).toBeGreaterThanOrEqual(ATLAS_PLATE_COUNT);
   });
 
-  it('is ten grids on D0-D9 and twenty plates on R0-R19', () => {
+  it('defaults to the live board: ten grids on D0-D9, twenty plates on R0-R19', () => {
+    // The default is deliberately still the HMCS44's. asm/jetfighter.asm drives
+    // ten grid lines and the core under it is an HD38800 model, so a board
+    // scanning nine here would not be a TMS1370 - it would be an HMCS44 with a
+    // grid pin silently masked off.
     expect(GRID_COUNT).toBe(10);
     expect(GRID_MASK).toBe(0x3ff);
     expect(PLATE_COUNT).toBe(20);
     expect(PLATE_MASK).toBe(0xfffff);
+  });
+
+  it('scans whatever matrix it is handed, not the default one', () => {
+    const display = new Display(TMS1370_TOPOLOGY);
+    expect(display.matrix).toBe(TMS1370_TOPOLOGY);
+    expect(display.matrix.gridCount).toBe(9);
+    expect(display.matrix.plateCount).toBe(12);
+    // The bound moves with the topology, so the grid and plate the HMCS44 has
+    // and the TMS1370 does not are rejected rather than silently accepted.
+    expect(() => display.setGridPin(9, 1, 0)).toThrow(RangeError);
+    expect(() => display.setPlatePin(12, 1, 0)).toThrow(RangeError);
+    expect(() => display.setGridPin(8, 1, 0)).not.toThrow();
+  });
+
+  it('drives the TMS1370 matrix over its whole address space', () => {
+    // Nine grids against twelve plates, swept end to end: every one of the 108
+    // addresses must accumulate duty, and none outside them may exist.
+    const display = new Display(TMS1370_TOPOLOGY);
+    const DWELL = 10;
+    let cycle = 0;
+    display.setPlates(TMS1370_TOPOLOGY.plateMask, cycle);
+    for (let grid = 0; grid < TMS1370_TOPOLOGY.gridCount; grid += 1) {
+      display.setGrids(1 << grid, cycle);
+      cycle += DWELL;
+    }
+    const frame = display.endFrame(cycle);
+    expect(frame.segments).toHaveLength(
+      TMS1370_TOPOLOGY.gridCount * TMS1370_TOPOLOGY.plateCount,
+    );
+    expect(display.getStrobedGrids()).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+    for (const segment of frame.segments) {
+      expect(segment.grid).toBeLessThan(TMS1370_TOPOLOGY.gridCount);
+      expect(segment.plate).toBeLessThan(TMS1370_TOPOLOGY.plateCount);
+    }
+  });
+
+  it('validates the shipped atlas against the TMS1370 matrix', () => {
+    // The end state contract criterion V5 describes, provable now rather than
+    // after the board flips: the atlas data fits nine grids and twelve plates.
+    expect(validateAtlas(rawAtlas, TMS1370_TOPOLOGY)).toEqual({ valid: true, errors: [] });
   });
 });
 

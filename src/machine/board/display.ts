@@ -1,42 +1,51 @@
-// The multiplexed VFD as the board wires it: 10 grids against 20 plates.
+// The multiplexed VFD as the board wires it.
 //
-// Sources: the sibling device MAME emulates (Gakken Heiankyo Alien, HD38800 at
-// 400 kHz) scans 10 grids on D0-D9 against ~20 plates on the R ports plus
-// D10-D13, and Jet Fighter is modelled as its twin - docs/prd/jet-fighters-v2.md
-// (Technical Context, R4). The grid count is a documented fact; see PLATE_COUNT
-// below for what is and is not known about the plate bus.
+// The matrix is a constructor parameter rather than a fact of this module. It
+// defaults to the live board's - 10 grids on D0-D9 against ~20 plates on the R
+// ports plus D10-D13, the HMCS44 arrangement borrowed from MAME's `ghalien` in
+// docs/prd/jet-fighters-v2.md (Technical Context, R4) - and the TMS1370's 9 x 12
+// is available beside it, from src/machine/topology.ts. Neither is hardcoded
+// here, because which one the board scans is a fact about which core is
+// soldered to the tube and this module drives whichever it is handed.
 //
-// This module owns the geometry and the frame period. The duty arithmetic lives
-// in pwm.ts, which knows nothing about ports.
+// This module owns the frame period. The duty arithmetic lives in pwm.ts, which
+// knows nothing about ports.
 //
 // Pure state only: no DOM, no timers, no Web APIs. Nothing here has its own
 // clock - frame boundaries come from the display sweep, never from wall time.
 
-import { D_GRID_LAST, D_GRID_FIRST, D_GRID_MASK, R_MASK, R_PIN_COUNT } from '../cpu/ports.js';
+import { DEFAULT_TOPOLOGY, type DisplayTopology } from '../topology.js';
 import { PwmAccumulator, type PwmFrame, type SegmentDuty } from './pwm.js';
 
-/** Display grids, driven by D0-D9. Ten, per the sibling hardware. */
-export const GRID_COUNT = D_GRID_LAST - D_GRID_FIRST + 1;
+/**
+ * Display grids the board scans by default: ten, driven by D0-D9.
+ *
+ * The counts and masks below are {@link DEFAULT_TOPOLOGY}'s, re-exported so the
+ * many callers that only ever want the live board's figures do not each have to
+ * reach through a topology object. A caller that wants a *specific* machine's
+ * figures - a test driving the TMS1370's 9 x 12 matrix, say - passes that
+ * topology to the {@link Display} constructor and reads the counts off it.
+ */
+export const GRID_COUNT = DEFAULT_TOPOLOGY.gridCount;
 
 /** D0-D9 as a bit mask. */
-export const GRID_MASK = D_GRID_MASK;
+export const GRID_MASK = DEFAULT_TOPOLOGY.gridMask;
 
 /**
- * Plate (anode) lines per grid.
+ * Plate (anode) lines per grid on the default topology.
  *
- * The research fixes the count at "~20 plates (R ports + D10-D13)" without
- * saying how many come from each side, and the segment atlas addresses plates by
- * *R-port bit index* over 0-19 (src/machine/tube/atlas-schema.ts). This model
- * therefore wires the whole 20-line plate bus to R0-R19 and leaves D10-D13
- * unassigned. That is a stated assumption, not a measured fact: the split cannot
- * be settled without a teardown, and the atlas would have to move with it. The
- * atlas as shipped uses plates 0-11, so the assumption is not currently load
- * bearing - it only fixes where plates 12-19 would come from.
+ * The research fixes the HMCS44 count at "~20 plates (R ports + D10-D13)"
+ * without saying how many come from each side, and the segment atlas addresses
+ * plates by *R-port bit index*. That model therefore wires the whole 20-line
+ * plate bus to R0-R19 and leaves D10-D13 unassigned - a stated assumption, not a
+ * measured fact. It is not load bearing: the atlas uses plates 0-11 and the real
+ * chip has twelve of them (src/machine/topology.ts), so all the assumption ever
+ * fixed was where plates 12-19 would have come from.
  */
-export const PLATE_COUNT = R_PIN_COUNT;
+export const PLATE_COUNT = DEFAULT_TOPOLOGY.plateCount;
 
 /** R0-R19 as a bit mask. */
-export const PLATE_MASK = R_MASK;
+export const PLATE_MASK = DEFAULT_TOPOLOGY.plateMask;
 
 /**
  * Machine cycles with no grid driven after which the tube is taken to be dark.
@@ -116,7 +125,17 @@ export interface DisplaySnapshot {
  * note are measured against their own length rather than against the note's.
  */
 export class Display {
-  private readonly pwm = new PwmAccumulator(GRID_COUNT, PLATE_COUNT);
+  /**
+   * The matrix this instance scans.
+   *
+   * Defaults to the live board's, so every existing caller is unchanged. It is a
+   * constructor parameter rather than a module constant because there are now
+   * two real answers - the HMCS44's 10 x 20 and the TMS1370's 9 x 12 - and a
+   * test that wants to drive the second one should not have to wait for the
+   * first to be retired. See src/machine/topology.ts.
+   */
+  private readonly topology: DisplayTopology;
+  private readonly pwm: PwmAccumulator;
 
   private _gridMask = 0;
   private _plateMask = 0;
@@ -126,7 +145,17 @@ export class Display {
   private _lastFrame: PwmFrame | undefined;
   private _lastDriveCycle = 0;
 
-  /** Grids currently driven, as a bit mask over D0-D9. */
+  constructor(topology: DisplayTopology = DEFAULT_TOPOLOGY) {
+    this.topology = topology;
+    this.pwm = new PwmAccumulator(topology.gridCount, topology.plateCount);
+  }
+
+  /** Grids this display scans, and the plates it drives against them. */
+  get matrix(): DisplayTopology {
+    return this.topology;
+  }
+
+  /** Grids currently driven, as a bit mask over the grid lines. */
   get gridMask(): number {
     return this._gridMask;
   }
@@ -154,7 +183,7 @@ export class Display {
    * outgoing state - before the new grid is recorded in the next period.
    */
   setGrids(mask: number, cycle: number): void {
-    const next = mask & GRID_MASK;
+    const next = mask & this.topology.gridMask;
     if (next === this._gridMask) {
       return;
     }
@@ -192,7 +221,7 @@ export class Display {
 
   /** Drive the plate lines. */
   setPlates(mask: number, cycle: number): void {
-    const next = mask & PLATE_MASK;
+    const next = mask & this.topology.plateMask;
     if (next === this._plateMask) {
       return;
     }
@@ -202,13 +231,13 @@ export class Display {
 
   /** Raise or drop one grid line, as a single D-pin transition does. */
   setGridPin(pin: number, value: number, cycle: number): void {
-    assertIndex(pin, GRID_COUNT, 'grid');
+    assertIndex(pin, this.topology.gridCount, 'grid');
     this.setGrids(setBit(this._gridMask, pin, value), cycle);
   }
 
   /** Raise or drop one plate line, as a single R-pin transition does. */
   setPlatePin(pin: number, value: number, cycle: number): void {
-    assertIndex(pin, PLATE_COUNT, 'plate');
+    assertIndex(pin, this.topology.plateCount, 'plate');
     this.setPlates(setBit(this._plateMask, pin, value), cycle);
   }
 
@@ -306,8 +335,8 @@ export class Display {
 
   /** Duty of one segment in the most recently completed frame; 0 if unlit. */
   getSegmentDuty(grid: number, plate: number): number {
-    assertIndex(grid, GRID_COUNT, 'grid');
-    assertIndex(plate, PLATE_COUNT, 'plate');
+    assertIndex(grid, this.topology.gridCount, 'grid');
+    assertIndex(plate, this.topology.plateCount, 'plate');
     const segment = this.getFrame().segments.find((s) => s.grid === grid && s.plate === plate);
     return segment?.duty ?? 0;
   }
@@ -315,7 +344,7 @@ export class Display {
   /** Distinct grids driven since the last `clear()`, ascending (contract V3). */
   getStrobedGrids(): number[] {
     const grids: number[] = [];
-    for (let grid = 0; grid < GRID_COUNT; grid += 1) {
+    for (let grid = 0; grid < this.topology.gridCount; grid += 1) {
       if ((this._strobedGrids >>> grid) & 1) {
         grids.push(grid);
       }

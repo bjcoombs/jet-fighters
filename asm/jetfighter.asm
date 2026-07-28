@@ -148,9 +148,10 @@
 ;   grid 0        distance column 0 - the far side, BATTLE SHIP ZONE, ruler "10"
 ;   grids 1-4     distance columns 1-4 - JET FIGHTER FLYING ZONE
 ;   grid 5        distance column 5 - the G capture line and the launcher
-;   grids 6,7,8   SCORE - hundreds, tens, units
-;   grid 9        status: the lit SCORE label, and nothing else - this unit has
-;                 no lives display, only the beeped damage warnings
+;   grids 7,8     SCORE - the tens digit with the hundreds half-digit beside
+;                 it, then the units digit with the lit SCORE label beside that.
+;                 This unit has no lives display, only the beeped damage
+;                 warnings
 ;
 ; Six distance columns, +x toward the missile station: a jet enters at grid 0 and
 ; marches toward grid 5. There is no ground-line segment - the
@@ -196,8 +197,8 @@
 .EQU GRID_BSHIP,     0          ; atlas: the three battleship segments, grid 0
 .EQU GRID_SC_T,      7          ; score: the tens digit, and the hundreds
                                 ; half-digit that shares its cell
-.EQU GRID_SC_U,      8          ; score, units
-.EQU GRID_STATUS,    9          ; the lit SCORE label, the grid's one segment
+.EQU GRID_SC_U,      8          ; score: the units digit, and the lit SCORE
+                                ; label that shares its cell
 
 ; --- Plate assignments ------------------------------------------------------
 ;
@@ -220,8 +221,7 @@
 ;     plates 9-11  red:  the burst where it is destroyed
 ;   grid 7         cyan: plates 0-6 the tens digit a-g, plate 7 the hundreds
 ;                        half-digit - two strokes reading 1, on one plate
-;   grid 8         cyan: plates 0-6 the units digit a-g
-;   grid 9         cyan: plate 0 the SCORE label - the only segment on the grid
+;   grid 8         cyan: plates 0-6 the units digit a-g, plate 7 the SCORE label
 ;
 ; Neither end cell carries a jet, so grids 0 and 6 have nothing on plates 0-5
 ; and 3-5 respectively: the teardown photographs show no aircraft printed in the
@@ -235,7 +235,8 @@
 ; battleship does not go through or_plate: it is the only thing in its cell, so
 ; render_bship writes the file directly.
 
-.EQU PLATE_SC_LBL,  %0001       ; R0 bit 0 -> plate 0, under grid 9
+.EQU PLATE_SC_LBL,  %1000       ; R1 bit 3 -> plate 7, under grid 8: the lit
+                                ; SCORE label, beside the units digit
 .EQU PLATE_SC_HUND, %1000       ; R1 bit 3 -> plate 7, under grid 7: the
                                 ; hundreds half-digit. The readout caps at 199,
                                 ; so it reads 1 or nothing and needs one bit
@@ -1083,16 +1084,23 @@ op_write:
         RTN
 
 ; ============================================================================
-; the status grid
+; the SCORE label
 ; ============================================================================
 ;
-; Grid 9 carries one segment: the lit SCORE label on plate 0. There is no lives
-; display on this tube - owner-confirmed against his own CGL unit. The three
-; white marks outside the right-hand border of the printed playfield are paint on
-; the overlay, not phosphor, which is why the atlas has no segment for them
-; (src/machine/tube/atlas.json: grid 9 holds `score_label` and nothing else).
-; Damage is signalled by sound alone - launcher_hit's two- and three-beep
-; warnings.
+; One segment: the lit SCORE label, plate 7 of grid 8, sharing the units digit's
+; cell. There is no lives display on this tube - owner-confirmed against his own
+; CGL unit. The three white marks outside the right-hand border of the printed
+; playfield are paint on the overlay, not phosphor, which is why the atlas has no
+; segment for them. Damage is signalled by sound alone - launcher_hit's two- and
+; three-beep warnings.
+;
+; The label used to have a grid to itself, grid 9. It does not any more, and the
+; reason is the chip rather than the artwork: the TMS1370 on the real board
+; drives **nine** grids from R0-R8, not ten, so there is no tenth grid for a
+; one-segment status cell to sit on (docs/research/tms1370-io.md section 1, and
+; the teardown photograph's nine printed cells in section 3). The label goes
+; where the glass has room for it, which is beside the units digit - grid 8 used
+; plates 0-6 and plate 7 was free.
 ;
 ; This routine used to look NIB_HITS up in PAT_COLUMN and write a tally into
 ; plates 1-3 alongside the label. Those three addresses reach no phosphor, so the
@@ -1102,11 +1110,16 @@ op_write:
 ;
 ; NIB_HITS itself is untouched: the count of destroyed launchers is real game
 ; state and drives the warnings and the loss. Only its display was phantom.
+;
+; It writes the nibble outright rather than ORing into it, which is safe for
+; exactly one reason: render_field has just cleared all three plate files and
+; nothing has drawn into grid 8 yet. render_score comes later in the chain and
+; shares this nibble, so it is that routine that has to OR - see rs_units_hi.
 
 render_status:
-        LAI PLATE_SC_LBL        ; the whole of grid 9's R0 nibble
-        LXI FILE_PLATE0
-        LYI GRID_STATUS
+        LAI PLATE_SC_LBL        ; grid 8's R1 nibble, the label bit alone
+        LXI FILE_PLATE1
+        LYI GRID_SC_U
         XMA
         JMPL render_actors
 
@@ -1373,8 +1386,15 @@ render_score:
         LXI FILE_PLATE0
         LYI GRID_SC_U
         XMA
-        LAB
-        LXI FILE_PLATE1
+rs_units_hi:
+        ; Segments e, f and g share grid 8's R1 nibble with the SCORE label on
+        ; plate 7, which render_status wrote at the head of the chain. So this
+        ; half ORs where the low half overwrites - the same reason, and the same
+        ; idiom, as render_hundreds sharing grid 7's R1 nibble with the tens.
+        ; B still holds e-g from the P above; LXI and XMA leave it alone.
+        LXI FILE_PLATE1         ; Y is still GRID_SC_U
+        LAM
+        OR
         XMA
 
         ; --- the tens digit, blanked while it and the hundreds are both zero ---
