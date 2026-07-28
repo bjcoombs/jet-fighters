@@ -205,12 +205,15 @@ decoded, so this is an assumption the project carries forward, not a measured
 fact. It is worth stating what depends on it, rather than only flagging that it
 is unverified.
 
-If MP2110's microinstruction PLA turns out not to carry STSL on `YNEA` - if the
-status latch on this mask is loaded some other way, or is not reachable the way
-`docs/research/tms1370-architecture.md` assumes - then the upper sixteen slots
-of this table (indices 16-31) are unreachable, because a set status latch is
-the only way this design has of addressing them. The score digits go with them:
-indices 16-26 are their sole occupants, and losing that bank costs the digit its
+If MP2110's microinstruction PLA turns out not to carry STSL on `YNEA`, what
+follows depends on which of two ways that is. If the status latch is loaded by
+some other instruction instead, this design's exposure is moot: the upper
+sixteen slots stay reachable, just addressed through a different load. The
+consequence is real only in the narrower case - **no reachable instruction
+loads the status latch at all**. Then the upper sixteen slots of this table
+(indices 16-31) are unreachable, because a set status latch is the only way
+this design has of addressing them. The score digits go with them: indices
+16-26 are their sole occupants, and losing that bank costs the digit its
 pass-through decode along with it.
 
 The fallback, named rather than left implicit: a **lower-16-only table**. Every
@@ -239,7 +242,7 @@ pass has already paid for it:
 | Write | Instructions | Why |
 | --- | --- | --- |
 | Lower-bank slot (0-15), in sweep | 2 | `TMA`; `TDO` - the latch is already clear from the previous pass |
-| Upper-bank slot (16-31), in sweep | 2, amortised | Same `TMA`; `TDO` - the pass's one `CLA`; `TCY 1`; `YNEA` crossing is spread across every strobe pass 3 and pass 4 make |
+| Upper-bank slot (16-31), in sweep | 2 marginal; `2 + 3/N` average over a pass of `N` upper-bank writes | `TMA`; `TDO` per write, plus the pass's one `CLA`; `TCY 1`; `YNEA` crossing spread across the `N` strobes pass 3 and pass 4 make between them - each additional write in the pass costs only the marginal 2, but the pass as a whole still paid the 3 once |
 | Upper-bank slot (16-31), ad-hoc single write | 5 | `CLA`; `TCY k`; `YNEA` to set the latch, then `TMA`; `TDO` - there is no earlier strobe in the pass to amortise the crossing against |
 
 A `TDO` reached from inside the sweep is never the ad-hoc case; the sweep's
