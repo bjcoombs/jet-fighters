@@ -92,6 +92,14 @@ export const STATUS_SETTING_MNEMONICS: ReadonlySet<string> = Object.freeze(
     'IMAC',
     'MNEZ',
     'YNEC',
+    // The whole AnAAC family. Every one of the fifteen writes its carry out to
+    // status, which is what makes `A6AAC` the BCD carry test and `A15AAC` a
+    // loop counter, and leaving them out both missed real violations after an
+    // add and reported false ones *before* the add that was the real test -
+    // `AMAAC / A6AAC / BR` reads as a gap of one unless the second add counts
+    // as a test in its own right. Derived from the ISA table rather than
+    // listed, so the family cannot gain a member this set does not know about.
+    ...ISA.filter((entry) => /^A\d+AAC$/.test(entry.mnemonic)).map((entry) => entry.mnemonic),
   ]),
 );
 
