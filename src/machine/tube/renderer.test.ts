@@ -3,7 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { getSegmentById, loadAtlas } from './atlas.js';
 import type { SegmentId } from './atlas-schema.js';
 import type { PwmFrame, SegmentDuty } from '../board/display.js';
-import { callsOf, createFakeCanvas, createFakeContext, type FakeCanvasContext } from './fake-canvas.js';
+import {
+  callsOf,
+  createFakeCanvas,
+  createFakeContext,
+  type FakeCanvasContext,
+  type RecordedCall,
+} from './fake-canvas.js';
 import { VIEWBOX } from './layout.js';
 import type { MeshSurfaceFactory } from './mesh.js';
 import { BACKGROUND, GHOST_ALPHA, SILKSCREEN, TUBE_PALETTE, ghostFill } from './palette.js';
@@ -43,6 +49,24 @@ function settle(renderer: TubeRenderer, recorder: FakeCanvasContext, frame: PwmF
     renderer.draw(frame, 16);
   }
   recorder.calls.length = 0;
+}
+
+/**
+ * Index of the first call the printed layer makes, for the ordering tests below.
+ *
+ * Found by ink colour, because the silkscreen has no operation of its own to
+ * look for: it draws with the same primitives the layers under it do. This used
+ * to look for `strokeRect`, which the layer happened to be the only user of -
+ * until #101 dropped the boxes around the SCORE digits and left it with none, at
+ * which point both ordering tests started passing a `-1` into a
+ * `toBeGreaterThan` and failing for a reason that had nothing to do with layer
+ * order. `SILKSCREEN` is set on exactly one layer and nowhere else in the
+ * pipeline, so it survives the artwork changing again.
+ */
+function firstSilkscreenCall(ops: readonly RecordedCall[]): number {
+  return ops.findIndex(
+    (call) => call.fillStyle === SILKSCREEN || call.strokeStyle === SILKSCREEN,
+  );
 }
 
 /** Every fill colour used, excluding the background and the silkscreen ink. */
@@ -287,7 +311,7 @@ describe('phosphor persistence', () => {
     // The printed silkscreen and the ghost matrix survive a dark tube.
     renderer.draw(EMPTY_FRAME, 16);
     expect(phosphorFills(recorder)).toEqual([ghostFill('red'), ghostFill('cyan')]);
-    expect(callsOf(recorder, 'strokeRect').length).toBeGreaterThan(0);
+    expect(firstSilkscreenCall(recorder.calls)).toBeGreaterThanOrEqual(0);
   });
 
   it('produces flicker rather than a clean square under rapid on/off', () => {
@@ -412,7 +436,7 @@ describe('layer order', () => {
     const litSegment = ops.findIndex(
       (call) => call.op === 'fill' && call.fillStyle.startsWith('rgba') && call.shadowBlur > 0,
     );
-    const silkscreen = ops.findIndex((call) => call.op === 'strokeRect');
+    const silkscreen = firstSilkscreenCall(ops);
 
     expect(background).toBeGreaterThanOrEqual(0);
     expect(ghost).toBeGreaterThan(background);
@@ -511,7 +535,7 @@ describe('the control-grid mesh', () => {
     const ops = recorder.calls;
     const ghost = ops.findIndex((call) => call.op === 'fill' && call.fillStyle === ghostFill('red'));
     const mesh = ops.findIndex((call) => call.op === 'drawImage');
-    const silkscreen = ops.findIndex((call) => call.op === 'strokeRect');
+    const silkscreen = firstSilkscreenCall(ops);
     expect(ghost).toBeGreaterThanOrEqual(0);
     expect(mesh).toBeGreaterThan(ghost);
     expect(silkscreen).toBeGreaterThan(mesh);

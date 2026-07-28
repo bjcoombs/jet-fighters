@@ -1,7 +1,9 @@
 /* Jet Fighters tabletop case + on-case controls.
-   Layout coordinate space matches the SVG viewBox (1000 x 460). Overlay
-   elements are positioned as percentages of `.jf-case`, whose locked
-   aspect-ratio guarantees the round scope window stays circular at any size.
+   Layout coordinate space matches the SVG viewBox (896 x 440 - it was
+   1000 x 460 until #101 cropped the bare red off the wings and the bottom, so
+   every percentage here divides by the new box, not the old). Overlay elements
+   are positioned as percentages of `.jf-case`, whose locked aspect-ratio
+   guarantees the round scope window stays circular at any size.
 
    Wings hold the controls: LEFT = fire button (top), power switch (right of
    it), label (bottom); RIGHT = launcher lever (top), skill lever (bottom).
@@ -24,9 +26,9 @@
   position: relative;
   /* Fit the shorter of: available width, sensible max, and viewport height
      (short mobile-landscape viewports are height-bound, not width-bound). */
-  width: min(100%, 1100px, calc((100dvh - 2 * clamp(8px, 2.5vmin, 32px)) * (1000 / 460)));
+  width: min(100%, 1100px, calc((100dvh - 2 * clamp(8px, 2.5vmin, 32px)) * (896 / 440)));
   max-height: 100%;
-  aspect-ratio: 1000 / 460;
+  aspect-ratio: 896 / 440;
   container-type: inline-size;
   filter: drop-shadow(0 18px 30px rgba(0, 0, 0, 0.55));
   user-select: none;
@@ -78,7 +80,7 @@
 
 /* --- Bezel tab (12 o'clock) --------------------------------------------
    A moulded tag on the module's top edge that hangs over the glass. Body units
-   x 520..546, y 38..99 of the 1000 x 460 viewBox, as percentages of the case.
+   x 468..494, y 38..99 of the 896 x 440 viewBox, as percentages of the case.
    It sits above `.jf-screen` in DOM order because it overlaps the window.
 
    It reaches y 99 and no further, because the curved legend printed inside the
@@ -100,10 +102,10 @@
    this has to come up with it. */
 .jf-tab {
   position: absolute;
-  left: 52%;
-  top: 8.2609%;
-  width: 2.6%;
-  height: 13.3152%;
+  left: 52.2321%;
+  top: 8.6364%;
+  width: 2.9018%;
+  height: 13.9205%;
   border-radius: 0 0 46% 46% / 0 0 26% 26%;
   background: linear-gradient(180deg, #e5794f 0%, #cb5a30 55%, #b04520 100%);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
@@ -131,13 +133,20 @@
   background: rgba(70, 18, 4, 0.32);
 }
 
-/* --- Fire button (left wing, top) -------------------------------------- */
+/* --- Fire button (left wing, top) --------------------------------------
+   Body units 46..158 across (the countersink ring below reaches 36..168 on its
+   -9% inset), against a wing that now ends at 248. The button did not change
+   size in #101 - it is the same 112 units it always was - it moved 3 units left
+   and the wing came in around it, so the gap to the switch is set by the ring,
+   which all but touches the switch box. That is what the reference photos show:
+   `device-front-gameplay.jpg` has the slot cut into the raised strip immediately
+   right of the button's recess, with no bare plastic between them. */
 .jf-fire {
   position: absolute;
-  left: 4.9%;
-  top: 13.5%;
-  width: 11.2%;
-  height: 24.3%;
+  left: 5.1339%;
+  top: 14.1136%;
+  width: 12.5%;
+  height: 25.4045%;
   border-radius: 50%;
   cursor: pointer;
   touch-action: none;
@@ -177,13 +186,20 @@
     0 2px 4px rgba(0, 0, 0, 0.4);
 }
 
-/* --- Power slide switch (left wing, right of fire; vertical, ON at top) - */
+/* --- Power slide switch (left wing, right of fire; vertical, ON at top) -
+   Body units 168..214. The box was 70 units wide with the track floating in the
+   middle of it, and 19 of those units were empty plastic on the side facing the
+   fire button - which is what read as a gap between the two controls. #101 took
+   the box to 46 and moved it 7 left; the track keeps its own 32-unit width by
+   claiming a larger share (70%) of the smaller box, so the switch itself is
+   unchanged and only the dead margin went. Cap-to-track is now 24 units where it
+   was 40. */
 .jf-switch {
   position: absolute;
-  left: 17.5%;
-  top: 13.5%;
-  width: 7%;
-  height: 27%;
+  left: 18.75%;
+  top: 14.1136%;
+  width: 5.1339%;
+  height: 28.2273%;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -206,7 +222,8 @@
 .jf-switch__track {
   position: relative;
   flex: 1 1 auto;
-  width: 46%;
+  /* 70% of the 46-unit box = the same 32-unit slot the 46%-of-70 rule gave. */
+  width: 70%;
   margin: 6% 0;
   border-radius: 999px;
   background: linear-gradient(90deg, #3a0f05, #601a0a, #3a0f05);
@@ -236,13 +253,20 @@
   text-shadow: 0 1px 0 rgba(255, 214, 182, 0.6);
 }
 
-/* --- Launcher lever (right wing, top): light knob in a vertical slot ---- */
+/* --- Launcher lever (right wing, top): light knob in a vertical slot ----
+   Body units 728..852, on a wing running 648..888: 80 units of plastic between
+   the module and the lever, 36 beyond it. It was 116 and 52 on a wing 52 units
+   wider - a bare band next to the glass half again as wide as the lever recess
+   itself. The lever stays right of the wing's centre, which is where
+   `device-front-gameplay.jpg` puts it (about two thirds across, with a plain
+   raised strip inboard of it); #101 took the wasted width out of that strip
+   rather than centring the control and losing the bias. */
 .jf-lever {
   position: absolute;
-  left: 81.6%;
-  top: 14.8%;
-  width: 12.4%;
-  height: 27%;
+  left: 81.25%;
+  top: 15.4727%;
+  width: 13.8393%;
+  height: 28.2273%;
   cursor: grab;
   touch-action: none;
 }
@@ -337,21 +361,25 @@
    selects is the direction opposite the flag - which is why the marks sit above
    while the handle points down and out.
 
-   The box is square in the 1000 x 460 body space (120 x 120 units) and is
-   centred on (878, 366) - the same x as .jf-lever. 120/1000 = 12% wide,
-   120/460 = 26.087% tall; left = (878 - 60)/1000, top = (366 - 60)/460.
-   Keeping it square is what makes `inset` on the hub resolve to a circle and
-   the moulded marks land on a true arc. */
+   The box is square in the 896 x 440 body space (120 x 120 units) and is
+   centred on (790, 346) - the same x as .jf-lever, and 20 units up from where
+   it was, following the wing's bottom edge in from 438 to 418. 120/896 =
+   13.3929% wide, 120/440 = 27.2727% tall; left = (790 - 60)/896,
+   top = (346 - 60)/440. Keeping it square is what makes `inset` on the hub
+   resolve to a circle and the moulded marks land on a true arc. */
 .jf-skill {
   position: absolute;
-  left: 81.8%;
-  top: 66.52%;
-  width: 12%;
-  height: 26.087%;
+  left: 81.4732%;
+  top: 65%;
+  width: 13.3929%;
+  height: 27.2727%;
   /* Radius of the arc the moulded 1/2/3 marks sit on. `.jf-case` is the inline
-     -size container, so 1cqw = 1% of the case width = 10 body units. 4.9cqw =
-     49 units - just clear of the 30-unit hub, as measured on the real unit. */
-  --skill-ring: 4.9cqw;
+     -size container, so 1cqw = 1% of the case width = 8.96 body units. 5.47cqw
+     = 49 units - just clear of the 30-unit hub, as measured on the real unit.
+     This is a cqw figure, so it does not follow a viewBox crop on its own: it
+     was 4.9cqw against a 1000-unit case and had to be restated for 896 to keep
+     the marks on the same 49-unit ring. */
+  --skill-ring: 5.47cqw;
   cursor: pointer;
   touch-action: none;
 }

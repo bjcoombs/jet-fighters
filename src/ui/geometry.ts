@@ -25,39 +25,57 @@ export interface Circle {
   readonly r: number;
 }
 
-/** The case SVG coordinate space; every master constant below is in these units. */
-export const CASE_VIEWBOX = { width: 1000, height: 460 } as const;
+/**
+ * The case SVG coordinate space; every master constant below is in these units.
+ *
+ * **This box is the case, not the scope.** It was 1000 x 460 and is now 896 x
+ * 440: #101 took 52 units off each wing and 20 off the bottom, because the
+ * moulding carried more bare red around the glass than the real unit does. The
+ * scope itself did not change - the circle and the rectangle below are the same
+ * size they have always been, and only their origin moved with the crop. What
+ * changes is the *share* of the case the scope occupies, which is the point:
+ * every overlay in case.css is a percentage of this box, so shrinking it grows
+ * the glass against the plastic without touching the glass.
+ */
+export const CASE_VIEWBOX = { width: 896, height: 440 } as const;
 
 /**
  * Radar circle - the dominant round scope.
  *
- * `cy` is 243 rather than the centre of the module, because on the real unit the
- * scope is not centred in its module: measuring a column through the middle of
- * the scope in `assets/reference/device-front-lit.jpg` gives 52 px of red above
- * it and 49 px below, against a scope 410 px tall. This puts 55 units above and
- * 53 below against the module's 38..446, which is that proportion.
+ * `cy` is 243, which leaves 55 units of module above the glass and 33 below it:
+ * the scope sits low in its moulding rather than centred in it.
  *
- * It was 222, which left 34 above and **74 below** - the dead band under the
- * glass the owner reported. The module is not symmetrical about the scope and
- * assuming it was is what produced it.
+ * It used to leave 53 below, near enough centred, on a measurement of
+ * `assets/reference/device-front-lit.jpg` reading 52 px of red above the scope
+ * and 49 below. #101 cut the bottom band to 33 at the owner's call on the
+ * rendered face - the square-on shot (`device-front-gameplay.jpg`) shows the
+ * module's lower edge stepping down around the circle rather than running flat
+ * under it, so a full-width slab of red there is ours, not the unit's. `cy`
+ * itself did not move: the band above carries the bezel tab and the arc legend
+ * and had nothing spare.
+ *
+ * Before that it was 222, which left 34 above and **74 below** - the dead band
+ * under the glass the owner first reported. The module is not symmetrical about
+ * the scope and assuming it was is what produced it.
  *
  * **Do not change `r` without regenerating the atlas.** `SCOPE_BOUNDS` below is
  * the union of this circle and {@link SCOPE_RECT}, and it is exactly the atlas's
- * 363 x 300 viewBox (see src/machine/tube/ATLAS-COORDINATES.md). Moving `cy`
- * shifts that box without resizing it, so the atlas is unaffected; changing `r`
- * would resize it and every segment path would have to move with it.
+ * 363 x 300 viewBox (see src/machine/tube/ATLAS-COORDINATES.md). Moving `cx` or
+ * `cy` shifts that box without resizing it, so the atlas is unaffected; changing
+ * `r` would resize it and every segment path would have to move with it. The
+ * #101 crop is a translation for exactly that reason.
  *
  * Still unmatched, and left alone for that reason: the scope is 300 units of a
- * 408-unit module, 74%, where the real one is 80%. Closing that means a larger
- * `r`, which is the atlas regeneration above.
+ * 388-unit module, 77%, where the real one is 80%. Closing the rest means a
+ * larger `r`, which is the atlas regeneration above.
  */
-export const SCOPE_CIRCLE: Circle = { cx: 533, cy: 243, r: 150 };
+export const SCOPE_CIRCLE: Circle = { cx: 481, cy: 243, r: 150 };
 
 /**
  * Left rectangle fused onto the circle (SCORE + the left playfield live here).
  * Its right edge meets the circle centre; its band is centred on the circle.
  */
-export const SCOPE_RECT: Rect = { x: 320, y: 150, width: 213, height: 144 };
+export const SCOPE_RECT: Rect = { x: 268, y: 150, width: 213, height: 144 };
 
 function unionBounds(circle: Circle, rect: Rect): Rect {
   const minX = Math.min(rect.x, circle.cx - circle.r);

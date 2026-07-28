@@ -1,9 +1,9 @@
 // The printed silkscreen overlay: everything painted on the glass rather than
 // emitted by the phosphor.
 //
-// The border, the ruler, the SCORE digit boxes, the zone labels, the station
-// missiles and the arc title are ink on the front. They are visible whenever
-// there is light in the room, so this layer draws on top of the phosphor layers
+// The border, the ruler, the zone labels, the station missiles and the arc
+// title are ink on the front. They are visible whenever there is light in the
+// room, so this layer draws on top of the phosphor layers
 // and stays up when the machine is off - which is exactly how the reference
 // photos of the dark unit look.
 //
@@ -117,23 +117,12 @@ function drawArcText(
 }
 
 /**
- * Alpha the faintest printed ink is laid on at, relative to the rest.
- *
- * In the photographs the field interior reads about 70/255 where one of these
- * lines crosses it against 50/255 of bare glass and 235/255 for the frame, so
- * roughly a seventh of full strength. 0.16 rather than 0.11 because the
- * photographs are shot with the tube lit and the room dark, which lifts it a
- * little.
- */
-const FAINT_ALPHA = 0.16;
-
-/**
  * The three printed row marks: a short heavy dash crossing a field boundary at
  * each lane's centre line.
  *
  * There is one set straddling the left edge of the distance field, just right of
  * the SCORE box, and one straddling the right rail; both measure 25 x 8.8 px
- * (9.3 x 3.3 atlas units) and sit on the lattice row centres. These are the only
+ * (9.3 x 3.3 atlas units) and sit on the lane centres. These are the only
  * marks the real face carries at the field edges - there is no full-height rule
  * dividing SCORE from the field, and no lane tick poking inward from the frame.
  */
@@ -141,62 +130,23 @@ const ROW_MARK_LENGTH = 9.3;
 const ROW_MARK_WIDTH = 3.3;
 
 /**
- * The three-digit SCORE readout's printed boxes, in atlas units.
+ * **Nothing faint is printed on this face any more, and that is deliberate.**
  *
- * Copied with citation rather than imported, per the layer rule: the
- * `score_digit0_*`..`score_digit2_*` segments in atlas.json span x 51.231-60.885,
- * 63.781-73.435 and 76.330-85.984 over y 130.202-140.810. The printed box around
- * each digit clears the segments by a little under a line width.
+ * Two things used to be: the cell lattice across the playfield, dropped in #100,
+ * and a box around each of the three SCORE digits, dropped here. Both went in
+ * with #48 for one stated reason - "the field was empty black between the frame
+ * and the phosphor" - and both were a printed division of a space the renderer's
+ * ghost layer already divides: it draws *every* segment at the unlit-phosphor
+ * level (renderer.ts, pipeline step 2), so the score block reads as three digit
+ * positions whether or not anything is lit in them. The boxes were a second,
+ * brighter copy of that, and the same hash the lattice was. Owner-confirmed
+ * against the real unit, twice.
  *
- * These moved with the atlas when layout.ts took the frame and the cell band off
- * the photographs; the box has to keep framing the segments it is drawn around,
- * so the citation is re-read rather than left pointing at the old coordinates.
+ * The row marks below are what is left of the printed separation around SCORE,
+ * and they are heavy ink, not faint - so `globalAlpha` is now 1 for every call
+ * this layer makes. `silkscreen.test.ts` asserts that as an absence, because a
+ * redraw that reintroduces either grid should fail rather than pass quietly.
  */
-const SCORE_DIGIT_LEFTS = [51.231, 63.781, 76.33] as const;
-const SCORE_DIGIT_WIDTH = 9.654;
-const SCORE_DIGIT_TOP = 130.202;
-const SCORE_DIGIT_HEIGHT = 10.608;
-const SCORE_DIGIT_PAD = 1.5;
-
-/**
- * The faint printed box around each SCORE digit.
- *
- * **This used to draw the cell lattice too** - seven verticals on the cell
- * boundaries and two horizontals on the lane boundaries, a hash right across the
- * glass. It went in with #48 for a stated reason: "the field was empty black
- * between the frame and the phosphor", and the lattice was what made the face
- * read as a radar screen rather than a void.
- *
- * That reason no longer holds. The renderer's ghost layer draws *every* segment
- * at the unlit-phosphor level (renderer.ts, pipeline step 2), so the field now
- * carries the tube's own printed artwork - the jets, the bursts, the sea - in
- * every cell, dark or lit. The lattice was a second, brighter copy of a division
- * the ghosting already shows, and drawn on the wrong pitch besides: it used the
- * cell boundaries the {@link RULER_SPAN_MARKS} registration finds the printed
- * ruler does not share. Owner-confirmed against the real unit.
- *
- * The digit boxes stay. They are on the tube in
- * `assets/reference/tube-teardown/score-block.jpg`, the ghost layer does not
- * draw them - a box is not a segment - and they are three small rectangles
- * rather than a grid over the playfield.
- */
-function drawScoreDigitBoxes(ctx: CanvasRenderingContext2D): void {
-  ctx.save();
-  ctx.globalAlpha = FAINT_ALPHA;
-  ctx.strokeStyle = SILKSCREEN;
-  ctx.lineWidth = LINE_WIDTH * 0.7;
-
-  for (const left of SCORE_DIGIT_LEFTS) {
-    ctx.strokeRect(
-      left - SCORE_DIGIT_PAD,
-      SCORE_DIGIT_TOP - SCORE_DIGIT_PAD,
-      SCORE_DIGIT_WIDTH + SCORE_DIGIT_PAD * 2,
-      SCORE_DIGIT_HEIGHT + SCORE_DIGIT_PAD * 2,
-    );
-  }
-
-  ctx.restore();
-}
 
 /** One printed row mark, centred on `x` at `y`. */
 function drawRowMark(ctx: CanvasRenderingContext2D, x: number, y: number): void {
@@ -641,9 +591,6 @@ export function drawSilkscreen(ctx: CanvasRenderingContext2D): void {
     CIRCLE.r * ARC_RADIUS_FRACTION,
     CIRCLE.r * ARC_FONT_FRACTION,
   );
-
-  // The faint digit boxes, under everything else on this layer.
-  drawScoreDigitBoxes(ctx);
 
   // The printed frame, and the bottom rail's long heavy dashes. The right rail
   // runs on down to where the zone brackets pick it up.
