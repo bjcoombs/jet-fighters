@@ -177,7 +177,7 @@ function buildDial(): HTMLElement {
 // extending to its left (where SCORE + the left playfield sit), matching the
 // real console. Interactive controls + the screen canvas are HTML overlays.
 //
-// The box was 1000 x 460 until #101 cropped 52 units off each wing and 20 off
+// The box was 1000 x 460 until #102 cropped 52 units off each wing and 20 off
 // the bottom. Every figure below moved with that crop and none of it is
 // arbitrary: x 8..888 is the body, the wings are 240 wide against the module's
 // 404, and the module's bottom edge is 426 - 33 units under the glass instead of

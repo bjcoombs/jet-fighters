@@ -14,7 +14,7 @@ Paths in this document are relative to the repository root.
 | --- | --- |
 | Space | The scope bounding box of `src/ui/geometry.ts`, origin translated to (0, 0) |
 | viewBox | `0 0 363 300` (`atlas.viewBox`) |
-| Unit | 1 atlas unit = 1 case-SVG viewBox unit (`CASE_VIEWBOX` is 1000 x 460) |
+| Unit | 1 atlas unit = 1 case-SVG viewBox unit (`CASE_VIEWBOX` is 896 x 440) |
 | Origin | Top-left of the scope bounding box |
 | Axes | +x right (toward the missile station), +y down - SVG convention |
 | Normalisation | Absolute units, not 0-1. Divide by `viewBox.width` / `viewBox.height` for fractions |

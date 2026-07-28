@@ -3,7 +3,7 @@
 // The physical Jet Fighters scope is a round radar circle fused with a shorter
 // rectangle extending to its left (where SCORE and the left playfield sit). That
 // shape is defined ONCE here, in the case's SVG viewBox coordinate space
-// (1000 x 460), and every projection of it is derived from these constants:
+// (896 x 440), and every projection of it is derived from these constants:
 //   - the SVG black-window graphic and rim  (case.ts, viewBox units)
 //   - the clip path applied to the canvas    (case.ts, objectBoundingBox units)
 //   - the .jf-screen element's position/size (case.ts, % of the case)
@@ -29,7 +29,7 @@ export interface Circle {
  * The case SVG coordinate space; every master constant below is in these units.
  *
  * **This box is the case, not the scope.** It was 1000 x 460 and is now 896 x
- * 440: #101 took 52 units off each wing and 20 off the bottom, because the
+ * 440: #102 took 52 units off each wing and 20 off the bottom, because the
  * moulding carried more bare red around the glass than the real unit does. The
  * scope itself did not change - the circle and the rectangle below are the same
  * size they have always been, and only their origin moved with the crop. What
@@ -47,7 +47,7 @@ export const CASE_VIEWBOX = { width: 896, height: 440 } as const;
  *
  * It used to leave 53 below, near enough centred, on a measurement of
  * `assets/reference/device-front-lit.jpg` reading 52 px of red above the scope
- * and 49 below. #101 cut the bottom band to 33 at the owner's call on the
+ * and 49 below. #102 cut the bottom band to 33 at the owner's call on the
  * rendered face - the square-on shot (`device-front-gameplay.jpg`) shows the
  * module's lower edge stepping down around the circle rather than running flat
  * under it, so a full-width slab of red there is ours, not the unit's. `cy`
@@ -63,7 +63,7 @@ export const CASE_VIEWBOX = { width: 896, height: 440 } as const;
  * 363 x 300 viewBox (see src/machine/tube/ATLAS-COORDINATES.md). Moving `cx` or
  * `cy` shifts that box without resizing it, so the atlas is unaffected; changing
  * `r` would resize it and every segment path would have to move with it. The
- * #101 crop is a translation for exactly that reason.
+ * #102 crop is a translation for exactly that reason.
  *
  * Still unmatched, and left alone for that reason: the scope is 300 units of a
  * 388-unit module, 77%, where the real one is 80%. Closing the rest means a
