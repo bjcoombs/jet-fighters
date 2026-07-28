@@ -126,10 +126,36 @@ const MARCH_STEP_MS = 1995;
 const MARCH_STEPS_TIMED = 5;
 const BLANKING_CYCLES = Math.round(((MARCH_STEPS_TIMED * MARCH_STEP_MS) / 1000) * CYCLE_HZ);
 
+/** The assembled game ROM, kept so symbol addresses are read rather than typed. */
+const GAME_ASM = (() => {
+  const path = resolve(import.meta.dirname, '..', '..', 'asm', 'jetfighter.asm');
+  return assemble(readFileSync(path, 'utf8'), path);
+})();
+
+function gameSymbol(name: string): number {
+  const found = GAME_ASM.symbols.find((definition) => definition.name === name);
+  if (found === undefined) throw new Error(`asm/jetfighter.asm no longer defines ${name}`);
+  return found.value;
+}
+
+/**
+ * Where the ROM records which lane the battleship is in, and the value that
+ * means it is not crossing.
+ *
+ * The battleship buzz is the one sound this machine makes that does *not* stop
+ * the sweep - it is clocked out of `dwell`, ten times a sweep, precisely so the
+ * tube stays lit while the boat is on it. Every blanking assertion in this file
+ * predates that sound and is written about notes, which do stop the sweep. So
+ * the buzz has to be told apart from a note, and this nibble is how: the probe
+ * reads it, as it may, and the stretches where it holds a lane are excluded from
+ * the note assertions and asserted separately.
+ */
+const BSLANE_ADDRESS = gameSymbol('FILE_STATE') * 16 + gameSymbol('NIB_BSLANE');
+const BS_NONE = gameSymbol('BS_NONE');
+
 /** A board running the real game ROM, freshly powered on. */
 function romBoard(): Board {
-  const path = resolve(import.meta.dirname, '..', '..', 'asm', 'jetfighter.asm');
-  return new Board(romImage(assemble(readFileSync(path, 'utf8'), path)));
+  return new Board(romImage(GAME_ASM));
 }
 
 /** One period of the sweep: how long it took, and whether the speaker sounded. */
@@ -188,6 +214,8 @@ interface Trace {
   readonly gridStates: ReadonlyArray<readonly [cycle: number, mask: number]>;
   /** D14 transition cycles, in cycle order. */
   readonly edgeCycles: readonly number[];
+  /** Intervals during which the battleship was on the tube, in cycle order. */
+  readonly crossings: ReadonlyArray<readonly [from: number, to: number]>;
 }
 
 /**
@@ -200,13 +228,23 @@ interface Trace {
 function trace(board: Board, cycles: number): Trace {
   const gridStates: Array<readonly [number, number]> = [];
   const darkRuns: DarkRun[] = [];
+  const crossings: Array<readonly [number, number]> = [];
   let previous = board.display.gridMask;
   let darkFrom: number | null = previous === 0 ? board.cycles : null;
+  let crossingFrom: number | null = null;
 
   while (board.cycles < cycles) {
     if (board.stepInstruction() === 0) break;
     const mask = board.display.gridMask;
     if (mask === previous) continue;
+    // Sampled here rather than every instruction: the mask changes about ten
+    // times a sweep, which locates a crossing to well inside one.
+    const crossing = board.cpu.memory.readRam(BSLANE_ADDRESS) !== BS_NONE;
+    if (crossing && crossingFrom === null) crossingFrom = board.cycles;
+    if (!crossing && crossingFrom !== null) {
+      crossings.push([crossingFrom, board.cycles]);
+      crossingFrom = null;
+    }
     gridStates.push([board.cycles, mask]);
     if (mask === 0) {
       darkFrom = board.cycles;
@@ -217,7 +255,21 @@ function trace(board: Board, cycles: number): Trace {
     previous = mask;
   }
 
-  return { darkRuns, gridStates, edgeCycles: board.takeSpeakerEdges().map((edge) => edge.cycle) };
+  if (crossingFrom !== null) crossings.push([crossingFrom, board.cycles]);
+  return {
+    darkRuns,
+    gridStates,
+    edgeCycles: board.takeSpeakerEdges().map((edge) => edge.cycle),
+    crossings,
+  };
+}
+
+/** True when `cycle` falls inside a battleship crossing. */
+function duringCrossing(
+  crossings: ReadonlyArray<readonly [number, number]>,
+  cycle: number,
+): boolean {
+  return crossings.some(([from, to]) => cycle >= from && cycle <= to);
 }
 
 /** One sound: a run of D14 edges with no 20 ms of silence inside it. */
@@ -339,8 +391,15 @@ describe('the tube goes dark while a note plays (D1)', () => {
   const board = romBoard();
   board.runFrames(WARMUP_SWEEPS);
   const startCycle = board.cycles;
-  const { darkRuns, gridStates, edgeCycles } = trace(board, BLANKING_CYCLES);
-  const sounds = splitSounds(edgeCycles);
+  const { darkRuns, gridStates, edgeCycles, crossings } = trace(board, BLANKING_CYCLES);
+  const allSounds = splitSounds(edgeCycles);
+  // Notes only. A sound overlapping a crossing has the sweep-clocked battleship
+  // buzz mixed into it, and the buzz does not blank the tube - that is what it
+  // is for. Asserting the blank through one would assert the opposite of the
+  // ROM's intent. The buzz gets its own assertions elsewhere.
+  const sounds = allSounds.filter(
+    (sound) => !duringCrossing(crossings, sound.firstEdge) && !duringCrossing(crossings, sound.lastEdge),
+  );
 
   /** The dark interval containing `cycle`, if the tube was dark then. */
   function darkRunAt(cycle: number): DarkRun | undefined {
@@ -424,10 +483,23 @@ describe('the tube goes dark while a note plays (D1)', () => {
     // over cycles instead of camera frames: the floor is deliberately well under
     // the measured figure, because how often the game *triggers* a sound is
     // provisional cadence and not what this test is about.
+    // **The floor moved from 0.05 to 0.03 when the battleship stopped playing a
+    // note.** That sound was one 383 ms blank per crossing and this window is
+    // 9.98 s, so it was 3.8 percentage points of this figure on its own; the
+    // measured value went from 8.2% to 4.4% on a change whose entire purpose was
+    // to stop the boat blanking the tube. Lowering the floor is therefore the
+    // reading the change intends, not a guardrail relaxed to get to green - what
+    // this assertion is for is catching blanking that stopped happening at all,
+    // and the per-note invariants above are what actually pin the behaviour.
+    //
+    // `allSounds`, not `sounds`: a march or missile note that lands inside a
+    // crossing still stops the sweep and still darkens the tube, so its blank
+    // belongs in this fraction. Only the *invariant* assertions above need the
+    // buzz filtered out of their input.
     const soundCycles = darkRuns
-      .filter((run) => sounds.some((s) => run.startCycle <= s.firstEdge && s.firstEdge <= run.endCycle))
+      .filter((run) => allSounds.some((s) => run.startCycle <= s.firstEdge && s.firstEdge <= run.endCycle))
       .reduce((total, run) => total + (run.endCycle - run.startCycle), 0);
-    expect(soundCycles / (board.cycles - startCycle)).toBeGreaterThan(0.05);
+    expect(soundCycles / (board.cycles - startCycle)).toBeGreaterThan(0.03);
   });
 
   it('goes back to sweeping the whole tube after the last sound', () => {
@@ -482,6 +554,8 @@ describe('the blank reaches the renderer (D1)', () => {
 
   const samples: RenderSample[] = [];
   const edgeCycles: number[] = [];
+  const crossings: Array<readonly [number, number]> = [];
+  let crossingFrom: number | null = null;
   const until = board.cycles + RENDER_RUN_CYCLES;
   let nextRead = board.cycles + RENDER_INTERVAL_CYCLES;
   while (board.cycles < until) {
@@ -489,13 +563,24 @@ describe('the blank reaches the renderer (D1)', () => {
     // the driver's own resolution is one instruction.
     board.step(200);
     edgeCycles.push(...board.takeSpeakerEdges().map((edge) => edge.cycle));
+    const crossing = board.cpu.memory.readRam(BSLANE_ADDRESS) !== BS_NONE;
+    if (crossing && crossingFrom === null) crossingFrom = board.cycles;
+    if (!crossing && crossingFrom !== null) {
+      crossings.push([crossingFrom, board.cycles]);
+      crossingFrom = null;
+    }
     if (board.cycles >= nextRead) {
       samples.push({ cycle: board.cycles, segments: board.getLitSegments() });
       nextRead += RENDER_INTERVAL_CYCLES;
     }
   }
+  if (crossingFrom !== null) crossings.push([crossingFrom, board.cycles]);
 
-  const sounds = splitSounds(edgeCycles);
+  // Notes only - see the same filter in the D1 block above. The battleship buzz
+  // deliberately leaves the tube lit, so it is not a sound this block is about.
+  const sounds = splitSounds(edgeCycles).filter(
+    (sound) => !duringCrossing(crossings, sound.firstEdge) && !duringCrossing(crossings, sound.lastEdge),
+  );
   /** Sounds of march length. The ROM plays a march note in 3 bursts, ~68 ms. */
   const marchNotes = sounds.filter(
     (sound) => ms(sound.lastEdge - sound.firstEdge) > 50 && ms(sound.lastEdge - sound.firstEdge) < 110,
@@ -579,11 +664,16 @@ describe('the blank reaches the renderer (D1)', () => {
     // is a substantial fraction of what a viewer sees, not a transient.
     //
     // **It was 0.1 and it is now 0.04, and that is worth reading before it is
-    // read as a loosened guardrail.** The ROM measures 5.9% here. It used to
-    // clear 10% on the battleship alone: the boat crossed 51 times a minute and
-    // blanked the tube for 68 ms three times a crossing, which is about 10 s of
-    // dark in every minute from one sound. The boat now crosses about once a
-    // minute, as the reference measures it, and what is left is the march.
+    // read as a loosened guardrail.** It used to clear 10% on the battleship
+    // alone: the boat crossed 51 times a minute and blanked the tube for 68 ms
+    // three times a crossing, which is about 10 s of dark in every minute from
+    // one sound.
+    //
+    // **The battleship now contributes none of this figure.** Its buzz is
+    // clocked by the display sweep out of `dwell` instead of played by
+    // `note_loop`, so the tube goes on scanning for the whole of a crossing -
+    // measured, the worst blank in the 600 ms after an arrival fell from
+    // 383.5 ms to 1.5 ms. What is counted here is the march and the missile.
     //
     // So the shortfall against 14-17% is real and it is **not** the battleship's
     // to make up. `IMG_6113.mov` measures a march beep every 0.71 s; this ROM's
@@ -591,7 +681,7 @@ describe('the blank reaches the renderer (D1)', () => {
     // Roughly three times too few beeps, against roughly three times too little
     // blanking. That is the cadence question T2 - see the note in
     // docs/evidence/open-questions.md - and not something to fix by putting the
-    // battleship back.
+    // battleship's note back.
     const dark = samples.filter((sample) => sample.segments.length === 0);
     expect(dark.length / samples.length).toBeGreaterThan(0.04);
   });

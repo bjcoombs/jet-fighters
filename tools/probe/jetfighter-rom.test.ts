@@ -96,8 +96,12 @@ const BURST_GAP_CYCLES = 8000;
 /** The bands audio-reference.md measured for the two sounds tested here. */
 const MARCH_HZ_MIN = 600;
 const MARCH_HZ_MAX = 650;
-const BSHIP_HZ_MIN = 230;
-const BSHIP_HZ_MAX = 300;
+// battleshipBuzz: the repetition rate measured off the owner's isolated
+// recording is 93.4 Hz, and it wanders between 79 and 111 Hz inside a single
+// arrival. The band is that wander, because the ROM's buzz is clocked by the
+// display sweep and wanders for the same reason the real one does.
+const BSHIP_HZ_MIN = 79;
+const BSHIP_HZ_MAX = 111;
 
 /** A board running the real game ROM, freshly powered on. */
 function romBoard(): Board {
@@ -617,7 +621,7 @@ describe('the pitched game sounds', () => {
     expect(march.length).toBeGreaterThan(0);
   });
 
-  it('buzzes the battleship inside 230-300 Hz, and below the march', () => {
+  it('buzzes the battleship inside 79-111 Hz, and below the march', () => {
     // audio-reference.md records the ordering as the owner-confirmed rule and
     // the absolute band as the weaker evidence, so both are asserted.
     const buzz = pitches.filter((hz) => hz >= BSHIP_HZ_MIN && hz <= BSHIP_HZ_MAX);

@@ -32,7 +32,11 @@ const SAMPLE_RATE = 48_000;
 const MEASURED = {
   missileFire: { min: 1480, max: 1632, centre: 1520, maxMs: 150 },
   jetMarch: { min: 600, max: 650, stepMs: 70 },
-  battleshipBuzz: { min: 230, max: 300, sustainMs: 380 },
+  // The buzz's repetition rate and the wander measured around it, off the
+  // owner's isolated recording. It is not a note: the ROM clocks it off the
+  // display sweep and it runs for the whole ~4 s the boat is on the tube, which
+  // is why `sustainMs` is seconds rather than the 380 ms v1 synthesized.
+  battleshipBuzz: { min: 79, max: 111, sustainMs: 4000 },
   win: { fundamentals: [750, 940, 1240], durationsMs: [200, 150, 150] },
 } as const;
 
@@ -162,19 +166,19 @@ describe('measured bands - jetMarch and battleshipBuzz', () => {
     expect(measured).toBeLessThanOrEqual(max);
   });
 
-  it('reads the battleship buzz inside 230-300 Hz', () => {
+  it('reads the battleship buzz inside 79-111 Hz', () => {
     const { min, max, sustainMs } = MEASURED.battleshipBuzz;
-    const measured = measure(toneEdges(265, sustainMs));
+    const measured = measure(toneEdges(93, sustainMs));
     expect(measured).toBeGreaterThanOrEqual(min);
     expect(measured).toBeLessThanOrEqual(max);
   });
 
   it('keeps the battleship buzz below the march, the owner-confirmed ordering', () => {
-    // The relative rule is stronger evidence than either absolute band - the
-    // dense section of the recording makes a clean absolute read of the buzz
-    // hard. Driven at the worst case for the ordering: the buzz at the top of
-    // its band, the march at the bottom of its.
-    const buzz = measure(toneEdges(MEASURED.battleshipBuzz.max, 380));
+    // The relative rule is the owner's own, and it survived the buzz's band
+    // moving: 79-111 Hz is further below the march than 230-300 ever was.
+    // Driven at the worst case for the ordering: the buzz at the top of its
+    // band, the march at the bottom of its.
+    const buzz = measure(toneEdges(MEASURED.battleshipBuzz.max, 1000));
     const march = measure(toneEdges(MEASURED.jetMarch.min, 70));
 
     expect(buzz).toBeLessThan(march);

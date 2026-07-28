@@ -116,9 +116,32 @@ const MARCH_MS_MAX = 110;
 const LIT_BRIGHTNESS = 0.8;
 
 /** A board running the real game ROM, freshly powered on. */
-function romBoard(): Board {
+const GAME_ASM = (() => {
   const path = resolve(import.meta.dirname, '..', '..', 'asm', 'jetfighter.asm');
-  return new Board(romImage(assemble(readFileSync(path, 'utf8'), path)));
+  return assemble(readFileSync(path, 'utf8'), path);
+})();
+
+function gameSymbol(name: string): number {
+  const found = GAME_ASM.symbols.find((definition) => definition.name === name);
+  if (found === undefined) throw new Error(`asm/jetfighter.asm no longer defines ${name}`);
+  return found.value;
+}
+
+/**
+ * Where the ROM records the battleship's lane, and the value meaning it is not
+ * crossing.
+ *
+ * The battleship buzz is clocked out of `dwell` rather than played by
+ * `note_loop`, so it is the one sound that leaves the tube being swept - that is
+ * the whole point of it, since the player has to see the boat to shoot it. Every
+ * assertion in this file is about a sound that *blanks*, so a sound overlapping
+ * a crossing is excluded from them.
+ */
+const BSLANE_ADDRESS = gameSymbol('FILE_STATE') * 16 + gameSymbol('NIB_BSLANE');
+const BS_NONE = gameSymbol('BS_NONE');
+
+function romBoard(): Board {
+  return new Board(romImage(GAME_ASM));
 }
 
 /** Milliseconds for a cycle count at the 400 kHz oscillator. */
@@ -227,12 +250,20 @@ function play(board: Board, renderer: TubeRenderer, recorder: FakeCanvasContext,
 } {
   const frames: Painted[] = [];
   const edgeCycles: number[] = [];
+  const crossings: Array<readonly [number, number]> = [];
+  let crossingFrom: number | null = null;
   const until = board.cycles + RUN_CYCLES;
   let nextRead = board.cycles + FRAME_CYCLES;
 
   while (board.cycles < until) {
     board.step(SLICE_CYCLES);
     edgeCycles.push(...board.takeSpeakerEdges().map((edge) => edge.cycle));
+    const crossing = board.cpu.memory.readRam(BSLANE_ADDRESS) !== BS_NONE;
+    if (crossing && crossingFrom === null) crossingFrom = board.cycles;
+    if (!crossing && crossingFrom !== null) {
+      crossings.push([crossingFrom, board.cycles]);
+      crossingFrom = null;
+    }
     if (board.cycles < nextRead) continue;
 
     const segments = board.getLitSegments();
@@ -254,7 +285,15 @@ function play(board: Board, renderer: TubeRenderer, recorder: FakeCanvasContext,
     nextRead += FRAME_CYCLES;
   }
 
-  return { frames, sounds: splitSounds(edgeCycles) };
+  if (crossingFrom !== null) crossings.push([crossingFrom, board.cycles]);
+  const overlapsCrossing = (cycle: number): boolean =>
+    crossings.some(([from, to]) => cycle >= from && cycle <= to);
+  return {
+    frames,
+    sounds: splitSounds(edgeCycles).filter(
+      (sound) => !overlapsCrossing(sound.firstEdge) && !overlapsCrossing(sound.lastEdge),
+    ),
+  };
 }
 
 describe('the blank the ROM makes reaches the glass (D1)', () => {
@@ -366,15 +405,21 @@ describe('the blank the ROM makes reaches the glass (D1)', () => {
     // substantial share of what reaches the glass rather than a transient.
     //
     // **It was 0.1 and it is now 0.04, and that is worth reading before it is
-    // read as a loosened guardrail.** The ROM measures 5.9% here. It used to
-    // clear 10% on the battleship alone: the boat crossed 51 times a minute and
-    // blanked the tube for 68 ms three times a crossing. It now crosses about
-    // once a minute, as the reference measures it, and what is left is the
-    // march. The shortfall against 14-17% is real and belongs to the beep
-    // cadence - `IMG_6113.mov` measures a march beep every 0.71 s against this
-    // ROM's slowest rung of 1995 ms - which is the open cadence question T2, and
-    // not something to fix by putting the battleship back. The same note is on
-    // the same assertion in sweep-timing.test.ts.
+    // read as a loosened guardrail.** It used to clear 10% on the battleship
+    // alone: the boat crossed 51 times a minute and blanked the tube for 68 ms
+    // three times a crossing.
+    //
+    // **The battleship now contributes no blanking at all.** Its buzz is clocked
+    // by the display sweep rather than played by `note_loop`, so the tube keeps
+    // scanning for the whole of a crossing - measured, the worst blank in the
+    // 600 ms after an arrival went from 383.5 ms to 1.5 ms. What is counted here
+    // is the march and the missile, and this window measures 9.0%.
+    //
+    // The shortfall against the 14-17% vfd-appearance.md measures is real and
+    // belongs to the beep cadence - `IMG_6113.mov` measures a march beep every
+    // 0.71 s against this ROM's slowest rung of 1995 ms - which is the open
+    // cadence question T2, and not something to fix by putting the battleship's
+    // note back. The same note is on the same assertion in sweep-timing.test.ts.
     const dark = frames.filter((frame) => frame.emitting === 0);
     expect(dark.length / frames.length).toBeGreaterThan(0.04);
   });

@@ -524,17 +524,26 @@ as if measured:
   199 cap, and nothing faster than 700 ms anywhere in the clip. `PAT_STEP` entry 15
   does not yet answer to it - see
   [What was changed, and what the ladder now says](#what-was-changed-and-what-the-ladder-now-says).
-- **Closed: battleship crossing duration and arrival rate (T5, T6, in part).** The
-  traversal question is settled - across the columns it does not move, down the lanes it
-  does, on the owner's own description of his unit - which makes the sprite catalogue's
-  17 **episodes** readable as lane dwells rather than crossings. Median 2.5 s a lane, so a
-  crossing is ~7.5 s; eight lane-0 episodes over 407.9 s, so arrivals come **1.18 a
-  minute**. Both are in the ROM. See `open-questions.md` and
-  `assets/reference/sprites/README.md`.
+- **Closed: battleship crossing duration and arrival rate (T5, T6, in part), and
+  re-opened against the video.** The traversal question is settled - across the columns it
+  does not move, down the lanes it does, on the owner's own description of his unit.
+  Duration and rate now come from the owner's isolated recordings of the buzz
+  (`docs/evidence/audio-reference.md`, battleshipBuzz) rather than from the video: the
+  boat is up for **4.0 s** and arrivals are **19.8 s** apart. Both are in the ROM.
+
+  This **contradicts the video reading** that was previously recorded here - 17 episodes
+  as lane dwells, median 2.5 s, so a ~7.5 s crossing, and eight lane-0 episodes over
+  407.9 s giving 1.18 arrivals a minute. The recording is preferred because it measures
+  the machine's own sound directly and because the video's detection pass is known to drop
+  episodes (its lane split is 8 / 2 / 7). But the recording is **one interval from one
+  take**, and the disagreement on rate is a factor of 2.6, so this is a decision on the
+  balance of evidence rather than a closed question.
+
   What is **not** closed is the interval's *distribution*: whether the real one varies at
   all, and if so how. This ROM's does not vary meaningfully and cannot - its only
   randomness is the phase of the player's last fire press, and it moves the interval by
-  under 9%.
+  under 9%. Two minutes of the unit recorded as those clips were, counting arrivals rather
+  than timing one gap, would settle both the rate and the distribution.
 - Rocket travel time and fire rate (T8, T9). The attackers' colon is now traced as a
   shape but never as a moving object.
 - Post-hit recovery time (T10)

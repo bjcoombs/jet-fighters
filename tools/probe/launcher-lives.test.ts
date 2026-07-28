@@ -73,8 +73,19 @@ import { CYCLE_HZ } from '../../src/machine/cpu/cpu.js';
 
 const ASM_PATH = resolve(import.meta.dirname, '..', '..', 'asm', 'jetfighter.asm');
 
-/** Assemble the game ROM once and share the image across the runs below. */
-const ROM = romImage(assemble(readFileSync(ASM_PATH, 'utf8'), ASM_PATH));
+/** Assemble the game ROM once and share it across the runs below. */
+const GAME_ASM = assemble(readFileSync(ASM_PATH, 'utf8'), ASM_PATH);
+const ROM = romImage(GAME_ASM);
+
+function gameSymbol(name: string): number {
+  const found = GAME_ASM.symbols.find((definition) => definition.name === name);
+  if (found === undefined) throw new Error(`asm/jetfighter.asm no longer defines ${name}`);
+  return found.value;
+}
+
+/** The battleship's lane nibble, and the value that means it is not crossing. */
+const BSLANE_ADDRESS = gameSymbol('FILE_STATE') * 16 + gameSymbol('NIB_BSLANE');
+const BS_NONE = gameSymbol('BS_NONE');
 
 /**
  * Silence that separates two sounds, in machine cycles - 20 ms.
@@ -133,6 +144,32 @@ const WARNING_HZ = { min: 455, max: 545 } as const;
 
 /** gameOver's collapse stage - the band no other sound in this ROM enters. */
 const COLLAPSE_HZ = { min: 80, max: 97 } as const;
+
+/**
+ * The pitch the loss sound decays to - gameOver.decayFloorHz, ~147 Hz.
+ *
+ * Needed because the collapse band above **no longer identifies the loss sound
+ * on its own**. The battleship buzz is 85-93 Hz, which is inside 80-97, so once
+ * the boat started buzzing for the whole of its crossing every crossing read as
+ * a loss sound: the game appeared to end twice, and the warning beeps inside the
+ * crossing were discarded as part of it. The loss sound is now identified by the
+ * *shape* the measurement gives it - a collapse and then a decay floor - which
+ * the buzz, being one sustained pitch, does not have.
+ */
+const DECAY_FLOOR_HZ = { min: 130, max: 175 } as const;
+
+/**
+ * Half-period, in machine cycles, above which an edge inside a crossing belongs
+ * to the battleship buzz rather than to a note.
+ *
+ * The buzz is toggled once every four grid dwells, so its half-period is about
+ * 2300 cycles. The notes that can sound during a crossing are the march (312),
+ * the missile blip (128) and the warning beep (405) - the loss sound's 96 Hz
+ * collapse is the only note anywhere near the buzz, and it cannot overlap one
+ * because `game_lost` stops the buzz before `play_loss` starts. So anything
+ * either side of 1000 is unambiguous.
+ */
+const BUZZ_HALF_PERIOD_FLOOR = 1000;
 
 /**
  * The deepest cell a jet is ever drawn in: distance column 1, on grid 5.
@@ -206,6 +243,8 @@ function standStill(position: string): Game {
   const board = new Board(ROM);
   board.setControl('lever', position);
   const edges: SpeakerEdge[] = [];
+  const crossings: Array<readonly [number, number]> = [];
+  let crossingFrom: number | null = null;
   const departures: number[] = [];
   let everFired = false;
   let wasDeep = false;
@@ -213,6 +252,12 @@ function standStill(position: string): Game {
   while (board.cycles < target) {
     board.runFrames(1);
     edges.push(...board.takeSpeakerEdges());
+    const crossing = board.cpu.memory.readRam(BSLANE_ADDRESS) !== BS_NONE;
+    if (crossing && crossingFrom === null) crossingFrom = board.cycles;
+    if (!crossing && crossingFrom !== null) {
+      crossings.push([crossingFrom, board.cycles]);
+      crossingFrom = null;
+    }
     const lit = board.getFrame().segments.filter((segment) => segment.duty > 0);
     const isDeep = lit.some(
       (segment) => segment.grid === GRID_DEEPEST_JET && PLATE_JET.includes(segment.plate),
@@ -232,7 +277,42 @@ function standStill(position: string): Game {
     }
     wasDeep = isDeep;
   }
-  return { sounds: soundsIn(edges), departures, everFired };
+  if (crossingFrom !== null) crossings.push([crossingFrom, board.cycles]);
+  return { sounds: soundsIn(withoutBuzz(edges, crossings)), departures, everFired };
+}
+
+/**
+ * Drop the battleship buzz's edges, leaving the notes.
+ *
+ * This file's model is one sound at a time, separated by silence, and the buzz
+ * breaks it: it runs for the whole four seconds of a crossing, so the march
+ * notes and the warning beeps that land inside one are never separated by
+ * {@link BURST_GAP_CYCLES} of quiet and arrive as a single 4.7 s "sound" holding
+ * every pitch at once. Measured, that one sound contained three march notes, a
+ * two-beep warning and a three-beep warning - the exact events these tests are
+ * about, all merged.
+ *
+ * They can be separated because the buzz and a note never actually interleave.
+ * `note_loop` stops the sweep while it runs, and the buzz is clocked *by* the
+ * sweep, so a note plays with the buzz suspended and the buzz resumes after -
+ * they alternate. An edge is therefore a note's if either of its neighbouring
+ * gaps is short; a buzz edge has {@link BUZZ_HALF_PERIOD_FLOOR} or more on both
+ * sides. Only edges inside a crossing are considered, so nothing else moves.
+ */
+function withoutBuzz(
+  edges: readonly SpeakerEdge[],
+  crossings: ReadonlyArray<readonly [number, number]>,
+): SpeakerEdge[] {
+  const inCrossing = (cycle: number): boolean =>
+    crossings.some(([from, to]) => cycle >= from && cycle <= to);
+  return edges.filter((edge, index) => {
+    if (!inCrossing(edge.cycle)) return true;
+    const before = edges[index - 1];
+    const after = edges[index + 1];
+    const gapBefore = before === undefined ? Infinity : edge.cycle - before.cycle;
+    const gapAfter = after === undefined ? Infinity : after.cycle - edge.cycle;
+    return gapBefore < BUZZ_HALF_PERIOD_FLOOR || gapAfter < BUZZ_HALF_PERIOD_FLOOR;
+  });
 }
 
 /** Split an edge stream into sounds, each reduced to the pitches it holds. */
@@ -292,9 +372,9 @@ function holds(sound: Sound, band: { min: number; max: number }): boolean {
   return sound.hz.some((hz) => hz >= band.min && hz <= band.max);
 }
 
-/** The loss sound: the only one that collapses to 96 Hz. */
+/** The loss sound: it collapses to 96 Hz *and* decays to ~147. See DECAY_FLOOR_HZ. */
 function isLoss(sound: Sound): boolean {
-  return holds(sound, COLLAPSE_HZ);
+  return holds(sound, COLLAPSE_HZ) && holds(sound, DECAY_FLOOR_HZ);
 }
 
 /** A single warning beep: warning-pitched, and not the loss sound opening. */
