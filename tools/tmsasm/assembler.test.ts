@@ -233,7 +233,9 @@ describe('the hardware ceilings are assembly errors, not silent wrapping', () =>
 
 describe('every emitted word is eight bits', () => {
   it('holds instructions inside 0..255', () => {
-    const result = assemble('CLA\nLDP 15\nBR 0\nCALL 0\nTCY 15\nA15AAC\n');
+    // The CALL returns rather than re-entering the top of the program: a call
+    // that reaches itself is class 3 of the static analyses and is rejected.
+    const result = assemble('CLA\nLDP 15\nBR 0\nCALL sub\nTCY 15\nA15AAC\nsub: RETN\n');
     for (const word of result.words) {
       expect(word.word).toBeGreaterThanOrEqual(0);
       expect(word.word).toBeLessThanOrEqual(WORD_MASK);
