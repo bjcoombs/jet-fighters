@@ -74,6 +74,10 @@ const SLICE_CYCLES = 200;
  * `PAT_STEP` entry 0 is skill 1's entry point and the top of the cadence ladder,
  * so it is both the worst case and where a freshly powered machine starts. The
  * ladder's own comment in `asm/jetfighter.asm` measures it at 1995 ms.
+ *
+ * INSTRUCTION-RATE PROVISIONAL: converts sweeps to wall clock through the
+ * HMCS44 core's oscillator (`CYCLE_HZ`), not the TMS1370's. See
+ * docs/research/mp2110-timing-measurement.md.
  */
 const MARCH_STEP_MS = 1995;
 
@@ -100,7 +104,13 @@ const WARMUP_SWEEPS = 5;
 /** Silence that separates two sounds, in cycles - 20 ms. Same figure as sweep-timing.test.ts. */
 const BURST_GAP_CYCLES = 8000;
 
-/** Bounds on a march note's tone, in ms. The ROM plays it in three bursts, ~68 ms. */
+/**
+ * Bounds on a march note's tone, in ms. The ROM plays it in three bursts, ~68 ms.
+ *
+ * INSTRUCTION-RATE PROVISIONAL: the ~68 ms figure is cycles at the HMCS44
+ * core's oscillator, not the TMS1370's. See docs/research/
+ * mp2110-timing-measurement.md.
+ */
 const MARCH_MS_MIN = 50;
 const MARCH_MS_MAX = 110;
 

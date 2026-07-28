@@ -106,6 +106,11 @@ const BURST_GAP_CYCLES = 8000;
  * `PAT_STEP` entry 0 is skill 1's entry point and the top of the cadence ladder,
  * so it is both the worst case and where a freshly powered machine starts. The
  * ladder's own comment in `asm/jetfighter.asm` measures it at 1995 ms.
+ *
+ * INSTRUCTION-RATE PROVISIONAL: like `PAT_STEP` itself, this figure converts
+ * sweeps to wall clock through the HMCS44 core's oscillator (`CYCLE_HZ` from
+ * `src/machine/cpu/cpu.ts`), not the TMS1370's. See docs/research/
+ * mp2110-timing-measurement.md.
  */
 const MARCH_STEP_MS = 1995;
 

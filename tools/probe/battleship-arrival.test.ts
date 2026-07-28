@@ -134,7 +134,12 @@ function symbol(asm: AssemblyResult, name: string): number {
 
 const ASM = assembly();
 
-/** Measured ms per sweep during play, off the probe. See above. */
+/**
+ * Measured ms per sweep during play, off the probe. See above.
+ *
+ * INSTRUCTION-RATE PROVISIONAL: measured off the HMCS44 core's oscillator, not
+ * the TMS1370's. See docs/research/mp2110-timing-measurement.md.
+ */
 const SWEEP_MS = 16;
 
 /** Sweeps the boat holds one lane. */
@@ -364,6 +369,9 @@ const MIN_BUZZ_PERIODS = 2;
  * The buzz's nominal frequency: one toggle every four grid dwells, ten dwells to
  * a sweep, so a period is eight dwells - four fifths of a sweep. Used only to put
  * a floor under how many transitions four seconds of buzz should make.
+ *
+ * INSTRUCTION-RATE PROVISIONAL: derived from the HMCS44 core's sweep rate, not
+ * the TMS1370's. See docs/research/mp2110-timing-measurement.md.
  */
 const BUZZ_NOMINAL_HZ = 86;
 

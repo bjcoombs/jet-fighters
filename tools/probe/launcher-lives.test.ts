@@ -202,6 +202,10 @@ const PLATE_DART = [6, 7, 8];
  * An unattended machine loses its third launcher at 20.2 s and stops sounding
  * at 20.5 s, so thirty covers a whole game with room for the cadence constants
  * to move without the runs quietly stopping short of the ending.
+ *
+ * INSTRUCTION-RATE PROVISIONAL: those wall-clock figures come from the HMCS44
+ * core's oscillator (see `UNATTENDED_SILENCE_S` in game-lifetime.test.ts), not
+ * the TMS1370's. See docs/research/mp2110-timing-measurement.md.
  */
 const HORIZON_S = 30;
 
