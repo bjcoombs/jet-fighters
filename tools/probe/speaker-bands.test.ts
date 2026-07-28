@@ -86,9 +86,13 @@ const BANDS: readonly Band[] = [
   { name: 'missileFire', minHz: 1480, maxHz: 1632, minMs: 8, maxMs: 150 },
   // jetMarch.dominantHzRange; jetMarch.stepDurationMs is 70 ms.
   { name: 'jetMarch', minHz: 600, maxHz: 650, minMs: 60, maxMs: 120 },
-  // battleshipBuzz.dominantHzRange. The measurement calls it "sustained" and v1
-  // synthesized 380 ms; the ROM plays one buzz per lane step of the crossing.
-  { name: 'battleshipBuzz', minHz: 230, maxHz: 300, minMs: 60, maxMs: 400 },
+  // battleshipBuzz. Not a note: the buzz is clocked by the display sweep out of
+  // `dwell` and runs for the whole four seconds the boat is on the tube, so it
+  // is bounded here by the 79-111 Hz wander measured off the owner's isolated
+  // recording rather than by a note_loop entry. Its runs are broken up by the
+  // march and missile notes that land inside a crossing, so the length bound is
+  // a floor on one unbroken stretch, not on the whole sound.
+  { name: 'battleshipBuzz', minHz: 79, maxHz: 111, minMs: 20, maxMs: 5000 },
   // win.fundamentalsHz, +/- 3%. The jingle needs 199 points and is not reached
   // by the scenarios below; the rows are here so the table is the whole contract.
   { name: 'win F#5 (750 Hz)', minHz: 727, maxHz: 772, minMs: 100, maxMs: 400 },
@@ -121,11 +125,26 @@ interface Sound {
   readonly runs: readonly Run[];
 }
 
+const GAME_ASM = (() => {
+  const path = resolve(import.meta.dirname, '..', '..', 'asm', 'jetfighter.asm');
+  return assemble(readFileSync(path, 'utf8'), path);
+})();
+
+function gameSymbol(name: string): number {
+  const found = GAME_ASM.symbols.find((definition) => definition.name === name);
+  if (found === undefined) throw new Error(`asm/jetfighter.asm no longer defines ${name}`);
+  return found.value;
+}
+
+/** The battleship's lane nibble, and the countdown to its next crossing. */
+const BSLANE_ADDRESS = gameSymbol('FILE_STATE') * 16 + gameSymbol('NIB_BSLANE');
+const BS_NONE = gameSymbol('BS_NONE');
+const BS_LO_ADDRESS = gameSymbol('FILE_TIME') * 16 + gameSymbol('NIB_BS_LO');
+const BS_HI_ADDRESS = gameSymbol('FILE_TIME') * 16 + gameSymbol('NIB_BS_HI');
+
 /** A board running the real game ROM, freshly powered on. */
 function romBoard(): Board {
-  const path = resolve(import.meta.dirname, '..', '..', 'asm', 'jetfighter.asm');
-  const assembly = assemble(readFileSync(path, 'utf8'), path);
-  return new Board(romImage(assembly));
+  return new Board(romImage(GAME_ASM));
 }
 
 /** Break a sound's rising edges into runs of like periods. */
@@ -226,7 +245,16 @@ function scenario(fire: boolean): { edges: ReturnType<Board['takeSpeakerEdges']>
     const levers = ['up', 'centre', 'down'] as const;
     for (let frame = 0; frame < PLAYED_FRAMES; frame += 1) {
       board.setControl('lever', levers[Math.floor(frame / 9) % 3] as string);
-      board.setFire(frame % 2 === 0);
+      // Hold fire over a crossing, and over the last few units of the countdown
+      // to one, so a missile already in flight cannot end it early. A player who
+      // fires blindly shoots the boat down almost every time - which is the boat
+      // being slow enough to hit, and is exactly what makes a blind-firing
+      // scenario useless for measuring how long the buzz lasts. Reading RAM to
+      // decide is allowed; a probe may look at the tube, it may not write state.
+      const crossing = board.cpu.memory.readRam(BSLANE_ADDRESS) !== BS_NONE;
+      const due =
+        board.cpu.memory.readRam(BS_HI_ADDRESS) * 16 + board.cpu.memory.readRam(BS_LO_ADDRESS);
+      board.setFire(!crossing && due >= 6 && frame % 2 === 0);
       board.runFrames(1);
     }
   }
@@ -349,9 +377,18 @@ describe('the sounds the scenarios actually reached', () => {
     expect(Math.max(...buzz.map((run) => run.hz))).toBeLessThan(
       Math.min(...march.map((run) => run.hz)),
     );
-    for (const step of buzz) {
-      expect(step.ms).toBeGreaterThan(60);
-    }
+    // "Held" is a statement about the whole crossing, not about one run.
+    //
+    // A run here is a stretch of consecutive periods of near-equal length, and
+    // the buzz's period is *deliberately* not equal from one to the next: it is
+    // eight grid dwells, and a sweep is however long the ROM's between-sweep
+    // work took. So the four seconds of buzz arrive as many short runs rather
+    // than one long one - measured, the longest single run is 35 ms - and a
+    // per-run floor of the kind the march uses would be asserting the buzz is
+    // something it is not. What "held" means is that the sound is *present* for
+    // seconds rather than for one note, so it is the total that is bounded.
+    const heldMs = buzz.reduce((total, run) => total + run.ms, 0);
+    expect(heldMs).toBeGreaterThan(1000);
   });
 
   it('blipped the missile inside contract criterion V5', () => {

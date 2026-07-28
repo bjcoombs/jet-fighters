@@ -77,8 +77,8 @@
 ;
 ; A routine may still run past 32 words - draw_jet and close_up do - provided
 ; nothing past the boundary is a branch target. CAL additionally fixes its page
-; at 0, which is why page 0 holds only `dwell` and `find_contact`; everything
-; else is reached with the two-word CALL, which goes anywhere.
+; at 0, which is why page 0 holds only `dwell`; everything else is reached with
+; the two-word CALL, which goes anywhere.
 ;
 ; --- Timing is provisional, and deliberately so -----------------------------
 ;
@@ -343,6 +343,11 @@
 .EQU NIB_BURST_LEFT, 6          ; note_loop's burst counter
 .EQU NIB_SND_ID,     7          ; the sound being set up
 .EQU NIB_NOTE_LEFT,  8          ; win jingle: arpeggio repeats left
+.EQU NIB_BUZZ,       9          ; the battleship buzz's phase, 0 when it is not
+                                ; sounding. Read by `dwell`, once per grid, and
+                                ; it is the only nibble in this file that
+                                ; note_loop never touches - the buzz is not a
+                                ; note. See the dwell's own block.
 
 ; --- FILE_JETS: one jet per lane, each flying its own step ---------------------
 ;
@@ -438,18 +443,28 @@
 
 ; Sound identifiers - indices into PAT_SND_A / PAT_SND_B. See those tables for
 ; the pitch each one produces and the audio-reference.md row it targets.
+; The battleship is deliberately not in this list. Its buzz is not a note - it is
+; clocked by the display sweep out of `dwell`, because it has to sound for four
+; seconds without blanking the tube. See that routine. The entry it used to have
+; here, and the $0FF / $090 pattern words behind it, were removed with it rather
+; than left as an unreachable 287 Hz that no longer describes anything the
+; machine does.
 .EQU SND_MISSILE,    0
 .EQU SND_MARCH,      1
-.EQU SND_BSHIP,      2
-.EQU SND_WARN,       3
-.EQU SND_WIN1,       4          ; 750 Hz
-.EQU SND_WIN2,       5          ; 940 Hz
-.EQU SND_WIN3,       6          ; 1240 Hz
-.EQU SND_LOSS1,      7
-.EQU SND_LOSS2,      8
-.EQU SND_LOSS3,      9
-.EQU SND_LOSS4,     10
-.EQU SND_LOSS5,     11
+.EQU SND_WARN,       2
+.EQU SND_WIN1,       3          ; 750 Hz
+.EQU SND_WIN2,       4          ; 940 Hz
+.EQU SND_WIN3,       5          ; 1240 Hz
+.EQU SND_LOSS1,      6
+.EQU SND_LOSS2,      7
+.EQU SND_LOSS3,      8
+.EQU SND_LOSS4,      9
+.EQU SND_LOSS5,     10
+
+; The value `bship_enter` writes to NIB_BUZZ to start the buzz. Any odd nibble
+; works - the counter walks the odd numbers and never reaches zero - and 15 is
+; chosen so the first grid after the arrival drives the speaker high.
+.EQU BUZZ_START,    15
 
 ; Burst counts, minus one, passed to play_sound in B. A burst is
 ; (NIB_PERIODS + 1) periods, so a note is (bursts) * (periods) square-wave
@@ -460,7 +475,6 @@
 ; the second question and none of these constants appear in it.
 .EQU BURSTS_MISSILE, 3
 .EQU BURSTS_MARCH,   2          ; 3 bursts x 15 periods = 70.4 ms, see the table
-.EQU BURSTS_BSHIP,  10          ; 11 bursts x 10 periods = 383 ms, see the table
 .EQU BURSTS_WARN,    0
 .EQU BURSTS_WIN1,    8
 .EQU BURSTS_WIN2,    8
@@ -603,81 +617,104 @@
 .EQU MISSILE_SWEEPS, 2
 .EQU ROCKET_SWEEPS,  7
 
-; The battleship. **Now measured**, and it is the one row of this block that no
-; longer rests on v1.
+; The battleship. **Measured from the owner's own unit**, and it is the one row
+; of this block that does not rest on inference at all.
 ;
-; v1 crossed the far zone in 400 ms and that figure drove this constant for two
-; revisions - nine sweeps, then four. It was wrong by an order of magnitude. The
-; owner, playing beside his unit: the battleship "moves slowly down the the slots
-; which gives you time to shoot at it". `assets/reference/sprites/README.md`
-; measures the same thing off IMG_6113.mov: **17 battleship episodes over 407.9 s,
-; median 2.5 s, longest 5.9 s**, and one full descent traced frame by frame -
-; lane 0 over frames 524-561, lane 1 over 565-626, lane 2 over 628-802, which at
-; 30 fps is 1.3 / 2.1 / 5.8 s a lane and 9.3 s end to end. An "episode" there is a
-; contiguous run of sightings in one lane, which is why the longest of them is
-; that descent's own last lane. So the unit dwells whole *seconds* in a lane, and
-; a 400 ms crossing was never in the running.
+; `assets/reference/battleship-arrival.m4a` and `battleship-interval.m4a` are the
+; measurement the previous revision of this block asked for and could not get.
+; The owner recorded his machine beside the speaker in a quiet room:
+; *"this is the sound, notice its 4s long the boat appears for 4s then
+; disappears if you haven't hit it"*, and of the second file, *"this ... is
+; longer as this show how long between it arriving again"*.
 ;
-; A lane step is therefore the median episode, 2.5 s. That does not fit in a
-; nibble at any sweep rate, so the step counter is now the two-nibble pair
-; NIB_BS_LO/NIB_BS_HI - the same pair the gap between crossings counts on. The
-; two are mutually exclusive by construction: the gap runs only while NIB_BSLANE
-; holds BS_NONE and the step runs only while it holds a lane, so one countdown
-; serves both and NIB_BSTEP is gone. 172 sweeps is 2.32 s nominal and ~2.5 s of
-; wall clock at the ~14.5 ms a sweep costs during play, which is the population
-; the video measures. Three of them is a crossing of ~7.5 s, against the 7.5 s
-; three median episodes make and the 9.3 s of the one traced descent.
+; **Read the two files as one recording, because that is what they are.** The
+; arrival clip is the interval clip's first 4.46 s, offset by 0.149 s -
+; cross-correlation puts the gain at 1.000 and Pearson r at 0.9955. They are one
+; take, trimmed twice. That matters because it means the pair is a sample of
+; *one* interval, not two independent ones, and nothing here should be read as
+; the average of a population. See docs/evidence/audio-reference.md for the
+; detector and its controls.
 ;
-; **The buzz is no longer one note per lane step, and that is the other half of
-; this.** It was: three 70 ms blips, one at each lane, and the previous revision
-; shortened the crossing to bunch them together so they would read as one sound.
-; That worked against the behaviour the owner describes and treated the symptom -
-; the buzz is measured at **380 ms** and described as *sustained*
-; (audio-reference.md, battleshipBuzz), and three 70 ms notes are not a 380 ms
-; note however close together they sit. `bship_enter` now sounds one 383 ms note
-; announcing the arrival and the lane steps are silent, so the tube is blanked
-; once per crossing rather than three times and stays lit for the descent the
-; player has to see in order to shoot at it. See the sound table's battleship row
-; for the note, and the falsifier if the real unit re-buzzes at every lane.
+; What the recording gives, and every figure below is off that one take:
 ;
-; **How often, and it was about fifty times too often.** The gap was
-; BSHIP_GAP_HI*16 plus the sampled counter counted in sweeps - 48 to 63 sweeps,
-; 0.65 to 0.85 s - which put a crossing on the tube 51 times a minute measured.
-; The owner: the battleship "shows up randomly and a lot less frequently". The
-; same recording that measures the descent measures the rate: **8 arrivals in
-; lane 0 over 407.9 s**, which is 1.18 crossings a minute, or one about every
-; 51 s. (Eight rather than seventeen because the seventeen are lane dwells; lane
-; 0 is where a descent starts, so counting those counts arrivals. The other
-; reading of the same data - all 17 episodes belonging to distinct crossings - is
-; excluded by the traced 9.3 s descent being longer than the longest episode.)
+;   - the boat sounds for **4.05 s** and **3.80 s** on its two arrivals;
+;   - the arrivals are **19.80 s** apart, onset to onset, stable to 0.05 s
+;     across three detection thresholds;
+;   - the sound is **continuous**, not pulsed - 3 of 162 twenty-five
+;     millisecond windows fall more than 20 dB below the peak;
+;   - its repetition rate is **93.4 Hz**, wandering between 79 and 111 Hz
+;     inside a single arrival.
 ;
-; Fifty seconds does not fit in two nibbles of sweeps, and it does not need to.
-; NIB_TICK already counts sweeps and wraps every sixteen, and until now nothing
-; read it. tick_bship steps the gap countdown only on the sweep NIB_TICK wraps,
-; so the pair counts sixteen-sweep units and reaches 255*16 = 4080 sweeps without
-; a nibble of RAM being added. BSHIP_GAP_HI = 11 gives 176 to 191 units, 2816 to
-; 3056 sweeps, 42 to 46 s; plus the ~8 s crossing that is an arrival every 50 to
-; 54 s, against the 51 s measured.
+; Three things in this ROM were wrong, and all three are now measured.
+;
+; **The sound is continuous for the whole appearance.** It was one 383 ms note at
+; the arrival and then silence. It is now the sweep-clocked buzz in `dwell`,
+; which runs for as long as the boat is on the glass without ever stopping the
+; tube. That is the mechanism the four-second figure forces: `note_loop` blanks
+; the display for the length of the note, and four seconds of blanking cannot be
+; right for a boat the player is supposed to be shooting at.
+;
+; **The appearance is 4 s, not the 7.5 s the video was read as giving.** Three
+; lanes at 91 sweeps is 4.00 s at the 14.66 ms a sweep costs during a crossing,
+; which is measured off the buzz's own period in the emulated machine.
+;
+; **The tension with the video is real and is not averaged away here.** The video
+; (`assets/reference/sprites/README.md`) traces one descent frame by frame at
+; 1.3 / 2.1 / 5.8 s a lane, 9.3 s end to end, against the recording's 4 s. Both
+; are evidence. Two things decide it for the recording:
+;
+;   - the owner's sentence is about the *boat*, not the sound - "the boat appears
+;     for 4s then disappears" - so the 4 s is not merely how long the buzz lasts,
+;     and the recording independently measures the buzz at the same 4 s;
+;   - the traced descent's last lane is 5.8 s, longer than its other two lanes
+;     put together. A boat descending at a steady rate does not do that. Its
+;     first two lanes sum to 3.4 s, which is the recording's figure; the outlier
+;     is the third.
+;
+; **What would falsify it**: a video of one crossing, timed from the boat
+; appearing to it leaving, showing the boat lit for materially longer than the
+; buzz lasts. If the boat outlives its own sound, the appearance and the sound
+; are two constants rather than one, and only the sound is measured here.
+;
+; **How often: 19.8 s, and this openly contradicts the video.** The gap runs
+; while NIB_BSLANE holds BS_NONE, so it is the interval minus the appearance:
+; 19.80 - 4.00 = 15.8 s. BSHIP_GAP_HI = 4 gives 64 to 79 sixteen-sweep units,
+; 15.1 to 18.6 s, and an arrival every 19.1 to 22.6 s; the low nibble is
+; dominated by small values in practice (see bship_wait), so a played game sits
+; near the bottom of that, against the 19.80 s measured.
+;
+; The video says otherwise and the disagreement is a factor of 2.6: eight lane-0
+; episodes over 407.9 s is one crossing every 51 s, and that is what this
+; constant was set to before. The recording is preferred, with the reasons stated
+; rather than assumed:
+;
+;   - it measures the machine's own sound directly, in a quiet room, against a
+;     detector with controls that separate it from the rest of the game;
+;   - the video's count is an inference from a detection pass that is *known* to
+;     drop episodes - its own lane split is 8 / 2 / 7, and a detector that finds
+;     two of eight middle lanes is not one whose absolute counts can be trusted
+;     as arrival totals;
+;   - a 4 s appearance makes the boat harder to catch on video than the 7.5 s the
+;     count assumed, so the miss rate is worse than the split suggests.
+;
+; **But n = 1.** One interval, from one take, cannot establish a mean, and the
+; video is 6.8 minutes of play. If the interval is random at all (T6, still
+; unmeasured - see bship_wait) then 19.8 s could be a short draw from a longer
+; distribution. What would settle it is two minutes of the owner's unit recorded
+; the way these clips were, counting arrivals rather than timing one gap.
 ;
 ; **The opening crossing is deliberately not a full interval away.** Reset seeds
 ; the countdown with BSHIP_GAP_OPEN rather than BSHIP_GAP_HI - 512 sweeps, about
-; seven seconds - which keeps this ROM's long-standing behaviour of showing the
-; boat early in a game. The owner's complaint was that it appears too often,
-; never that it appears too soon, and a first crossing a full interval away would
-; mean a short game showed no battleship at all. What would falsify it is a
-; recording whose first crossing is a full interval after power-on.
-;
-; **What this does not fix, and it is worth stating.** A game currently ends in
-; 20 to 45 s (the capture rule, docs/evidence/open-questions.md section 6), so a
-; player will now see one battleship a game, sometimes two. That is not the
-; interval being wrong: per second of *play* it is the unit's own rate. It is the
-; game being short, and it is that open question's to settle.
+; seven and a half seconds - which keeps this ROM's long-standing behaviour of
+; showing the boat early in a game. The owner's complaint was that it appears too
+; often, never that it appears too soon, and a first crossing a full interval
+; away would mean a short game showed no battleship at all.
 ;
 ; The interval also is not **random**, whatever the low nibble suggests, and that
 ; is a defect rather than a tuning question - see bship_wait.
-.EQU BSHIP_STEP_LO, 12          ; a lane step is BSHIP_STEP_HI*16 + BSHIP_STEP_LO
-.EQU BSHIP_STEP_HI, 10          ;   = 172 sweeps, ~2.5 s of played wall clock
-.EQU BSHIP_GAP_HI,  11          ; steady gap: (11*16 + rand) sixteen-sweep units
+.EQU BSHIP_STEP_LO, 11          ; a lane step is BSHIP_STEP_HI*16 + BSHIP_STEP_LO
+.EQU BSHIP_STEP_HI,  5          ;   = 91 sweeps, 1.33 s; three of them is 4.00 s
+.EQU BSHIP_GAP_HI,   4          ; steady gap: (4*16 + rand) sixteen-sweep units
 .EQU BSHIP_GAP_OPEN, 2          ; and the first one after power-on, 512 sweeps
 
 ; How long a burst stays on the glass, in sweeps. PROVISIONAL, and the only
@@ -713,9 +750,15 @@
 ;
 ; CAL carries a five-bit offset and its page is fixed at 0
 ; (src/machine/cpu/isa.ts), so page 0 is the only place a one-word call can land.
-; It holds the two routines called from the tightest loops - the grid dwell and
-; the contact scan. Everything else is reached with CALL, which costs a second
-; word but goes anywhere, and page 0 is deliberately left with room to spare.
+; It holds the one routine called from the tightest loop - the grid dwell.
+; Everything else is reached with CALL, which costs a second word but goes
+; anywhere.
+;
+; `find_contact` used to sit here too, on a CAL. It moved out when the dwell grew
+; the battleship's buzz tick: CAL reaches only the first 32 words, the two
+; routines together no longer fit in them, and `find_contact` is called twice
+; from `input_scan` - which runs once between sweeps, not ten times inside one -
+; so it is the one that can afford the second word.
 
 .ORG $000
 reset:  JMPL main
@@ -729,7 +772,52 @@ reset:  JMPL main
 ; puts them back on the way out. That is what XSP is for; saving Y to RAM would
 ; cost more cycles than the counter it frees. warn_gap relies on the same
 ; property to count its own loop in Y.
+;
+; --- and it carries the battleship's buzz ------------------------------------
+;
+; The buzz is the one sound this machine makes that is *not* a note. Every other
+; sound goes through note_loop, which holds the CPU in a delay loop and leaves
+; the tube dark for as long as it lasts; that is fine for a 20 ms blip and
+; impossible for a sound that has to last the whole four seconds the boat is on
+; the glass, because the player has to see the boat in order to shoot at it.
+;
+; So the buzz is clocked by the display sweep instead of by a delay loop. This
+; routine already runs exactly once per grid, ten times a sweep, and it already
+; has X and Y free between its two XSPs. NIB_BUZZ counts down by two through the
+; odd numbers 15, 13, 11, ... 1 and back to 15 - subtracting two from a nibble
+; preserves oddness, and 1 - 2 wraps to 15, so the sequence never reaches zero
+; and zero is free to mean "not sounding". Bit 3 of that counter drives D14
+; directly: it is high for 15, 13, 11, 9 and low for 7, 5, 3, 1, so the speaker
+; toggles every fourth grid and one square-wave period is eight grids, four
+; fifths of a sweep.
+;
+; **That the pitch comes out of the sweep rate is the measurement, not a
+; convenience.** docs/evidence/audio-reference.md (battleshipBuzz) recovers a
+; repetition rate of 93.4 Hz from the owner's isolated recording, and eight grids
+; at this ROM's played sweep rate is 89 Hz. It also recovers a fundamental that
+; *wanders* between 79 and 111 Hz within a single four-second arrival, and
+; wanders the same way in both arrivals - which is what a buzz clocked off a
+; sweep whose length depends on what is being drawn does, and is not what a
+; delay-loop note does. A note_loop tone is as stable as the crystal.
+;
+; The cost is five machine cycles a grid when the boat is not up - the four words
+; that load and test the counter, and the branch that leaves - which is fifty
+; cycles on a 5383-cycle sweep, and eight when it is.
 dwell:  XSP                     ; caller's X/Y -> SPX/SPY
+        LXI FILE_SOUND
+        LYI NIB_BUZZ
+        LAM
+        ALEI 0                  ; ST <- 1 when the nibble is zero: no buzz
+        BR dw_delay
+        AI 14                   ; phase - 2, wrapping 1 -> 15, never 0
+        XMA                     ; keep it; A is free from here
+        TM 3                    ; ST <- bit 3, the level the speaker wants
+        BR dw_high
+        RED D_SPEAKER
+        BR dw_delay
+dw_high:
+        SED D_SPEAKER
+dw_delay:
         LBI DWELL_OUTER
 dw_out: LYI DWELL_INNER
         NOP                     ; timing pad - see DWELL above for why one cycle
@@ -752,6 +840,11 @@ dw_in:  DY                      ; ST <- 1 until Y wraps out of four bits
 ; exactly one contact closed, so CONTACT_NONE means the sweep has not sampled
 ; those lines yet - which is true for the first sweep after reset, and is why
 ; the caller checks for it rather than trusting the answer.
+;
+; `.PAGE` because it no longer fits behind the dwell inside CAL's first 32 words,
+; and its own two branches straddle the boundary wherever it lands next.
+
+.PAGE
 find_contact:
         LBI 2                   ; three lines: this one and two more
 fc_test:
@@ -855,7 +948,7 @@ input_scan:
         LXI FILE_INPUT
         LYI LINE_LEVER
         LAI LANE_TOP
-        CAL find_contact
+        CALL find_contact
         ALEI LANE_LAST          ; ST <- 0 when the answer was CONTACT_NONE
         BR input_lever_ok
         BR input_skill
@@ -869,7 +962,7 @@ input_skill:
         LXI FILE_INPUT
         LYI LINE_SKILL
         LAI SKILL_ONE
-        CAL find_contact
+        CALL find_contact
         ALEI SKILL_LAST
         BR input_skill_ok
         RTN
@@ -1538,6 +1631,10 @@ bship_kill:
         LYI NIB_MCOL
         LAI 0
         XMA
+
+        ; Shot out from under the buzz. The missile beep below is played by
+        ; note_loop and would otherwise fight the dwell for the same pin.
+        CALL bship_hush
 
         ; --- schedule the next crossing ---
         ; Inline rather than a jump to bship_wait: that block is the tail of the
@@ -2418,14 +2515,15 @@ tb_done:
 ;
 ; PRD v1 rule 4: the crossing is "announced by a distinctive lower-pitch buzz".
 ; audio-reference.md turns "lower" into the rule that matters - the buzz must
-; read below the jet march - and the sound table at the foot of this file shows
-; the two pitches this ROM produces, 287 Hz against the march's 640 Hz.
+; read below the jet march - and the buzz this ROM now produces is 89 Hz against
+; the march's 640 Hz.
 ;
-; The buzz sounds here and nowhere else in the crossing. It is one 383 ms note
-; against the 380 ms audio-reference.md measures, it announces the arrival, and
-; then the boat descends in silence with the tube lit. See the battleship's entry
-; in the provisional-cadence block for why "announced once" rather than "buzzing
-; at every lane" is the reading of *sustained* that this ROM implements.
+; **The buzz starts here and runs for the whole crossing.** It is not announced
+; and then dropped: the owner's isolated recording measures a *continuous* sound
+; across the full four seconds the boat is up - 3 of 162 twenty-five millisecond
+; windows fall more than 20 dB below the peak, which is a sound that is on, not
+; a sound that is pulsing. Starting it is one nibble; `dwell` does the rest, ten
+; times a sweep, without ever stopping the tube.
 
 bship_enter:
         LXI FILE_STATE
@@ -2433,10 +2531,39 @@ bship_enter:
         LAI LANE_TOP
         XMA
         CALL bship_step_timer
-        LAI SND_BSHIP
-        LBI BURSTS_BSHIP
-        CALL play_sound
+        LXI FILE_SOUND
+        LYI NIB_BUZZ
+        LAI BUZZ_START          ; the dwell takes it from here
+        XMA
         JMPL tick_input
+
+; ============================================================================
+; stopping the buzz
+; ============================================================================
+;
+; In:  nothing. Out: nothing. Clobbers A, X, Y.
+;
+; Clearing the phase is what stops `dwell` toggling; the RED is what leaves the
+; pin low rather than wherever the last grid happened to leave it, so the next
+; note_loop sound starts from a known level and the reconstructed waveform
+; carries no DC step.
+;
+; **Every way a crossing can end has to come through here**, and there are four:
+; the boat reaching the bottom (`bship_wait`), the player shooting it
+; (`bship_kill`), and the game ending underneath it (`game_lost`, `game_win`).
+; The last two are not hypothetical - the buzz is the first sound in this ROM
+; that outlives the routine that started it, and the first probe run after it was
+; written left a boat frozen in lane 1 buzzing for eighty seconds, because the
+; third launcher went while the boat was still on its way down and `tick_bship`
+; never ran again to retire it.
+
+bship_hush:
+        LXI FILE_SOUND
+        LYI NIB_BUZZ
+        LAI 0
+        XMA
+        RED D_SPEAKER
+        RTN
 
 ; ============================================================================
 ; how long it holds a lane
@@ -2523,6 +2650,7 @@ bm_store:
 ; the real interval is random at all - is still unmeasured.
 
 bship_wait:
+        CALL bship_hush         ; the boat is gone, so the buzz goes with it
         LXI FILE_STATE
         LYI NIB_RAND
         LAM
@@ -2627,6 +2755,7 @@ fire_missile:
 ; tools/probe/game-lifetime.test.ts.
 
 game_lost:
+        CALL bship_hush         ; a crossing can outlive the last launcher
         LXI FILE_STATE
         LYI NIB_STATE
         LAI ST_OVER
@@ -2679,6 +2808,7 @@ play_loss:
 
 .PAGE
 game_win:
+        CALL bship_hush         ; and it can outlive the winning shot
         LXI FILE_STATE
         LYI NIB_STATE
         LAI ST_WIN
@@ -3115,28 +3245,22 @@ skill_base:
 ; oscillator the frequency is 400000 / period. Every entry below is the closest
 ; this loop can land to its target, and the target is cited.
 ;
-; **Two ways this arithmetic gets misread, both of which say the battleship buzz
-; is broken when it is not.** The buzz has been reported as unreachably high
-; twice now, and each time the reasoning ran off the same two facts:
+; **One way this arithmetic gets misread.** `outer` is the stored value *plus
+; one*, because DB leaves the loop only after the counter borrows. Dropping the
+; plus one puts every entry in this table about 6% sharp, and the error is
+; invisible because the shape of the answer still looks right.
 ;
-;   - `outer` is the stored value *plus one*, because DB leaves the loop only
-;     after the counter borrows. Dropping the plus one on entry 2 gives 1309
-;     cycles and 306 Hz - above the measured band, and wrong. The real figure is
-;     1393 cycles and 287 Hz.
-;   - `$0FF` is the largest PAT_SND_A entry, but PAT_SND_A is not the floor.
-;     `rep` - PAT_SND_B's low nibble - multiplies the whole delay, which is how
-;     the loss sound's collapse reaches 96 Hz on a *smaller* PAT_SND_A entry
-;     than the buzz uses. Entry 2 stores rep 0; rep 1 would roughly double its
-;     period to about 145 Hz, far below the band. There is a great deal of room
-;     under this entry and no encoding change is needed to reach it.
+; The calibration point is the march: drive the machine, reconstruct the tone
+; from D14, and it reads 640.0 Hz against a measured 600-650, which is what says
+; the model behind these numbers is the right one.
+; tools/probe/speaker-bands.test.ts asserts it.
 ;
-; Neither is a matter of opinion. Drive the machine and reconstruct the tone
-; from D14 and the buzz reads 287.2 Hz against a measured 230-300, with the
-; march at 640.0 Hz against a measured 600-650 - the march being the calibration
-; point that says the model behind these numbers is the right one.
-; tools/probe/speaker-bands.test.ts asserts both, and separately asserts the
-; buzz below the march, which audio-reference.md records as the stronger
-; owner-confirmed constraint.
+; **The battleship buzz is not in this table and cannot be.** It used to be entry
+; 2, at 287 Hz, and the ROM carried a long argument here about how much room
+; there was underneath it. That argument is now moot: the buzz is 89 Hz, which
+; this loop can reach, but it also has to last four seconds without blanking the
+; tube, which this loop cannot do at any entry. It is clocked by the display
+; sweep out of `dwell` instead. See that routine.
 ;
 ; One wrinkle, and it is real hardware behaviour rather than a defect: the period
 ; that straddles a burst boundary is **twelve cycles longer**, because note_loop
@@ -3152,16 +3276,18 @@ skill_base:
 ; |----|------------|----|-----|-----|-----|--------|------|-----------------------------|
 ; |  0 | missile    |  7 |   3 |   0 |  15 |    257 | 1556 | 1480-1632, centre 1520      |
 ; |  1 | jet march  | 12 |   7 |   0 |   7 |    625 |  640 | 600-650                     |
-; |  2 | battleship | 15 |  15 |   0 |   7 |   1393 |  287 | 230-300, and below the march|
-; |  3 | warning    | 13 |   9 |   0 |   4 |    809 |  494 | 455-545                     |
-; |  4 | win 1      |  5 |  10 |   0 |  15 |    533 |  751 | 750 (measured fundamental)  |
-; |  5 | win 2      | 13 |   4 |   0 |  15 |    429 |  932 | 940 (measured fundamental)  |
-; |  6 | win 3      | 11 |   3 |   0 |  15 |    321 | 1246 | 1240 (not the 1244 label)   |
-; |  7 | loss 1     | 14 |   9 |   0 |  11 |    849 |  471 | 455-545 opening transient   |
-; |  8 | loss 2     | 12 |  13 |   3 |   3 |   4153 |   96 | 80-97 collapse              |
-; |  9 | loss 3     | 14 |   9 |   1 |  10 |   1673 |  239 | 200-280 rasp body           |
-; | 10 | loss 4     | 13 |  12 |   1 |  15 |   2049 |  195 | ~196 drifting down          |
-; | 11 | loss 5     | 11 |  12 |   2 |  15 |   2749 |  146 | ~147 decay floor            |
+; |  2 | warning    | 13 |   9 |   0 |   4 |    809 |  494 | 455-545                     |
+; |  3 | win 1      |  5 |  10 |   0 |  15 |    533 |  751 | 750 (measured fundamental)  |
+; |  4 | win 2      | 13 |   4 |   0 |  15 |    429 |  932 | 940 (measured fundamental)  |
+; |  5 | win 3      | 11 |   3 |   0 |  15 |    321 | 1246 | 1240 (not the 1244 label)   |
+; |  6 | loss 1     | 14 |   9 |   0 |  11 |    849 |  471 | 455-545 opening transient   |
+; |  7 | loss 2     | 12 |  13 |   3 |   3 |   4153 |   96 | 80-97 collapse              |
+; |  8 | loss 3     | 14 |   9 |   1 |  10 |   1673 |  239 | 200-280 rasp body           |
+; |  9 | loss 4     | 13 |  12 |   1 |  15 |   2049 |  195 | ~196 drifting down          |
+; | 10 | loss 5     | 11 |  12 |   2 |  15 |   2749 |  146 | ~147 decay floor            |
+;
+; The battleship's row is gone from this table; see above. Its buzz is 89 Hz,
+; sweep-clocked, and lasts as long as the boat is on the glass.
 ;
 ; Note *lengths* are a mixture and are not all measured. A length here is how
 ; long one sound lasts; how often the game triggers it is the provisional-cadence
@@ -3170,11 +3296,11 @@ skill_base:
 ; A length is also not free of perceptual consequence. A burst of eight cycles is
 ; not a short tone, it is a click: pitch does not establish itself in under
 ; roughly twenty milliseconds, so a note shorter than that reaches the ear as a
-; speaker pop whatever its period says. The march and the battleship buzz are the
-; two sounds a player hears constantly, and at 12.5 ms and 28 ms they were
-; exactly that - which is why the unit sounded like it was popping rather than
-; playing, with both pitches sitting correctly inside their measured bands the
-; whole time. Both are now at the ~70 ms the reference records for a march step.
+; speaker pop whatever its period says. The march was 12.5 ms and was exactly
+; that - which is why the unit sounded like it was popping rather than playing,
+; with its pitch sitting correctly inside the measured band the whole time. It is
+; now at the ~70 ms the reference records for a march step. (The battleship buzz
+; had the same fault and no longer appears here at all: it is not a note.)
 ;
 ;  - missile: 4 bursts of 16 periods = 42 ms. audio-reference.md measures ~20 ms;
 ;    contract criterion V5 requires under 150 ms. PROVISIONAL, and longer than the
@@ -3184,28 +3310,22 @@ skill_base:
 ;    *synthesis* rather than a measurement, so it is a target and not a contract,
 ;    but it is the only duration the evidence carries and 12.5 ms was audibly
 ;    wrong against it.
-;  - battleship: 11 bursts of 10 periods = **383 ms**, one note per crossing,
-;    sounded at the arrival. This is the one note length in this list that
-;    answers to its measurement rather than to a target: audio-reference.md's
-;    `battleshipBuzz.durationMs` is 380 ms and it calls the sound *sustained*,
-;    and 109 periods of 1393 cycles plus ten stretched burst boundaries is
-;    379.9 ms from first rise to last - measured off the machine, not computed
-;    here. Sixteen bursts, the largest a nibble expresses, would be 557 ms.
+;  - battleship: **not in this list.** The buzz is not a note and has no burst
+;    count. It sounds for as long as the boat is on the tube - about four
+;    seconds - because `dwell` toggles the speaker every fourth grid while
+;    NIB_BUZZ is set, and that is the only way to make a sound last four seconds
+;    on a machine whose note player stops the display.
 ;
-;    Two earlier revisions read "sustained" as three ~70 ms notes, one per lane
-;    step, close enough together to be heard as one - first by stretching the
-;    crossing and then by shortening it. Both were wrong, and the second was
-;    wrong twice: three 70 ms blips are not a 380 ms note however they are
-;    spaced, and the crossing they were being timed against is *seconds* long
-;    (the owner's own description, and 17 measured episodes of IMG_6113.mov).
-;    The buzz and the crossing are simply not in lockstep. `note_loop` does not
-;    sweep the tube, so one note per lane would blank the display for a fifth of
-;    a descent the player has to watch in order to shoot at the boat; one note at
-;    the arrival blanks it once and leaves the descent lit.
+;    Three revisions read the reference's word *sustained* as a note length, and
+;    each was a better note than the last: three ~70 ms blips one per lane, then
+;    the same three bunched closer together, then one 383 ms note at the arrival
+;    against the 380 ms v1 had synthesized. The owner's isolated recording ends
+;    that line of reasoning rather than continuing it - the sound is **4.0 s and
+;    continuous**, so it was never a note length at all, and no note this loop
+;    can play is within an order of magnitude of it.
 ;
-;    **The falsifier, and it is one line.** If the real unit re-sounds the buzz
-;    each time the boat changes lane, put the `play_sound` call back in
-;    `bm_store`. Nothing else has to move: the note length is right either way.
+;    The 380 ms it was matched against was itself a v1 *synthesis*, not a
+;    measurement; audio-reference.md now says so in the row it is cited from.
 ;  - warning beep: 1 burst of 5 periods = 10.1 ms, against a measured ~10 ms.
 ;    Short, but this one is the measurement.
 ;  - win: 9, 9 and 12 bursts of 16 periods = 192 / 154 / 154 ms against the
@@ -3219,33 +3339,31 @@ skill_base:
 sound_pitch:
         .DW $037                ; 0  missile fire
         .DW $07C                ; 1  jet march
-        .DW $0FF                ; 2  battleship buzz
-        .DW $09D                ; 3  launcher-hit warning beep
-        .DW $0A5                ; 4  win, 750 Hz
-        .DW $04D                ; 5  win, 940 Hz
-        .DW $03B                ; 6  win, 1240 Hz
-        .DW $09E                ; 7  loss, opening transient
-        .DW $0DC                ; 8  loss, collapse
-        .DW $09E                ; 9  loss, rasp body
-        .DW $0CD                ; 10 loss, drifting down
-        .DW $0CB                ; 11 loss, decay floor
-        .DW $000, $000, $000, $000
+        .DW $09D                ; 2  launcher-hit warning beep
+        .DW $0A5                ; 3  win, 750 Hz
+        .DW $04D                ; 4  win, 940 Hz
+        .DW $03B                ; 5  win, 1240 Hz
+        .DW $09E                ; 6  loss, opening transient
+        .DW $0DC                ; 7  loss, collapse
+        .DW $09E                ; 8  loss, rasp body
+        .DW $0CD                ; 9  loss, drifting down
+        .DW $0CB                ; 10 loss, decay floor
+        .DW $000, $000, $000, $000, $000
 
 .PATTERN PAT_SND_B
 sound_shape:
         .DW $0F0                ; 0  16 periods per burst
         .DW $0E0                ; 1  15
-        .DW $090                ; 2  10
-        .DW $040                ; 3   5
+        .DW $040                ; 2   5
+        .DW $0F0                ; 3  16
         .DW $0F0                ; 4  16
         .DW $0F0                ; 5  16
-        .DW $0F0                ; 6  16
-        .DW $0B0                ; 7  12
-        .DW $033                ; 8   4 periods, delay repeated 4 times
-        .DW $0A1                ; 9  11 periods, delay repeated twice
-        .DW $0F1                ; 10 16 periods, delay repeated twice
-        .DW $0F2                ; 11 16 periods, delay repeated three times
-        .DW $000, $000, $000, $000
+        .DW $0B0                ; 6  12
+        .DW $033                ; 7   4 periods, delay repeated 4 times
+        .DW $0A1                ; 8  11 periods, delay repeated twice
+        .DW $0F1                ; 9  16 periods, delay repeated twice
+        .DW $0F2                ; 10 16 periods, delay repeated three times
+        .DW $000, $000, $000, $000, $000
 
 .END
 

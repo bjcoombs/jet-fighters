@@ -115,8 +115,16 @@ roughly three times too few beeps (0.71 s measured against this ROM's slowest ru
 It was hidden until now, and worth knowing how: the battleship used to cross 51 times a
 minute and blank the tube three times a crossing, which carried the figure over 10% on its
 own. `sweep-timing.test.ts` and `blank-to-glass.test.ts` were both asserting a floor of
-0.1 and both were being held up by that. Their floors are now 0.04 with this note attached
-to each. **The fix is the beep cadence, not putting the battleship back.**
+0.1 and both were being held up by that.
+
+The battleship has since stopped blanking the tube **entirely**. Its buzz is now clocked
+by the display sweep out of `dwell` rather than played by `note_loop`, because the owner's
+isolated recording measures it as 4.0 s of continuous sound and four seconds of `note_loop`
+would blank the display for the whole of a crossing the player has to see. Measured, the
+worst blank in the 600 ms after an arrival fell from **383.5 ms to 1.5 ms**. So none of
+this figure is the boat's any more: `blank-to-glass.test.ts` measures 9.0% and
+`sweep-timing.test.ts` 4.4%, against floors of 0.04 and 0.03 with the arithmetic attached
+to each. **The fix is the beep cadence, not putting the battleship's note back.**
 
 ### 2c. A closer photograph of the JET FIGHTERS sticker
 
