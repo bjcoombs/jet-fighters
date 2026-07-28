@@ -1,5 +1,19 @@
 # Jet Fighters v2 - Full-Machine Rebuild PRD
 
+> **Superseded on its central hardware claim.** This document specifies a Hitachi HMCS44.
+> The unit's microcontroller is a **Texas Instruments TMS1370**, custom mask **MP2110**,
+> legible in `assets/reference/tube-teardown/board-L1001567.jpg` and named in MAME's device
+> list as *"1980, Gakken Invader/Tandy Fire Away"*.
+>
+> The reasoning below - that Gakken standardised on Hitachi, and that the box's "2K Bytes
+> L.S.I." matches the HD38800 - stacked two inferences and checked neither against the chip.
+> It is kept unedited as the record of how the error entered, per this project's practice of
+> keeping corrections rather than deleting them.
+>
+> Everything here about the tube, the sound, the input matrix and the game's rules stands.
+> Everything about the instruction set, the word and nibble ceilings, the clock and the
+> assembler does not. See `docs/evidence/open-questions.md` section 7.
+
 ## Problem Statement
 
 v1 recreates the *behaviour* of the 1979 Gakken Jet Fighter with a modern game loop,

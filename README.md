@@ -8,17 +8,29 @@ A browser emulation of the 1979 Gakken/CGL Jet Fighters tabletop game.
 | :---: | :---: |
 | <img src="assets/reference/readme-real-tube.jpg" alt="The scope of an original CGL Jet Fighters unit, powered on"> | <img src="assets/reference/readme-emulated-tube.jpg" alt="The same view of this emulator running in a browser"> |
 
-This is not a re-implementation of the game's rules. It is a cycle-accurate emulation of
-the machine that played it: a Hitachi HMCS44 microcontroller executing a 2 KB program,
-scanning a two-phosphor vacuum fluorescent tube one grid at a time, and making sound by
-toggling a single pin.
+This is not a re-implementation of the game's rules. It emulates the machine that played
+them: a 4-bit microcontroller executing a small mask ROM, scanning a two-phosphor vacuum
+fluorescent tube one grid at a time, and making sound by toggling a single pin.
 
-The rules live in `asm/jetfighter.asm` - HMCS44 assembly source in this repository, under
-the real chip's 2048-word program and 160-nibble RAM ceilings. The timing, the display
-shimmer and the sound are not approximated; they fall out of running it. When the machine
-plays a note it stops scanning the tube, because it has one core and no sound hardware -
-so on the real unit, and on this one, **every beep is also a visible blink of the whole
-display**.
+The rules live in `asm/jetfighter.asm` - assembly source in this repository, written under
+the real chip's program and RAM ceilings. The timing, the display shimmer and the sound are
+not approximated; they fall out of running it. When the machine plays a note it stops
+scanning the tube, because it has one core and no sound hardware - so on the real unit, and
+on this one, **every beep is also a visible blink of the whole display**.
+
+> **The processor is wrong, and is being rebuilt.** The unit's microcontroller is a
+> **Texas Instruments TMS1370**, custom mask **MP2110** - legible in
+> [the teardown photograph](assets/reference/tube-teardown/), and named in MAME's own
+> device list as *"1980, Gakken Invader/Tandy Fire Away"*. So this machine runs the Gakken
+> Invader program behind Jet Fighters artwork, which is why its logic reads as Space
+> Invaders.
+>
+> The core in `src/machine/cpu/` currently implements a **Hitachi HMCS44**, chosen early
+> from a generalisation about Gakken's suppliers and a match between the box's "2K Bytes
+> L.S.I." and a datasheet - neither ever checked against the chip. Everything measured from
+> the glass and the speaker is unaffected; the CPU, the assembler and the ROM are not.
+> [`docs/evidence/open-questions.md`](docs/evidence/open-questions.md) records the finding,
+> how the error entered, and what a rebuild has to carry.
 
 ## What the teardown changed
 
@@ -130,7 +142,7 @@ Five layers, mirroring the physical machine. Data flows the way electricity did.
 ```mermaid
 flowchart LR
     ASM[asm/jetfighter.asm<br/>the game program] -->|assembled by tools/hmasm| ROM[ROM image<br/>2048 x 10 bits]
-    ROM --> CPU[src/machine/cpu/<br/>HMCS44 core, cycle-accurate]
+    ROM --> CPU[src/machine/cpu/<br/>HMCS44 core - being rebuilt as TMS1370]
     SW[src/ui/ case controls] -->|strobe matrix| CPU
     CPU -->|D0-D9 grids, R-port plates| BOARD[src/machine/board/<br/>grid x plate PWM state]
     CPU -->|D14 pin edges| SPK[src/machine/audio/<br/>square reconstruction]
@@ -142,9 +154,9 @@ flowchart LR
 
 | Path                 | What lives there                                                                                                                     |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `asm/jetfighter.asm` | The game itself - every rule, cadence, sound and score, in HMCS44 assembly under the real 2048-word / 160-nibble limits.               |
+| `asm/jetfighter.asm` | The game itself - every rule, cadence, sound and score, in assembly under the chip's program and RAM limits. Currently HMCS44; see the note above.  |
 | `tools/hmasm/`       | The assembler, its CLI, and the Vite plugin that makes an `.asm` file an importable module.                                            |
-| `src/machine/cpu/`   | The HMCS44 core: 91 instructions, 4-bit ALU, 4-level stack, timer, R/D ports. Advances only when stepped.                              |
+| `src/machine/cpu/`   | The CPU core: 4-bit ALU, stack, timer, output ports. Advances only when stepped. Currently an HMCS44; the unit's chip is a TMS1370.     |
 | `src/machine/board/` | The board: PWM display state, the input strobe matrix, D14 edge capture, and the power switch.                                         |
 | `src/machine/tube/`  | The tube: the segment atlas (shape and (grid, plate) address of every phosphor segment) and the renderer's phosphor rise/decay curves. |
 | `src/machine/audio/` | The speaker: cycle-stamped edges placed on a sample timeline and band-limited into a waveform.                                         |
