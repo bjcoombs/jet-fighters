@@ -9,12 +9,19 @@ import {
   LANE_COUNT,
   PLAYFIELD,
   RECT,
+  RULER_MARKS_PER_TICK,
+  RULER_MARK_COUNT,
+  RULER_MARK_PITCH,
+  RULER_SPAN_MARKS,
   RULER_TICKS,
+  RULER_TICK_COUNT,
   SCORE_BOX,
   VIEWBOX,
   columnCenterX,
   laneCenterY,
   projectTube,
+  rulerMarkX,
+  rulerTickX,
   viewBoxMatchesAtlas,
 } from './layout.js';
 
@@ -133,19 +140,68 @@ describe('columnCenterX and laneCenterY', () => {
   });
 });
 
+describe('the ruler scale', () => {
+  // Every figure below is the registered reading off the two lit close-ups; see
+  // RULER_SPAN_MARKS in layout.ts for the method and the per-photograph table.
+  // These pin the ruler as its own scale, which is the thing that was assumed
+  // rather than measured: it was taken to be five marks per cell, and it is not.
+
+  it('spans the field in seven and a half tick pitches, not seven', () => {
+    // Measured 7.464 and 7.483. Deliberately not COLUMN_COUNT.
+    expect(RULER_SPAN_MARKS / RULER_MARKS_PER_TICK).toBe(7.5);
+    expect(FIELD.width / RULER_MARK_PITCH).toBeCloseTo(RULER_SPAN_MARKS, 10);
+  });
+
+  it('runs its ticks on a pitch that is not the cell pitch', () => {
+    const tickPitch = RULER_MARK_PITCH * RULER_MARKS_PER_TICK;
+    // 0.937 of a cell: close enough to have been mistaken for it, far enough
+    // that by the last tick the two are a third of a cell apart.
+    expect(tickPitch / CELL.width).toBeCloseTo(0.9333, 4);
+    expect(Math.abs(rulerTickX(RULER_TICK_COUNT) - (FIELD.x + 7 * CELL.width))).toBeGreaterThan(
+      CELL.width / 4,
+    );
+  });
+
+  it('starts one pitch right of the left crosshair and stops short of the right', () => {
+    expect(rulerMarkX(0)).toBeCloseTo(FIELD.x, 10);
+    expect(rulerTickX(1) - FIELD.x).toBeCloseTo(RULER_MARK_PITCH * RULER_MARKS_PER_TICK, 10);
+    // Seven ticks fit; an eighth would fall past the right rail.
+    const rightRail = FIELD.x + FIELD.width;
+    expect(rulerTickX(RULER_TICK_COUNT)).toBeLessThan(rightRail);
+    expect(rulerTickX(RULER_TICK_COUNT + 1)).toBeGreaterThan(rightRail);
+    // The last drawn mark stops short of the right crosshair rather than on it.
+    expect(RULER_MARK_COUNT).toBe(RULER_TICK_COUNT * RULER_MARKS_PER_TICK + 1);
+    expect(rulerMarkX(RULER_MARK_COUNT)).toBeLessThan(rightRail);
+  });
+});
+
 describe('RULER_TICKS', () => {
   it('is the printed 10 / 3 / 2 / 1 / G ruler', () => {
     expect(RULER_TICKS.map((t) => t.label)).toEqual(['10', '3', '2', '1', 'G']);
   });
 
-  it('marks the battleship zone at column 0 and the capture line at the last', () => {
-    expect(RULER_TICKS[0].column).toBe(0);
-    expect(RULER_TICKS.at(-1)?.column).toBe(COLUMN_COUNT - 1);
+  it('drops each numeral on the tick the photographs put it on', () => {
+    // Ticks 1, 2, 3, 4 and 6 of the seven. Ticks 5 and 7 carry no label. Every
+    // drop was measured within the tick's own 2.6-unit printed width in both
+    // close-ups; the worst was G at 1.29.
+    expect(RULER_TICKS.map((t) => t.tick)).toEqual([1, 2, 3, 4, 6]);
+  });
+
+  it('puts every numeral on a tick the ruler actually draws', () => {
+    // The regression this whole change exists to stop: labels placed in one
+    // coordinate system and ticks drawn in another.
+    for (const tick of RULER_TICKS) {
+      expect(tick.tick, `${tick.label} is an integer tick`).toBe(Math.round(tick.tick));
+      expect(tick.tick, `${tick.label} is within the run`).toBeGreaterThanOrEqual(1);
+      expect(tick.tick, `${tick.label} is within the run`).toBeLessThanOrEqual(RULER_TICK_COUNT);
+      expect(rulerTickX(tick.tick)).toBeGreaterThan(FIELD.x);
+      expect(rulerTickX(tick.tick)).toBeLessThan(FIELD.x + FIELD.width);
+    }
   });
 
   it('advances left to right', () => {
     for (let i = 1; i < RULER_TICKS.length; i += 1) {
-      expect(RULER_TICKS[i].column).toBeGreaterThan(RULER_TICKS[i - 1].column);
+      expect(RULER_TICKS[i].tick).toBeGreaterThan(RULER_TICKS[i - 1].tick);
     }
   });
 });

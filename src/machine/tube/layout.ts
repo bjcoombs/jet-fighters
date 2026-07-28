@@ -201,28 +201,100 @@ export function laneCenterY(lane: number): number {
   return FIELD.y + ((lane + 0.5) / LANE_COUNT) * FIELD.height;
 }
 
-/** A silkscreened ruler label and the (possibly fractional) column it marks. */
+/**
+ * The dotted ruler's own scale: marks per tick, and how many mark pitches of it
+ * the field is wide.
+ *
+ * **The ruler is not the cell lattice, and it does not divide the field into
+ * cells.** That was the standing assumption - "five marks to the column, so the
+ * ticks land on the column boundaries" - and the photographs contradict it.
+ *
+ * Both lit close-ups in `assets/reference/` were registered to this coordinate
+ * space before anything was read off them. Each is shot slightly off axis, so
+ * the printed frame photographs as a trapezoid rather than a rectangle: the left
+ * and right rails were located at two rows apiece and interpolated to the
+ * ruler's own row, and every x below is quoted as a fraction of the frame width
+ * at that row. That removes the camera distance and the keystone together, and
+ * it is why the two photographs agree here to better than a percent where their
+ * raw pixel scales differ by ten.
+ *
+ * | Quantity                                      | score0 | score10 |
+ * | --------------------------------------------- | ------ | ------- |
+ * | left crosshair, fraction of frame width       | 0.2065 | 0.2008  |
+ * | right crosshair                               | 0.9979 | 0.9994  |
+ * | tick pitch                                    | 0.1060 | 0.1067  |
+ * | field width, in tick pitches                  | 7.464  | 7.483   |
+ * | first tick, in pitches right of the crosshair | 1.002  | 1.007   |
+ *
+ * The left crosshair lands on {@link FIELD}`.x` (0.2 by {@link
+ * SCORE_BOX_FRACTION}) and the right one on the right rail, which is the check
+ * that the registration holds - neither was used to fit it. Between them the run
+ * is **seven and a half tick pitches**, so there are **seven** ticks, the first a
+ * full pitch right of the left crosshair and the last half a pitch short of the
+ * right one. The previous model drew six at a pitch of one cell - 13% wider -
+ * which is why the error grew left to right and was worst at `G`.
+ *
+ * Counted off score10, where the glass is cleanest: four dots, then seven ticks
+ * with four dots between each pair, then one last dot before the right
+ * crosshair. 36 marks drawn of the 37.5 the field spans.
+ */
+export const RULER_MARKS_PER_TICK = 5;
+export const RULER_SPAN_MARKS = 37.5;
+export const RULER_MARK_COUNT = 36;
+export const RULER_TICK_COUNT = 7;
+
+/** The ruler's mark pitch: the spacing of the dots along the top rail. */
+export const RULER_MARK_PITCH = FIELD.width / RULER_SPAN_MARKS;
+
+/** Centre-x of ruler mark `mark`, counting from the left crosshair at mark 0. */
+export function rulerMarkX(mark: number): number {
+  return FIELD.x + mark * RULER_MARK_PITCH;
+}
+
+/** Centre-x of ruler tick `tick`, 1-based. Tick 0 would be the left crosshair. */
+export function rulerTickX(tick: number): number {
+  return rulerMarkX(tick * RULER_MARKS_PER_TICK);
+}
+
+/** A silkscreened ruler label and the 1-based ruler tick its bracket drops on. */
 export interface RulerTick {
   readonly label: string;
-  readonly column: number;
+  readonly tick: number;
 }
 
 /**
  * The printed 10 / 3 / 2 / 1 / G ruler: 10 marks the battleship zone, 3 / 2 / 1
- * the jet scoring bands, and G the capture line at the last cell.
+ * the jet scoring bands, and G the capture line at the player's end.
  *
- * Now placed from the ROM's own scoring table rather than from v1's spacing.
- * `PAT_COLUMN` awards 3 points in its column 5, 2 in columns 4 and 3, 1 in
- * columns 2 and 1, and the battleship's zone carries the printed 10; a ROM
- * column maps to cell `6 - column`. So 3 sits over cell 1, 2 spans cells 2-3,
- * 1 spans cells 4-5, and G is the player's own cell.
+ * **A numeral is placed by the tick its bracket drops on, not by a column.**
+ * Registered as above, the five bracket drops land on ticks 1, 2, 3, 4 and 6,
+ * every one of them inside the tick's own printed width:
+ *
+ * | Label | tick | drop - tick, score0 | score10 |
+ * | ----- | ---- | ------------------- | ------- |
+ * | `10`  | 1    | +0.18               | +0.00   |
+ * | `3`   | 2    | -0.18               | +0.00   |
+ * | `2`   | 3    | +0.18               | +0.00   |
+ * | `1`   | 4    | -0.35               | -0.64   |
+ * | `G`   | 6    | -0.53               | -1.29   |
+ *
+ * in atlas units, against a tick 2.6 wide. Ticks 5 and 7 carry no label.
+ *
+ * These were previously placed at cell centres - `10` over cell 0, `2` spanning
+ * cells 2-3, `1` spanning cells 4-5 - reasoning from the ROM's `PAT_COLUMN`
+ * scoring table. That was an inference and the ink disagrees with it: the ruler
+ * is printed on the front overlay and the cells are on the tube behind it, the
+ * two run on different pitches (see {@link RULER_SPAN_MARKS}), and under it no
+ * numeral landed on a tick at all. The photographs are the authority on where
+ * the ink is, so the scoring table no longer places the numerals. Nothing about
+ * scoring itself changes - the ROM is untouched.
  */
 export const RULER_TICKS: readonly RulerTick[] = [
-  { label: '10', column: 0 },
-  { label: '3', column: 1 },
-  { label: '2', column: 2.5 },
-  { label: '1', column: 4.5 },
-  { label: 'G', column: COLUMN_COUNT - 1 },
+  { label: '10', tick: 1 },
+  { label: '3', tick: 2 },
+  { label: '2', tick: 3 },
+  { label: '1', tick: 4 },
+  { label: 'G', tick: 6 },
 ];
 
 /** The atlas box mapped onto a canvas, uniformly scaled and centred. */

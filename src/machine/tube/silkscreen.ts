@@ -24,9 +24,12 @@ import {
   FIELD,
   LANE_COUNT,
   PLAYFIELD,
+  RULER_MARKS_PER_TICK,
+  RULER_MARK_COUNT,
   RULER_TICKS,
-  columnCenterX,
   laneCenterY,
+  rulerMarkX,
+  rulerTickX,
 } from './layout.js';
 import { SILKSCREEN } from './palette.js';
 
@@ -244,13 +247,15 @@ const BOTTOM_RAIL_OVERHANG = 9.5;
  *
  * The dots are chunky - 9.5 px across, so a radius of 1.8 - and they run at a
  * single uniform pitch with every fifth mark replaced by a short vertical tick,
- * which is what reads as "groups of four separated by a tick". Measured tick
- * pitch is 82.4 px against a 16.0 px mark pitch: five marks to the column, so the
- * ticks land on the column boundaries. The tick itself is 7 x 21 px, standing
- * clear of the rail above and below.
+ * which is what reads as "groups of four separated by a tick". The tick itself is
+ * 7 x 21 px, standing clear of the rail above and below.
+ *
+ * Where the ticks fall is layout.ts's business, not this file's: the pitch is not
+ * a cell and the run does not end on the right rail. See {@link RULER_SPAN_MARKS}
+ * for the registration those figures come off, and {@link rulerMarkX} for the
+ * scale itself.
  */
 const RULER_DOT_RADIUS = 1.8;
-const RULER_MARKS_PER_COLUMN = 5;
 const RULER_TICK_WIDTH = 2.6;
 const RULER_TICK_HEIGHT = 7.8;
 
@@ -277,20 +282,25 @@ const CROSSHAIR_ARM = 9.5;
  * twelfth. The bracket is an arm leaving the numeral's shoulder at 0.55 of cap
  * height, running sideways, then dropping to just short of the rail: `10` reads
  * as `10⌐`. The last label (`G`) has its bracket mirrored - arm and drop to its
- * left - because its own column boundary is the right rail, which is exactly what
- * the photographs show for `G`.
+ * left, so it reads as `⌐G` - which is what both photographs show.
  *
- * The reach is 0.38 of a cell rather than the half cell that would land every
- * drop on a column-boundary tick, because `RULER_TICKS` puts `1` and `G` in
- * adjacent columns: at half a cell `1`'s right-hand drop and `G`'s mirrored
- * left-hand drop would be the same line, and the pair would read as one T rather
- * than two brackets. 0.38 keeps them ten units apart. On the real face the
- * labelled columns are never adjacent, so the question does not arise there.
+ * **The drop lands on a ruler tick**, and the arm is what sets the numeral's
+ * distance from it - so the numeral is placed from its drop outward, not the
+ * drop from the numeral. `RULER_TICKS` says which tick each label drops on and
+ * how that was measured. The arm runs from the numeral's near edge to the drop
+ * and measures 7.7-9.0 atlas units across the eight readable brackets in the two
+ * close-ups (score0 7.7 / 8.1 / 8.1 / 8.4, score10 9.0 / 9.0 / 8.4 / 8.4 / 9.3),
+ * so 8.5.
+ *
+ * The reach used to be 0.38 of a cell measured from the numeral's *centre*,
+ * chosen to keep `1` and `G` from sharing a drop line when they sat in adjacent
+ * columns. Both halves of that are gone: the labels are no longer placed by
+ * column, and on their measured ticks `1` and `G` are two pitches apart.
  */
 const RULER_LABEL_SIZE = 12.3;
 const RULER_LABEL_CAP = 8.9;
 const RULER_LABEL_RISE_FRACTION = 0.14;
-const RULER_ELBOW_ARM_FRACTION = 0.38;
+const RULER_ELBOW_ARM = 8.5;
 const RULER_ELBOW_GAP_FRACTION = 0.06;
 
 /**
@@ -431,19 +441,18 @@ function drawBottomRail(ctx: CanvasRenderingContext2D): void {
 }
 
 /**
- * The ruler: chunky dots at a uniform pitch, every fifth mark a column tick.
+ * The ruler: chunky dots at a uniform pitch, every fifth mark a tick.
  *
- * The run starts one pitch right of the left crosshair and stops one pitch short
- * of the right one, so both crosshairs stand alone at the ends.
+ * The run starts one pitch right of the left crosshair, so that crosshair stands
+ * alone; at the other end it simply stops where the printed run stops, a mark and
+ * a half short of the right crosshair. See {@link RULER_SPAN_MARKS}.
  */
 function drawRuler(ctx: CanvasRenderingContext2D): void {
   const y = PLAYFIELD.y;
-  const marks = RULER_MARKS_PER_COLUMN * COLUMN_COUNT;
-  const pitch = FIELD.width / marks;
 
-  for (let mark = 1; mark < marks; mark += 1) {
-    const x = FIELD.x + mark * pitch;
-    if (mark % RULER_MARKS_PER_COLUMN === 0) {
+  for (let mark = 1; mark <= RULER_MARK_COUNT; mark += 1) {
+    const x = rulerMarkX(mark);
+    if (mark % RULER_MARKS_PER_TICK === 0) {
       ctx.fillStyle = SILKSCREEN;
       ctx.fillRect(
         x - RULER_TICK_WIDTH / 2,
@@ -487,7 +496,6 @@ function drawRulerLabels(ctx: CanvasRenderingContext2D): void {
   const baseline = PLAYFIELD.y - PLAYFIELD.height * RULER_LABEL_RISE_FRACTION;
   const armY = baseline - RULER_LABEL_CAP * 0.55;
   const dropBottom = PLAYFIELD.y - PLAYFIELD.height * RULER_ELBOW_GAP_FRACTION;
-  const reach = CELL.width * RULER_ELBOW_ARM_FRACTION;
 
   ctx.font = `bold ${RULER_LABEL_SIZE}px sans-serif`;
   ctx.textAlign = 'center';
@@ -495,11 +503,14 @@ function drawRulerLabels(ctx: CanvasRenderingContext2D): void {
 
   for (let index = 0; index < RULER_TICKS.length; index += 1) {
     const tick = RULER_TICKS[index];
-    // The last label's own column boundary is the right rail, so its bracket
-    // mirrors and reaches back into the field instead.
+    // `G` is the one mirrored bracket - arm and drop to its left - which is what
+    // both photographs show, and it is the last label.
     const side = index === RULER_TICKS.length - 1 ? -1 : 1;
-    const x = columnCenterX(tick.column);
+    // The drop is the fixed point: it lands on the tick, and the numeral hangs
+    // off the far end of the arm.
+    const dropX = rulerTickX(tick.tick);
     const halfAdvance = (tick.label.length * RULER_LABEL_SIZE * 0.6) / 2;
+    const x = dropX - side * (RULER_ELBOW_ARM + halfAdvance);
 
     ctx.fillStyle = SILKSCREEN;
     ctx.fillText(tick.label, x, baseline);
@@ -507,8 +518,8 @@ function drawRulerLabels(ctx: CanvasRenderingContext2D): void {
     ctx.strokeStyle = SILKSCREEN;
     ctx.beginPath();
     ctx.moveTo(x + side * (halfAdvance + LINE_WIDTH * 0.5), armY);
-    ctx.lineTo(x + side * reach, armY);
-    ctx.lineTo(x + side * reach, dropBottom);
+    ctx.lineTo(dropX, armY);
+    ctx.lineTo(dropX, dropBottom);
     ctx.stroke();
   }
 }
