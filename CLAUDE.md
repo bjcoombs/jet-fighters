@@ -1,10 +1,18 @@
 # Jet Fighters - Claude Code Instructions
 
-Emulation of the 1979 Gakken "Jet Fighter" / CGL "Jet Fighters" tabletop VFD game: an
-HMCS44 microcontroller running a game program we author, scanning a vacuum fluorescent
-tube. PRD: `docs/prd/jet-fighters-v2.md` (paths in this file are relative to the repo
-root). `docs/prd/jet-fighters-v1.md` describes the superseded behavioural replica and is
-kept only as the record of what the rules are.
+Emulation of the 1979 Gakken "Jet Fighter" / CGL "Jet Fighters" tabletop VFD game: a
+4-bit microcontroller running a game program we author, scanning a vacuum fluorescent
+tube.
+
+**The unit's chip is a Texas Instruments TMS1370 (mask MP2110)**, not the Hitachi HMCS44
+this codebase currently implements - see `docs/evidence/open-questions.md` section 7 for
+the evidence, how the error entered, and what a rebuild must carry. The tube, audio and
+gameplay layers are unaffected; the CPU, assembler and ROM are being rebuilt.
+
+PRD: `docs/prd/jet-fighters-v2.md` (paths in this file are relative to the repo root),
+superseded on its hardware claim and annotated accordingly.
+`docs/prd/jet-fighters-v1.md` describes the superseded behavioural replica and is kept
+only as the record of what the rules are.
 
 ## Architecture rules
 
