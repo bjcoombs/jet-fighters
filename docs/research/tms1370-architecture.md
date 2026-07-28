@@ -101,9 +101,12 @@ Compare the siblings, all from the same file:
 | TMS1400 | 8 | 11 | 3 | **3** | **4096×8** | 128×4 | 28-pin | `tms1400.cpp:38` |
 
 So: **TMS1370 = TMS1300 core and memory, in the same 40-pin pinout, with high-voltage
-outputs.** The high-voltage part is why it is in a VFD game - it drives the tube's grids
-and plates without external level shifting. That is the whole of what distinguishes it,
-in MAME's model.
+outputs.** That is the whole of what distinguishes it, in MAME's model.
+
+Why a VFD game uses the high-voltage variant - direct drive of the tube's grids and plates
+without external level shifting - is **inferred**. It is the obvious reason and it is
+consistent with every TMS1370 set in MAME being a VFD handheld, but neither S1 nor S3 states
+it, and the electrical case belongs to the I/O document, not this one.
 
 The TMS1400's extra ROM and 3-level stack are listed only to make clear what the TMS1370
 does **not** have. One stack level is a hard constraint on the program to be written.
@@ -115,8 +118,8 @@ TI's own framing of the TMS1100/1300, for the same facts from the other side:
 > RAM capacity. [...] The TMS 1100/1300 operation is identical to that of the TMS
 > 1000/1200 except where noted otherwise. (S3 §3.1)
 
-listing for the TMS1300: 16,384-bit ROM, 512-bit RAM, 16 individually latched R outputs,
-40-pin package (S3 §3.1).
+The same section lists the TMS1300 as: 16,384-bit ROM, 512-bit RAM, 16 individually latched
+R outputs, 40-pin package (S3 §3.1).
 
 **Agreement**: 2048×8 ROM and 128×4 RAM are stated by both S1 and S3. 16 R outputs on the
 40-pin part likewise. These are the safest claims in this document.
@@ -204,8 +207,8 @@ void tms1k_base_device::op_br1()
 ```
 
 **Inside a subroutine (call latch set), a branch cannot change page.** PA is not reloaded
-from PB. The chapter *can* still change, because `m_ca = m_cb` is unconditional. So a
-subroutine's reachable code is one page number, in either chapter - 128 words.
+from PB. The chapter *can* still change, because `m_ca = m_cb` is not guarded by the call
+latch. So a subroutine's reachable code is one page number, in either chapter - 128 words.
 
 S3 states the same thing from TI's side, and the two agree:
 
@@ -238,7 +241,7 @@ a wild jump much later, not a fault at the call site.
 | Organised as **8 files × 16 words**; X selects the file, Y selects the word | S3 §3.3; S1 `tms1k_base.cpp:724` - `m_ram_address = m_x << 4 \| m_y` |
 | X is 3 bits on this core (2 on the TMS1000) | S1 `tms1100.cpp:43` (`x_bits 3`); S3 §3.3 ("the X register (three bits long) selects one of eight possible files") |
 | There is no other addressing mode. Every memory access is at `X:Y` | S1 - `m_ram_address` is written in exactly one place, `tms1k_base.cpp:724` |
-| RAM contents at power-up are undefined | Not stated by S1 or S3 - see [What this does not settle](#what-this-does-not-settle) |
+| Power-up RAM contents | **Unestablished.** Neither S1 nor S3 says. See [What this does not settle](#what-this-does-not-settle) |
 
 Individual bits are reachable: `SBIT`, `RBIT` and `TBIT` take a 2-bit index and set, clear
 or test one bit of the addressed nibble (S1 `op_sbit`/`op_rbit` at `tms1k_base.cpp:510-524`;
@@ -413,9 +416,10 @@ not affect status placed between them makes the branch unconditional.
 | Instruction cycle time tc: **15 µs min, 60 µs max** | S3 §4 |
 | The oscillator is an on-chip RC oscillator, set by an external R and C on OSC1/OSC2, or driven externally | S3 §2.8, §4 |
 
-15 µs × 400 kHz = 6 pulses exactly; the electrical table is internally consistent with §2.8,
-and MAME's 6-subcycle loop is consistent with both. **This is the one number in the
-document with three independent confirmations.**
+The electrical table checks against the prose: the minimum instruction cycle (15 µs) is
+exactly six minimum clock cycles (2.5 µs), and the maximum (60 µs) is exactly six maximums
+(10 µs). MAME's six-subcycle loop agrees with both. **Divide-by-six is the one figure here
+confirmed three independent ways** - TI's prose, TI's electrical table, and running code.
 
 ### What that means for this unit
 
