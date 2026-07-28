@@ -82,6 +82,50 @@ hatch the brief anticipated, adopted because the arithmetic leaves nothing else,
 not because the table ran short: it closes with a slot to spare. Its cost is
 priced in "What it costs" below.
 
+## Why re-balancing plates does not rescue the count
+
+The obvious objection to 96-vs-32 is that R11-R14 already sits outside this
+table - `SETR`/`RSTR` drive it one line at a time, free of any slot cost - so why
+not move some of the jets' vocabulary there and shrink what plates 0-2 have to
+express? Two things stop it.
+
+First, the arithmetic does not cooperate. The jets' `2^3` is the dominant factor
+in 8 x 4 x 3 = 96 - it is the only one of the three that is a power of two larger
+than 4 - so it is the term any re-balancing would have to shrink to matter, and
+shrinking it collapses exactly the vocabulary the near family exists to carry:
+"any of the 8 subsets" (see the arithmetic table above) becomes a smaller
+enumeration the moment a lane leaves plates 0-2. Moving a lane elsewhere does
+not reduce what `far` and `pair` still need to express alongside it, so no
+re-partition of 8 x 4 x 3 across "fewer plates here, more lines there" lands
+under 32 without also touching those.
+
+Second, and the reason this is not explored further as an option: which actor
+sits on which plate is not this table's decision to make. `src/machine/tube/atlas.json`
+records physical tube wiring - which plate each lane family solders to - read
+off the teardown photograph, not chosen for a PLA's convenience. Proposing a
+different assignment so the count works out would be inventing an addressing
+this project has not measured, which is exactly the class
+`docs/contract/v3.contract.md` fails a run for: "Absence of the artifact is a
+blocked run; a hand-invented addressing is a failed one." This table works
+within the plate assignment the atlas gives it. It does not get to choose one
+that fits better.
+
+## Open question: what Gakken's original ROM did
+
+Gakken's TMS1370 drove this same tube against this identical 96-vs-32
+constraint, years before this table existed. What their ROM did with it is
+unknowable here: `mp2110` (their ROM dump) and `tms1100_ginv_output.pla` (their
+O PLA) are both absent from this project, and no observation in this document
+is built on either.
+
+This is recorded as an open question, not closed by inference. The four-pass
+design below is *an* answer to the constraint - it fits within 32 slots, and the
+sweep plan it produces is verified by the tests cited throughout this document -
+but it is not shown to be *the* answer Gakken shipped. A different partition of
+the vocabulary, a different pass count, or a scheme not considered here may have
+been used instead. Should the romset ever be obtained, this is the comparison to
+make; until then, this document does not speculate about what it would show.
+
 ## The table
 
 Two banks of sixteen, because the fifth index bit is the status latch.
@@ -152,6 +196,31 @@ read as a renderer fault rather than a ROM one. `liveSubsetMask()` in
 every atlas segment on plates 0-7 exactly once - which is the assertion that
 catches it if the exception is forgotten.
 
+## What breaks if MP2110 does not carry STSL on YNEA
+
+This document treats `YNEA` as the sole route to the status latch, and from
+that, as standard-set semantics (`docs/research/tms1370-architecture.md` §5)
+inside V13's `undriven` scope: MP2110's own microinstruction PLA has not been
+decoded, so this is an assumption the project carries forward, not a measured
+fact. It is worth stating what depends on it, rather than only flagging that it
+is unverified.
+
+If MP2110's microinstruction PLA turns out not to carry STSL on `YNEA` - if the
+status latch on this mask is loaded some other way, or is not reachable the way
+`docs/research/tms1370-architecture.md` assumes - then the upper sixteen slots
+of this table (indices 16-31) are unreachable, because a set status latch is
+the only way this design has of addressing them. The score digits go with them:
+indices 16-26 are their sole occupants, and losing that bank costs the digit its
+pass-through decode along with it.
+
+The fallback, named rather than left implicit: a **lower-16-only table**. Every
+entry would have to be re-authored into indices 0-15, and the digit would lose
+the seven-segment decode TI's converter currently draws for free at slots
+16-25 - it would have to be assembled from `near`/`far`/`pair` subset masks
+through a software decoder instead, the exact cost this design presently avoids.
+This is a consequence with a named fallback, not a disclaimer: if the YNEA
+assumption is wrong, this is what it costs and this is what replaces it.
+
 ## Instruction cost of selecting an index at `TDO` time
 
 This is the section contract criterion V4 requires, and the bound it asks for.
@@ -161,6 +230,23 @@ This is the section contract criterion V4 requires, and the bound it asks for.
 | Per strobe | 2 | `TMA` from the nibble the game logic maintains for this grid and pass, then `TDO` |
 | Per bank crossing | 3 | `CLA`; `TCY k`; `YNEA` - the only route to the status latch |
 | Per sweep | 24 x 2 + 2 x 3 = **54** | |
+
+**That per-sweep figure hides a per-slot asymmetry, and task 8 should not assume
+selecting a slot is uniformly cheap.** A bank crossing is paid once per pass,
+not once per strobe, so what a single write actually costs depends on whether a
+pass has already paid for it:
+
+| Write | Instructions | Why |
+| --- | --- | --- |
+| Lower-bank slot (0-15), in sweep | 2 | `TMA`; `TDO` - the latch is already clear from the previous pass |
+| Upper-bank slot (16-31), in sweep | 2, amortised | Same `TMA`; `TDO` - the pass's one `CLA`; `TCY 1`; `YNEA` crossing is spread across every strobe pass 3 and pass 4 make |
+| Upper-bank slot (16-31), ad-hoc single write | 5 | `CLA`; `TCY k`; `YNEA` to set the latch, then `TMA`; `TDO` - there is no earlier strobe in the pass to amortise the crossing against |
+
+A `TDO` reached from inside the sweep is never the ad-hoc case; the sweep's
+pass ordering exists precisely so the crossing is always shared. The ad-hoc
+figure matters only if a routine outside the sweep writes an upper-bank slot on
+its own - the score digit's leading-zero suppression, say, forcing a redraw
+between sweeps. That costs 5 instructions for that one write, not 2.
 
 **The bound is 54 instructions per sweep, and it is a constant.** No term depends
 on the game state, on how much is on the tube, or on which skill is selected;
