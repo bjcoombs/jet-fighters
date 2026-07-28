@@ -438,9 +438,19 @@ Two cautions:
 
 1. **350 kHz is MAME's guess, and the R/C values in that comment are a guess about a guess.**
    The sibling drivers use 375 kHz (MP2105, `hh_tms1k.cpp:6842`) and 425 kHz (MP1604,
-   `hh_tms1k.cpp:7361`) with the same "approximation" wording. Anything derived from 350 kHz
-   inherits an unquantified error - plausibly ±15%, given the family's 100-400 kHz range and
-   the spread across siblings.
+   `hh_tms1k.cpp:7361`) with the same "approximation" wording.
+
+   The error is not merely unquantified - MAME quantifies it, and it is large. The driver's
+   own header (S2 `hh_tms1k.cpp:19-24`) says:
+
+   > About the approximated MCU frequency everywhere: The RC osc. is not that stable on most
+   > of these handhelds. When comparing multiple video recordings of the same game, it
+   > shows(and sounds) that the frequency range can differ up to 50kHz. This is probably
+   > exaggerated due to components getting worn out after many decades.
+
+   **±50 kHz on 350 kHz is ±14%**, unit to unit, and MAME attributes part of it to ageing -
+   which means the *owner's* unit has its own figure and no other unit's figure substitutes
+   for it.
 2. This project has already been burned by deriving an audio divisor from an assumed sweep
    rate (`docs/evidence/open-questions.md` §7, item 2). **The instruction rate is the input
    to every cadence and pitch calculation in the new ROM, and it is currently the least
@@ -481,10 +491,16 @@ ROM_LOAD( "tms1100_common2_micro.pla", 0, 867, CRC(7cc90264) SHA1(c6e1cf1ffb1780
 - MAME distinguishes at least four TMS1100 micro PLAs - `common1` through `common4` (S2,
   across `hh_tms1k.cpp`; `common2` is used by 30 sets and `common1` by 21). They are not
   all the same instruction set.
-- **The MP2110 entry is not marked `BAD_DUMP`.** Other sets using the same file are (e.g.
-  `hh_tms1k.cpp:950`, `:1818`, both "// not verified"). So this PLA was read from real
-  silicon, and the instruction set of this exact chip is a settled fact *that exists in a
-  file this document has not read*.
+- **The MP2110 entry is not marked `BAD_DUMP`**, where other sets using the same file are
+  (e.g. `hh_tms1k.cpp:950`, `:1818`, both "// not verified"). By MAME convention that means
+  verified. **Do not lean on it harder than that**: the driver's own TODO list reads
+  "Verify output PLA and microinstructions PLA for MCUs that have been dumped
+  electronically (mpla is usually the default, opla is often custom)" (S2
+  `hh_tms1k.cpp:49-50`). So MAME itself treats "this chip uses the standard micro PLA" as a
+  working assumption across the driver, and the unflagged entry is weaker evidence than the
+  flag alone suggests.
+- Either way the instruction set of this exact chip is a fact *that exists in a file this
+  document has not read*.
 - MAME's **disassembler ignores the PLA entirely** and always prints the standard TMS1100
   mnemonics (S1 `tms1k_dasm.cpp:50, 177-198`). A disassembly of `mp2110` therefore cannot
   be trusted for any microinstruction-defined opcode until the PLA is checked.
@@ -500,13 +516,19 @@ Documented for semantics, Executable for encoding, and Inferred for "this chip d
 
 ### 2. The actual oscillator frequency
 
-350 kHz is MAME's approximation (§6). Nothing measured underlies it.
+350 kHz is MAME's approximation (§6), and the family's real-world spread is ±50 kHz
+between units of the same model. Nothing measured underlies the figure for this unit.
 
-**What would settle it**: measure it from the unit, or infer it from the reference
-recordings by timing a program event of known instruction count. Second best: read the RC
-values off `assets/reference/tube-teardown/board-L1001567.jpg` and compute against the
-family's oscillator curve (S3 §4 includes a typical internal-oscillator frequency chart -
-not extracted here, and its text is a figure).
+**What would settle it**: measure it on the unit, or infer it from the reference recordings
+by timing a program event of known instruction count against the audio timebase. The second
+route is the one this project is already equipped for, and it produces a number for *this*
+unit rather than for the model.
+
+Reading the RC values off `assets/reference/tube-teardown/board-L1001567.jpg` is a weaker
+fallback than it sounds: S3 §4 charts typical internal-oscillator frequency, but MAME notes
+"TMS1000 RC curve is documented in the data manual, but not for newer ones" (S2
+`hh_tms1k.cpp:23-24`), and the TMS1370 is a newer one. It would give an order of magnitude,
+not a frequency.
 
 ### 3. Power-up RAM state
 
