@@ -642,11 +642,29 @@ function windowOf(note: Note): { from: number; to: number } {
   return { from, to };
 }
 
-/** The output window a whole crossing landed in. */
+/**
+ * The output window a whole crossing landed in, clamped to what was rendered.
+ *
+ * The clamp is not slack. A crossing still in progress when the run ends is
+ * closed at `board.cycles` - the machine's last cycle, which is past the last
+ * *rendered* sample, because the transport renders in whole quanta and the
+ * machine does not stop on one. So the last crossing of a run can name samples
+ * that do not exist, and how far past the end it reaches is a property of where
+ * the run happened to be cut rather than of the sound.
+ *
+ * Reading past the end used to yield `undefined`, and the two assertions below
+ * disagreed about it: `dominantFrequency` takes a `subarray`, which clamps, so
+ * the band check quietly measured the rendered part while the RMS check summed
+ * `undefined * undefined` and returned NaN. Clamping here gives both the same
+ * window, and the half-second floor each applies then correctly skips a crossing
+ * that was cut too short to say anything about.
+ */
 function windowOfCrossing(crossing: readonly [number, number]): { from: number; to: number } {
+  const at = (cycle: number): number =>
+    Math.round((cycle / CYCLE_HZ) * SAMPLE_RATE + offsetSamples);
   return {
-    from: Math.round((crossing[0] / CYCLE_HZ) * SAMPLE_RATE + offsetSamples),
-    to: Math.round((crossing[1] / CYCLE_HZ) * SAMPLE_RATE + offsetSamples),
+    from: Math.max(0, at(crossing[0])),
+    to: Math.min(run.out.length, at(crossing[1])),
   };
 }
 

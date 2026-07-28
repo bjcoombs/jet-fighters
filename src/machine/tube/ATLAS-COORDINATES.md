@@ -576,11 +576,30 @@ under D0-D3.
 
 ## Grid and plate mapping
 
-The MCU scans 10 display grids on D0-D9 and drives roughly 20 plate (anode) lines
-from the R ports plus D10-D13 - the topology of the closest emulated sibling,
-MAME's `ghalien` (Gakken Heiankyo Alien, HD38800 at 400 kHz). `GRID_COUNT = 10`
-and `PLATE_COUNT = 20` in `atlas-schema.ts` come from there. The atlas uses 71 of
-the 200 available addresses; the highest plate index used is 11.
+The MCU scans **9 display grids on R0-R8** and drives **12 plate (anode) lines -
+O0-O7 plus R11-R14**. `GRID_COUNT` and `PLATE_COUNT` in `atlas-schema.ts` come
+from there, by way of `src/machine/topology.ts`. The atlas uses 94 of the 108
+available addresses; the highest plate index used is 11.
+
+**That is a correction, and the numbers it replaced were 10 and 20.** Those came
+from MAME's `ghalien` (Gakken Heiankyo Alien, HD38800 at 400 kHz), adopted while
+this project believed its chip was an HD38800. It is a TMS1370 running mask
+MP2110, and MAME drives that mask as a 9 x 12 matrix - corroborated by the
+teardown photograph twice over, since seven printed playfield cells plus a
+two-cell score block is nine grids and 9 + 12 electrodes matches the 21 +/- 1
+series resistors counted on the board. See `docs/research/tms1370-io.md`
+sections 1 and 3, and `docs/evidence/open-questions.md` section 7 for how the
+error entered.
+
+One segment moved as a result: **`score_label` had grid 9 to itself and now sits
+on grid 8, plate 7**, beside the units digit on the plate that column was not
+using. Nothing else moved - the atlas had never addressed a plate above 11, so
+narrowing the plate bound rejects addresses rather than invalidating data.
+
+The rest of this section predates the teardown and is not reliable as an address
+table; `atlas.json` is. It is kept for the *reasoning* about plate-assignment
+regularity, which survives the chip correction, and for the assumption list
+below.
 
 Grids are assigned as vertical strips of the tube, left to right, which is how a
 scanned VFD is normally laid out and what the sweep loop in the game ROM will
@@ -596,8 +615,7 @@ expect:
 | D5 | Distance column 5 (the G / capture line) | 0-2 jets, 3-5 colons, 6-8 the player's ship at lanes 0-2, 9-11 the burst where it is destroyed |
 | D6 | SCORE digit 0 (hundreds) | 0-6 = seven-segment a-g |
 | D7 | SCORE digit 1 (tens) | 0-6 = seven-segment a-g |
-| D8 | SCORE digit 2 (units) | 0-6 = seven-segment a-g |
-| D9 | Status | 0 SCORE label |
+| D8 | SCORE digit 2 (units) | 0-6 = seven-segment a-g, 7 the SCORE label |
 
 The plate assignment is deliberately regular, and the regularity is now four
 roles rather than two. **On every playfield grid, plate `n` is lane `n`'s jet,
@@ -616,8 +634,10 @@ launcher, and no dart in the launcher's own cell.
 
 ### Twelve plates a grid was the ROM's habit, not the tube's
 
-`PLATE_COUNT` is 20 here and in `src/machine/board/display.ts`, where the board
-wires the whole twenty-line plate bus to R0-R4. The game ROM declared only
+`PLATE_COUNT` was 20 here and in `src/machine/board/display.ts`, where the board
+wired the whole twenty-line plate bus to R0-R4. The real chip has twelve, so the
+paragraph below reads as an argument for a ceiling the hardware turns out to
+impose after all - by a route this section did not anticipate. The game ROM declared only
 `R_PLATE0..2` - R0, R1, R2, twelve plates - for as long as every grid fitted in
 twelve, and that made the twelve look like a hardware ceiling. It is not one.
 
@@ -674,9 +694,16 @@ arrives.
    **The ROM now drives it**, which it did not before.
 8. **`score_label` is an extra segment beyond this task's brief.**
    `device-front-lit.jpg` clearly shows the word SCORE lit in cyan, so it is a
-   phosphor segment and it is in the atlas as a single block on D9 plate 0. Its
-   `path` is the word's bounding rectangle, not letterforms - task 6 should draw
-   the word, not fill the box.
+   phosphor segment and it is in the atlas as a single block. It sat on grid 9
+   plate 0 while the atlas was addressed for ten grids; the TMS1370 has nine, so
+   it moved to **grid 8 plate 7**, sharing the units digit's cell. Its `path` is
+   traced letterforms rather than the bounding rectangle it started as.
+
+   The move is forced by the pin budget rather than derived from any per-segment
+   evidence, and it must not be read as one: which grid drives which segment
+   remains unsettled for every segment in this atlas, `score_label` included.
+   Settling it needs `ginv.svg` from the MAME romset, which this project does not
+   have. See `docs/research/tms1370-io.md`, "What this does not settle".
 
 ### Known segment overlaps
 

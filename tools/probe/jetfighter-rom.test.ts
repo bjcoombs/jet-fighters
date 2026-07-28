@@ -55,8 +55,8 @@ const PLATE_LAUNCHER = PLATE_PLAYER;
  * destruction under grid 5. Grid 4 carries no segment on these plates.
  */
 const PLATE_BURST = [9, 10, 11];
-/** Grid 9 only: the lit SCORE label. */
-const PLATE_SCORE_LABEL = 0;
+/** The lit SCORE label, beside the units digit on grid 8's spare plate. */
+const PLATE_SCORE_LABEL = 7;
 
 /** Playfield geometry, mirroring the ROM's "Playfield geometry" block. */
 const GRID_COLUMN_LAST = 6;
@@ -73,7 +73,16 @@ const GRID_SCORE_T = 7;
 const GRID_SCORE_U = 8;
 /** The hundreds half-digit, on the tens digit's own grid. */
 const PLATE_SCORE_HUNDREDS = 7;
-const GRID_STATUS = 9;
+/**
+ * The grid the SCORE label sits on: the units digit's.
+ *
+ * It had grid 9 to itself while the atlas was addressed for the HMCS44's ten
+ * grids. The TMS1370 on the real board drives nine, R0-R8, so there is no tenth
+ * grid for a one-segment status cell - the label moved beside the units digit,
+ * onto the plate that column was not using. See docs/research/tms1370-io.md
+ * section 1.
+ */
+const GRID_SCORE_LABEL = GRID_SCORE_U;
 
 /**
  * Jets in the air at once (the ROM's AIRBORNE_MAX).
@@ -128,6 +137,18 @@ function platesUnder(board: Board, grid: number): number[] {
     .filter((segment) => segment.grid === grid && segment.duty > 0)
     .map((segment) => segment.plate)
     .sort((left, right) => left - right);
+}
+
+/**
+ * The seven-segment plates lit under a score grid: plates 0-6, a-g.
+ *
+ * Both score grids carry something on plate 7 besides the digit - the hundreds
+ * half-digit on grid 7, the SCORE label on grid 8 - and neither is a segment of
+ * the digit. This reads the digit alone so an assertion about what number the
+ * column shows is not also an assertion about its neighbour.
+ */
+function digitPlates(board: Board, grid: number): number[] {
+  return platesUnder(board, grid).filter((plate) => plate < PLATE_SCORE_HUNDREDS);
 }
 
 /**
@@ -262,9 +283,12 @@ describe('the field the ROM puts up at power-on', () => {
     expect(platesUnder(board, GRID_LAUNCH)).not.toContain(PLATE_LAUNCHER[0]);
   });
 
-  it('lights the SCORE label, and only that, on the status grid', () => {
-    // The tube has nothing else on this grid: no lives display, owner-confirmed.
-    expect(platesUnder(board, GRID_STATUS)).toEqual([PLATE_SCORE_LABEL]);
+  it('lights the SCORE label beside the units digit', () => {
+    // There is no lives display and never was, owner-confirmed; the label is
+    // the whole of the tube's status readout. It shares the units digit's grid
+    // now, so what is asserted is that its own plate is lit - the digit's
+    // segments are asserted separately, below.
+    expect(platesUnder(board, GRID_SCORE_LABEL)).toContain(PLATE_SCORE_LABEL);
   });
 
   it('brings the first jet in at the far column, in one lane only', () => {
@@ -314,8 +338,14 @@ describe('the field the ROM puts up at power-on', () => {
     // the hundreds consulted its own digit before drawing. A leading digit is
     // blanked when it and every digit above it is zero; the units digit is not a
     // leading digit, so zero is a lit `0` and never a blank readout.
-    expect(platesUnder(board, GRID_SCORE_U)).toEqual(DIGIT_ZERO_PLATES);
-    expect(platesUnder(board, GRID_SCORE_T)).toEqual(DIGIT_BLANK_PLATES);
+    // The label shares this column and is always lit, so it is taken out
+    // before the digit is read - a digit column's segments are plates 0-6.
+    expect(digitPlates(board, GRID_SCORE_U)).toEqual(DIGIT_ZERO_PLATES);
+    expect(digitPlates(board, GRID_SCORE_T)).toEqual(DIGIT_BLANK_PLATES);
+    // And the label is still there: a units write that overwrote its nibble
+    // rather than ORing into it would blank it, and would pass every
+    // assertion about the digit itself.
+    expect(platesUnder(board, GRID_SCORE_U)).toContain(PLATE_SCORE_LABEL);
     // The hundreds is a half-digit sharing the tens digit's cell, so "blank"
     // means its one plate is dark rather than a whole column being dark.
     expect(platesUnder(board, GRID_SCORE_T)).not.toContain(PLATE_SCORE_HUNDREDS);
@@ -369,7 +399,7 @@ describe('the score readout blanks leading digits, and only leading digits', () 
     // reach it and the ship is drawn in whichever lane it is standing in.
     const board = boardAtFirstTensDigit();
     expect(platesUnder(board, GRID_SCORE_T)).toEqual(DIGIT_ONE_PLATES);
-    expect(platesUnder(board, GRID_SCORE_U).length).toBeGreaterThan(0);
+    expect(digitPlates(board, GRID_SCORE_U).length).toBeGreaterThan(0);
     expect(platesUnder(board, GRID_SCORE_T)).not.toContain(PLATE_SCORE_HUNDREDS);
   }, 30_000);
 
@@ -382,7 +412,7 @@ describe('the score readout blanks leading digits, and only leading digits', () 
     for (let frame = 0; frame < 400; frame += 1) {
       board.setFire(frame % 2 === 0);
       board.runFrames(1);
-      expect(platesUnder(board, GRID_SCORE_U).length).toBeGreaterThan(0);
+      expect(digitPlates(board, GRID_SCORE_U).length).toBeGreaterThan(0);
     }
   });
 });
