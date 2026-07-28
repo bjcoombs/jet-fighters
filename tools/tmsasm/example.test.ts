@@ -18,8 +18,13 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { assemble, type AssemblyResult } from './assembler.js';
-import { formatListing, LISTING_COLUMNS, LISTING_KEYS, LISTING_SEPARATOR } from './output.js';
-import { romImage } from './output.js';
+import {
+  formatListing,
+  LISTING_COLUMNS,
+  LISTING_KEYS,
+  LISTING_SEPARATOR,
+  romImage,
+} from './output.js';
 import { RAM_SIZE, RESET_ADDRESS, ROM_SIZE, WORD_MASK } from './memory.js';
 
 const FIXTURE = fileURLToPath(new URL('./fixtures/demo.asm', import.meta.url));
@@ -141,12 +146,11 @@ describe('the fixture exercises the directive set', () => {
     );
   });
 
-  it('emits .DB text one word per character and .DW two words per item', () => {
-    const name = result.symbols.find((symbol) => symbol.name === 'name')?.value as number;
-    expect(name).toBeDefined();
-    // "JET" - three words, whatever physical offsets the LFSR gave them.
+  it('emits .DB text one word per character, wherever the LFSR put them', () => {
+    expect(result.symbols.find((symbol) => symbol.name === 'name')).toBeDefined();
+    // "JET" - three words, at whatever physical offsets the LFSR gave them.
     const letters = result.words.filter((word) => [0x4a, 0x45, 0x54].includes(word.word));
-    expect(letters.length).toBeGreaterThanOrEqual(3);
+    expect(letters).toHaveLength(3);
   });
 
   it('resolves a forward branch to a label defined later in the file', () => {

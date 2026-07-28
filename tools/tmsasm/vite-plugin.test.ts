@@ -2,8 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { AsmError } from './assembler.js';
-import { OPLA_SLOT_COUNT } from './assembler.js';
+import { AsmError, OPLA_SLOT_COUNT } from './assembler.js';
 import { ROM_SIZE } from './memory.js';
 import { ASM_EXTENSION, compileAsmModule, isAsmId, tmsasm } from './vite-plugin.js';
 
