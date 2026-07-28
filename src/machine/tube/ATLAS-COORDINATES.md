@@ -230,6 +230,23 @@ is eight times finer than either, so nothing that could be a feature is at risk.
 `trace_atlas.py` computes it from the photograph on every run rather than
 carrying a number someone could nudge.
 
+**That tolerance is measured on the playfield, and the score block is not the
+playfield** - it is a dimmer part of the plate against a different background,
+so whether the figure covers it there is a question rather than an assumption.
+It does: each of the three score boxes traces to **1.00 px** of its own
+repeatability against the 1.41 px the playfield probes give, so the simplifier
+is discarding less than the score's trace can distinguish. `trace_atlas.py`
+prints all three on every run beside the tolerance. Two cautions on reading
+that number. It nudges *both* mask levels rather than the print level alone -
+for a cyan segment the traced boundary is the rim grown out of the bright core,
+which the phosphor level sets and the print level only caps, so nudging the
+print level by itself would move a boundary the trace does not use and report a
+repeatability far better than it has. And it is a nearest-*vertex* distance on
+a contour carrying a vertex per pixel, so it cannot resolve much below 1 px and
+never reads zero; it is the same estimator behind the 1.41 px, which is what
+makes the two comparable, and it should be read as "no worse than the
+playfield" rather than as an absolute.
+
 Coordinates are written to two decimal places, not four. 0.01 atlas units is
 0.17 px on the tracing photograph - eight times finer than the trace's own
 repeatability - so the two extra places were recording noise, and they cost

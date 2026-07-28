@@ -391,6 +391,16 @@ def build_score(tracer: Tracer, tolerance_px: float) -> tuple[dict, list[str]]:
         masks = ScoreMasks(tracer.rgb, box)
         marks = masks.marks()
         origin = (box[0], box[1])
+        # The score block's own trace repeatability, reported rather than
+        # assumed. The simplification tolerance is measured on the playfield
+        # probes, and this is the dimmer end of the plate against a different
+        # background; a box whose repeatability ran above the tolerance would
+        # mean the simplifier was encoding which threshold this run picked.
+        notes.append(
+            f"score {name} box: repeatability "
+            f"{np.median([masks.uncertainty(m) for m in marks]):.2f} px, "
+            f"against a {tolerance_px:.2f} px tolerance"
+        )
         pigment = masks.pigment_check
         if pigment < -30:
             notes.append(

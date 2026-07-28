@@ -40,6 +40,7 @@ import numpy as np
 from scipy import ndimage as ndi
 from scipy.ndimage import gaussian_filter
 
+from contour import iso_contours
 from masks import EDGE_WIDTH_PX, MESH_LOWPASS_SIGMA, otsu
 
 # The score block, in photograph pixels: everything left of the playfield's
@@ -112,16 +113,26 @@ class ScoreMasks:
         printed = self.luma > self.print_level
         self.phosphor_level = otsu(self.luma[printed].ravel())
 
-        core = self.luma >= self.phosphor_level
         contrast = float(np.percentile(self.luma, 98) - np.percentile(self.luma, 15))
         self.rim_px = max(
             0, int(round((self.phosphor_level - self.print_level) / max(contrast, 1.0) * EDGE_WIDTH_PX))
         )
-        self.phosphor = (
-            ndi.binary_dilation(core, ndi.generate_binary_structure(2, 2), self.rim_px) & printed
-            if self.rim_px
-            else core
-        )
+        self.phosphor = self._phosphor_at(self.print_level, self.phosphor_level)
+
+    def _phosphor_at(self, print_level: float, phosphor_level: float) -> np.ndarray:
+        """The phosphor mask this box would have at a given pair of levels.
+
+        Split out of the constructor so that `uncertainty` can rebuild the mask
+        at nudged levels rather than approximate what a nudge would do. The rim
+        width is held at the one measured on the committed levels: it is a
+        property of how far the print's edge runs, not of where inside that edge
+        the threshold was put.
+        """
+        core = self.luma >= phosphor_level
+        if not self.rim_px:
+            return core
+        grown = ndi.binary_dilation(core, ndi.generate_binary_structure(2, 2), self.rim_px)
+        return grown & (self.luma > print_level)
 
     @property
     def pigment_check(self) -> float:
@@ -158,24 +169,71 @@ class ScoreMasks:
         return out
 
     def uncertainty(self, mask: np.ndarray) -> float:
-        """How far this outline moves when the threshold is nudged, in px.
+        """How far this mark's traced boundary moves when the threshold is
+        nudged, in photograph pixels.
 
-        The score block's own trace repeatability, measured the way
-        `trace_atlas.trace_uncertainty` measures the playfield's: re-mask at the
-        print level plus and minus 5% of this box's print-to-fill contrast and
-        take the median displacement of the mark's area-equivalent radius. It is
-        reported so that the simplification tolerance, which is measured on the
-        playfield, can be checked against the score rather than assumed to
-        cover it.
+        The score block's own trace repeatability, and the reason it is worth
+        measuring separately: the simplification tolerance is measured on the
+        *playfield* probes, and the score block is a dimmer part of the plate
+        against a different background, so that the tolerance covers it here is
+        a thing to check rather than to assume. `trace_atlas.py` prints it
+        beside the tolerance on every run.
+
+        Two things differ from `trace_atlas.trace_uncertainty`, and neither is
+        cosmetic:
+
+        **Both levels are nudged.** On the playfield the red segments' boundary
+        *is* the print level, so nudging that alone is the whole measurement.
+        Here - as for every cyan segment anywhere on the tube - the boundary is
+        the rim grown out of the bright core, which the phosphor level sets and
+        the print level only caps. Nudging the print level alone would move a
+        boundary this trace does not use, and report a repeatability far better
+        than the trace actually has.
+
+        **The displacement is measured between traced contours.** An
+        area-equivalent radius is not a distance any point on the outline moves,
+        and the tolerance it would be compared against is one.
+
+        What the figure is not: it is a nearest-*vertex* distance, and a traced
+        contour carries a vertex about every pixel, so it cannot resolve a shift
+        much below 1 px and it does not read zero for two coincident contours.
+        That is deliberate - it is the same estimator
+        `trace_atlas.trace_uncertainty` uses, and the figure exists to be
+        compared against the tolerance that one produces, which needs the same
+        floor under both. Read it as "no worse than the playfield", not as an
+        absolute.
         """
         contrast = float(np.percentile(self.luma, 97) - np.percentile(self.luma, 20))
+        reference = iso_contours(_signed_field(mask), MIN_MARK_AREA)
+        if not reference:
+            return 0.0
         reach = ndi.binary_dilation(mask, ndi.generate_binary_structure(2, 2), 12)
-        base = float(np.sqrt(mask.sum() / np.pi))
         shifts = []
         for delta in (-0.05 * contrast, 0.05 * contrast):
-            nudged = (self.luma > self.print_level + delta) & reach
-            shifts.append(abs(float(np.sqrt(max(nudged.sum(), 0) / np.pi)) - base))
-        return float(np.mean(shifts))
+            nudged = (
+                self._phosphor_at(self.print_level + delta, self.phosphor_level + delta) & reach
+            )
+            moved = iso_contours(_signed_field(nudged), MIN_MARK_AREA)
+            if not moved:
+                continue
+            shifts.append(
+                float(np.median([_nearest_distance(reference, p) for p in np.vstack(moved)]))
+            )
+        return float(np.mean(shifts)) if shifts else 0.0
+
+
+def _signed_field(mask: np.ndarray) -> np.ndarray:
+    """A signed field whose zero crossing is the mask's boundary.
+
+    The same construction `masks.py` contours: the photograph resolves an atlas
+    unit into about 17 px, so a half-pixel of contour accuracy is worth having
+    and the staircase of a boolean mask's own boundary is not.
+    """
+    return gaussian_filter(mask.astype(np.float32), 1.0) - 0.5
+
+
+def _nearest_distance(rings: list[np.ndarray], point: np.ndarray) -> float:
+    return min(float(np.hypot(*(ring - point).T).min()) for ring in rings)
 
 
 def measure_boxes(rgb: np.ndarray) -> dict[str, tuple[int, int, int, int]]:
