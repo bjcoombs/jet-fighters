@@ -402,3 +402,84 @@ launchers remain, does the game end there, or does play continue with one fewer?
 **The player's ship flashes when a bullet hits it.** Nothing in the ROM or the renderer
 does this. It is the visible half of a damage signal that has always been described as
 sound-only, and it is unaffected by which way the capture rule goes.
+
+## 7. The microcontroller is a TI TMS1370, not a Hitachi HMCS44
+
+**The single largest error in this project, and it was visible in a photograph in this
+repository for a day before anyone read it.**
+
+`assets/reference/tube-teardown/board-L1001567.jpg` shows the chip marked **`MP2110`**,
+**`MSHL△8040`**, beside the Texas Instruments logo - the outline of Texas with `TI` inside
+it. A 40-pin DIP, date-coded week 40 of 1980.
+
+MAME's own device list, in `src/mame/handheld/hh_tms1k.cpp`, names that exact mask:
+
+```
+@MP2110   TMS1370   1980, Gakken Invader/Tandy Fire Away
+```
+
+`MP` is TI's prefix for custom mask-programmed TMS1000-family parts, and an MP number is
+one program. **So this unit runs the Gakken Invader program, behind Jet Fighters artwork**
+- which is why its logic reads as Space Invaders: attackers advancing in columns, a player
+moving between three positions and shooting upward, a higher-value target crossing the far
+row, a score capped at 199. Gakken licensed the same game to Tandy as *Fire Away* and to
+CGL as *Galaxy Invader*.
+
+### How the error entered
+
+`docs/prd/jet-fighters-v2.md` reasons:
+
+> Gakken standardised on the **Hitachi HMCS40 MCU family** across its VFD line; no Gakken
+> game uses NEC uCOM-4. The CGL box's "2K Bytes L.S.I." matches the **HD38800 (HMCS44)**
+
+Two inferences stacked: a generalisation about a manufacturer, and a match between a
+marketing string on a box and a datasheet. Neither was checked against the chip. The
+generalisation is false on its own terms - Gakken's Galaxy Invader 1000 (1981) is a TI
+TMS1370, and so is Gakken Poker (MP2105, 1979).
+
+This is the project's own named failure mode - **a belief promoted to a constraint** - at
+the deepest level in the stack, and the only instance where the disproving evidence was
+already committed.
+
+### What survives a CPU change, and what does not
+
+**Survives.** Everything measured from the glass: the atlas and all its segments, the cell
+registration, the phosphor constants, the control-grid mesh, the case geometry. Every audio
+measurement. Every gameplay rule the owner has corrected. None of it depends on which chip
+drives the tube.
+
+**Does not.** `src/machine/cpu/`, `tools/hmasm/`, `asm/jetfighter.asm`, the 2048-word and
+160-nibble ceilings, the 400 kHz clock, and the claim of emulating *this* machine.
+
+### Three things the battleship work established that the rebuild must carry
+
+Recorded because they were learned at cost and are easy to lose in a rewrite.
+
+1. **The test changes survive a CPU change; the assembly does not.** They encode a
+   behavioural fact rather than an instruction set: the buzz is the first sound that does
+   *not* blank the tube, and the first that overlaps other sounds. The blanking probes
+   exclude crossings, and `launcher-lives` separates buzz edges from note edges by
+   half-period. The one that will bite again: **the loss sound must be identified by its
+   decay floor as well as its 80-97 Hz collapse**, because an ~85-93 Hz buzz sits inside
+   that band on any silicon.
+2. **The mechanism argument is family-independent; its arithmetic is not.** "Clock the buzz
+   off the display sweep so the tube keeps scanning" follows from a 4 s continuous sound on
+   a single-core machine whose note player stops the display. What does **not** carry is
+   "every fourth grid, ten grids a sweep" - that landed on 89 Hz against a measured 93.4 Hz
+   by arithmetic specific to the HMCS44 sweep rate. On the TMS1370 the divisor must be
+   re-derived from its own sweep, and the check is that the result lands inside the
+   measured 79-111 Hz.
+3. **93.4 Hz is the *pin* repetition rate.** The 2.4-9.6 kHz energy belongs to the owner's
+   piezo and his phone, not to the program, so the new ROM does not have to produce it.
+
+### The open decision
+
+Whether the rebuild runs **the real dumped MP2110 program** - which MAME has, and which
+would settle every open gameplay rule outright, including section 6 above - or **a program
+written for the TMS1370**, keeping this project a reconstruction. A third option: build the
+core, and use the real ROM as a **test oracle** rather than as the shipped program, so
+disagreements between the two say where the reconstruction is wrong.
+
+`asm/jetfighter.asm` on `main` is HMCS44 and is expected to be replaced wholesale rather
+than reverted. Only the `.asm` is family-specific - the recordings,
+`docs/evidence/audio-reference.md` and the probe tests all carry across.
