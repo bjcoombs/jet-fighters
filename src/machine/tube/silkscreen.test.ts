@@ -64,9 +64,9 @@ interface Segment {
  *
  * `FakeCanvasContext` snapshots colour and alpha per call but not `lineWidth`,
  * and line weight is half of what the photographs pin here: the bottom rail is
- * the heaviest ink on the face and the SCORE digit boxes the lightest. Rather than change
- * the shared recorder, this drives it through a proxy that samples `lineWidth`
- * alongside each call.
+ * the heaviest ink on the face, the frame and the ruler lighter. Rather than
+ * change the shared recorder, this drives it through a proxy that samples
+ * `lineWidth` alongside each call.
  */
 function trace(): {
   readonly calls: readonly RecordedCall[];
@@ -404,23 +404,30 @@ describe('drawSilkscreen', () => {
     }
   });
 
-  it('prints the faintest ink far fainter than the frame', () => {
-    const alphas = draw().calls.filter((call) => call.globalAlpha < 1).map((c) => c.globalAlpha);
-    expect(alphas.length).toBeGreaterThan(0);
-    for (const alpha of alphas) {
-      expect(alpha).toBeGreaterThan(0.05);
-      expect(alpha).toBeLessThan(0.3);
-    }
+  it('prints no faint ink at all', () => {
+    // Every stroke this layer lays down is now full-strength ink. The two faint
+    // things it used to print were both grids - the cell lattice over the
+    // playfield, and a box around each SCORE digit - and both are gone, so there
+    // is no longer a "faintest printed ink" for the rest of the face to be read
+    // against.
+    const faint = draw().calls.filter((call) => call.globalAlpha < 1);
+    expect(faint, 'calls below full ink strength').toEqual([]);
   });
 
-  it('boxes each SCORE digit', () => {
-    // Faint boxes around the three score digits, matching the atlas segments.
-    const boxes = callsOf(draw(), 'strokeRect').filter((call) => call.globalAlpha < 1);
-    expect(boxes.length).toBe(3);
-    for (const box of boxes) {
-      expect(box.args[0]).toBeGreaterThan(PLAYFIELD.x);
-      expect(box.args[0] + box.args[2]).toBeLessThan(FIELD.x);
-    }
+  it('draws no box around any SCORE digit', () => {
+    // The digit boxes went the way of the lattice, and for the same reason: the
+    // renderer's ghost layer draws every segment at the unlit-phosphor level, so
+    // the score block already reads as three digit positions with nothing lit in
+    // them. Owner-confirmed against the real unit.
+    //
+    // Asserted as an absence rather than deleted, so a redraw that reintroduces
+    // them fails here rather than passing quietly. Any rectangle over the SCORE
+    // block counts, at whatever ink strength - a full-strength redraw is the same
+    // grid back.
+    const boxes = callsOf(draw(), 'strokeRect').filter(
+      (call) => call.args[0] >= PLAYFIELD.x && call.args[0] + call.args[2] <= FIELD.x,
+    );
+    expect(boxes, 'boxes drawn over the SCORE block').toEqual([]);
   });
 
   it('marks each lane centre with a dash crossing both field edges, and nothing else', () => {

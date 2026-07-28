@@ -89,7 +89,7 @@ function buildScreen(): HTMLElement {
 /**
  * The small moulded tab that hangs off the module's top edge at 12 o'clock and
  * overlaps the glass (assets/reference/screen-overlay-closeup.jpg). Positioned
- * in body units: x 520..546, y 38..99 of the 1000 x 460 viewBox. It stops at 99
+ * in body units: x 468..494, y 38..99 of the 896 x 440 viewBox. It stops at 99
  * so it clears the curved legend printed inside the scope at y 101..107 - see the
  * `.jf-tab` rule in case.css for why that bound is where it is.
  */
@@ -170,22 +170,28 @@ function buildDial(): HTMLElement {
   return el;
 }
 
-// SVG note: viewBox is 1000 x 460 (~24x11 cm, held-in-both-hands landscape).
+// SVG note: viewBox is 896 x 440 (~24x11 cm, held-in-both-hands landscape).
 // Only the static molded body (two lower wing blocks flanking a dominant, taller
 // central bezel block), grip texture, label plate, and the scope rim live here.
 // The scope window is a UNION of a large radar circle and a shorter rectangle
 // extending to its left (where SCORE + the left playfield sit), matching the
 // real console. Interactive controls + the screen canvas are HTML overlays.
+//
+// The box was 1000 x 460 until #101 cropped 52 units off each wing and 20 off
+// the bottom. Every figure below moved with that crop and none of it is
+// arbitrary: x 8..888 is the body, the wings are 240 wide against the module's
+// 404, and the module's bottom edge is 426 - 33 units under the glass instead of
+// 53. The scope is untouched (src/ui/geometry.ts), so what shrank is plastic.
 
 /** Left wing outline; reused as its stipple clip so the texture cannot bleed. */
 const LEFT_WING_PATH =
-  'M44,54 H286 Q300,54 300,74 V418 Q300,438 280,438 H44 Q8,438 8,402 V90 Q8,54 44,54 Z';
+  'M44,54 H234 Q248,54 248,74 V398 Q248,418 228,418 H44 Q8,418 8,382 V90 Q8,54 44,54 Z';
 /** Right wing outline; reused as its stipple clip. */
 const RIGHT_WING_PATH =
-  'M720,54 H956 Q992,54 992,90 V402 Q992,438 956,438 H720 Q700,438 700,418 V74 Q700,54 720,54 Z';
+  'M668,54 H852 Q888,54 888,90 V382 Q888,418 852,418 H668 Q648,418 648,398 V74 Q648,54 668,54 Z';
 
 const CASE_SVG = `
-<svg class="jf-body" viewBox="0 0 1000 460" preserveAspectRatio="xMidYMid meet"
+<svg class="jf-body" viewBox="0 0 896 440" preserveAspectRatio="xMidYMid meet"
      xmlns="${SVG_NS}" aria-hidden="true" focusable="false">
   <defs>
     <linearGradient id="jf-body-red" x1="0" y1="0" x2="0" y2="1">
@@ -250,39 +256,39 @@ const CASE_SVG = `
   <!-- Body silhouette: two lower wings flanking a taller central bezel block,
        flat-bottomed with a small central dip (the moulding under the screen). -->
   <path filter="url(#jf-soft)" fill="url(#jf-body-red)" stroke="#6e1a09" stroke-width="2"
-        d="M44,54 H298 Q300,54 300,44 Q300,32 316,32 H684 Q700,32 700,44
-           Q700,54 702,54 H956 Q992,54 992,90 V402 Q992,438 956,438 H704
-           Q702,438 702,446 Q702,454 686,454 H314 Q298,454 298,446
-           Q298,438 296,438 H44 Q8,438 8,402 V90 Q8,54 44,54 Z"/>
+        d="M44,54 H246 Q248,54 248,44 Q248,32 264,32 H632 Q648,32 648,44
+           Q648,54 650,54 H852 Q888,54 888,90 V382 Q888,418 852,418 H652
+           Q650,418 650,426 Q650,434 634,434 H262 Q246,434 246,426
+           Q246,418 244,418 H44 Q8,418 8,382 V90 Q8,54 44,54 Z"/>
 
   <!-- Left wing (raised control block) -->
   <path fill="url(#jf-wing-red)" stroke="#7c2010" stroke-width="1.5" d="${LEFT_WING_PATH}"/>
   <g clip-path="url(#jf-left-wing-clip)" opacity="0.5">
-    <rect x="8" y="54" width="292" height="384" fill="#000" filter="url(#jf-stipple-dark)"/>
-    <rect x="8" y="54" width="292" height="384" fill="#000" filter="url(#jf-stipple-light)"/>
+    <rect x="8" y="54" width="240" height="364" fill="#000" filter="url(#jf-stipple-dark)"/>
+    <rect x="8" y="54" width="240" height="364" fill="#000" filter="url(#jf-stipple-light)"/>
   </g>
-  <path fill="#ffffff" fill-opacity="0.14" d="M44,54 H286 Q300,54 300,74 V96 H8 V90 Q8,54 44,54 Z"/>
+  <path fill="#ffffff" fill-opacity="0.14" d="M44,54 H234 Q248,54 248,74 V96 H8 V90 Q8,54 44,54 Z"/>
 
   <!-- Right wing (raised control block) -->
   <path fill="url(#jf-wing-red)" stroke="#7c2010" stroke-width="1.5" d="${RIGHT_WING_PATH}"/>
   <g clip-path="url(#jf-right-wing-clip)" opacity="0.5">
-    <rect x="700" y="54" width="292" height="384" fill="#000" filter="url(#jf-stipple-dark)"/>
-    <rect x="700" y="54" width="292" height="384" fill="#000" filter="url(#jf-stipple-light)"/>
+    <rect x="648" y="54" width="240" height="364" fill="#000" filter="url(#jf-stipple-dark)"/>
+    <rect x="648" y="54" width="240" height="364" fill="#000" filter="url(#jf-stipple-light)"/>
   </g>
-  <path fill="#ffffff" fill-opacity="0.14" d="M720,54 H956 Q992,54 992,90 V96 H700 V74 Q700,54 720,54 Z"/>
+  <path fill="#ffffff" fill-opacity="0.14" d="M668,54 H852 Q888,54 888,90 V96 H648 V74 Q648,54 668,54 Z"/>
 
   <!-- Central bezel block (dominant, raised, taller than the wings). Same orange
        plastic as the wings: the real module is one moulding, framed only by the
        shadow lines where it steps up from them. -->
   <path fill="url(#jf-block-red)" stroke="#7c2010" stroke-width="1.5"
-        d="M316,38 H684 Q702,38 702,56 V426 Q702,446 682,446 H318 Q298,446 298,426 V56 Q298,38 316,38 Z"/>
-  <path fill="#ffffff" fill-opacity="0.14" d="M316,38 H684 Q702,38 702,56 V74 H298 V56 Q298,38 316,38 Z"/>
+        d="M264,38 H632 Q650,38 650,56 V406 Q650,426 630,426 H266 Q246,426 246,406 V56 Q246,38 264,38 Z"/>
+  <path fill="#ffffff" fill-opacity="0.14" d="M264,38 H632 Q650,38 650,56 V74 H246 V56 Q246,38 264,38 Z"/>
   <!-- Moulded shadow lines down the inner faces of the module, replacing the
        painted recessed panel that the real unit does not have. -->
   <path fill="none" stroke="#000" stroke-opacity="0.16" stroke-width="3"
-        d="M303,60 V424 M697,60 V424"/>
+        d="M251,60 V404 M645,60 V404"/>
   <path fill="none" stroke="#ffffff" stroke-opacity="0.13" stroke-width="2"
-        d="M308,60 V424 M692,60 V424"/>
+        d="M256,60 V404 M640,60 V404"/>
 
   <!-- Scope rim (bezel) + black window - circle + left rectangle union, drawn
        behind the canvas and generated from the shared scope geometry so the
@@ -292,15 +298,15 @@ const CASE_SVG = `
   <!-- JET FIGHTERS sticker (bottom-left). Near-square, wordmark over the CGL
        logo, proportions measured off device-front-gameplay.jpg. -->
   <g>
-    <rect x="27" y="331" width="110" height="92" rx="4" fill="#000" fill-opacity="0.18"/>
-    <rect x="30" y="334" width="104" height="86" rx="3" fill="url(#jf-label-blue)"
+    <rect x="27" y="311" width="110" height="92" rx="4" fill="#000" fill-opacity="0.18"/>
+    <rect x="30" y="314" width="104" height="86" rx="3" fill="url(#jf-label-blue)"
           stroke="#3f5590" stroke-width="1.5"/>
-    <text x="82" y="366" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
+    <text x="82" y="346" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
           font-weight="700" font-size="24" fill="#f4f6fb">JET</text>
-    <text x="82" y="390" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
+    <text x="82" y="370" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
           font-weight="700" font-size="24" textLength="92" lengthAdjust="spacingAndGlyphs"
           fill="#f4f6fb">FIGHTERS</text>
-    <text x="82" y="412" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
+    <text x="82" y="392" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
           font-weight="700" font-size="15" letter-spacing="-2.5" fill="#f4f6fb">CGL</text>
   </g>
 </svg>`;
