@@ -20,13 +20,18 @@
 
 ; --- The O output PLA --------------------------------------------------------
 ;
-; Three slots of thirty-two. Slot 0 is all plates dark because reset writes index
-; 0 to the O register before the program has chosen anything. Task 6 of the v3
-; run authors the real table; these are placeholders that prove the directive.
+; The real table, included rather than restated. `asm/opla.inc.asm` is this
+; machine's O output PLA - 31 of the 32 slots declared, slot 0 all plates dark
+; because reset writes index 0 to the O register before the program has chosen
+; anything. Task 8's `asm/jetfighter.asm` includes the same file, so the fixture
+; and the game assemble the same vocabulary and there is no second copy to go
+; stale.
+;
+; It is included here and not merely tested in isolation because a table nothing
+; assembles is a table nothing proves: this is the source the CLI and the Vite
+; plugin actually emit an O PLA image from today.
 
-.OPLA 0, %00000000                      ; dark - what reset writes
-.OPLA 1, %00000110                      ; two plates
-.OPLA 2, %01011011                      ; five plates
+.INCLUDE "../../../asm/opla.inc.asm"
 
 ; --- Reset -------------------------------------------------------------------
 ;
