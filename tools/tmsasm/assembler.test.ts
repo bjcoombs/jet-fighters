@@ -141,6 +141,19 @@ describe('the page allocator reserves the reset page', () => {
     );
   });
 
+  it('wraps to a lower free page rather than refusing after an explicit .PAGE 15', () => {
+    // Reset routine first, then a bare `.PAGE` for everything else - the layout
+    // that a forward-only allocator would reject while pages 0-14 sat empty.
+    const result = assemble('.PAGE 15\nreset: CLA\n.PAGE\nmain: CLA\n');
+    expect(symbol(result, 'reset')).toBe(RESET_ADDRESS);
+    expect(symbol(result, 'main')).toBe(romAddress(0, 0, 0));
+  });
+
+  it('never wraps onto a page that already holds code', () => {
+    const result = assemble('.PAGE 0\nCLA\n.PAGE 15\nCLA\n.PAGE\nhere: CLA\n');
+    expect(symbol(result, 'here')).toBe(romAddress(0, 1, 0));
+  });
+
   it('still lets the source place the reset routine there explicitly', () => {
     const result = assemble('.PAGE 15\nreset: CLA\n');
     expect(symbol(result, 'reset')).toBe(RESET_ADDRESS);
@@ -152,9 +165,10 @@ describe('the page allocator reserves the reset page', () => {
   });
 
   it('leaves the reset page free in chapter 1 - only chapter 0 page 15 is the entry', () => {
-    const source = `.CHAPTER 1\n${'.PAGE\nCLA\n'.repeat(ROM_PAGE_COUNT - 1)}`;
+    const source = `.CHAPTER 1\n${'.PAGE\nCLA\n'.repeat(ROM_PAGE_COUNT)}`;
     const result = assemble(source);
     const pagesUsed = new Set(result.words.map((word) => `${word.chapter}:${word.page}`));
+    expect(pagesUsed.size).toBe(ROM_PAGE_COUNT);
     expect(pagesUsed.has(`1:${RESET_PAGE}`)).toBe(true);
   });
 });

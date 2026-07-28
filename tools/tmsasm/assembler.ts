@@ -509,14 +509,18 @@ export function assemble(
   /**
    * The next page the allocator will hand out.
    *
-   * Scans forward from the page the cursor is on, skipping every page already
-   * claimed - by an explicit `.PAGE`/`.ORG`, by code already emitted onto it, or
-   * by the reset reservation. It never wraps back to a lower page: `.PAGE` means
-   * "somewhere after here", and silently reusing a page behind the cursor would
-   * put two routines in one place and report it as an overlap much later.
+   * Scans forward from the page the cursor is on and wraps to the start of the
+   * chapter, taking the first page nothing has claimed - by an explicit
+   * `.PAGE`/`.ORG`, by code already emitted onto it, or by the reset
+   * reservation. Wrapping cannot put two routines in one place, because a
+   * claimed page is never offered; refusing to wrap could only turn a layout
+   * that has room into an error, and the layout it would refuse is a common one
+   * - the reset routine on page 15 first, then a bare `.PAGE` for everything
+   * else.
    */
   const nextFreePage = (position: SourcePosition): number => {
-    for (let page = cursor.page; page < ROM_PAGE_COUNT; page += 1) {
+    for (let step = 0; step < ROM_PAGE_COUNT; step += 1) {
+      const page = (cursor.page + step) % ROM_PAGE_COUNT;
       if (!pageAllocations.has(pageKey(cursor.chapter, page))) {
         return page;
       }
@@ -527,8 +531,8 @@ export function assemble(
           `is never allocated to general code - put the reset routine there with .PAGE ${RESET_PAGE}`
         : '';
     throw new AsmError(
-      `no free page left in chapter ${cursor.chapter}: every page from ${cursor.page} to ` +
-        `${ROM_PAGE_COUNT - 1} is claimed${note}`,
+      `no free page left in chapter ${cursor.chapter}: all ${ROM_PAGE_COUNT} pages are ` +
+        `claimed${note}`,
       position,
     );
   };
@@ -810,9 +814,8 @@ export function assemble(
           );
           cursor.page = 0;
           cursor.ordinal = 0;
-          if (!emitting) {
-            claimPage(cursor.chapter, cursor.page, statement.position, false);
-          }
+          // No claim: `.CHAPTER` selects a chapter, it does not say "put things
+          // on page 0 of it". The page is claimed if and when a word lands there.
           break;
         }
 
