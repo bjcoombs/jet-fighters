@@ -126,6 +126,45 @@ recording makes a clean absolute read hard.
 | `battleshipBuzz.constraint` | must be below `jetMarch.dominantHzRange` | Owner-confirmed rule |
 | `battleshipBuzz.recording` | `gameplay-audio.m4a` | - |
 | `battleshipBuzz.timestampSec` | ~54 | Dense section |
+
+### The buzz could not be isolated from either recording, and the owner says it is a rumble
+
+**Owner, comparing against his unit:** *"the boat arriving is a constant noise, it's not a
+beep, more like a rumbling sound"*. Our ROM plays **one 380 ms note** at the arrival. Those
+are different things, and the difference is not a constant anyone can tune - it is the
+question of whether the sound is a tone at all.
+
+An attempt to settle it from the recordings **failed, in both of them**, and the failure is
+recorded here so nobody repeats it expecting a different answer.
+
+*The gameplay video.* All 34 battleship episodes were located visually - the boat is the
+only thing that lights the leftmost cell - and the audio at those moments compared against
+control windows with no boat, high-passed at 140 Hz to remove room rumble:
+
+```
+battleship present:  rms  17 - 388,  150-300 Hz band =  1.2% .. 69.7%
+control, no boat:    rms   1 - 148,  150-300 Hz band = 12.4% .. 66.8%
+```
+
+Complete overlap. One control window looks more battleship-like than three of the five
+battleship windows. The recording is a phone at arm's length in a room, the piezo is small,
+and the march, missile and warning sounds overlap the crossing.
+
+*The close recording.* `gameplay-audio.m4a` at the ~54 s "strongest clean read" above gives
+22.2% of its energy in 150-300 Hz - against 26.8% at t=35 s and 25.9% at t=52 s, where no
+boat is present. No separation either.
+
+**What this means for the figures above.** They are not withdrawn, but the `0.68 fractional
+confidence` and the note about the dense section should now be read as the whole story
+rather than a caveat: nothing in either recording isolates this sound. A **narrow-band
+figure may be the wrong shape of answer entirely** - a rumble is broadband, and
+`dominantHzRange 230-300` may be the centroid of a noisy sound rather than the frequency of
+a tone. Synthesising a tone at the centroid of a rumble does not produce a rumble.
+
+**What would settle it:** ten seconds of the owner's unit recorded close to the speaker, in
+a quiet room, over a single battleship arrival. That is the one measurement that separates
+the sound from everything else the machine is doing, and no amount of analysis of the
+existing material substitutes for it.
 | `battleshipBuzz.method` | Windowed FFT | - |
 
 **Discrepancy**: the v1 source comment in `src/audio/audio.ts` records the band as
