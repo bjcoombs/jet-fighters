@@ -139,7 +139,7 @@ outline as a retraced one.**
 | Capture burst, cell 6 | the same - new to the atlas |
 | Rocket burst (`explosion_*`), cell 6 | the same |
 | Cell 6's smoke | `tube-teardown/tube-unlit-full.jpg` - **now traced**, see below |
-| Score digits, SCORE label | v1 shape tables |
+| Score digits, SCORE label | `tube-teardown/score-block.jpg`, traced by `tools/trace/score.py` |
 
 Every row above that names the teardown photograph is now produced by
 `tools/trace/`, which is the retrace described in the next section. **The score
@@ -844,14 +844,15 @@ Three things this revision leaves undone, recorded rather than dropped:
 
 ## Tracing workflow
 
-**For a playfield outline, do not do any of this by hand.** Change
-`tools/trace/` and re-run it:
+**For any outline the tracer covers - the whole playfield, and now the score
+readout - do not do any of this by hand.** Change `tools/trace/` and re-run it:
 
 ```bash
 python3 tools/trace/report.py                     # re-measure the free numbers
 python3 tools/trace/trace_atlas.py                # dry run: counts and notes
 python3 tools/trace/trace_atlas.py --write        # rewrite atlas.json
 python3 tools/trace/preview.py /tmp/cmp.png --cells 6,2,0 --before <old atlas.json>
+python3 tools/trace/preview.py /tmp/score.png --score --scale 30 --before <old atlas.json>
 npm test
 ```
 
@@ -873,8 +874,12 @@ wrong frame. Section 5d of `docs/evidence/open-questions.md` explains why.
 
 ### By hand, for anything the tracer does not cover
 
-Any new reference that is not `tube-unlit-full.jpg` (the score readout used to be
-the standing example here and is now traced by `tools/trace/score.py`):
+For any new reference the tracing pipeline does not cover. **The score readout
+is no longer an example of this** - it was the standing one, and it is now
+`tools/trace/score.py` against `score-block.jpg`, so a score shape is changed
+there and regenerated like any playfield outline, never edited into
+`atlas.json`. What is left here is a photograph nothing in `tools/trace/` reads
+yet:
 
 1. Read the photo at full resolution. For faint ghost phosphor, level-stretch the
    dark end rather than raising brightness, which blows out the lit segments:
