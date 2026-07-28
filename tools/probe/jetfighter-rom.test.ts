@@ -114,7 +114,7 @@ const BSHIP_HZ_MAX = 111;
 
 /** A board running the real game ROM, freshly powered on. */
 function romBoard(): Board {
-  const path = resolve(import.meta.dirname, '..', '..', 'asm', 'jetfighter.asm');
+  const path = resolve(import.meta.dirname, '..', '..', 'asm', 'jetfighter-hmcs44.asm');
   const assembly = assemble(readFileSync(path, 'utf8'), path);
   return new Board(romImage(assembly));
 }
@@ -228,7 +228,7 @@ describe('the program region has room to work in', () => {
   // nowhere to go - and by then it looks like the ROM being full rather than
   // the ROM being mostly gaps.
   it('spends more of the program region on code than on alignment padding', () => {
-    const path = resolve(import.meta.dirname, '..', '..', 'asm', 'jetfighter.asm');
+    const path = resolve(import.meta.dirname, '..', '..', 'asm', 'jetfighter-hmcs44.asm');
     const assembly = assemble(readFileSync(path, 'utf8'), path);
     const addresses = assembly.words
       .map((word) => word.address)

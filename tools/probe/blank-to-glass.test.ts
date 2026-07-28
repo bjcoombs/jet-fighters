@@ -127,7 +127,7 @@ const LIT_BRIGHTNESS = 0.8;
 
 /** A board running the real game ROM, freshly powered on. */
 const GAME_ASM = (() => {
-  const path = resolve(import.meta.dirname, '..', '..', 'asm', 'jetfighter.asm');
+  const path = resolve(import.meta.dirname, '..', '..', 'asm', 'jetfighter-hmcs44.asm');
   return assemble(readFileSync(path, 'utf8'), path);
 })();
 

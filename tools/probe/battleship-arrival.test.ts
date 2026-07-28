@@ -105,7 +105,7 @@ const RAIL = 0.25;
 const ms = (cycles: number): number => (cycles / CYCLE_HZ) * 1000;
 
 function assembly(): AssemblyResult {
-  const path = resolve(import.meta.dirname, '..', '..', 'asm', 'jetfighter.asm');
+  const path = resolve(import.meta.dirname, '..', '..', 'asm', 'jetfighter-hmcs44.asm');
   return assemble(readFileSync(path, 'utf8'), path);
 }
 

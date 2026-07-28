@@ -153,7 +153,7 @@ describe('parseArguments', () => {
 
   it('defaults the ROM to asm/jetfighter.asm, independent of the working directory', () => {
     expect(parseArguments([]).romSource).toBe(
-      resolve(import.meta.dirname, '..', '..', 'asm', 'jetfighter.asm'),
+      resolve(import.meta.dirname, '..', '..', 'asm', 'jetfighter-hmcs44.asm'),
     );
   });
 

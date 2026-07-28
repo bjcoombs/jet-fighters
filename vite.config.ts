@@ -11,11 +11,13 @@ import { tmsasm } from './tools/tmsasm/vite-plugin.js';
  * `.asm` extension, so which one owns a given file is stated here rather than
  * decided by whichever plugin's `load` hook happens to run first.
  *
- * `asm/jetfighter.asm` is still HMCS44 source. When it is rewritten for the
- * TMS1370 this exclusion comes out; when `tools/hmasm/` is removed the `hmasm()`
- * plugin goes with it and tmsasm claims every `.asm` file unconditionally.
+ * `asm/jetfighter.asm` is now the TMS1370 game program and tmsasm owns it. What
+ * hmasm still owns is `asm/jetfighter-hmcs44.asm`, the v2 game source kept in
+ * the tree only to hold the HMCS44 core and its probe suites up until v3 task 11
+ * removes them. Both files go when `tools/hmasm/` does, and the `hmasm()` plugin
+ * with them, at which point tmsasm claims every `.asm` file unconditionally.
  */
-const HMASM_SOURCE_SUFFIX = 'asm/jetfighter.asm';
+const HMASM_SOURCE_SUFFIX = 'asm/jetfighter-hmcs44.asm';
 
 export default defineConfig({
   base: '/jet-fighters/',

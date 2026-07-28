@@ -179,7 +179,7 @@ class FakeContext implements AudioContextLike {
 
 /** A board holding the real game ROM, powered off. */
 function romBoard(): Board {
-  const path = resolve(import.meta.dirname, '..', '..', '..', 'asm', 'jetfighter.asm');
+  const path = resolve(import.meta.dirname, '..', '..', '..', 'asm', 'jetfighter-hmcs44.asm');
   const assembly = assemble(readFileSync(path, 'utf8'), path);
   return new Board(romImage(assembly), { power: 'off' });
 }

@@ -1,4 +1,15 @@
-; jetfighter.asm - the game ROM the emulator runs.
+; jetfighter-hmcs44.asm - the v2 game ROM, in HMCS44 assembly.
+;
+; **This is no longer the game program.** v3 task 8 rewrote the game for the
+; TMS1370 and `asm/jetfighter.asm` is that rewrite. This file is the v2 source,
+; kept under its own name only because `src/machine/cpu/*.ts` is still the HMCS44
+; core and `tools/probe/`'s suites still drive it: something has to be the ROM
+; that core runs until v3 task 11 removes it. Both this file and `tools/hmasm/`
+; go in that task; nothing new should be written against either.
+;
+; The rules it encodes are not superseded - they are the record of what the game
+; does, and `asm/jetfighter.asm` reimplements them against the TMS1370's own
+; ports, output PLA and one-level call stack.
 ;
 ; The whole game: the display sweep, the input matrix, the plate bus, the speaker
 ; pin, and the rules from docs/prd/jet-fighters-v1.md R2/R6. Everything here is
@@ -7,7 +18,7 @@
 ; cites it.
 ;
 ; Assemble it:
-;   npx vite-node tools/hmasm/cli.ts asm/jetfighter.asm --listing /tmp/jf.lst
+;   npx vite-node tools/hmasm/cli.ts asm/jetfighter-hmcs44.asm --listing /tmp/jf.lst
 ;
 ; Run it:
 ;   npx vite-node tools/probe/machine-probe.ts --cycles 400000

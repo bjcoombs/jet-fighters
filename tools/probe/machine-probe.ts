@@ -85,8 +85,15 @@ export const BASELINE_FRAMES = 2;
  */
 export const SETTLE_FRAMES = 3;
 
-/** The ROM the probe runs unless `--rom` names another source. */
-export const DEFAULT_ROM_SOURCE = 'asm/jetfighter.asm';
+/**
+ * The ROM the probe runs unless `--rom` names another source.
+ *
+ * The HMCS44 source, because this harness drives the HMCS44 board. v3 task 8
+ * made `asm/jetfighter.asm` the TMS1370 game program and moved the v2 source
+ * here; task 13 re-derives this harness against the TMS1370 machine and this
+ * default goes back to `asm/jetfighter.asm` with it.
+ */
+export const DEFAULT_ROM_SOURCE = 'asm/jetfighter-hmcs44.asm';
 
 /** A wrong command line, or a file that could not be read. */
 export class UsageError extends Error {

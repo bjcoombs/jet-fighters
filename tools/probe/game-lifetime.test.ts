@@ -58,7 +58,7 @@ import { Board } from "../../src/machine/board/board.js";
 import type { SpeakerEdge } from "../../src/machine/board/speaker.js";
 import { CYCLE_HZ } from "../../src/machine/cpu/cpu.js";
 
-const ASM_PATH = resolve(__dirname, "../../asm/jetfighter.asm");
+const ASM_PATH = resolve(__dirname, "../../asm/jetfighter-hmcs44.asm");
 
 /** Assemble the game ROM once and share the image across the runs below. */
 const ROM = romImage(assemble(readFileSync(ASM_PATH, "utf8"), ASM_PATH));
