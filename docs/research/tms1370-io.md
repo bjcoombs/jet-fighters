@@ -512,10 +512,19 @@ void tms1k_base_device::set_cki_bus()
 ```
 
 sampled at subcycle 0 of the instruction (`// execute: k input valid, read ram, ...`), so
-**a K read sees the state of the pins at that instant**; there is no latch and no edge
-capture anywhere in the chip. Contact debouncing, edge detection and auto-repeat are all
-the ROM's problem. Our board layer's `D14 edge capture` has no counterpart here and does
-not carry across.
+**a K read sees the state of the pins at that instant**; there is no input latch and no
+edge detector anywhere on the input side. Contact debouncing, edge detection and
+auto-repeat are all the ROM's problem, and a contact closed and released between two K
+reads is simply never seen.
+
+The output side is the mirror image and matters for audio: the speaker hangs off `R15`,
+one of the same 16 latches the grids come from, so a sound edge is a `SETR`/`RSTR` on a
+latch and is timed by when the ROM executes it. Our `src/machine/board/speaker.ts` models
+the speaker as edge capture on `D14`; the **cycle-stamped-edge model carries across
+unchanged, the pin and the write mechanism do not**. Nothing about R15 changes the
+argument in open-questions section 7 that a continuous 4 s buzz has to be clocked off the
+display sweep on a single-core machine - if anything it sharpens it, because the buzz pin
+and the grid pins are latches in the same register.
 
 ### Timing envelope
 
@@ -598,26 +607,42 @@ segment is visible at once:
 
 | Region, left to right | What is printed there |
 | --- | --- |
-| Score block, upper | The word `SCORE` |
-| Score block, lower | A hundreds place limited to `1`, then two full seven-segment digits |
-| Playfield cell 1 | Three lanes, each carrying a **battleship** (amber, on water) and a white burst |
+| Score block, upper | The word `SCORE`, one solid label, spanning the full width of the block |
+| Score block, lower | A hundreds place that can only ever read `1` (two vertical segments, no others), then **two** full seven-segment digits. An L-shaped outline wraps the label and the first digit; the second digit has its own box. |
+| Playfield cell 1 | Three lanes, each carrying a **battleship** (amber, on water) and a white burst. No jet. |
 | Playfield cells 2-6 | Three lanes, each carrying an amber **jet** and a white burst |
-| Playfield cell 7 | Three lanes, each carrying amber **smoke**, an amber burst and a white shape |
+| Playfield cell 7 | Three lanes, each carrying an amber shape that reads as **smoke or a launcher**, an amber burst, and a white shape. No jet. |
 
-**Seven playfield cells, not six.** `ATLAS-COORDINATES.md` assumption 3 says six
-"from `src/game/constants.ts` `GRID_COLUMNS = 6`" and flags that "the dotted ruler [...]
-appears to have more than six dot groups, so the real column count may be higher".
-The unpowered tube settles it at seven, and settles open-questions item 5d / issue #49
-("the seventh grid") the same way.
+**Seven playfield cells, not six**, and the contents settle which of two rival readings is
+right. `ATLAS-COORDINATES.md` sets out the conflict at length: the atlas is built on
+"crop `colN` = atlas grid `N - 1`", six playfield grids, while the sprite catalogue says
+the printed reading is seven cells, "battleship alone in cell 0, jets in cells 1-5, the
+launcher alone in cell 6", and that "the two readings cannot both be right, and the atlas
+cannot express the second one at all". The unpowered tube shows exactly the catalogue's
+arrangement: **no jet in the battleship's cell, no jet in the launcher's cell, seven cells
+in all.** Assumption 3 in the same document ("six distance columns [...] the real column
+count may be higher") resolves to seven.
 
-Seven playfield cells plus a score block that needs two grids for two-and-a-bit digits is
-**nine grids**, which is exactly what MAME's `set_size(9, 12)` says. Per cell, three lanes
-times three shapes is nine plates, inside twelve, with three left for the score block's
-extra segments. The score digits need seven each, inside twelve.
+Seven playfield cells plus a two-grid score block is **nine grids**, which is exactly what
+MAME's `set_size(9, 12)` says. Twelve plates covers every cell with room to spare: cells
+1-6 carry two shapes per lane, so six plates; cell 7 carries three, so nine. The score
+digits need seven segments each. Nothing on the tube needs more than twelve plates under
+one grid, which is why twelve was enough for Gakken and why the atlas's twenty is not a
+hardware figure.
 
-The hundreds place limited to `1` is worth noting on its own: it is direct physical
-confirmation of the **score cap of 199** recorded in open-questions section 7, which had
-been inferred from gameplay video.
+`ATLAS-COORDINATES.md` anticipates the split as "7 playfield, 2 score digit cells, 1 label
+against the atlas's 6, 3, 1" - which totals **ten**, one more than MAME allows. The
+reconciliation the photograph supports is that **the `SCORE` label is a plate on one of the
+two score grids rather than a grid of its own**: it is a single solid block sitting
+directly above the digits, inside the same outline, so a mesh covering the label and a
+digit together is the natural construction. That is an **inference**, not a reading; it
+follows from 9 minus 7 leaving 2, and it is the cheapest way to make the printed reading
+and MAME's matrix size agree.
+
+The hundreds place is worth noting on its own: it carries **only the two segments needed
+for a `1`**, so the display cannot show a hundreds digit other than 1 or blank. That is
+direct physical confirmation of the **score cap of 199** recorded in open-questions
+section 7, which had until now been inferred from gameplay video.
 
 And the resistor count lands on the same number: **21 electrodes = 9 grids + 12 plates**,
 against 21 +/- 1 resistors counted. One series resistor per driven electrode is the
@@ -814,6 +839,21 @@ was read out of MAME's driver source and TI's datasheet, both public, and corrob
 against a photograph we already own.
 
 ---
+
+## What this changes in the repository
+
+No code was changed by this task. These are the consequences it hands on, each with the
+section that argues it.
+
+| Currently in the repo | What this research says | Section |
+| --- | --- | --- |
+| `GRID_COUNT = 10` and `PLATE_COUNT = 20` (`src/machine/tube/atlas-schema.ts`, `src/machine/board/display.ts`) | 9 and 12. The 10/20 figures were borrowed from `ghalien`, an HD38800 machine, and have no remaining basis. | 1, 3 |
+| Six playfield columns (`ATLAS-COORDINATES.md` assumption 3) | Seven, with no jet in the first cell or the last. The catalogue's printed reading was right and the atlas's was not. | 3 |
+| Grids on D0-D9, the twenty-line plate bus on the R ports (`display.ts`) | Grids are **R0-R8**; plates are **O0-O7 plus R11-R14**. There is no D port on this chip at all. | 1, 2 |
+| Speaker on D14, with edge capture in `src/machine/board/speaker.ts` | Speaker is **R15**, one of the same 16 R latches the grids come from, set and reset by `SETR`/`RSTR`. The cycle-stamped edge model carries; the pin and the write mechanism do not. | 1, 2 |
+| Inputs read through a strobe matrix on a dedicated input port | K1/K2/K4 strobed from R9/R10 by wired-OR, plus **K8 unstrobed** for fire. Only one of R9/R10 may be high at a time or the two columns superimpose. | 1 |
+| A display sweep free to write any plate pattern per grid | The low 8 plates come through a 32-entry O PLA indexed by status latch and accumulator. The pattern set is finite, and it is ours to design rather than to discover. | 2 |
+| Score modelled as three full digits | Two full digits plus a `1`-only hundreds place, which is why the cap is 199. | 3 |
 
 ## What this does not settle
 
