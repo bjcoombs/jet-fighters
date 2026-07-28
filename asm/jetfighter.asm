@@ -364,10 +364,14 @@
 
 ; --- The rocket the jets fire ------------------------------------------------
 ;
-; PROVISIONAL. The interval falls with the dial:
-; ROCK_HI_BASE - STEP_SKILL * (skill - 1) high nibbles, so skill 1 is 96 sweeps
-; (1.33 s) and skill 3 is 32 (442 ms).
-.EQU ROCK_HI_BASE,   6
+; PROVISIONAL. Counted in sixteen-sweep units, like the battleship's gap, because
+; a low/high nibble pair tops out at 255 sweeps and a rocket every three seconds
+; at the easiest setting is not a game. The interval is
+; (ROCK_HI_BASE - (skill - 1)) * 16 units of 16 sweeps, so skill 1 is 768 sweeps
+; and skill 3 is 256 - about 10 s and 3.5 s at the rate the sweep actually runs.
+; A rocket only launches if a jet is airborne in the lane the rotor lands on, so
+; the effective rate is lower again early in a wave.
+.EQU ROCK_HI_BASE,   3
 
 ; --- The battleship ----------------------------------------------------------
 ;
@@ -392,8 +396,13 @@
 ; detection pass whose own lane split is 8 / 2 / 7 and which therefore demonstrably
 ; drops episodes. But n = 1, and two minutes of the unit recorded the way these
 ; clips were, counting arrivals rather than timing one gap, is what would settle it.
-.EQU BSHIP_STEP_LO, 15          ; a lane step is BSHIP_STEP_HI * 16 + LO = 95
-.EQU BSHIP_STEP_HI,  5          ;   sweeps, 1.31 s; three of them is 3.94 s
+.EQU BSHIP_STEP_LO,  0          ; a lane step is BSHIP_STEP_HI * 16 + LO + 1 =
+.EQU BSHIP_STEP_HI,  4          ;   65 sweeps; three of them is 3.9 s MEASURED
+                                ;   off the running machine by tools/probe/
+                                ;   tms1370-probe.ts, because a sweep with the
+                                ;   boat on the glass is longer than an idle one
+                                ;   - the buzz ticks in every strobe - and the
+                                ;   nominal arithmetic would run 50% short
 .EQU BSHIP_GAP_LO,   7          ; the steady gap: 4 * 16 + 7 = 71 units of
 .EQU BSHIP_GAP_HI,   4          ;   sixteen sweeps = 1136 sweeps = 15.7 s
 .EQU BSHIP_OPEN_LO,  1          ; and the first crossing after power-on: 33
@@ -554,13 +563,17 @@
 .EQU C1_WIN,         2          ; the win jingle
 .EQU C1_FIRE,        3          ; which jet fires the next rocket
 .EQU C1_BSHIP,       4          ; the battleship arriving and leaving
-.EQU C1_REND1,       5          ; the render step: blanking and the boat
+.EQU C1_REND1,       5          ; the render step: blanking every nibble
 .EQU C1_REND2,       6          ;                  the jets and the rocket
-.EQU C1_REND3,       7          ;                  the missile
-.EQU C1_REND4,       8          ;                  the launcher
-.EQU C1_REND5,       9          ;                  the burst
-.EQU C1_REND6,      10          ;                  the capture
-.EQU C1_REND7,      11          ;                  the score
+.EQU C1_REND3,       7          ;                  the rocket
+.EQU C1_REND4,       8          ;                  the missile
+.EQU C1_REND5,       9          ;                  the launcher
+.EQU C1_REND6,      10          ;                  the burst
+.EQU C1_REND7,      11          ;                  the capture and the score
+.EQU C1_WINTEST,    12          ; the win test, which P_SCORE had no room for
+.EQU C1_LADDER,     13          ; the cadence ladder
+.EQU C1_REND0,      14          ; the render step: the battleship
+.EQU C1_LAUNCH,     15          ; deciding to launch a rocket
 
 
 ; ============================================================================
@@ -898,9 +911,12 @@ strobe:
         BR   st_buzz
         BR   st_off
 st_buzz:
-        DMAN                    ; one strobe closer to the next edge
-        MNEZ
-        BR   st_off
+        DMAN                    ; A <- one strobe closer to the next edge; the
+        TAM                     ; test above proves this cannot borrow
+        MNEZ                    ; zero is the edge; anything else is still
+        BR   st_off             ; counting down to it
+        BR   st_flip
+st_flip:
         TCMIY BUZZ_DIV          ; reload, and step Y on to the phase nibble
         TBIT1 0
         BR   st_fall
@@ -1004,12 +1020,18 @@ nt_lo_in:
         A15AAC
         BR   nt_lo_out
         TCY  NIB_PLEFT
-        DMAN
-        BR   nt_period
+        DMAN                    ; A <- periods left - 1
+        BR   nt_next_period
         TCY  NIB_BLEFT
         DMAN
-        BR   nt_burst
+        BR   nt_next_burst
         RETN
+nt_next_period:
+        TAM
+        BR   nt_period
+nt_next_burst:
+        TAM
+        BR   nt_burst
 
 ; --- clear_file: sixteen nibbles of the selected file, to zero ---------------
 ;
@@ -1205,11 +1227,14 @@ tick_burst:
 tk_burst_live:
         LDX  FILE_TIME
         TCY  NIB_KSTEP
-        DMAN                    ; one sweep off its life
-        BR   tick_capture
+        DMAN                    ; A <- one sweep off its life
+        BR   tk_burst_left
         LDX  FILE_STATE
         TCY  NIB_KCOL
         TCMIY 0                 ; spent, and the cell goes dark
+        BR   tick_capture
+tk_burst_left:
+        TAM
         BR   tick_capture
 
 ; --- the capture burst on the player's own grid ------------------------------
@@ -1221,8 +1246,11 @@ tick_capture:
         BR   tk_capture_live
         BR   tick_missile
 tk_capture_live:
-        DMAN
-        BR   tick_missile
+        DMAN                    ; A <- one sweep off it
+        BR   tk_capture_left
+        BR   tick_missile       ; spent: it was already zero, so leave it there
+tk_capture_left:
+        TAM
 tick_missile:
         LDX  FILE_STATE
         TCY  NIB_MCOL
@@ -1232,10 +1260,13 @@ tick_missile:
 tk_missile_live:
         LDX  FILE_TIME
         TCY  NIB_MSTEP
-        DMAN
-        BR   tk_to_fire
+        DMAN                    ; A <- one sweep off the step
+        BR   tk_missile_wait
         LDP  P_HIT
         BR   missile_step
+tk_missile_wait:
+        TAM
+        BR   tk_to_fire
 
 ; --- pressing fire, and the squadron -----------------------------------------
 ;
@@ -1260,9 +1291,15 @@ missile_step:
         LDX  FILE_STATE
         TCY  NIB_MCOL
         DMAN                    ; outward: grid 5 toward grid 1
-        BR   ms_flying
+        BR   ms_step_ok
         LDP  P_SWEEP
         BR   ms_horizon         ; past the last column is the battleship's row
+ms_step_ok:
+        TAM
+        MNEZ                    ; grid 0 is the horizon, not a column
+        BR   ms_flying
+        LDP  P_SWEEP
+        BR   ms_horizon
 ms_flying:
         TCY  NIB_MLANE
         TMA
@@ -1340,22 +1377,20 @@ add_score:
         TCY  NIB_SC_U
         AMAAC                   ; A <- points + units
         A6AAC
-        TCY  0
-        YNEC 1
         BR   as_carry_u
         A10AAC                  ; no carry, so the six comes straight back off
         TAM
-        BR   as_done
+        TCY  0
+        YNEC 1
+        BR   as_to_done
 as_carry_u:
         TAM                     ; the six left A holding units - 10
         TCY  NIB_SC_T
         IMAC
         TAM
         A6AAC
-        TCY  0
-        YNEC 1
         BR   as_carry_t
-        BR   as_done
+        BR   as_to_done
 as_carry_t:
         LDX  FILE_TIME
         TCY  NIB_SC_T
@@ -1363,53 +1398,16 @@ as_carry_t:
         TCY  NIB_SC_H
         IMAC
         TAM
+        TCY  0
+        YNEC 1
+        BR   as_to_done
+
+as_to_done:
+        COMC
+        LDP  C1_WINTEST
         BR   as_done
 
-; --- the win is 199 ----------------------------------------------------------
-;
-; Two ways to reach it, and both are here because a score that steps by five can
-; jump the exact value. Hundreds reaching two is a score above 199 and is capped
-; back to it; otherwise 1-9-9 is tested digit by digit. `A7AAC` carries exactly
-; when a BCD digit is nine, which is what makes the test two instructions
-; instead of a scratch nibble and a compare.
-
-as_done:
-        LDX  FILE_TIME
-        TCY  NIB_SC_H
-        TMA
-        A14AAC                  ; carry iff hundreds >= 2
-        BR   as_cap
-        BR   as_test_h
-as_cap:
-        LDX  FILE_TIME
-        TCY  NIB_SC_U
-        TCMIY 9
-        TCMIY 9
-        TCMIY 1                 ; 199, the cap
-        BR   as_win
-as_test_h:
-        LDX  FILE_TIME
-        TCY  NIB_SC_H
-        MNEZ
-        BR   as_test_t
-        BR   as_out
-as_test_t:
-        TCY  NIB_SC_T
-        TMA
-        A7AAC                   ; carry iff the tens digit is nine
-        BR   as_test_u
-        BR   as_out
-as_test_u:
-        TCY  NIB_SC_U
-        TMA
-        A7AAC
-        BR   as_win
-        BR   as_out
-as_win:
-        COMC
-        LDP  C1_WIN
-        BR   game_win
-as_out:
+as_out2:
         LDP  P_JETS
         BR   jet_march
 
@@ -1428,12 +1426,19 @@ as_out:
 jet_march:
         LDX  FILE_TIME
         TCY  NIB_STEP_LO
-        DMAN
-        BR   jm_waiting
+        DMAN                    ; a pair is spent low first; the low nibble
+        BR   jm_low_left        ; wrapping to 15 is what spends a high one
+        TAM
         TCY  NIB_STEP_HI
         DMAN
-        BR   jm_waiting
+        BR   jm_high_left
         BR   jm_step
+jm_high_left:
+        TAM
+        BR   jm_waiting
+jm_low_left:
+        TAM
+        BR   jm_waiting
 jm_waiting:
         LDP  P_SPAWN
         BR   jet_release
@@ -1488,10 +1493,12 @@ jm_beep:
         TCMIY SND_MARCH_B
         LDP  P_LEAF
         CALL note               ; jetMarch: 641 Hz, 70.2 ms
-        LDP  P_SPILL
+        COMC
+        LDP  C1_LADDER
         BR   step_reload
 jm_reload:
-        LDP  P_SPILL
+        COMC
+        LDP  C1_LADDER
         BR   step_reload
 
 
@@ -1512,11 +1519,18 @@ jet_release:
         LDX  FILE_TIME
         TCY  NIB_ENTRY_LO
         DMAN
-        BR   jr_out
+        BR   jr_low_left
+        TAM
         TCY  NIB_ENTRY_HI
         DMAN
-        BR   jr_out
+        BR   jr_high_left
         BR   jet_enter
+jr_high_left:
+        TAM
+        BR   jr_out
+jr_low_left:
+        TAM
+        BR   jr_out
 
 jet_enter:
         LDX  FILE_JETS
@@ -1545,9 +1559,12 @@ je_look:
 je_busy:
         LDX  FILE_JETS
         TCY  NIB_J_TMP
-        DMAN
-        BR   je_try
+        DMAN                    ; A <- tries left - 1
+        BR   je_retry
         BR   jr_out             ; all three lanes busy - wait a sweep
+je_retry:
+        TAM
+        BR   je_try
 je_place:
         TCMIY GRID_COL_FIRST    ; the jet enters at the far end of the field
         LDX  FILE_JETS
@@ -1578,15 +1595,23 @@ jr_out:
 tick_rocket:
         LDX  FILE_STATE
         TCY  NIB_RCOL
+        LDP  P_ROCKET
         MNEZ
         BR   tr_flying
+        BR   tr_to_launch
+tr_to_launch:
+        COMC
+        LDP  C1_LAUNCH
         BR   rocket_launch
 tr_flying:
         LDX  FILE_TIME
         TCY  NIB_RSTEP
-        DMAN
-        BR   tr_done
+        DMAN                    ; A <- one sweep off the step
+        BR   tr_step_left
         BR   rocket_move
+tr_step_left:
+        TAM
+        BR   tr_done
 
 rocket_move:
         LDX  FILE_TIME
@@ -1616,40 +1641,6 @@ tr_done:
         LDP  P_BSHIP
         BR   tick_bship
 
-; --- deciding to launch one --------------------------------------------------
-
-rocket_launch:
-        LDX  FILE_TIME
-        TCY  NIB_ROCK_LO
-        DMAN
-        BR   tr_done
-        TCY  NIB_ROCK_HI
-        DMAN
-        BR   tr_done
-        LDX  FILE_STATE
-        TCY  NIB_SKILL
-        TMA
-        A15AAC                  ; A <- skill - 1
-        LDX  FILE_JETS
-        TCY  NIB_J_TMP
-        TAM
-        AMAAC                   ; A <- STEP_SKILL * (skill - 1)
-        TCY  NIB_J_SCR
-        TCMIY ROCK_HI_BASE
-        TCY  NIB_J_SCR
-        SAMAN
-        BR   rl_ok
-        CLA
-        A1AAC
-rl_ok:
-        LDX  FILE_TIME
-        TCY  NIB_ROCK_HI
-        TAM
-        TCY  NIB_ROCK_LO
-        TCMIY 15
-        COMC
-        LDP  C1_FIRE
-        BR   rocket_fire
 ; ============================================================================
 ; Page 12 - the spill page
 ; ============================================================================
@@ -1683,61 +1674,21 @@ jm_capture:
 
 
 
-; --- the ladder --------------------------------------------------------------
-;
-; STEP_HI = STEP_HI_MAX - kills - STEP_SKILL * (skill - 1), floored at
-; STEP_HI_MIN. `SAMAN` is memory minus accumulator, so the subtrahend is built
-; in A and the constant put in memory rather than the other way round.
-
-step_reload:
-        LDX  FILE_STATE
-        TCY  NIB_SKILL
-        TMA
-        A15AAC                  ; A <- skill - 1
-        LDX  FILE_JETS
-        TCY  NIB_J_TMP
-        TAM
-        AMAAC                   ; A <- 2 * (skill - 1), which is STEP_SKILL
-        TCY  NIB_J_TMP
-        TAM
-        LDX  FILE_STATE
-        TCY  NIB_KILLS
-        TMA
-        LDX  FILE_JETS
-        TCY  NIB_J_TMP
-        AMAAC                   ; A <- kills + 2 * (skill - 1)
-        TCY  NIB_J_SCR
-        TCMIY STEP_HI_MAX
-        TCY  NIB_J_SCR
-        SAMAN                   ; A <- STEP_HI_MAX - A
-        BR   sr_ok
-        CLA
-        A1AAC                   ; the floor: one high nibble
-sr_ok:
-        LDX  FILE_TIME
-        TCY  NIB_STEP_HI
-        TAM
-        TCY  NIB_STEP_LO
-        TCMIY 15
-        LDP  P_SPAWN
-        BR   jet_release
-
-
 ; --- a squadron cleared ------------------------------------------------------
 
 jr_wave_test:
         LDX  FILE_JETS
+        LDP  P_SPAWN            ; PB holds until something else loads it, so the
+                                ; three tests below share one, above them all
+                                ; rather than between each test and its branch
         TCY  NIB_J_LANE0
         MNEZ
-        LDP  P_SPAWN
         BR   jr_out
         TCY  NIB_J_LANE0 + 1
         MNEZ
-        LDP  P_SPAWN
         BR   jr_out
         TCY  NIB_J_LANE0 + 2
         MNEZ
-        LDP  P_SPAWN
         BR   jr_out
         LDX  FILE_JETS
         TCY  NIB_J_SENT
@@ -1776,13 +1727,20 @@ bs_waiting:
         BR   bs_out
         TCY  NIB_BS_LO
         DMAN
-        BR   bs_out
+        BR   bw_low_left
+        TAM
         TCY  NIB_BS_HI
         DMAN
-        BR   bs_out
+        BR   bw_high_left
         COMC
         LDP  C1_BSHIP
         BR   bship_enter
+bw_high_left:
+        TAM
+        BR   bs_out
+bw_low_left:
+        TAM
+        BR   bs_out
 
 ; --- crossing ----------------------------------------------------------------
 
@@ -1790,23 +1748,35 @@ bs_crossing:
         LDX  FILE_TIME
         TCY  NIB_BS_LO
         DMAN
-        BR   bs_out
+        BR   bc_low_left
+        TAM
         TCY  NIB_BS_HI
         DMAN
+        BR   bc_high_left
+        BR   bc_step
+bc_high_left:
+        TAM
         BR   bs_out
+bc_low_left:
+        TAM
+        BR   bs_out
+bc_step:
         LDX  FILE_STATE
         TCY  NIB_BSLANE
         IMAC
         TAM
         A13AAC                  ; carry iff it has run past the last lane
-        COMC
-        LDP  C1_BSHIP
-        BR   bs_leave
+        BR   bs_to_leave
         LDX  FILE_TIME
         TCY  NIB_BS_LO
         TCMIY BSHIP_STEP_LO
         TCMIY BSHIP_STEP_HI
         BR   bs_out
+
+bs_to_leave:
+        COMC
+        LDP  C1_BSHIP
+        BR   bs_leave
 
 bs_out:
         COMC
@@ -1918,8 +1888,7 @@ launcher_down:
         IMAC
         TAM
         A13AAC                  ; carry iff all three launchers are gone
-        LDP  C1_OVER
-        BR   game_lost
+        BR   ld_to_over
         LDX  FILE_STATE
         TCY  NIB_HITS
         TMA
@@ -1953,13 +1922,26 @@ lw_gap_in:
         LDX  FILE_JETS
         TCY  NIB_J_SCR
         DMAN
-        BR   lw_gap_out
+        BR   lw_gap_more
         LDX  FILE_JETS
         TCY  NIB_J_TMP
         DMAN
-        BR   lw_beep
+        BR   lw_next_beep
         LDP  C1_REND1
         BR   render
+lw_gap_more:
+        TAM
+        BR   lw_gap_out
+lw_next_beep:
+        TAM
+        BR   lw_beep
+
+; The third hit is the loss sound rather than a warning. The trampoline sits
+; here, past the last branch of the routine above, because a page's words run in
+; the shift register's order and anything placed mid-routine is fallen into.
+ld_to_over:
+        LDP  C1_OVER
+        BR   game_lost
 
 ; ============================================================================
 ; Chapter 1, page 1 - the loss sound
@@ -2079,7 +2061,12 @@ gw_pass:
         LDX  FILE_JETS
         TCY  NIB_J_TMP
         DMAN
+        BR   gw_again
+        BR   gw_last
+gw_again:
+        TAM
         BR   gw_pass
+gw_last:
         LDX  FILE_D0
         TCY  NIB_HALF_O
         TCMIY SND_WIN2_O
@@ -2146,11 +2133,14 @@ rf_look:
 rf_empty:
         LDX  FILE_JETS
         TCY  NIB_J_TMP
-        DMAN
-        BR   rf_try
+        DMAN                    ; A <- tries left - 1
+        BR   rf_retry
         COMC
         LDP  P_ROCKET
         BR   tr_done   ; nothing airborne - no rocket this time round
+rf_retry:
+        TAM
+        BR   rf_try
 rf_fire:
         TMA                     ; A <- the grid that jet stands on
         LDX  FILE_STATE
@@ -2262,37 +2252,8 @@ render:
         TCMIY 0
         TCMIY 0
         TCMIY 0
-        LDP  C1_REND1
+        LDP  C1_REND0
         BR   rd_bship
-
-; --- the battleship, on grid 0's near plates ---------------------------------
-
-rd_bship:
-        LDX  FILE_STATE
-        TCY  NIB_BSLANE
-        TMA
-        LDX  FILE_D3
-        TCY  NIB_RLNE
-        TAM
-        TCY  NIB_RGRID
-        TCMIY BS_NONE
-        TCY  NIB_RGRID
-        MNEA                    ; status = the boat is on the glass
-        BR   rd_bs_draw
-        BR   rd_jets
-rd_bs_draw:
-        COMC
-        LDP  P_LEAF
-        CALL lane_bit
-        COMC
-        LDX  FILE_D3
-        TCY  NIB_RBIT
-        TMA
-        LDX  FILE_D0
-        TCY  GRID_BSHIP
-        TAM
-        LDP  C1_REND2
-        BR   rd_jets
 
 .PAGE C1_REND2
 
@@ -2328,6 +2289,7 @@ rd_jet_draw:
         TAM
 rd_jet_next:
         LDX  FILE_D3
+        LDP  C1_REND2           ; the loop below branches within this page
         TCY  NIB_RBIT
         TMA
         AMAAC                   ; the bit walks left: 1, 2, 4
@@ -2336,16 +2298,25 @@ rd_jet_next:
         IMAC
         TAM
         A13AAC                  ; carry iff every lane has been walked
-        BR   rd_rocket
+        BR   rd_to_rocket
         BR   rd_jet_lane
+rd_to_rocket:
+        LDP  C1_REND3
+        BR   rd_rocket
+
+.PAGE C1_REND3
 
 ; --- the rocket, on its column's far plates ----------------------------------
 
 rd_rocket:
         LDX  FILE_STATE
         TCY  NIB_RCOL
+        LDP  C1_REND3           ; the in-page arm needs PB naming this page too
         MNEZ
         BR   rd_rk_draw
+        BR   rd_to_missile
+rd_to_missile:
+        LDP  C1_REND4
         BR   rd_missile
 rd_rk_draw:
         TMA
@@ -2370,10 +2341,12 @@ rd_rk_draw:
         LDX  FILE_D1
         AMAAC
         TAM
-        LDP  C1_REND3
+        LDP  C1_REND4
+        TCY  0
+        YNEC 1
         BR   rd_missile
 
-.PAGE C1_REND3
+.PAGE C1_REND4
 
 ; --- the player's missile, on the pair plates --------------------------------
 ;
@@ -2383,8 +2356,13 @@ rd_rk_draw:
 rd_missile:
         LDX  FILE_STATE
         TCY  NIB_MCOL
+        LDP  C1_REND4           ; the in-page arm needs PB naming this page, so
+                                ; the other one goes through a trampoline
         MNEZ
         BR   rd_ms_draw
+        BR   rd_ms_none
+rd_ms_none:
+        LDP  C1_REND5
         BR   rd_launcher
 rd_ms_draw:
         TMA
@@ -2411,17 +2389,19 @@ rd_ms_draw:
         LDX  FILE_D2
         AMAAC
         TAM
-        LDP  C1_REND1
+        LDP  C1_REND5
+        TCY  0
+        YNEC 1
         BR   rd_launcher
 rd_ms_plate8:
         LDX  FILE_D3
         TCY  NIB_RGRID
         TMY
         TCMIY RPL_R11
-        LDP  C1_REND1
+        LDP  C1_REND5
         BR   rd_launcher
 
-.PAGE C1_REND4
+.PAGE C1_REND5
 
 ; --- the launcher, on grid 6's pair plates -----------------------------------
 
@@ -2448,16 +2428,18 @@ rd_launcher:
         TCY  GRID_PLAYER
         AMAAC
         TAM
-        LDP  C1_REND5
+        LDP  C1_REND6
+        TCY  0
+        YNEC 1
         BR   rd_burst
 rd_ln_plate8:
         LDX  FILE_D3
         TCY  GRID_PLAYER
         TCMIY RPL_R11
-        LDP  C1_REND5
+        LDP  C1_REND6
         BR   rd_burst
 
-.PAGE C1_REND5
+.PAGE C1_REND6
 
 ; --- the burst, and the capture --------------------------------------------
 ;
@@ -2471,8 +2453,12 @@ rd_ln_plate8:
 rd_burst:
         LDX  FILE_STATE
         TCY  NIB_KCOL
+        LDP  C1_REND6
         MNEZ
         BR   rd_bk_draw
+        BR   rd_bk_none
+rd_bk_none:
+        LDP  C1_REND7
         BR   rd_capture
 rd_bk_draw:
         TMA
@@ -2500,7 +2486,9 @@ rd_bk_draw:
         TCY  GRID_BSHIP
         AMAAC
         TAM
-        LDP  C1_REND6
+        LDP  C1_REND7
+        TCY  0
+        YNEC 1
         BR   rd_capture
 rd_bk_plate:
         LDX  FILE_D3
@@ -2518,10 +2506,10 @@ rd_bk_plate:
         TCY  NIB_RGRID
         TMY
         TAM
-        LDP  C1_REND6
+        LDP  C1_REND7
         BR   rd_capture
 
-.PAGE C1_REND6
+.PAGE C1_REND7
 
 ; --- the capture burst, on grid 6's far plates ------------------------------
 
@@ -2549,10 +2537,9 @@ rd_cp_draw:
         TCY  GRID_PLAYER
         AMAAC
         TAM
-        LDP  C1_REND7
+        TCY  0
+        YNEC 1
         BR   rd_score
-
-.PAGE C1_REND7
 
 ; --- the score --------------------------------------------------------------
 ;
@@ -2605,5 +2592,201 @@ rd_done:
         BR   sweep
 
 
+
+; ============================================================================
+; Chapter 1, page 12 - the win test
+; ============================================================================
+
+.PAGE C1_WINTEST
+
+; --- the win is 199 ----------------------------------------------------------
+;
+; Two ways to reach it, and both are here because a score that steps by five can
+; jump the exact value. Hundreds reaching two is a score above 199 and is capped
+; back to it; otherwise 1-9-9 is tested digit by digit. `A7AAC` carries exactly
+; when a BCD digit is nine, which is what makes the test two instructions
+; instead of a scratch nibble and a compare.
+
+as_done:
+        LDX  FILE_TIME
+        TCY  NIB_SC_H
+        TMA
+        A14AAC                  ; carry iff hundreds >= 2
+        BR   as_cap
+        BR   as_test_h
+as_cap:
+        LDX  FILE_TIME
+        TCY  NIB_SC_U
+        TCMIY 9
+        TCMIY 9
+        TCMIY 1                 ; 199, the cap
+        BR   as_win
+as_test_h:
+        LDX  FILE_TIME
+        TCY  NIB_SC_H
+        MNEZ
+        BR   as_test_t
+        BR   as_out
+as_test_t:
+        TCY  NIB_SC_T
+        TMA
+        A7AAC                   ; carry iff the tens digit is nine
+        BR   as_test_u
+        BR   as_out
+as_test_u:
+        TCY  NIB_SC_U
+        TMA
+        A7AAC
+        BR   as_win
+        BR   as_out
+as_win:
+        LDP  C1_WIN
+        BR   game_win
+as_out:
+        COMC
+        LDP  P_SCORE
+        BR   as_out2
+
+
+
+; ============================================================================
+; Chapter 1, page 13 - the cadence ladder
+; ============================================================================
+
+.PAGE C1_LADDER
+
+; --- the ladder --------------------------------------------------------------
+;
+; STEP_HI = STEP_HI_MAX - kills - STEP_SKILL * (skill - 1), floored at
+; STEP_HI_MIN. `SAMAN` is memory minus accumulator, so the subtrahend is built
+; in A and the constant put in memory rather than the other way round.
+
+step_reload:
+        LDX  FILE_STATE
+        TCY  NIB_SKILL
+        TMA
+        A15AAC                  ; A <- skill - 1
+        LDX  FILE_JETS
+        TCY  NIB_J_TMP
+        TAM
+        AMAAC                   ; A <- 2 * (skill - 1), which is STEP_SKILL
+        TCY  NIB_J_TMP
+        TAM
+        LDX  FILE_STATE
+        TCY  NIB_KILLS
+        TMA
+        LDX  FILE_JETS
+        TCY  NIB_J_TMP
+        AMAAC                   ; A <- kills + 2 * (skill - 1)
+        TCY  NIB_J_SCR
+        TCMIY STEP_HI_MAX
+        TCY  NIB_J_SCR
+        SAMAN                   ; A <- STEP_HI_MAX - A
+        BR   sr_ok
+        CLA
+        A1AAC                   ; the floor: one high nibble
+sr_ok:
+        LDX  FILE_TIME
+        TCY  NIB_STEP_HI
+        TAM
+        TCY  NIB_STEP_LO
+        TCMIY 15
+        COMC
+        LDP  P_SPAWN
+        BR   jet_release
+
+
+
+; ============================================================================
+; Chapter 1, page 14 - the battleship, on grid 0's near plates
+; ============================================================================
+
+.PAGE C1_REND0
+
+rd_bship:
+        LDX  FILE_STATE
+        TCY  NIB_BSLANE
+        TMA
+        LDX  FILE_D3
+        TCY  NIB_RLNE
+        TAM
+        TCY  NIB_RGRID
+        TCMIY BS_NONE
+        TCY  NIB_RGRID
+        LDP  C1_REND0           ; a taken branch always copies PB into PA, so
+                                ; even the in-page arm needs PB naming this
+                                ; page; the other arm goes through a trampoline
+        MNEA                    ; status = the boat is on the glass
+        BR   rd_bs_draw
+        BR   rd_to_jets
+rd_to_jets:
+        LDP  C1_REND2
+        BR   rd_jets
+rd_bs_draw:
+        COMC
+        LDP  P_LEAF
+        CALL lane_bit
+        COMC
+        LDX  FILE_D3
+        TCY  NIB_RBIT
+        TMA
+        LDX  FILE_D0
+        TCY  GRID_BSHIP
+        TAM
+        LDP  C1_REND2
+        BR   rd_jets
+
+
+; ============================================================================
+; Chapter 1, page 15 - deciding to launch a rocket
+; ============================================================================
+
+.PAGE C1_LAUNCH
+
+rocket_launch:
+        LDX  FILE_TIME
+        TCY  NIB_TICK
+        MNEZ                    ; a unit is sixteen sweeps: spend one only on
+        BR   rl_wait            ; the sweep the tick counter wraps
+        TCY  NIB_ROCK_LO
+        DMAN
+        BR   rl_low_left
+        TAM
+        TCY  NIB_ROCK_HI
+        DMAN
+        BR   rl_high_left
+        BR   rl_due
+rl_high_left:
+        TAM
+        COMC
+        LDP  P_ROCKET
+        BR   tr_done
+rl_low_left:
+        TAM
+rl_wait:
+        COMC
+        LDP  P_ROCKET
+        BR   tr_done
+rl_due:
+        LDX  FILE_STATE
+        TCY  NIB_SKILL
+        TMA
+        A15AAC                  ; A <- skill - 1
+        LDX  FILE_JETS
+        TCY  NIB_J_SCR
+        TCMIY ROCK_HI_BASE
+        TCY  NIB_J_SCR
+        SAMAN
+        BR   rl_ok
+        CLA
+        A1AAC
+rl_ok:
+        LDX  FILE_TIME
+        TCY  NIB_ROCK_HI
+        TAM
+        TCY  NIB_ROCK_LO
+        TCMIY 15
+        LDP  C1_FIRE
+        BR   rocket_fire
 
 .END
