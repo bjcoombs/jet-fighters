@@ -57,7 +57,7 @@ function settle(renderer: TubeRenderer, recorder: FakeCanvasContext, frame: PwmF
  * Found by ink colour, because the silkscreen has no operation of its own to
  * look for: it draws with the same primitives the layers under it do. This used
  * to look for `strokeRect`, which the layer happened to be the only user of -
- * until #101 dropped the boxes around the SCORE digits and left it with none, at
+ * until #102 dropped the boxes around the SCORE digits and left it with none, at
  * which point both ordering tests started passing a `-1` into a
  * `toBeGreaterThan` and failing for a reason that had nothing to do with layer
  * order. `SILKSCREEN` is set on exactly one layer and nowhere else in the

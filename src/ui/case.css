@@ -1,6 +1,6 @@
 /* Jet Fighters tabletop case + on-case controls.
    Layout coordinate space matches the SVG viewBox (896 x 440 - it was
-   1000 x 460 until #101 cropped the bare red off the wings and the bottom, so
+   1000 x 460 until #102 cropped the bare red off the wings and the bottom, so
    every percentage here divides by the new box, not the old). Overlay elements
    are positioned as percentages of `.jf-case`, whose locked aspect-ratio
    guarantees the round scope window stays circular at any size.
@@ -136,7 +136,7 @@
 /* --- Fire button (left wing, top) --------------------------------------
    Body units 46..158 across (the countersink ring below reaches 36..168 on its
    -9% inset), against a wing that now ends at 248. The button did not change
-   size in #101 - it is the same 112 units it always was - it moved 3 units left
+   size in #102 - it is the same 112 units it always was - it moved 3 units left
    and the wing came in around it, so the gap to the switch is set by the ring,
    which all but touches the switch box. That is what the reference photos show:
    `device-front-gameplay.jpg` has the slot cut into the raised strip immediately
@@ -189,7 +189,7 @@
 /* --- Power slide switch (left wing, right of fire; vertical, ON at top) -
    Body units 168..214. The box was 70 units wide with the track floating in the
    middle of it, and 19 of those units were empty plastic on the side facing the
-   fire button - which is what read as a gap between the two controls. #101 took
+   fire button - which is what read as a gap between the two controls. #102 took
    the box to 46 and moved it 7 left; the track keeps its own 32-unit width by
    claiming a larger share (70%) of the smaller box, so the switch itself is
    unchanged and only the dead margin went. Cap-to-track is now 24 units where it
@@ -259,7 +259,7 @@
    wider - a bare band next to the glass half again as wide as the lever recess
    itself. The lever stays right of the wing's centre, which is where
    `device-front-gameplay.jpg` puts it (about two thirds across, with a plain
-   raised strip inboard of it); #101 took the wasted width out of that strip
+   raised strip inboard of it); #102 took the wasted width out of that strip
    rather than centring the control and losing the bias. */
 .jf-lever {
   position: absolute;
