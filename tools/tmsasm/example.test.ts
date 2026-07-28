@@ -15,6 +15,7 @@
 // padded to clear it would be a fixture lying on the ROM's behalf.
 
 import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { assemble, type AssemblyResult } from './assembler.js';
@@ -29,7 +30,16 @@ import { RAM_SIZE, RESET_ADDRESS, ROM_SIZE, WORD_MASK } from './memory.js';
 
 const FIXTURE = fileURLToPath(new URL('./fixtures/demo.asm', import.meta.url));
 
-const result: AssemblyResult = assemble(readFileSync(FIXTURE, 'utf8'), FIXTURE);
+/**
+ * The fixture `.INCLUDE`s `asm/opla.inc.asm`, so it needs the same file reader
+ * the CLI supplies. The assembler itself stays pure and takes one as an option.
+ */
+const readInclude = (included: string, fromFile: string) => {
+  const resolved = resolve(dirname(fromFile), included);
+  return { file: resolved, source: readFileSync(resolved, 'utf8') };
+};
+
+const result: AssemblyResult = assemble(readFileSync(FIXTURE, 'utf8'), FIXTURE, { readInclude });
 const listing = formatListing(result);
 
 /** The value of a `; Key: value` summary line. */
