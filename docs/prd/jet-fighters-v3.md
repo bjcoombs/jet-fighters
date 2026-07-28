@@ -33,6 +33,21 @@ The consequence is not cosmetic. Every hardware constraint that shapes the progr
 | Speaker | D14 | **R15**, an R latch like the grids |
 | Inputs | dedicated strobe port | **K1/K2/K4** strobed from R9/R10, **K8 unstrobed** for fire |
 
+### Most of this work cannot start yet, and that is the top-line risk
+
+Four requirements gate on artifacts nobody in this project has yet: **R0** on
+`tms1100_common2_micro.pla`, **R4** on `ginv.svg`, **R6** probably on `mp2110`, and **R7**
+on `mp2110` plus `tms1100_ginv_output.pla`. R0 is first in the dependency order and R5 is
+downstream of it, so this is the critical path rather than a tail-end concern.
+
+**Of 58 points, about 5 to 8 can begin today** - R8, R9, and building R6's harness. Everything
+else waits.
+
+One mitigation matters and is easy to miss: **R0 does not need the `ginv` romset.**
+`tms1100_common2_micro.pla` is shared across roughly thirty TMS1100 machines and MAME romsets
+are hash-verified, so the file is bit-identical in all of them. Several of those thirty are
+far easier to obtain than a 1980 Gakken handheld's. Only R4, R6 and R7 need `ginv` itself.
+
 The instruction-rate row is the one that changes the program rather than its constants.
 Six oscillator pulses make one instruction cycle - the figure `tms1370-architecture.md` §6
 calls "confirmed three independent ways". A ~71 Hz sweep buys roughly **820 instructions,
@@ -92,15 +107,28 @@ is *"a prerequisite for writing a single line of assembly"*. The instruction sem
 of that document are Documented for behaviour and Executable for encoding, but **Inferred
 for "this chip does that"**.
 
-Decode `tms1100_common2_micro.pla` from the `ginv` romset and check all 256 opcodes against
-the standard TMS1100 map.
+Decode `tms1100_common2_micro.pla` and check the **microinstruction-defined** opcodes
+against the standard TMS1100 map: `0x00-0x08`, `0x0E`, `0x20-0x27`, `0x38-0x3F`, `0x40-0x7F`.
 
-**Acceptance.** A document recording, per opcode, whether MP2110's PLA implements the
-standard behaviour, with any divergence named. If it diverges, R1's core and R2's assembler
-target the divergent set, not the standard one.
+The rest of the map is **not** at risk and is out of scope here. `tms1370-architecture.md` §5
+records the fixed instructions as *"hard-wired in silicon, identical on every TMS1100-family
+mask"* - `BR`, `CALL`, `LDP`, `LDX`, `SBIT`/`RBIT`, `COMX`, `TDO`, `COMC`, `RSTR`, `SETR`,
+`RETN`. Saying "all 256" would imply uniform uncertainty where the research says half the map
+is settled.
 
-**Dependency.** Needs the romset (see R7's artifact list). This is a hard block on R5, and
-it is why R0 is first.
+**The expected result is "standard", and that is the point.** MAME's disassembler ignores the
+microinstruction PLA and prints standard TMS1100 mnemonics unconditionally for every common2
+set; a divergence on a commonly-used opcode would probably have surfaced. This is cheap
+insurance against a low-probability, high-blast-radius outcome, not a likely blocker.
+
+**Acceptance.** A document recording, per microinstruction-defined opcode, whether MP2110's
+PLA implements the standard behaviour, with any divergence named. A divergence routes to
+R1's core, R2's assembler **and R3**: the status latch is loaded by the `STSL`
+microinstruction and is the high bit of the O PLA index, so a divergence in which opcodes
+assert STSL changes R3's index space.
+
+**Dependency.** `tms1100_common2_micro.pla`, from **any** of the ~30 romsets that share it -
+not `ginv` specifically. Hash-verified, so bit-identical in all of them.
 
 ### R1. TMS1370 CPU core (`src/machine/cpu/`)
 
@@ -122,7 +150,9 @@ Replaces the HMCS44 core. It owns no clock, touches no DOM, advances only when s
   the PC. Modelled as the silicon behaves.
 - **Reset**: entry at chapter 0, page 15, PC 0 (`0x3C0` per MAME; TI says only "a fixed
   instruction address", so this is MAME-sourced). R outputs cleared, O written with index 0,
-  status 0, call latch clear, **RAM not cleared**.
+  status 0, call latch clear, **RAM not cleared** - so the ROM must clear 128 nibbles itself,
+  and at ~58 kHz that is real time which must not race the first sweep. R5 owns that routine;
+  R2 owns the page it lives on.
 
 **Acceptance.** Per-opcode semantics tests. The LFSR sequence asserted against the 64-state
 table and shown to be a bijection. A test that a branch inside a subroutine does not change
@@ -152,32 +182,55 @@ fails later as a wild jump or a wrong output:
 
 Ceilings enforced as errors: 2048 program words, 128 RAM nibbles.
 
+**Page allocation must respect the reset vector.** Reset enters at chapter 0, page 15, word 0,
+and a page is 64 words - so the reset routine has room for an `LDP` and a `BR` and very little
+else. The assembler's page allocator has to treat that page as spoken for rather than
+discovering it late.
+
 **Acceptance.** Each of the five has a test asserting a violating program fails to assemble,
 and #3's rejection names the offending call site.
 
 ### R3. The O output PLA: 32 patterns, and they are the display's whole vocabulary
 
-**Not a syntax feature. The hardest design problem in the rebuild, and it gates R5.**
+**Not a syntax feature, and not independent of R4. Downstream of it.**
 
 The low 8 plates come from a 32-entry PLA indexed by `status_latch:accumulator` - one status
-bit, four accumulator bits. **Only 32 distinct O patterns exist for this chip, ever.** They
-must simultaneously serve two seven-segment score digits, the hundreds stroke, and every
-lane-and-shape combination on the low 8 plates of seven playfield cells.
+bit, four accumulator bits. **Only 32 distinct O patterns exist for this chip, ever.**
 
-Because we author the program, we author the PLA: declared in the assembly source, assembled
+**The plate assignment is not an input to this design. It is the solution to it.** Computed
+from today's `atlas.json` - the v2 assignment R4 replaces - the score alone consumes 20 of
+the 32 entries, because grid 7 carries the tens digit *and* the hundreds stroke on the same
+eight bits: 10 digits x 2 hundreds states. That leaves **12 entries for seven playfield
+grids**, where grids 1-5 each need combinations of jet(3 lanes) x rocket(3) x missile(2) -
+48 combinations even restricted to one lit per family. Twelve does not cover it and is not
+close.
+
+That is not proof the rebuild is impossible. Gakken shipped a working machine within 32
+entries, so *their* assignment closes. It is proof that **an invented assignment will almost
+certainly blow the budget**, which is an independent arithmetic reason why R4 must come from
+`ginv.svg` rather than from us - and why discovering it in R5 would be a rewrite.
+
+Because we author the program, we author this PLA: declared in the assembly source, assembled
 into the machine image, loaded by the core. The precedent exists - v2's `.PATTERN` + `.DW` +
 a `LISTING_KEYS` entry already gives "declared in source, own listing section, assembled into
 the image" for the HMCS44's pattern words.
 
-**Acceptance.**
+**Acceptance.** Three binary criteria; none of them requires judgement.
 
-- A design showing the 32 entries covering the display's entire vocabulary, or a named list
-  of what cannot be expressed and how R5 works around it.
-- **Entry 0 is all plates dark.** Reset writes O with index 0, so any other choice flashes
-  garbage at power-on.
-- The integration seam is built, not assumed: a new export from the `.asm` module, a changed
-  `Board`/`Memory` signature, updated `src/asm.d.ts`, and `tools/probe/machine-probe.ts`
-  carrying the PLA through. `Memory` currently asserts `rom.length === ROM_SIZE`.
+- **Closure.** For every `(grid, low-8-plate mask)` the ROM drives, that mask appears in the
+  32-entry table. Asserted where `rom-atlas-conformance` already walks the scenario space, so
+  it fails loudly and mechanically. This replaces a coverage criterion that could be
+  satisfied by any design plus a list of excuses.
+- **Cost.** The index is `status_latch:accumulator`, so the accumulator must hold the pattern
+  selector at `TDO` time. A table needing five instructions of arithmetic per index is a bad
+  table however well it covers, at ~91 instructions per grid dwell. The design records the
+  instruction cost of selecting an index, and it is bounded.
+- **Entry 0 is all plates dark.** Reset writes O with index 0; anything else flashes garbage
+  at power-on. `assert(pla[0] === 0)`.
+
+**The escape hatch, stated so it is a decision rather than a discovery:** strobing a grid more
+than once per sweep with different O patterns buys combinations, at the price of instructions
+and brightness. If the budget does not close, this is the lever - not a wider PLA.
 
 ### R4. Board and display re-addressing (`src/machine/board/`, `src/machine/tube/`)
 
@@ -189,6 +242,9 @@ the image" for the HMCS44's pattern words.
   R9/R10 may be high at a time**, or the columns superimpose. K8 being unstrobed makes
   fire's latency one K read rather than a full strobe cycle - a behavioural difference from
   v2 that R5's input handling must reflect.
+
+**Blocked on `ginv.svg`.** R5 carries a Blocked flag in the complexity table; so does this,
+and Success Criterion 4 is contingent on the same artifact.
 
 **The 94 outlines do not change. Their addresses do** - and the assignment is **not** ours
 to invent. `tms1370-io.md` lists the exact per-segment addressing as an open gap with a
@@ -221,6 +277,14 @@ ladder against a ~2040 ms slowest march, three launchers with two- and three-bee
 does. `open-questions.md` §6 records the owner's contrary description and an exact revert
 path; that path is the switching criterion if he settles it the other way. This is **his
 decision, not a measurement**, so nothing in this PRD can answer it.
+
+**The rocket's lane.** `open-questions.md` §3d is not a question but a live defect: v2's
+`rocket_fire` takes the lane from `NIB_RAND` as the player's last keypress latched it, so
+*"with the lever parked in lane 1 or 2, no rocket ever reaches the launcher"* - one lane
+lethal, two safe. R5 re-implements `rocket_fire` and **must not inherit it**: the lane is
+drawn from a source independent of the player's press pattern. If the original's behaviour
+turns out to be the defective one, R7 will show it and that is a finding, not a licence to
+have shipped it unexamined.
 
 **Acceptance.** The v2 probe suites pass: `game-lifetime`, `launcher-lives`,
 `battleship-arrival`, `blank-to-glass`, `sweep-timing`, `rom-atlas-conformance`,
@@ -255,11 +319,20 @@ MAME fits ~350 kHz as an RC-oscillator approximation with a stated +/-50 kHz spr
 chosen"*, and `CLAUDE.md` records what assuming such a constant has already cost this
 project.
 
-**Acceptance.** The instruction rate is derived from a known-period program event measured
-against the audio timebase in the owner's recordings, and recorded with that provenance. The
-oscillator frequency and the divide-by-six are separate named constants. Cadences are
-asserted against measured audio bands and durations, so a later refinement moves one number
-and re-derives the rest.
+**The naive measurement is circular, and this is why R6 is probably a fourth romset gate.**
+The recordings are of *Gakken's* program. A measured event gives a period in milliseconds;
+converting that to instructions per second needs the event's **instruction count**, which is
+a property of the original ROM. Using our own program's count is circular, because our
+cadences are the thing being set.
+
+**Acceptance.** The non-circular route: obtain `mp2110`, apply R0's verified opcode set,
+statically count the sweep loop, and divide the measured ~71 Hz refresh by it. Recorded with
+that provenance. The oscillator frequency and the divide-by-six are separate named constants.
+Cadences are asserted against measured audio bands and durations, so a later refinement moves
+one number and re-derives the rest.
+
+Until then every cadence is provisional and must be marked so - which is the position v2 was
+in, and it is survivable provided it is stated rather than assumed away.
 
 ### R7. Comparison against the original ROM
 
@@ -338,12 +411,13 @@ Cut, deliberately, not tracked elsewhere:
 | R1 core | 8 | LFSR, bit-reversed operands, call-latch-conditional page transfer |
 | R2 assembler | 8 | Five static analyses, one interprocedural |
 | R3 O PLA design | 8 | A 32-entry vocabulary problem, not a syntax feature |
-| R4 re-addressing | 5 | |
+| R4 re-addressing | 5 | **Blocked** on `ginv.svg` |
 | R5 game program | 13 | **Blocked** on R0 and R3; decompose before starting |
 | R6 measure the rate | 3 | |
 | R7 comparison harness | 5 | |
 | R8 remove HMCS44 | 3 | |
 | R9 contract | 2 | |
+| **Total** | **58** | up from 43 in the first draft; the increase is work the review found, not scope added |
 
 ## Stale references to correct alongside this work
 
