@@ -32,6 +32,11 @@ nothing here is invented.
 Where the v1 source comment and the v1 test constant disagree, both are recorded and
 the discrepancy is flagged. The wider of the two is the safe acceptance window.
 
+**One section is not v1's and does not answer to this provenance: `battleshipBuzz`.**
+It was measured during v2 from recordings the owner made of his unit for the
+purpose, and it supersedes the v1 figures rather than transcribing them. It is
+the only sound in this file isolated from everything else the machine does.
+
 **Rule: measured values are recorded as measured; note names are labels applied
 afterwards.** A note name like "D#6" carries an equal-tempered frequency (1244.5 Hz)
 that has no connection to what the piezo actually emitted - the unit was never tuned
@@ -47,12 +52,16 @@ Two techniques were used, per sound:
 
 - **Windowed FFT** - a Hann-windowed short-time transform over the isolated event,
   taking the dominant bin. Used for the single-pitch sounds (missile blip, march
-  step, battleship buzz, warning beeps) and for the noise rolloff of the loss sound.
+  step, warning beeps) and for the noise rolloff of the loss sound.
 - **Harmonic product spectrum** - multiplying downsampled copies of the magnitude
   spectrum to collapse harmonics onto the fundamental. Needed for the win jingle,
   because the piezo's fundamental is weak relative to its partials: the fundamentals
   were recovered from the partial series (partials 1500 and 2250 imply a 750 Hz
   fundamental; 940 / 1880 / 2820 imply 940; 1240 and 2480 imply 1240).
+
+A third technique, **harmonic-comb periodicity**, was added for the battleship
+buzz, whose energy sits at the transducer's resonance rather than at its own
+repetition rate; neither of the two above can read it. See that section.
 
 The piezo speaker is driven as a square wave. All bands below are the fundamental
 unless stated as a partial or as a noise rolloff.
@@ -63,6 +72,7 @@ unless stated as a partial or as a noise rolloff.
 | --- | --- | --- |
 | `assets/reference/gameplay-audio.m4a` | events at ~7.30 s, ~38.31 s, ~41.89 s, ~54 s, ~66 s, ~120.5-122.4 s | missile fire, battleship buzz, jet march, win jingle |
 | `assets/reference/loss-audio.m4a` | events at ~27.4 s, ~85.86-86.99 s | launcher-hit warning beeps, loss sound |
+| `assets/reference/battleship-arrival.m4a`, `battleship-interval.m4a` | one recording, trimmed twice; arrivals at 0.32-4.37 s and 20.12-23.92 s | battleship buzz - the only sound isolated from everything else the machine does |
 
 ---
 
@@ -111,68 +121,171 @@ v1 envelope: peak gain 0.28, 1 ms attack, 25 ms release.
 
 ## battleshipBuzz
 
-A distinctly lower, sustained buzz. The rule the owner confirmed is *relative*: the
-battleship buzz must read lower in pitch than the jet march. That ordering constraint
-is stronger evidence than the absolute band, because the dense section of the
-recording makes a clean absolute read hard.
+**This section was rewritten when the owner supplied an isolated recording.** It
+previously recorded that the buzz *could not* be isolated from either reference
+recording and that a narrow-band figure might be the wrong shape of answer
+entirely. Both of those were right, and the recording settles them: the buzz is
+not a tone in the 230-300 Hz band. The v1 figures that used to head this section
+are kept below, under [what the old numbers were measuring](#what-the-old-numbers-were-measuring),
+because what they were actually reading turns out to be identifiable.
+
+### The recording
+
+| File | What it is |
+| --- | --- |
+| `assets/reference/battleship-arrival.m4a` | 4.46 s, one arrival |
+| `assets/reference/battleship-interval.m4a` | 24.17 s, two arrivals and the gap between them |
+
+**They are one recording, not two.** The arrival clip is the interval clip's
+first 4.46 s, offset by 0.149 s: cross-correlation gives a gain of 1.000 and a
+Pearson r of 0.9955 over the overlap, with a 9.5% residual that is AAC re-encode
+noise. Anything derived from them is a sample of size one, and this document
+says so wherever it matters.
+
+The owner, sending them: *"this is the sound, notice its 4s long the boat
+appears for 4s then disappears if you haven't hit it"*, and *"the second audio
+... is longer as this show how long between it arriving again"*.
+
+### Method, and why the obvious methods fail
+
+Comparing *levels* in a narrow band fails, and failed repeatedly before these
+files existed: the buzz is quieter than the march and missile sounds that
+overlap it, and the interval clip's loud middle section is 15-20 dB above its
+quiet ends. A level-based detector finds the loud parts, which are not the boat.
+
+Comparing *spectral shape* against a template taken from the arrival clip also
+fails, and fails in a way worth recording because it looks like it works. Cosine
+similarity of the mean normalised 250-8000 Hz spectrum does return two blocks
+about four seconds long and about 19.8 s apart - but the first block is the
+template's own source audio, so it matches by construction, and the second is
+matched on being *quiet* rather than on being the boat. Run against the loud
+middle it reports nothing, and against the trailing silence it reports a hit.
+**One of its two blocks is circular and the other is a false positive**, and it
+happens to land on the right answer.
+
+What works is **periodicity**. The buzz is a pulse train with a low repetition
+rate and a comb of harmonics reaching to 9 kHz. For each 0.34 s window, scan
+f0 over 75-115 Hz, take the mean level at the comb's harmonics minus the mean
+level at the half-way points between them, over 3200-5800 Hz and after
+flattening the resonance envelope. That score is immune to level, immune to the
+template problem, and has an internal control - the anti-comb - built into it.
+
+It separates cleanly, and the controls are in the same file:
+
+| Window | Score | Reading |
+| --- | --- | --- |
+| Arrival, 0.32-4.37 s | +8 to +15 dB | the boat |
+| Second arrival, 20.12-23.92 s | +8 to +15 dB | the boat |
+| Quiet gap, 4.5-6.4 s | +2.5 to +7 dB | floor |
+| Loud game section, 6.5-19.5 s | +3 to +6 dB | floor, despite being 20 dB louder |
+
+The loud section scoring at the floor is the control that matters: the detector
+is not finding energy, and it is not finding quiet.
+
+### What it measures
 
 | Field | Value | Source |
 | --- | --- | --- |
-| `battleshipBuzz.dominantHzRange` | 230-300 Hz | Measured (band spread) |
-| `battleshipBuzz.strongestCleanReadHz` | 300 Hz (fractional confidence 0.68) | Measured at ~54 s |
-| `battleshipBuzz.synthesizedHz` | 300 Hz | Synthesized (v1) |
-| `battleshipBuzz.testBandHz` | 225-315 Hz | Test bound (v1) |
-| `battleshipBuzz.durationMs` | 380 ms | Synthesized (v1) |
+| `battleshipBuzz.repetitionHz` | **93.4 Hz** | Measured (comb fit, arrival clip) |
+| `battleshipBuzz.repetitionRangeHz` | **79-111 Hz**, wandering within one arrival | Measured (per-window f0 track) |
+| `battleshipBuzz.durationSec` | **4.05 s** and **3.80 s** | Measured (two arrivals) |
+| `battleshipBuzz.intervalSec` | **19.80 s** onset to onset | Measured, n = 1 |
+| `battleshipBuzz.continuity` | continuous: 3 of 162 25 ms windows below peak-20 dB | Measured |
 | `battleshipBuzz.constraint` | must be below `jetMarch.dominantHzRange` | Owner-confirmed rule |
-| `battleshipBuzz.recording` | `gameplay-audio.m4a` | - |
-| `battleshipBuzz.timestampSec` | ~54 | Dense section |
+| `battleshipBuzz.recording` | `battleship-arrival.m4a`, `battleship-interval.m4a` | - |
+| `battleshipBuzz.method` | harmonic-comb periodicity, 75-115 Hz, with anti-comb control | - |
 
-### The buzz could not be isolated from either recording, and the owner says it is a rumble
+Energy distribution as recorded, over the first arrival:
 
-**Owner, comparing against his unit:** *"the boat arriving is a constant noise, it's not a
-beep, more like a rumbling sound"*. Our ROM plays **one 380 ms note** at the arrival. Those
-are different things, and the difference is not a constant anyone can tune - it is the
-question of whether the sound is a tone at all.
+| Band | Share |
+| --- | --- |
+| 60-150 Hz | 4.0% |
+| 150-300 Hz | 2.0% |
+| 300-600 Hz | 1.5% |
+| 600-1200 Hz | 2.1% |
+| 1200-2400 Hz | 2.7% |
+| **2400-4800 Hz** | **60.8%** |
+| **4800-9600 Hz** | **26.6%** |
+| 9600-16000 Hz | 0.3% |
 
-An attempt to settle it from the recordings **failed, in both of them**, and the failure is
-recorded here so nobody repeats it expecting a different answer.
+### 87% of the energy is above 2.4 kHz and the sound is still low
 
-*The gameplay video.* All 34 battleship episodes were located visually - the boat is the
-only thing that lights the leftmost cell - and the audio at those moments compared against
-control windows with no boat, high-passed at 140 Hz to remove room rumble:
+This is the reading the numbers most invite getting wrong, and it contradicts
+the owner-confirmed rule that the buzz sits *below* the 640 Hz march if it is
+taken at face value.
 
-```
-battleship present:  rms  17 - 388,  150-300 Hz band =  1.2% .. 69.7%
-control, no boat:    rms   1 - 148,  150-300 Hz band = 12.4% .. 66.8%
-```
+It is not a contradiction, because **energy and pitch are different questions**.
+The comb spacing is 93.4 Hz, and every harmonic of it is present - even and odd
+score equally, so the drive is a pulse train rather than a symmetric square. A
+pulse train's *pitch* is its repetition rate. Where its energy lands is decided
+by whatever it is driving, and a small piezo has a hard mechanical resonance in
+the 3.7-4.5 kHz region: the peaks in this recording cluster at 3721, 3800, 3917,
+4017, 4107, 4204, 4298, 4389 and 4485 Hz - a 93 Hz comb sitting under a
+resonance, not a set of tones.
 
-Complete overlap. One control window looks more battleship-like than three of the five
-battleship windows. The recording is a phone at arm's length in a room, the piezo is small,
-and the march, missile and warning sounds overlap the crossing.
+So the 2.4-9.6 kHz energy is a property of **the owner's transducer and phone**,
+not of the waveform the microcontroller produces. What the ROM has to reproduce
+is the 93.4 Hz repetition rate on the D14 pin; the resonance belongs to a
+speaker the emulator does not model. Contract criterion V5 compares reconstructed
+pin edges, so this is the right end of the chain to target.
 
-*The close recording.* `gameplay-audio.m4a` at the ~54 s "strongest clean read" above gives
-22.2% of its energy in 150-300 Hz - against 26.8% at t=35 s and 25.9% at t=52 s, where no
-boat is present. No separation either.
+The 79-111 Hz *wander* is the second thing that is not noise. It moves the same
+way in both arrivals - starting near 100-106 Hz and drifting to 80-88 Hz - and
+that is what a buzz clocked off a display sweep does, because a sweep is however
+long the program's between-sweep work took. A delay-loop tone would be as stable
+as the crystal. This is the strongest evidence for the mechanism the ROM now
+uses, and it was found by looking for a repetition period rather than a spectral
+peak.
 
-**What this means for the figures above.** They are not withdrawn, but the `0.68 fractional
-confidence` and the note about the dense section should now be read as the whole story
-rather than a caveat: nothing in either recording isolates this sound. A **narrow-band
-figure may be the wrong shape of answer entirely** - a rumble is broadband, and
-`dominantHzRange 230-300` may be the centroid of a noisy sound rather than the frequency of
-a tone. Synthesising a tone at the centroid of a rumble does not produce a rumble.
+### What the old numbers were measuring
 
-**What would settle it:** ten seconds of the owner's unit recorded close to the speaker, in
-a quiet room, over a single battleship arrival. That is the one measurement that separates
-the sound from everything else the machine is doing, and no amount of analysis of the
-existing material substitutes for it.
-| `battleshipBuzz.method` | Windowed FFT | - |
+| Field | Value | Source |
+| --- | --- | --- |
+| `battleshipBuzz.dominantHzRange` | 230-300 Hz | **Superseded.** See below. |
+| `battleshipBuzz.strongestCleanReadHz` | 300 Hz (fractional confidence 0.68) | Superseded |
+| `battleshipBuzz.synthesizedHz` | 300 Hz | Synthesized (v1) |
+| `battleshipBuzz.durationMs` | 380 ms | Synthesized (v1) - never a measurement |
 
-**Discrepancy**: the v1 source comment in `src/audio/audio.ts` records the band as
-~240-300 Hz; the v1 test comment in `src/audio/audio.test.ts` records ~230-300 Hz.
-230-300 Hz is used above as the wider, safer window. Both figures describe the same
-measurement pass; neither was re-derived here.
+Two of these can now be accounted for rather than merely withdrawn.
 
-v1 envelope: peak gain 0.32, 2 ms attack, 40 ms release.
+The **230-300 Hz band** was read off `gameplay-audio.m4a` at a moment when the
+boat was present, in a dense passage, at a stated fractional confidence of 0.68.
+The isolated recording has no component there at all: 150-300 Hz carries 2.0% of
+the sound's energy and 300-600 Hz carries 1.5%. Whatever the v1 pass locked onto
+in that band, it was not the buzz.
+
+The **100 / 200 / 300 Hz components** visible in the isolated clips are **mains
+hum**, and this is checkable rather than asserted: they are present at the same
+level in a silent stretch of the same recording, at ratios of 1.0x, 1.2x and
+1.0x. A 50 Hz supply puts harmonics exactly there. The old
+`strongestCleanReadHz` of 300 Hz is one of them, which is the likeliest
+explanation for a "clean read" in a passage where the boat could not otherwise
+be separated.
+
+The **380 ms** was a v1 synthesis carried forward as though it were measured -
+the row above always said `Synthesized (v1)`, and three revisions of the ROM
+nonetheless tuned a note length to it. The sound is 4.0 s.
+
+### What is still open
+
+- **The interval is n = 1.** 19.80 s is one gap, from one take. It contradicts
+  the video's inference of one crossing every 51 s (eight lane-0 episodes over
+  407.9 s in `assets/reference/sprites/README.md`) by a factor of 2.6. The
+  recording is preferred because it measures the machine's own sound directly
+  and because the video's detection pass is known to drop episodes - its lane
+  split is 8 / 2 / 7 - but one interval cannot establish a mean. **What would
+  settle it**: two minutes of the unit recorded the same way, counting arrivals
+  rather than timing one gap.
+- **Whether the appearance outlasts the sound.** The owner's sentence covers the
+  boat, not just the buzz - "the boat appears for 4s then disappears" - and the
+  video's one traced descent is 9.3 s, whose last lane alone is 5.8 s, longer
+  than its other two together. The ROM treats appearance and sound as the same
+  4 s. **What would falsify it**: a video of one crossing showing the boat lit
+  materially longer than the buzz lasts.
+- **Whether the drive is really a pulse train**, or a square whose asymmetry
+  comes from the transducer. Even and odd harmonics score within 0.5 dB of each
+  other, which favours a pulse train, but a piezo's mechanical response is not
+  symmetric either and the recording cannot separate the two.
 
 ## win
 
@@ -312,7 +425,7 @@ The bands the v2 machine's reconstructed speaker output must land inside:
 | --- | --- | --- |
 | `missileFire` | 1480-1632 Hz | < 150 ms (measured ~20 ms) |
 | `jetMarch` | 600-650 Hz | ~70 ms per step |
-| `battleshipBuzz` | 230-300 Hz, and below `jetMarch` | sustained |
+| `battleshipBuzz` | 79-111 Hz repetition rate, and below `jetMarch` | ~4.0 s, continuous |
 | `win` | 750 / 940 / 1240 Hz (v1 played the third note at 1244) | ~1.83 s |
 | `gameOver` | 455-545 -> 80-97 -> 200-280 -> ~147 Hz | ~1.13 s |
 | `launcherHitWarning` | 455-545 Hz | ~10 ms per beep, 25-28 ms gaps |
