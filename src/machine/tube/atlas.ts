@@ -15,12 +15,8 @@ import type {
   SegmentId,
   ValidationResult,
 } from './atlas-schema.js';
-import {
-  EXPECTED_SEGMENT_COUNTS,
-  GRID_COUNT,
-  PLATE_COUNT,
-  TOTAL_SEGMENT_COUNT,
-} from './atlas-schema.js';
+import { EXPECTED_SEGMENT_COUNTS, TOTAL_SEGMENT_COUNT } from './atlas-schema.js';
+import { ATLAS_TOPOLOGY, type DisplayTopology } from '../topology.js';
 
 const COLOR_REGIONS: readonly string[] = ['cyan', 'red'];
 
@@ -99,8 +95,11 @@ function validateSegment(
   seenIds: Map<string, number>,
   seenAddresses: Map<string, string>,
   familyCounts: Map<string, number>,
+  topology: DisplayTopology,
   errors: string[],
 ): void {
+  const gridCount = topology.gridCount;
+  const plateCount = topology.plateCount;
   const where = `atlas.segments[${index}]`;
   if (!isRecord(raw)) {
     errors.push(`${where}: expected an object`);
@@ -127,11 +126,11 @@ function validateSegment(
 
   const label = `${where} ('${typeof id === 'string' ? id : '?'}')`;
 
-  if (!isIntegerInRange(raw.grid, 0, GRID_COUNT)) {
-    errors.push(`${label}: grid must be an integer in 0..${GRID_COUNT - 1}, got ${String(raw.grid)}`);
+  if (!isIntegerInRange(raw.grid, 0, gridCount)) {
+    errors.push(`${label}: grid must be an integer in 0..${gridCount - 1}, got ${String(raw.grid)}`);
   }
-  if (!isIntegerInRange(raw.plate, 0, PLATE_COUNT)) {
-    errors.push(`${label}: plate must be an integer in 0..${PLATE_COUNT - 1}, got ${String(raw.plate)}`);
+  if (!isIntegerInRange(raw.plate, 0, plateCount)) {
+    errors.push(`${label}: plate must be an integer in 0..${plateCount - 1}, got ${String(raw.plate)}`);
   }
   if (typeof raw.path !== 'string' || raw.path.trim().length === 0) {
     errors.push(`${label}: path must be a non-empty SVG path string`);
@@ -143,7 +142,7 @@ function validateSegment(
   }
   validateBounds(raw.bounds, label, errors);
 
-  if (isIntegerInRange(raw.grid, 0, GRID_COUNT) && isIntegerInRange(raw.plate, 0, PLATE_COUNT)) {
+  if (isIntegerInRange(raw.grid, 0, gridCount) && isIntegerInRange(raw.plate, 0, plateCount)) {
     const key = addressKey(raw.grid as number, raw.plate as number);
     const owner = seenAddresses.get(key);
     if (owner !== undefined) {
@@ -158,8 +157,17 @@ function validateSegment(
  * Validate arbitrary data against the atlas schema. Never throws: collects every
  * problem so a broken atlas can be fixed in one pass. `valid` is true exactly
  * when `errors` is empty.
+ *
+ * `topology` is the matrix the addresses are checked against, defaulting to the
+ * tube's own - nine grids and twelve plates. It is a parameter so a caller can
+ * ask whether the atlas would still validate against a different machine's
+ * address space, which is how the TMS1370 bounds were proved before the board
+ * moved onto them.
  */
-export function validateAtlas(data: unknown): ValidationResult {
+export function validateAtlas(
+  data: unknown,
+  topology: DisplayTopology = ATLAS_TOPOLOGY,
+): ValidationResult {
   const errors: string[] = [];
 
   if (!isRecord(data)) {
@@ -184,7 +192,7 @@ export function validateAtlas(data: unknown): ValidationResult {
   const seenAddresses = new Map<string, string>();
   const familyCounts = new Map<string, number>();
   segments.forEach((segment, index) => {
-    validateSegment(segment, index, seenIds, seenAddresses, familyCounts, errors);
+    validateSegment(segment, index, seenIds, seenAddresses, familyCounts, topology, errors);
   });
 
   for (const family of ID_FAMILIES) {
@@ -243,7 +251,8 @@ function addressIndex(): Map<string, Segment> {
 
 /**
  * The segment driven at (grid, plate), or undefined when that address is not
- * wired to a segment. O(1). Most of the 10 x 20 address space is unwired.
+ * wired to a segment. O(1). Most of the 9 x 12 address space is unwired - the
+ * playfield grids are the only ones that use most of their plates.
  */
 export function getSegmentByAddress(grid: number, plate: number): Segment | undefined {
   return addressIndex().get(addressKey(grid, plate));

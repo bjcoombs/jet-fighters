@@ -8,6 +8,7 @@ import {
   TOTAL_SEGMENT_COUNT,
   type SegmentId,
 } from './atlas-schema.js';
+import { HMCS44_TOPOLOGY } from '../topology.js';
 import {
   getSegmentByAddress,
   getSegmentById,
@@ -722,7 +723,7 @@ describe('indexes', () => {
   });
 
   it('returns undefined for an unwired address', () => {
-    expect(getSegmentByAddress(9, PLATE_COUNT - 1)).toBeUndefined();
+    expect(getSegmentByAddress(GRID_COUNT - 1, PLATE_COUNT - 1)).toBeUndefined();
     expect(getSegmentByAddress(-1, 0)).toBeUndefined();
     expect(getSegmentByAddress(0, 999)).toBeUndefined();
   });
@@ -742,10 +743,30 @@ describe('indexes', () => {
     expect(getSegmentsByGrid(GRID_COUNT)).toEqual([]);
   });
 
-  it('uses all ten grids', () => {
+  it('carries at least one segment on every grid the hardware has', () => {
+    // Titled 'uses all ten grids' while the atlas was addressed for the
+    // HMCS44's ten. The count is nine now - the TMS1370 scans R0-R8 - and the
+    // assertion is deliberately the same one, re-derived against GRID_COUNT
+    // rather than restated against a new literal.
+    //
+    // It is the assertion that catches a re-addressing that quietly abandoned a
+    // grid. `score_label` had grid 9 to itself; moving it to grid 8 plate 7 is
+    // what makes nine grids true of the data rather than only of the bound, and
+    // dropping the segment instead would have satisfied every range check here
+    // while leaving the tube a cell short.
     for (let grid = 0; grid < GRID_COUNT; grid += 1) {
       expect(getSegmentsByGrid(grid).length, `grid ${grid}`).toBeGreaterThan(0);
     }
+  });
+
+  it('resolves the SCORE label on a grid the TMS1370 drives', () => {
+    const label = getSegmentById('score_label' as SegmentId);
+    expect(label.grid).toBeGreaterThanOrEqual(0);
+    expect(label.grid).toBeLessThan(GRID_COUNT);
+    // By address, not only by id: an atlas that renamed the entry without
+    // moving it, or moved it onto an address another segment already owns,
+    // fails here rather than passing the id check above.
+    expect(getSegmentByAddress(label.grid, label.plate)).toBe(label);
   });
 
   it('returns a stable, cached atlas instance', () => {
@@ -801,6 +822,33 @@ describe('validateAtlas rejects malformed data', () => {
     const data = validData();
     segmentsOf(data)[0].plate = PLATE_COUNT;
     expectInvalid(data, /plate/);
+  });
+
+  it('rejects grid 9 and plate 12, which the TMS1370 does not have', () => {
+    // The bound stated at the values themselves rather than only through
+    // GRID_COUNT, because the whole point of the re-addressing is *which*
+    // numbers those are. The atlas data always sat inside plates 0-11, so the
+    // data alone could never show the bound had moved - the rejection can.
+    expect(GRID_COUNT).toBe(9);
+    expect(PLATE_COUNT).toBe(12);
+
+    const outOfGrid = validData();
+    segmentsOf(outOfGrid)[0].grid = 9;
+    expectInvalid(outOfGrid, /grid must be an integer in 0\.\.8/);
+
+    const outOfPlate = validData();
+    segmentsOf(outOfPlate)[0].plate = 12;
+    expectInvalid(outOfPlate, /plate must be an integer in 0\.\.11/);
+  });
+
+  it('validates the same data against a wider matrix, and rejects on a narrower one', () => {
+    // The bound is the topology's, not the module's. The HMCS44's 10 x 20
+    // contains the tube's 9 x 12, so the shipped atlas passes against it - which
+    // is what lets the live board go on driving this atlas until v3 task 11.3
+    // moves it over.
+    expect(validateAtlas(rawAtlas, HMCS44_TOPOLOGY)).toEqual({ valid: true, errors: [] });
+    const narrow = { ...HMCS44_TOPOLOGY, name: 'narrower than the tube', gridCount: 8 };
+    expect(validateAtlas(rawAtlas, narrow).valid).toBe(false);
   });
 
   it('rejects an unknown colorRegion', () => {

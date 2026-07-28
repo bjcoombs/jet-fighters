@@ -1,27 +1,38 @@
 // Types and constants for the VFD segment atlas.
 //
-// The atlas is pure data: every phosphor anode segment on the real Futaba
-// DM-series tube, its shape, and the (grid, plate) address the HD38800 drives it
-// from. Nothing here renders, and nothing here touches the DOM - the atlas is
-// consumed by the tube renderer, by the headless machine probe, and by tests, so
-// it must import cleanly in plain Node.
+// The atlas is pure data: every phosphor anode segment on the real tube, its
+// shape, and the (grid, plate) address the MCU drives it from. Nothing here
+// renders, and nothing here touches the DOM - the atlas is consumed by the tube
+// renderer, by the headless machine probe, and by tests, so it must import
+// cleanly in plain Node.
 //
 // The coordinate system, the reference-photo provenance of each shape, and the
 // assumptions behind the grid/plate mapping are documented in
 // ATLAS-COORDINATES.md (same directory).
 
-/**
- * Display grids driven by D0-D9 on the HD38800. The sibling hardware (MAME
- * `ghalien`) scans 10 grids; the master loop strobes one per sweep step.
- */
-export const GRID_COUNT = 10;
+import { ATLAS_TOPOLOGY } from '../topology.js';
 
 /**
- * Plate (anode) lines available per grid. The sibling hardware exposes ~20
- * plates across the R ports plus D10-D13; this is the exclusive upper bound on
- * a segment's `plate` index, not the count actually wired on every grid.
+ * Display grids on the tube: nine, driven by R0-R8.
+ *
+ * This used to be a literal 10, borrowed from MAME's `ghalien` when the chip on
+ * our board was believed to be an HD38800. It is now derived from
+ * {@link ATLAS_TOPOLOGY}, which is the TMS1370's - MAME's driver for our own ROM
+ * mask configures a 9 x 12 matrix, and the teardown photograph agrees twice
+ * over. See src/machine/topology.ts and docs/research/tms1370-io.md section 3.
  */
-export const PLATE_COUNT = 20;
+export const GRID_COUNT = ATLAS_TOPOLOGY.gridCount;
+
+/**
+ * Plate (anode) lines available per grid: twelve, O0-O7 plus R11-R14.
+ *
+ * The exclusive upper bound on a segment's `plate` index, not the count wired
+ * under every grid - the score grids use seven and eight of them. Twelve was
+ * always enough for this tube: the atlas has never addressed a plate above 11,
+ * which is why moving the bound down from the HMCS44's 20 rejects addresses
+ * rather than invalidating data.
+ */
+export const PLATE_COUNT = ATLAS_TOPOLOGY.plateCount;
 
 /**
  * Phosphor regions of the two-colour tube. Colour comes from patterned phosphor
@@ -184,9 +195,9 @@ export interface SegmentBounds {
 export interface Segment {
   /** Semantic identifier, e.g. `jet_lane0_col1`. Unique across the atlas. */
   readonly id: SegmentId;
-  /** Display grid, 0-9, driven by D0-D9. */
+  /** Display grid, 0 to `GRID_COUNT - 1`, driven by R0-R8. */
   readonly grid: number;
-  /** Plate (anode) bit index within the grid, 0-19. */
+  /** Plate (anode) bit index within the grid, 0 to `PLATE_COUNT - 1`. */
   readonly plate: number;
   /** SVG path data for the segment outline, in atlas units. */
   readonly path: string;
