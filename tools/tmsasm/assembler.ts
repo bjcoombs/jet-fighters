@@ -53,18 +53,21 @@
 // failure mode this stage is built to make impossible - a ROM that assembles and
 // then executes something else entirely.
 //
-// ## What is deliberately not here yet
+// ## The five silent-failure classes are rejected from here too
 //
-// Five silent-failure classes in PRD R2 need flow analysis across the assembled
-// program rather than a check at the point of emission: a page-crossing branch
-// inside a subroutine, a `CALL` reachable from inside a subroutine, `SETR`/`RSTR`
-// while X >= 4, an instruction between a status-setting test and its branch, and
-// LFSR placement itself. Task 5 of the v3 run adds them. `AssemblyResult.
-// instructions` is the ordered, fully-addressed record they run over, and it is
-// exported for that purpose rather than for the listing's convenience.
+// Five classes in PRD R2 need flow analysis across the assembled program rather
+// than a check at the point of emission: a page-crossing branch inside a
+// subroutine, a `CALL` reachable from inside a subroutine, `SETR`/`RSTR` while
+// X >= 4, an instruction between a status-setting test and its branch, and LFSR
+// placement itself. They live in `tools/tmsasm/analysis/`, run over
+// `AssemblyResult.instructions` - the ordered, fully-addressed record exported
+// for that purpose rather than for the listing's convenience - and raise the
+// same positioned `AsmError` the ceilings above do. `analyzeProgram` is called
+// once, on the finished result, immediately before it is returned.
 //
 // Node-side tool: no DOM, no Web APIs, no runtime dependencies.
 
+import { analyzeProgram } from './analysis/index.js';
 import {
   encodeInstruction,
   OperandKind,
@@ -936,7 +939,7 @@ export function assemble(
 
   const words = [...emitted.values()].sort((left, right) => left.address - right.address);
 
-  return Object.freeze({
+  const result: AssemblyResult = Object.freeze({
     file,
     words: Object.freeze(words),
     instructions: Object.freeze(instructions),
@@ -948,6 +951,13 @@ export function assemble(
     resetVectorPresent: emitted.has(RESET_ADDRESS),
     ramHighWater,
   });
+
+  // The five silent-failure classes, over the finished program. They raise the
+  // same positioned AsmError the ceilings above do, so a violating program fails
+  // to assemble rather than producing a ROM that jumps into the wrong place.
+  analyzeProgram(result);
+
+  return result;
 }
 
 /** Re-exported so callers can name the reset entry without a second import. */

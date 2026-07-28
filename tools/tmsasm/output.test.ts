@@ -147,7 +147,9 @@ describe('the listing rows', () => {
   });
 
   it('hold an eight-bit value in the word column on every row', () => {
-    const full = formatListing(assemble('CLA\nLDP 15\nBR 0\nCALL 0\n.DW $FFFF\n'));
+    // The CALL returns rather than re-entering the top of the program: a call
+    // that reaches itself is class 3 of the static analyses and is rejected.
+    const full = formatListing(assemble('CLA\nLDP 15\nBR 0\nCALL sub\nsub: RETN\n.DW $FFFF\n'));
     const wordColumn = LISTING_COLUMNS.indexOf('WORD');
     for (const row of wordRows(full)) {
       const word = Number.parseInt((columns(row)[wordColumn] as string).replace('$', ''), 16);
