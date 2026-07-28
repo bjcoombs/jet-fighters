@@ -86,6 +86,13 @@ function seconds(count: number): number {
  * in two ways: the cadence ladder also doubled (#71), and the three lives are
  * not three equal spans. The estimate left the horizons below just short of the
  * ending they were meant to contain, which is what turned main red.
+ *
+ * INSTRUCTION-RATE PROVISIONAL: this figure is measured off the emulated
+ * machine via `seconds()` below, which converts through `CYCLE_HZ` imported
+ * from the HMCS44 core (`src/machine/cpu/cpu.ts`), not the TMS1370 this
+ * project is rebuilding onto. It is a real measurement of *this* emulator, but
+ * it inherits the TMS1370 instruction rate's provisional status the moment the
+ * ROM moves to that core - see docs/research/mp2110-timing-measurement.md.
  */
 const UNATTENDED_SILENCE_S = 20.6;
 

@@ -93,6 +93,22 @@
 ; every band from the owner's recordings of the real unit, and the sound table
 ; near the bottom of this file cites the row each figure comes from. Pitches are
 ; real targets; the note and burst *lengths* are a mixture (see that table).
+;
+; --- INSTRUCTION-RATE PROVISIONAL: a second, independent reason -------------
+;
+; Every sweep-count-to-wall-clock conversion in this file (the ~400 kHz figure
+; a few lines below, "5383 cycles = 13.46 ms" and its kin) is computed against
+; the *current* HMCS44 core's oscillator, not the TMS1370 this project is
+; rebuilding onto. docs/research/mp2110-timing-measurement.md records why the
+; TMS1370's own instruction rate is not measured - it is blocked on the
+; `mp2110` ROM dump - and sets out the non-circular route that would measure
+; it. Every cadence constant in this file therefore carries an
+; INSTRUCTION-RATE PROVISIONAL comment marking it, in addition to and
+; independent of the gameplay-video PROVISIONAL marking above: even once the
+; video arrives, these figures still need re-deriving against
+; `src/machine/cpu/tms1370/timing.ts`'s `CYCLE_HZ` once that stops being
+; provisional too. Values are unchanged here - re-deriving them against the
+; TMS1370 core is downstream work, not this comment's job.
 
 ; --- Hardware map -----------------------------------------------------------
 ;
@@ -589,8 +605,10 @@
 ; work varies with what is on the tube, and a sound stops the sweep outright.
 ; src/machine/board/display.ts derives the frame period from the ROM rather than
 ; imposing one, which is what keeps that true.
-.EQU DWELL_OUTER,   14
-.EQU DWELL_INNER,   13
+.EQU DWELL_OUTER,   14          ; INSTRUCTION-RATE PROVISIONAL - docs/research/
+                                ; mp2110-timing-measurement.md; ms figures above
+                                ; assume the HMCS44 core's oscillator, not TMS1370
+.EQU DWELL_INNER,   13          ; INSTRUCTION-RATE PROVISIONAL - see DWELL_OUTER
 
 ; How many sweeps a shot spends in each column. PROVISIONAL: v1 moved both a
 ; missile and a rocket one column per 60 Hz tick, i.e. ~16.7 ms, which converts
@@ -614,8 +632,10 @@
 ; response to it, so slowing it would only take time away from the player, and
 ; the complaint being fixed here is that the game is too fast. Two sweeps is
 ; 26.9 ms, which already rounds up from v1's ~16.7 ms, so it did not move.
-.EQU MISSILE_SWEEPS, 2
-.EQU ROCKET_SWEEPS,  7
+.EQU MISSILE_SWEEPS, 2          ; INSTRUCTION-RATE PROVISIONAL - see docs/research/
+                                ; mp2110-timing-measurement.md; ms figures above
+                                ; assume the HMCS44 core's oscillator, not TMS1370
+.EQU ROCKET_SWEEPS,  7          ; INSTRUCTION-RATE PROVISIONAL - see MISSILE_SWEEPS
 
 ; The battleship. **Measured from the owner's own unit**, and it is the one row
 ; of this block that does not rest on inference at all.
@@ -716,6 +736,9 @@
 .EQU BSHIP_STEP_HI,  5          ;   = 91 sweeps, 1.33 s; three of them is 4.00 s
 .EQU BSHIP_GAP_HI,   4          ; steady gap: (4*16 + rand) sixteen-sweep units
 .EQU BSHIP_GAP_OPEN, 2          ; and the first one after power-on, 512 sweeps
+; All four above: INSTRUCTION-RATE PROVISIONAL - the sweeps-to-seconds
+; conversions cited in their comments assume the HMCS44 core's oscillator, not
+; the TMS1370's. See docs/research/mp2110-timing-measurement.md.
 
 ; How long a burst stays on the glass, in sweeps. PROVISIONAL, and the only
 ; number this ROM has ever had for it: nothing drove a burst segment before, so
@@ -725,7 +748,9 @@
 ; outlives the sweep it is created on by a clear margin rather than flashing for
 ; one; fifteen sweeps is about 200 ms at the current sweep rate. It is a nibble,
 ; so fifteen is also the longest this counter can express.
-.EQU BURST_SWEEPS,  15
+.EQU BURST_SWEEPS,  15          ; INSTRUCTION-RATE PROVISIONAL - "200 ms at the
+                                ; current sweep rate" above assumes the HMCS44
+                                ; core; see docs/research/mp2110-timing-measurement.md
 
 ; The gap between launcher-hit warning beeps. This one is *measured*: 25-28 ms
 ; (docs/evidence/audio-reference.md, launcherHitWarning.gapMs). The loop runs
@@ -735,14 +760,21 @@
 ; band. Eleven passes is 10697 cycles = 26.7 ms, near the middle of it; ten is
 ; 24.3 ms and twelve is 29.2 ms, both outside. All four figures are counted off
 ; the machine.
-.EQU WARN_GAP,      10
+.EQU WARN_GAP,      10          ; INSTRUCTION-RATE PROVISIONAL - the measured
+                                ; 25-28 ms band above is real, but the cycle
+                                ; count tuned to hit it assumes the HMCS44
+                                ; core's oscillator; see docs/research/
+                                ; mp2110-timing-measurement.md
 
 ; PRESCALE: the timer runs free from reset and is read only by tick_input, which
 ; samples it when the player presses fire. That sample is the machine's entire
 ; randomness source (PRD R3) - there is no RNG - so it is started at reset rather
 ; than on first use, because a counter with no history has no phase to read.
 ; PROVISIONAL: 2^6 machine cycles per tick.
-.EQU PRESCALE,       6
+.EQU PRESCALE,       6           ; INSTRUCTION-RATE PROVISIONAL - "2^6 machine
+                                ; cycles" above is cycles at the HMCS44 core's
+                                ; oscillator, not the TMS1370's; see docs/research/
+                                ; mp2110-timing-measurement.md
 
 ; ============================================================================
 ; the reset vector and the routines CAL can reach
@@ -3146,6 +3178,11 @@ column_plates:
 ; ever airborne and the dodge window the flight time buys actually exists. The
 ; skill ordering and the spread are v1's; the floor under them is arithmetic.
 ; The counts moved with the sweep rate; the milliseconds they stand for did not.
+;
+; INSTRUCTION-RATE PROVISIONAL (in addition to the gameplay-video PROVISIONAL
+; marking above): every ms figure in the table below converts sweeps at the
+; HMCS44 core's oscillator, not the TMS1370's. See docs/research/
+; mp2110-timing-measurement.md.
 .PATTERN PAT_ROCKET
 rocket_interval:
         .DW $000                ; 0: unused - the dial reads 1..3
@@ -3210,6 +3247,10 @@ rocket_interval:
 ; it tracks how often the player fires. 205 ms never bounded the squadron rate.
 ;
 ; Whether the shape between the ends is right is still T2, and still unmeasured.
+;
+; INSTRUCTION-RATE PROVISIONAL: the wall-clock figures cited throughout this
+; comment (1995 ms, 652 ms, etc.) were measured off the emulated HMCS44 core,
+; not the TMS1370. See docs/research/mp2110-timing-measurement.md.
 .PATTERN PAT_STEP
 step_cadence:
         .DW 110, 104, 96, 90
@@ -3218,6 +3259,9 @@ step_cadence:
         .DW 42, 36, 32, 30
 
 ; --- Skill -> where on that ladder a fresh squadron starts ------------------
+; INSTRUCTION-RATE PROVISIONAL: the ms figures in this table's comments carry
+; the same HMCS44-oscillator dependency as PAT_STEP above. See docs/research/
+; mp2110-timing-measurement.md.
 .PATTERN PAT_SKILL
 skill_base:
         .DW $000                ; 0: unused - the dial reads 1..3
