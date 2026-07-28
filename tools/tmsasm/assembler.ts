@@ -162,7 +162,7 @@ export interface WordPlacement {
    * Which instruction of its page this is, counting from 0 in execution order.
    *
    * The listing prints this beside `offset` so the two orders can be compared
-   * without reassembling. They agree only for the first two words of a page.
+   * without reassembling. They agree on only five of a page's sixty-four words.
    */
   readonly ordinal: number;
   /** The physical offset within the page - `LFSR_SEQUENCE[ordinal]`. */

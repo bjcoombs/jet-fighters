@@ -30,7 +30,7 @@
 // be contiguous, the words would decode, the symbol table would resolve - and
 // the only thing distinguishing it from a correct one is that these two columns
 // would agree on every row. So the columns are printed even where they are
-// equal, which they are for the first two words of every page; printing only the
+// equal, which they are on five of a page's sixty-four words; printing only the
 // disagreements would leave a reader unable to tell "no disagreement" from "no
 // column".
 //
@@ -153,7 +153,10 @@ export function formatSummary(result: AssemblyResult): string {
       ? 'none - no words were assembled'
       : `${result.highestAddress} (${formatAddress(result.highestAddress)}) of ${ROM_SIZE - 1}`;
   const pageCount = ROM_PAGE_COUNT * ROM_CHAPTER_COUNT;
-  const pagesUsed = result.pageClaims.filter((claim) => !claim.reserved).length;
+  // Pages that actually hold words, not pages that were claimed: a `.PAGE` a
+  // routine was later moved off is not a page the ROM occupies, and this figure
+  // is read as "how much room is left".
+  const pagesUsed = new Set(result.words.map((word) => `${word.chapter}:${word.page}`)).size;
   const reset = result.resetVectorPresent
     ? `present at ${formatAddress(RESET_ADDRESS)} ` +
       `(${formatPage(RESET_CHAPTER, RESET_PAGE)}, word ${RESET_ORDINAL})`
@@ -184,7 +187,7 @@ function placementNote(): string {
     `${LISTING_COMMENT} The program counter is a shift register, so a page is not filled in`,
     `${LISTING_COMMENT} address order. ORD is an instruction's position within its page`,
     `${LISTING_COMMENT} counting in execution order; OFF is the physical word it was emitted`,
-    `${LISTING_COMMENT} at. The two agree only for the first two words of a page.`,
+    `${LISTING_COMMENT} at. They agree on only five of a page's sixty-four words.`,
     `${LISTING_COMMENT}`,
     `${LISTING_COMMENT} ${LISTING_COLUMNS.join(LISTING_SEPARATOR)}`,
   ].join('\n');
