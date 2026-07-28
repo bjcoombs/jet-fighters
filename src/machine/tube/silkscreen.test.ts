@@ -5,7 +5,6 @@ import { callsOf, createFakeContext } from './fake-canvas.js';
 import {
   CELL,
   CIRCLE,
-  COLUMN_COUNT,
   FIELD,
   LANE_COUNT,
   PLAYFIELD,
@@ -65,7 +64,7 @@ interface Segment {
  *
  * `FakeCanvasContext` snapshots colour and alpha per call but not `lineWidth`,
  * and line weight is half of what the photographs pin here: the bottom rail is
- * the heaviest ink on the face and the lattice the lightest. Rather than change
+ * the heaviest ink on the face and the SCORE digit boxes the lightest. Rather than change
  * the shared recorder, this drives it through a proxy that samples `lineWidth`
  * alongside each call.
  */
@@ -190,7 +189,7 @@ describe('drawSilkscreen', () => {
 
   it('draws no full-height rule between the SCORE box and the field', () => {
     // The bright inner rule this layer used to draw is not on the real face - the
-    // separation is the faint lattice plus the three row marks.
+    // separation is the three row marks.
     const rules = trace().segments.filter(
       (seg) =>
         seg.alpha === 1 &&
@@ -371,34 +370,41 @@ describe('drawSilkscreen', () => {
     }
   });
 
-  it('divides the playfield into seven countable cells per row, three rows deep', () => {
-    // The critique's highest-value finding: the real face carries a faint printed
-    // lattice, and without it the field reads as empty black rather than a radar
-    // screen. Seven rectangles per row across the playfield - the SCORE box plus
-    // one per distance column - and three rows.
+  it('draws no cell lattice over the playfield', () => {
+    // This layer used to print a faint hash across the glass - a vertical on
+    // every cell boundary and a horizontal on every lane boundary. It went in
+    // with #48 because "the field was empty black between the frame and the
+    // phosphor"; the renderer's ghost layer now draws every segment at the
+    // unlit-phosphor level, so the field carries the tube's own artwork and the
+    // hash was a brighter second copy of a division already visible. Removed at
+    // the owner's request against the real unit.
+    //
+    // Asserted as an absence rather than deleted, because a redraw of this layer
+    // that reintroduces the grid should fail here rather than pass quietly.
     const faint = draw().calls.filter((call) => call.globalAlpha < 1);
     const moves = faint.filter((call) => call.op === 'moveTo');
+    expect(moves, 'faint strokes across the field').toEqual([]);
 
-    const columnEdges = moves
-      .filter((call) => Math.abs(call.args[1] - FIELD.y) < 1e-9)
-      .map((call) => call.args[0]);
-    // COLUMN_COUNT verticals: the SCORE box's right edge and every interior cell
-    // edge. The seventh boundary is the playfield's own right border.
-    expect(columnEdges.length).toBe(COLUMN_COUNT);
-    for (let column = 0; column < COLUMN_COUNT; column += 1) {
-      expect(columnEdges).toContain(FIELD.x + column * CELL.width);
-    }
-
-    const rowEdges = moves
-      .filter((call) => Math.abs(call.args[0] - PLAYFIELD.x) < 1e-9)
-      .map((call) => call.args[1]);
-    expect(rowEdges.length).toBe(LANE_COUNT - 1);
-    for (let lane = 1; lane < LANE_COUNT; lane += 1) {
-      expect(rowEdges).toContain(FIELD.y + lane * CELL.height);
+    // And nothing at full strength has replaced it: no vertical spanning the
+    // cell band on a cell boundary, no horizontal on a lane boundary.
+    for (const seg of trace().segments) {
+      const onColumnEdge =
+        near(seg.x0, seg.x1) &&
+        Math.abs((seg.x0 - FIELD.x) % CELL.width) < 1e-9 &&
+        seg.y0 >= FIELD.y - 1e-9 &&
+        seg.y1 <= FIELD.y + FIELD.height + 1e-9;
+      expect(onColumnEdge, `stroke down a cell boundary at x=${seg.x0}`).toBe(false);
+      for (let lane = 1; lane < LANE_COUNT; lane += 1) {
+        const onLaneEdge =
+          near(seg.y0, seg.y1) &&
+          near(seg.y0, FIELD.y + lane * CELL.height) &&
+          Math.abs(seg.x1 - seg.x0) > CELL.width;
+        expect(onLaneEdge, `stroke along lane boundary ${lane}`).toBe(false);
+      }
     }
   });
 
-  it('prints the lattice far fainter than the frame', () => {
+  it('prints the faintest ink far fainter than the frame', () => {
     const alphas = draw().calls.filter((call) => call.globalAlpha < 1).map((c) => c.globalAlpha);
     expect(alphas.length).toBeGreaterThan(0);
     for (const alpha of alphas) {

@@ -1,8 +1,8 @@
 // The printed silkscreen overlay: everything painted on the glass rather than
 // emitted by the phosphor.
 //
-// The border, the ruler, the cell lattice, the zone labels, the station missiles
-// and the arc title are ink on the front of the tube. They are visible whenever
+// The border, the ruler, the SCORE digit boxes, the zone labels, the station
+// missiles and the arc title are ink on the front. They are visible whenever
 // there is light in the room, so this layer draws on top of the phosphor layers
 // and stays up when the machine is off - which is exactly how the reference
 // photos of the dark unit look.
@@ -18,9 +18,7 @@
 // and font sizes here are atlas units too and scale with the canvas.
 
 import {
-  CELL,
   CIRCLE,
-  COLUMN_COUNT,
   FIELD,
   LANE_COUNT,
   PLAYFIELD,
@@ -119,15 +117,15 @@ function drawArcText(
 }
 
 /**
- * Alpha the cell lattice is printed at, relative to the rest of the ink.
+ * Alpha the faintest printed ink is laid on at, relative to the rest.
  *
- * The lattice is the faintest thing on the face: in the photographs the field
- * interior reads about 70/255 where a lattice line crosses it against 50/255 of
- * bare glass and 235/255 for the frame, so the ink is laid on at roughly a
- * seventh of full strength. 0.16 rather than 0.11 because the photographs are
- * shot with the tube lit and the room dark, which lifts the lattice a little.
+ * In the photographs the field interior reads about 70/255 where one of these
+ * lines crosses it against 50/255 of bare glass and 235/255 for the frame, so
+ * roughly a seventh of full strength. 0.16 rather than 0.11 because the
+ * photographs are shot with the tube lit and the room dark, which lifts it a
+ * little.
  */
-const LATTICE_ALPHA = 0.16;
+const FAINT_ALPHA = 0.16;
 
 /**
  * The three printed row marks: a short heavy dash crossing a field boundary at
@@ -161,37 +159,33 @@ const SCORE_DIGIT_HEIGHT = 10.608;
 const SCORE_DIGIT_PAD = 1.5;
 
 /**
- * The printed cell lattice: the countable rectangles the field is divided into.
+ * The faint printed box around each SCORE digit.
  *
- * Seven per row across the whole playfield - the SCORE box, then one per distance
- * column - and three rows, so the field reads as a radar grid rather than empty
- * black even with the tube dark. Drawn at {@link LATTICE_ALPHA} and aligned to
- * the atlas cells, so every rectangle frames the jet that can appear in it.
+ * **This used to draw the cell lattice too** - seven verticals on the cell
+ * boundaries and two horizontals on the lane boundaries, a hash right across the
+ * glass. It went in with #48 for a stated reason: "the field was empty black
+ * between the frame and the phosphor", and the lattice was what made the face
+ * read as a radar screen rather than a void.
+ *
+ * That reason no longer holds. The renderer's ghost layer draws *every* segment
+ * at the unlit-phosphor level (renderer.ts, pipeline step 2), so the field now
+ * carries the tube's own printed artwork - the jets, the bursts, the sea - in
+ * every cell, dark or lit. The lattice was a second, brighter copy of a division
+ * the ghosting already shows, and drawn on the wrong pitch besides: it used the
+ * cell boundaries the {@link RULER_SPAN_MARKS} registration finds the printed
+ * ruler does not share. Owner-confirmed against the real unit.
+ *
+ * The digit boxes stay. They are on the tube in
+ * `assets/reference/tube-teardown/score-block.jpg`, the ghost layer does not
+ * draw them - a box is not a segment - and they are three small rectangles
+ * rather than a grid over the playfield.
  */
-function drawCellLattice(ctx: CanvasRenderingContext2D): void {
+function drawScoreDigitBoxes(ctx: CanvasRenderingContext2D): void {
   ctx.save();
-  ctx.globalAlpha = LATTICE_ALPHA;
+  ctx.globalAlpha = FAINT_ALPHA;
   ctx.strokeStyle = SILKSCREEN;
   ctx.lineWidth = LINE_WIDTH * 0.7;
 
-  ctx.beginPath();
-  // Column boundaries: the SCORE box's right edge, then every cell edge. The
-  // outermost (the playfield right border) is left to the frame.
-  for (let column = 0; column < COLUMN_COUNT; column += 1) {
-    const x = FIELD.x + column * CELL.width;
-    ctx.moveTo(x, FIELD.y);
-    ctx.lineTo(x, FIELD.y + FIELD.height);
-  }
-  // Row boundaries run the full playfield width so the SCORE box is divided into
-  // the same three rows as the field.
-  for (let lane = 1; lane < LANE_COUNT; lane += 1) {
-    const y = FIELD.y + lane * CELL.height;
-    ctx.moveTo(PLAYFIELD.x, y);
-    ctx.lineTo(PLAYFIELD.x + PLAYFIELD.width, y);
-  }
-  ctx.stroke();
-
-  // A box around each SCORE digit.
   for (const left of SCORE_DIGIT_LEFTS) {
     ctx.strokeRect(
       left - SCORE_DIGIT_PAD,
@@ -648,8 +642,8 @@ export function drawSilkscreen(ctx: CanvasRenderingContext2D): void {
     CIRCLE.r * ARC_FONT_FRACTION,
   );
 
-  // The faint printed grid, under everything else on this layer.
-  drawCellLattice(ctx);
+  // The faint digit boxes, under everything else on this layer.
+  drawScoreDigitBoxes(ctx);
 
   // The printed frame, and the bottom rail's long heavy dashes. The right rail
   // runs on down to where the zone brackets pick it up.
