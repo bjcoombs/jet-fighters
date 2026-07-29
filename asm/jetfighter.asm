@@ -160,6 +160,7 @@
 .EQU NIB_BUZZ,      12          ; buzz: O strobes to the next edge, 0 = not running
 .EQU NIB_BPHASE,    13          ;       the square's phase, in bit 0
 .EQU NIB_KSCR,      14          ; the K sample being decoded
+.EQU NIB_SGRID,     15          ; `strobe`'s parked grid - see that routine
 
 ; --- FILE_D1, FILE_D2: the far and pair passes -------------------------------
 ;
@@ -285,26 +286,44 @@
 ; that one way and says so.
 ;
 ; One instruction is one cycle on this family, so a sweep's period is however
-; many instructions the sweep loop executed. That count is static, and it is
-; what SWEEP_INSTRUCTIONS below records:
+; many instructions the sweep loop executed. This program has no dwell loop at
+; all - a grid is lit for the work `strobe` does while it is lit - so the sweep
+; period *is* the program's own cost, and that cost depends on what is on the
+; glass: the buzz ticks in every strobe while the boat is up and the R-plate
+; walk only visits grids that want a line. SWEEP_INSTRUCTIONS is therefore
+; **measured off the running machine** by tools/probe/tms1370-probe.ts rather
+; than counted off this source:
 ;
-;   SWEEP_HZ = CYCLE_HZ / SWEEP_INSTRUCTIONS
+;   SWEEP_HZ = CYCLE_HZ / SWEEP_INSTRUCTIONS = 58333 / 889 = 65.6 Hz
 ;
-; 70.6-72.5 Hz is the refresh interval docs/evidence/vfd-appearance.md section 2
-; leaves open - the reference video's 10.6-12.5 Hz beat against a 30 fps camera
-; admits only disjoint intervals, and that is the one this sweep is sized
-; against. The sweep is not frequency-stable and is not meant to be: the
-; between-sweep work varies with what is on the glass, and a sound stops the
-; sweep outright. `src/machine/board/tms1370-cadence.ts` derives the same figure
-; from the same constant for the probe side, so the two cannot drift.
+; **It is not tuned to an interval, and that is a decision rather than a miss.**
+; docs/evidence/vfd-appearance.md section 2 leaves 70.6-72.5 Hz open: the
+; reference video's 10.6-12.5 Hz beat against a 30 fps camera admits only
+; disjoint refresh intervals and that is one of them. v2 reached it by tuning a
+; dwell loop, and doing the same here would be false precision, because
+; OSCILLATOR_HZ's stated +/-50 kHz puts this same 889-instruction sweep anywhere
+; from 56.2 Hz to 75.0 Hz depending on the unit - a range that contains the
+; video's interval whole. Tuning the instruction count so the *midpoint* landed
+; at 71.5 Hz would be tuning to the one number the contract says must appear
+; nowhere as a threshold. What pins the refresh is measuring the oscillator, not
+; moving this constant.
+;
+; The sweep is not frequency-stable either, and is not meant to be. Measured off
+; this ROM over 30 s of emulated time: 65.6 Hz median with nothing on the tube,
+; 65.6 Hz on a lever-only game and 65.3 Hz on a played one - and 60.5, 60.7 and
+; 60.2 Hz as *means*, once the sweeps a sound blanked are counted in. Quoting one
+; of those without saying which population it came from is what would make this
+; look tuned to two decimal places. `src/machine/board/tms1370-cadence.ts`
+; derives the probe side's horizons from the same figure, and a test asserts the
+; two agree, so they cannot drift.
 
-.EQU SWEEP_INSTRUCTIONS_LO, 6   ; SWEEP_INSTRUCTIONS = 806, written as two
-.EQU SWEEP_INSTRUCTIONS_HI, 50  ; nibbles because every operand field on this
-                                ; machine is four bits: 50 * 16 + 6. Nothing
-                                ; reads these. They are the sweep length this
-                                ; file's cadence constants derive from, written
-                                ; down beside them rather than left in a comment
-                                ; - 58333 / 806 = 72.4 Hz, inside the interval.
+.EQU SWEEP_INSTRUCTIONS_LO,  9  ; SWEEP_INSTRUCTIONS = 889, written as two
+.EQU SWEEP_INSTRUCTIONS_HI, 55  ; nibbles because every operand field on this
+                                ; machine is four bits wide: 55 * 16 + 9.
+                                ; Nothing reads these two. They are the sweep
+                                ; length every cadence constant below converts
+                                ; through, written down beside them rather than
+                                ; left in a comment.
 
 ; --- The battleship's buzz ---------------------------------------------------
 ;
@@ -322,7 +341,7 @@
 ; inside the measured band. It never blanks the tube, which is the property the
 ; four-second figure forces: `note` does not strobe the grids, and four seconds
 ; of a dark display cannot be right for a boat the player is meant to shoot at.
-.EQU BUZZ_DIV,       9          ; O strobes between speaker edges
+.EQU BUZZ_DIV,       8          ; O strobes between speaker edges
 
 ; --- Travel ------------------------------------------------------------------
 ;
@@ -375,19 +394,21 @@
 
 ; --- The battleship ----------------------------------------------------------
 ;
-; MEASURED, and the one block here that rests on no inference at all:
+; MEASURED off the owner's unit for the two intervals, and off *this* machine
+; for the sweep counts that reproduce them. This is the one block here that
+; rests on no inference at all:
 ; docs/evidence/audio-reference.md, battleshipBuzz. The owner recorded his own
 ; unit in a quiet room - "the boat appears for 4s then disappears if you haven't
 ; hit it" - and the two clips are one take trimmed twice, so this is a sample of
 ; **one interval** rather than two.
 ;
-;   appearance  4.05 s and 3.80 s   -> three lane steps of 95 sweeps = 3.94 s
+;   appearance  4.05 s and 3.80 s   -> three lane steps of 65 sweeps = 3.9 s
 ;   interval    19.80 s onset to onset, stable to 0.05 s across three thresholds
 ;
-; The gap is the interval minus the appearance, 15.8 s = 1144 sweeps, which
-; overflows a low/high nibble pair. It is counted in sixteen-sweep units
-; instead - 71 of them is 1136 sweeps, 15.7 s - which is what NIB_BS_LO and
-; NIB_BS_HI hold while NIB_BSLANE is BS_NONE.
+; The gap is the interval minus the appearance, 15.8 s, which overflows a
+; low/high nibble pair at any plausible sweep rate. It is counted in
+; sixteen-sweep units instead - 49 of them, 784 sweeps - which is what
+; NIB_BS_LO and NIB_BS_HI hold while NIB_BSLANE is BS_NONE.
 ;
 ; The gameplay video says one crossing every 51 s and the disagreement is a
 ; factor of 2.6. The recording is preferred, for reasons rather than by
@@ -403,10 +424,18 @@
                                 ;   boat on the glass is longer than an idle one
                                 ;   - the buzz ticks in every strobe - and the
                                 ;   nominal arithmetic would run 50% short
-.EQU BSHIP_GAP_LO,   7          ; the steady gap: 4 * 16 + 7 = 71 units of
-.EQU BSHIP_GAP_HI,   4          ;   sixteen sweeps = 1136 sweeps = 15.7 s
+.EQU BSHIP_GAP_LO,  13          ; the steady gap: 3 * 16 + 13 + 1 = 62 units of
+.EQU BSHIP_GAP_HI,   3          ;   sixteen sweeps = 992 sweeps. MEASURED off
+                                ;   the running machine at 19.7 s onset to onset
+                                ;   against the recording's 19.80 s: the gap
+                                ;   runs while the boat is away and the
+                                ;   appearance is the rest of the interval. A
+                                ;   sweep during a played game costs half as
+                                ;   much again as an idle one once the sounds
+                                ;   that blank it are counted, so the nominal
+                                ;   arithmetic cannot set this figure.
 .EQU BSHIP_OPEN_LO,  1          ; and the first crossing after power-on: 33
-.EQU BSHIP_OPEN_HI,  2          ;   units = 528 sweeps = 7.3 s. The owner's
+.EQU BSHIP_OPEN_HI,  2          ;   units = 528 sweeps = 8.8 s. The owner's
                                 ;   complaint was that the boat comes too often
                                 ;   and never that it comes too soon, and a game
                                 ;   shorter than one interval should still show
@@ -430,32 +459,36 @@
 ; every one cites its row in docs/evidence/audio-reference.md, per PRD R7. The
 ; frequency a recipe produces is
 ;
-;   f = CYCLE_HZ / (2 * D + 7),  D = (HALF_O + 1) * (2 * HALF_I + 6) + 2
+;   f = CYCLE_HZ / (2 * D + 9),  D = (HALF_O + 1) * (2 * HALF_I + 6) + 2
 ;
-; and its length is (PER + 1) * (BURSTS + 1) periods of it. The `+ 7` and the
-; `+ 6` are `note`'s own instruction counts, so this is the routine's arithmetic
-; rather than an estimate of it; the frequency each recipe actually reaches is
-; written beside it, against the measured figure it targets.
+; and its length is (PER + 1) * (BURSTS + 1) periods of it. The `+ 9` and the
+; `+ 6` are `note`'s own instruction counts. They are **counted off the running
+; machine** by tools/probe/tms1370-probe.ts rather than off the source: the
+; first draft of this block counted seven for the outer term by reading the
+; loop, put the fire blip at 1423 Hz against a measured band of 1480-1632, and
+; assembled and sounded perfectly plausible. The frequency each recipe actually
+; reaches is written beside it, against the measured figure it targets, and
+; tools/probe/tms1370-sound.test.ts asserts each one lands in its band.
 ;
 ; missileFire - 1480-1632 Hz measured, ~20 ms, and owner-confirmed to be the
 ; same beep a missile makes when it *hits*, so one recipe covers both events.
-.EQU SND_FIRE_O,     0          ; D = 16, f = 58333/39 = 1496 Hz
-.EQU SND_FIRE_I,     4
-.EQU SND_FIRE_P,    14          ; 15 x 2 = 30 periods = 20.1 ms
+.EQU SND_FIRE_O,     0          ; D = 14, f = 58333/37 = 1577 Hz
+.EQU SND_FIRE_I,     3
+.EQU SND_FIRE_P,    14          ; 15 x 2 = 30 periods = 19.0 ms
 .EQU SND_FIRE_B,     1
 
 ; jetMarch - 600-650 Hz measured, ~70 ms a step.
-.EQU SND_MARCH_O,    1          ; D = 42, f = 58333/91 = 641 Hz
+.EQU SND_MARCH_O,    1          ; D = 42, f = 58333/93 = 627 Hz
 .EQU SND_MARCH_I,    7
-.EQU SND_MARCH_P,   14          ; 15 x 3 = 45 periods = 70.2 ms
+.EQU SND_MARCH_P,   14          ; 15 x 3 = 45 periods = 71.8 ms
 .EQU SND_MARCH_B,    2
 
 ; launcherHitWarning - 455-545 Hz measured, ~10 ms a beep with 25-28 ms gaps.
 ; Two beeps on the first hit and three on the second, both owner-confirmed; the
 ; third hit plays the loss sound instead of a warning.
-.EQU SND_WARN_O,     1          ; D = 58, f = 58333/123 = 474 Hz
+.EQU SND_WARN_O,     1          ; D = 58, f = 58333/125 = 467 Hz
 .EQU SND_WARN_I,    11
-.EQU SND_WARN_P,     4          ; 5 periods = 10.5 ms
+.EQU SND_WARN_P,     4          ; 5 periods = 10.7 ms
 .EQU SND_WARN_B,     0
 
 ; win - 750 / 940 / 1240 Hz measured by harmonic product spectrum, ~1.83 s:
@@ -463,46 +496,46 @@
 ; are labels applied afterwards and two of the three were re-derived from their
 ; own partials, so these target the measured fundamentals and not the tempered
 ; pitches.
-.EQU SND_WIN1_O,     0          ; D = 36, f = 58333/79  = 738 Hz  (750 measured)
-.EQU SND_WIN1_I,    14
-.EQU SND_WIN1_P,    15          ; 16 x 9 = 144 periods = 195 ms
+.EQU SND_WIN1_O,     0          ; D = 34, f = 58333/77  = 758 Hz  (750 measured)
+.EQU SND_WIN1_I,    13
+.EQU SND_WIN1_P,    15          ; 16 x 9 = 144 periods = 190 ms
 .EQU SND_WIN1_B,     8
-.EQU SND_WIN2_O,     0          ; D = 28, f = 58333/63  = 926 Hz  (940 measured)
-.EQU SND_WIN2_I,    10
-.EQU SND_WIN2_P,    15          ; 16 x 9 = 144 periods = 155 ms
+.EQU SND_WIN2_O,     0          ; D = 26, f = 58333/61  = 956 Hz  (940 measured)
+.EQU SND_WIN2_I,     9
+.EQU SND_WIN2_P,    15          ; 16 x 9 = 144 periods = 151 ms
 .EQU SND_WIN2_B,     8
-.EQU SND_WIN3_O,     0          ; D = 20, f = 58333/47  = 1241 Hz (1240 measured)
+.EQU SND_WIN3_O,     0          ; D = 20, f = 58333/49  = 1190 Hz (1240 measured)
 .EQU SND_WIN3_I,     6
-.EQU SND_WIN3_P,    15          ; 16 x 12 = 192 periods = 155 ms
-.EQU SND_WIN3_B,    11
+.EQU SND_WIN3_P,    15          ; 16 x 11 = 176 periods = 148 ms
+.EQU SND_WIN3_B,    10
 .EQU SND_WINE_B,    15          ; the resolution: SND_WIN2's pitch for 256
-                                ; periods, 276 ms. Three arpeggios and it is
-                                ; 1791 ms against the measured 1830.
+                                ; periods, 268 ms. Three arpeggios and it is
+                                ; 1735 ms against the measured 1830.
 
 ; gameOver - a brief 455-545 Hz transient collapsing to an 80-97 Hz buzz, then a
 ; 200-280 Hz rasp decaying to a ~147 Hz floor; five notes, 660 ms of tone. The
 ; collapse band is what tells this sound from the battleship's buzz on any
 ; silicon, which is why the two are reached by deliberately different mechanisms
 ; - this one blanks the tube and the buzz never does.
-.EQU SND_LOSS1_O,    1          ; 474 Hz - the same pitch as the warning beep
+.EQU SND_LOSS1_O,    1          ; 467 Hz - the same pitch as the warning beep
 .EQU SND_LOSS1_I,   11
-.EQU SND_LOSS1_P,   11          ; 12 periods = 25.3 ms
+.EQU SND_LOSS1_P,   11          ; 12 periods = 25.7 ms
 .EQU SND_LOSS1_B,    0
-.EQU SND_LOSS2_O,   12          ; D = 314, f = 58333/635 = 91.9 Hz (96 measured)
+.EQU SND_LOSS2_O,   12          ; D = 314, f = 58333/637 = 91.6 Hz (96 measured)
 .EQU SND_LOSS2_I,    9
-.EQU SND_LOSS2_P,    3          ; 4 periods = 43.5 ms
+.EQU SND_LOSS2_P,    3          ; 4 periods = 43.7 ms
 .EQU SND_LOSS2_B,    0
-.EQU SND_LOSS3_O,    3          ; D = 114, f = 58333/235 = 248 Hz (240 measured)
+.EQU SND_LOSS3_O,    3          ; D = 114, f = 58333/237 = 246 Hz (240 measured)
 .EQU SND_LOSS3_I,   11
-.EQU SND_LOSS3_P,   14          ; 15 x 3 = 45 periods = 181 ms
+.EQU SND_LOSS3_P,   14          ; 15 x 3 = 45 periods = 183 ms
 .EQU SND_LOSS3_B,    2
-.EQU SND_LOSS4_O,    4          ; D = 142, f = 58333/291 = 200 Hz (196 measured)
+.EQU SND_LOSS4_O,    4          ; D = 142, f = 58333/293 = 199 Hz (196 measured)
 .EQU SND_LOSS4_I,   11
-.EQU SND_LOSS4_P,   10          ; 11 x 3 = 33 periods = 165 ms
+.EQU SND_LOSS4_P,   10          ; 11 x 3 = 33 periods = 166 ms
 .EQU SND_LOSS4_B,    2
-.EQU SND_LOSS5_O,    6          ; D = 198, f = 58333/403 = 145 Hz (147 measured)
+.EQU SND_LOSS5_O,    6          ; D = 198, f = 58333/405 = 144 Hz (147 measured)
 .EQU SND_LOSS5_I,   11
-.EQU SND_LOSS5_P,   11          ; 12 x 3 = 36 periods = 249 ms
+.EQU SND_LOSS5_P,   11          ; 12 x 3 = 36 periods = 250 ms
 .EQU SND_LOSS5_B,    2
 
 ; The gap between warning beeps: 25-28 ms MEASURED. `warn_gap` is the same
@@ -911,12 +944,13 @@ strobe:
         BR   st_buzz
         BR   st_off
 st_buzz:
-        DMAN                    ; A <- one strobe closer to the next edge; the
-        TAM                     ; test above proves this cannot borrow
+        TCY  NIB_SGRID
+        TAM                     ; and park it in RAM as well, because `DMAN` is
+        TCY  NIB_BUZZ           ; decrement-into-*accumulator* and would take
+        DMAN                    ; the grid with it. Only this arm pays for it,
+        TAM                     ; and it is the arm the boat is on the glass for
         MNEZ                    ; zero is the edge; anything else is still
-        BR   st_off             ; counting down to it
-        BR   st_flip
-st_flip:
+        BR   st_grid            ; counting down to it
         TCMIY BUZZ_DIV          ; reload, and step Y on to the phase nibble
         TBIT1 0
         BR   st_fall
@@ -925,11 +959,15 @@ st_fall:
         RBIT 0
         TCY  R_SPEAKER
         RSTR
-        BR   st_off
+        BR   st_grid
 st_rise:
         SBIT 0
         TCY  R_SPEAKER
         SETR
+        BR   st_grid
+st_grid:
+        TCY  NIB_SGRID
+        TMA                     ; A <- the grid, back out of RAM
         BR   st_off
 st_off:
         TAY                     ; the grid, back out of A
@@ -1660,17 +1698,27 @@ tr_done:
 jm_capture:
         LDX  FILE_JETS
         CLA
-        TAM                     ; the lane empties - the jet is on the player
-        TYA
+        TAM                     ; the lane empties whether or not it cost
+        TYA                     ; anything: the jet has crossed the G line
         LDX  FILE_STATE
         TCY  NIB_KLANE
         TAM
+        TCY  NIB_LANE
+        MNEA                    ; status = the launcher is in some other lane
+        BR   jm_flew_past
         LDX  FILE_TIME
         TCY  NIB_CAPTURE
         TCMIY CAPTURE_SWEEPS
         COMC
         LDP  C1_LOSE
         BR   launcher_down
+
+; A jet that crosses the line the player is *not* standing in costs nothing.
+; That is the whole of what moving the lever is for, and without it the machine
+; loses all three launchers to the first squadron whatever the player does.
+jm_flew_past:
+        LDP  P_JETS
+        BR   jm_lane_next
 
 
 
@@ -1883,6 +1931,12 @@ launcher_hit:
 ; owner-confirmed.
 
 launcher_down:
+        LDX  FILE_STATE
+        TCY  NIB_KCOL
+        TCMIY GRID_PLAYER + 1   ; the starburst on the player's own grid: the
+        LDX  FILE_TIME          ; same three plates a jet-kill burst uses, which
+        TCY  NIB_KSTEP          ; is what the tube gives every playfield cell
+        TCMIY BURST_SWEEPS
         LDX  FILE_STATE
         TCY  NIB_HITS
         IMAC

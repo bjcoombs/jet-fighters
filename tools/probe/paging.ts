@@ -205,13 +205,6 @@ export function findPagingViolations(result: AssemblyResult): readonly PagingVio
     }
   }
 
-  if (process.env.PAGING_REACH) {
-    // eslint-disable-next-line no-console
-    console.log('reached', state.size, 'of', result.instructions.length);
-    for (const i of result.instructions) {
-      if (!state.has(i.address)) { console.log('UNREACHED', i.position.line, i.mnemonic); break; }
-    }
-  }
   const violations: PagingViolation[] = [];
   for (const node of result.instructions) {
     if (!BRANCH_MNEMONICS.has(node.entry.mnemonic)) {

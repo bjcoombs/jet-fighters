@@ -314,3 +314,52 @@ export function soundHz(
   const median = periods[periods.length >> 1] as number;
   return cycleHz / median;
 }
+
+/**
+ * The repetition rate of a pulse train, by harmonic-comb periodicity.
+ *
+ * `soundHz` above is the right tool for a note: a square wave's period is the
+ * time between every second edge and the median of those is the pitch. It is
+ * the wrong tool for the battleship's buzz, and
+ * `docs/evidence/audio-reference.md` says why at length - the buzz is clocked
+ * off the display sweep, so its edges are not evenly spaced, and it overlaps
+ * whatever else the game is sounding. A median period reads the jitter, and an
+ * edges-per-second count reads the march beep's edges as if they were the
+ * buzz's.
+ *
+ * So this scores each candidate f0 the way that document's detector does:
+ * treat the edges as an impulse train and take the magnitude of its transform
+ * at f0. A 627 Hz march beep inside the window contributes nothing at 90 Hz;
+ * an 86 Hz buzz does. The scan range is the measured band widened either side,
+ * so a rate outside the band is reported rather than clamped into it.
+ */
+export function combPeriodicityHz(
+  edges: readonly SpeakerEdge[],
+  from: number,
+  to: number,
+  cycleHz: number,
+  lowHz = 60,
+  highHz = 140,
+): number {
+  const within = edges.filter((edge) => edge.cycle >= from && edge.cycle <= to);
+  if (within.length < 4) {
+    return 0;
+  }
+  let bestHz = 0;
+  let bestScore = -1;
+  for (let hz = lowHz; hz <= highHz; hz += 0.25) {
+    let real = 0;
+    let imaginary = 0;
+    for (const edge of within) {
+      const phase = (2 * Math.PI * hz * edge.cycle) / cycleHz;
+      real += Math.cos(phase);
+      imaginary += Math.sin(phase);
+    }
+    const score = Math.hypot(real, imaginary);
+    if (score > bestScore) {
+      bestScore = score;
+      bestHz = hz;
+    }
+  }
+  return bestHz;
+}
