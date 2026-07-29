@@ -659,8 +659,8 @@ sw_near:
 
 ; --- pass 2: far, plates 3-5, grids 0-6, latch clear -------------------------
 ;
-; The printed sea on grid 0, the attacker's colon on grids 1-5, the capture
-; burst on grid 6. Seven strobes.
+; The sea under the battleship on grid 0, the attacker's colon on grids 1-5, the
+; capture burst on grid 6. Seven strobes.
 
         CLA
         TAY
@@ -2299,7 +2299,8 @@ render:
         TCMIY OPLA_A_NEAR
         LDX  FILE_D1
         TCY  GRID_BSHIP
-        TCMIY OPLA_A_FAR + 7    ; the printed sea reads as one horizon
+        TCMIY OPLA_A_FAR        ; the sea blanks with everything else - see
+                                ; rd_bs_draw, which lights the boat's own lane
         TCMIY OPLA_A_FAR
         TCMIY OPLA_A_FAR
         TCMIY OPLA_A_FAR
@@ -2786,8 +2787,20 @@ sr_ok:
 
 
 ; ============================================================================
-; Chapter 1, page 14 - the battleship, on grid 0's near plates
+; Chapter 1, page 14 - the battleship, and the sea it sits on
 ; ============================================================================
+;
+; The hull is grid 0's near plates and the sea its far plates, and **both are
+; drawn here, in the boat's own lane, rather than the sea being held on**. An
+; earlier form of this program blanked grid 0's far nibble to `OPLA_A_FAR + 7`
+; in `render` instead, which lit all three `sea_lane*` segments on every sweep
+; for the life of the game, boat or no boat. Nothing supports that: both of the
+; owner's lit-tube close-ups show cell 0 entirely dark, and the 12,237-frame
+; video pass written up in `assets/reference/sprites/README.md` tabulates cell 0
+; as the battleship and its cyan kill-burst and never a sea. The sea is a real
+; anode - `assets/reference/tube-teardown/README.md` finds it in the red-orange
+; group beside the hull - but the only evidence of it being *driven* is the boat
+; standing on it, so that is when it is driven.
 
 .PAGE C1_REND0
 
@@ -2820,7 +2833,14 @@ rd_bs_draw:
         TMA
         LDX  FILE_D0
         TCY  GRID_BSHIP
-        TAM
+        TAM                     ; the hull, on grid 0's near plates
+        LDX  FILE_D3
+        TCY  NIB_RBIT
+        TMA
+        A8AAC                   ; OPLA_A_FAR + the same lane bit: the sea the
+        LDX  FILE_D1            ; hull sits on, in the hull's own lane. A8AAC
+        TCY  GRID_BSHIP         ; carries when the bit is 8 or more, which it
+        TAM                     ; never is, and nothing branches on it either
         LDP  C1_REND2
         BR   rd_jets
 

@@ -96,9 +96,12 @@
 .OPLA  6, %00000110                     ; lanes 1,2
 .OPLA  7, %00000111                     ; lanes 0,1,2
 
-; FAR - plates 3-5, every subset. The printed sea is three lane segments that
-; read as one horizon, so grid 0 wants the full %111; the colon flies one at a
-; time. Holding all eight costs nothing the rest of the table wanted.
+; FAR - plates 3-5, every subset. Everything on these plates is drawn one lane at
+; a time - the sea in the lane the battleship stands in, the colon in the lane it
+; flies down, the capture burst in the lane the player is caught in - so the ROM
+; reaches four of the eight. Holding all eight costs nothing the rest of the
+; table wanted, and there is no slot to save by guessing which of the other four
+; a later rule needs.
 
 .OPLA  8, %00000000                     ; -
 .OPLA  9, %00001000                     ; lane 0
