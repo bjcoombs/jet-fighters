@@ -136,6 +136,21 @@ describe('the display', () => {
     expect(unreachablePlateMasks(O_PLA_TABLE, run.oMasks)).toEqual([]);
   });
 
+  it('has that closure armed rather than vacuous', () => {
+    // Contract V4 asks for a mutation case, and it has to pick its slot with
+    // care: several masks in this table are produced twice over - digit 7 and
+    // the full near triple are both %00000111 - so zeroing one of those would
+    // leave closure green and prove nothing. This picks a slot the ROM actually
+    // drove *and* that nothing else in the table produces, and proves the slot
+    // is unique before it uses it.
+    const produces = (mask: number): number =>
+      O_PLA_TABLE.filter((slot) => slot === mask).length;
+    const unique = [...run.oMasks].find((mask) => mask !== 0 && produces(mask) === 1);
+    expect(unique, 'no uniquely-produced mask was driven to mutate').toBeDefined();
+    const mutated = O_PLA_TABLE.map((slot) => (slot === unique ? 0 : slot));
+    expect(unreachablePlateMasks(mutated, run.oMasks)).toEqual([unique]);
+  });
+
   it('lights no (grid, plate) the atlas has no segment at', () => {
     const atlas = JSON.parse(
       readFileSync(resolve(import.meta.dirname, '..', '..', 'src', 'machine', 'tube', 'atlas.json'), 'utf8'),
