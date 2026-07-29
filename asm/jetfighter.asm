@@ -280,7 +280,20 @@
 .EQU ST_WIN,         2
 
 .EQU SCORE_JET,      1          ; points for a jet
-.EQU SCORE_BSHIP,    5          ; points for the battleship
+;
+; MEASURED. assets/reference/sprites/README.md reads the score off the gameplay
+; video across the cell-0 burst at frames 6134-6159: 28 at frame 6106 and 38 at
+; frame 6162, "exactly +10 across it", with the three jet-kill bursts that follow
+; accounting for a further +3 by frame 6234 - a jet at one point and the boat at
+; ten, in the same seven seconds of one recording. PRD v1 R4 says the same.
+;
+; Like JET_COUNT and HITS_LAST above, the name cannot appear in an operand. Ten
+; does not fit the units path: `add_score` sums the points into NIB_SC_U with a
+; four-bit `AMAAC`, and ten plus a units digit of nine is nineteen, which wraps
+; the nibble before the BCD correction ever runs. Ten points *is* one on the tens
+; digit, so `score_bship` spends this constant as an `IMAC` on NIB_SC_T and joins
+; `add_score` at its carry arm.
+.EQU SCORE_BSHIP,   10          ; points for the battleship
 
 ; ============================================================================
 ; Timing, and why every figure here is a division rather than a number
@@ -659,8 +672,8 @@ sw_near:
 
 ; --- pass 2: far, plates 3-5, grids 0-6, latch clear -------------------------
 ;
-; The printed sea on grid 0, the attacker's colon on grids 1-5, the capture
-; burst on grid 6. Seven strobes.
+; The sea under the battleship on grid 0, the attacker's colon on grids 1-5, the
+; capture burst on grid 6. Seven strobes.
 
         CLA
         TAY
@@ -1422,11 +1435,18 @@ score_jet:
         TCY  SCORE_JET
         TYA
         BR   add_score
+; The boat is ten points, which is one on the tens digit and nothing at all on
+; the units, so it does not go through `add_score`'s units stage - it does that
+; stage's *carry* arm instead, which is the same four instructions `as_carry_u`
+; runs. Adding ten through the units would need a five-bit sum.
 score_bship:
-        CLA
-        TCY  SCORE_BSHIP
-        TYA
-        BR   add_score
+        LDX  FILE_TIME
+        TCY  NIB_SC_T
+        IMAC                    ; SCORE_BSHIP, spent as a tens increment
+        TAM
+        A6AAC                   ; carry iff the tens digit reached ten
+        BR   as_carry_t
+        BR   as_to_done
 
 add_score:
         LDX  FILE_TIME
@@ -2299,7 +2319,8 @@ render:
         TCMIY OPLA_A_NEAR
         LDX  FILE_D1
         TCY  GRID_BSHIP
-        TCMIY OPLA_A_FAR + 7    ; the printed sea reads as one horizon
+        TCMIY OPLA_A_FAR        ; the sea blanks with everything else - see
+                                ; rd_bs_draw, which lights the boat's own lane
         TCMIY OPLA_A_FAR
         TCMIY OPLA_A_FAR
         TCMIY OPLA_A_FAR
@@ -2335,12 +2356,26 @@ render:
 ;
 ; Three lanes can stand in one column, which is why the near group holds all
 ; eight subsets and not four, and why this adds rather than overwrites.
+;
+; **Both scratch nibbles have to be set here, and the order below is the RAM
+; map's and not a preference.** `TCMIY` steps Y up, `NIB_RBIT` is 11 and
+; `NIB_RLNE` is 12, so the pair is written bit-then-lane. Written the other way
+; round the second store lands in nibble 13, which nothing reads, and `NIB_RBIT`
+; carries into the walk holding whatever the previous sweep's last `lane_bit`
+; caller left - `rd_bship`'s boat lane, `rd_launcher`'s lever lane, or
+; `rd_bk_plate`'s R-line code. The squadron is then drawn offset by that lane,
+; and once the doubling runs the offset past bit 2 the near nibble leaves the
+; NEAR group's 0-7 and indexes FAR instead (`opla.inc.asm`, index 8-15 with the
+; latch clear), so the near pass paints the attackers' rockets into cells no
+; rocket is in. It ran that way and every address it drove was a legal one, which
+; is why the atlas conformance suite went *greener* for it rather than red.
+; `tools/probe/render-fidelity.test.ts` is the assertion that catches it.
 
 rd_jets:
         LDX  FILE_D3
-        TCY  NIB_RLNE
-        TCMIY 0
-        TCMIY 1                 ; NIB_RBIT follows NIB_RLNE
+        TCY  NIB_RBIT
+        TCMIY 1                 ; NIB_RBIT is 11 and NIB_RLNE is 12, so the walk
+        TCMIY 0                 ; starts at the bit and steps *up* to the lane
 rd_jet_lane:
         LDX  FILE_D3
         TCY  NIB_RLNE
@@ -2675,7 +2710,7 @@ rd_done:
 
 ; --- the win is 199 ----------------------------------------------------------
 ;
-; Two ways to reach it, and both are here because a score that steps by five can
+; Two ways to reach it, and both are here because a score that steps by ten can
 ; jump the exact value. Hundreds reaching two is a score above 199 and is capped
 ; back to it; otherwise 1-9-9 is tested digit by digit. `A7AAC` carries exactly
 ; when a BCD digit is nine, which is what makes the test two instructions
@@ -2772,8 +2807,20 @@ sr_ok:
 
 
 ; ============================================================================
-; Chapter 1, page 14 - the battleship, on grid 0's near plates
+; Chapter 1, page 14 - the battleship, and the sea it sits on
 ; ============================================================================
+;
+; The hull is grid 0's near plates and the sea its far plates, and **both are
+; drawn here, in the boat's own lane, rather than the sea being held on**. An
+; earlier form of this program blanked grid 0's far nibble to `OPLA_A_FAR + 7`
+; in `render` instead, which lit all three `sea_lane*` segments on every sweep
+; for the life of the game, boat or no boat. Nothing supports that: both of the
+; owner's lit-tube close-ups show cell 0 entirely dark, and the 12,237-frame
+; video pass written up in `assets/reference/sprites/README.md` tabulates cell 0
+; as the battleship and its cyan kill-burst and never a sea. The sea is a real
+; anode - `assets/reference/tube-teardown/README.md` finds it in the red-orange
+; group beside the hull - but the only evidence of it being *driven* is the boat
+; standing on it, so that is when it is driven.
 
 .PAGE C1_REND0
 
@@ -2806,7 +2853,14 @@ rd_bs_draw:
         TMA
         LDX  FILE_D0
         TCY  GRID_BSHIP
-        TAM
+        TAM                     ; the hull, on grid 0's near plates
+        LDX  FILE_D3
+        TCY  NIB_RBIT
+        TMA
+        A8AAC                   ; OPLA_A_FAR + the same lane bit: the sea the
+        LDX  FILE_D1            ; hull sits on, in the hull's own lane. A8AAC
+        TCY  GRID_BSHIP         ; carries when the bit is 8 or more, which it
+        TAM                     ; never is, and nothing branches on it either
         LDP  C1_REND2
         BR   rd_jets
 

@@ -118,11 +118,13 @@ export const NEAR_GROUP: PlateGroup = Object.freeze({
  * Plates 3-5: the sea on grid 0, the attacker's colon on grids 1-5, the capture
  * burst on grid 6.
  *
- * Held to all eight subsets like {@link NEAR_GROUP}, though the v2 ROM flies one
- * colon at a time (`NIB_RCOL`, a single column nibble). Two of the eight are
- * known to be wanted - the printed sea is three lane segments that read as one
- * horizon, so grid 0 wants `%111` - and there is no slot to save by guessing
- * which of the remaining five task 8 will need. Generality here is free.
+ * Held to all eight subsets like {@link NEAR_GROUP}, though everything on these
+ * plates is drawn one lane at a time: the colon flies down one lane (`NIB_RCOL`
+ * and `NIB_RLANE` are one nibble each), the capture burst catches the player in
+ * one lane, and the sea is lit in the lane the battleship stands in rather than
+ * held across all three. So the ROM reaches four of the eight, and there is no
+ * slot to save by guessing which of the other four a later rule will need.
+ * Generality here is free.
  */
 export const FAR_GROUP: PlateGroup = Object.freeze({
   name: 'far',
