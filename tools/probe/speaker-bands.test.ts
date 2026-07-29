@@ -401,6 +401,28 @@ const FIRST_CROSSING_END_S = 9.5 + 4.05;
 const PLAYED_SECONDS = FIRST_CROSSING_END_S * 1.5;
 
 /**
+ * Slices the drive holds each lever lane for: 60, which is 0.18 s.
+ *
+ * A slice is `PLAYER_SLICE_CYCLES`, a fifth of a sweep, so sixty of them are
+ * twelve whole sweeps - 178 cycles each at `CYCLE_HZ`, 183 ms in all. That is
+ * the figure, not the "about a second" this comment used to claim: a fifth of a
+ * sweep is 3 ms, not 17 ms, and the arithmetic was out by 5.5x.
+ *
+ * The dwell is stated in slices rather than seconds because what it has to
+ * clear is a count of input scans, not a duration. The ROM samples each strobe
+ * column once per sweep, so twelve sweeps is twelve chances for a lane change to
+ * be seen, and a lane that lasted one sweep could be missed by a scan landing
+ * either side of it. It is faster than a hand works a lever and slower than the
+ * blind player in `game-lifetime.test.ts`, which moves a lane every slice.
+ *
+ * Widening it to a literal second was the alternative and was not taken: the
+ * measured bands below are read off the sounds this drive produces, so changing
+ * how it plays re-opens every band in the file. Correcting the claim costs
+ * nothing and changes no measurement.
+ */
+const LANE_DWELL_SLICES = 60;
+
+/**
  * Run the machine on until the speaker has been at rest for longer than one
  * sound gap, or the ceiling is reached.
  *
@@ -438,8 +460,8 @@ function scenario(fire: boolean): { edges: readonly SpeakerEdge[]; sounds: Sound
   const window = seconds(fire ? PLAYED_SECONDS : IDLE_SECONDS);
   for (let slice = 0; machine.cycles < window; slice += 1) {
     if (fire) {
-      // The lever walks the three lanes, holding each for about a second.
-      machine.setContacts({ lane: Math.floor(slice / 60) % 3 });
+      // The lever walks the three lanes, holding each for LANE_DWELL_SLICES.
+      machine.setContacts({ lane: Math.floor(slice / LANE_DWELL_SLICES) % 3 });
       // Hold fire over a crossing, and over the last few units of the countdown
       // to one, so a missile already in flight cannot end it early. A player who
       // fires blindly shoots the boat down almost every time - which is the boat

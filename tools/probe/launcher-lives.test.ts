@@ -178,9 +178,15 @@ const PARKED_GAME_END_S = 43.2;
 /**
  * Emulated seconds each run below is driven for.
  *
- * Half again as long as the latest of the three endings, so a run cannot quietly
- * stop short of the ending it is meant to observe - which is exactly how the v2
- * horizon failed - and short enough that three of them stay cheap.
+ * Two fifths again as long as the latest of the three endings: 60.5 s against a
+ * 43.2 s ending, so every run carries 17.3 s past the last edge it is meant to
+ * observe and cannot quietly stop short of it, which is exactly how the v2
+ * horizon failed. Short enough that three of them stay cheap.
+ *
+ * The factor is 1.4 rather than 1.5 because 1.4 is what the measurement asks
+ * for: the slack it buys is two fifths of a whole parked game, far wider than
+ * the spread between the three lanes' endings (24.6 s, 36.3 s, 43.2 s), and
+ * widening it further would buy wall-clock time rather than evidence.
  */
 const HORIZON_S = PARKED_GAME_END_S * 1.4;
 

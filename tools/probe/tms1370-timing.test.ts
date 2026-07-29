@@ -94,10 +94,29 @@ describe('the sweep the cadence module measures', () => {
   });
 });
 
+/**
+ * Cycles the synthetic player below holds each lever lane for: 45 sweeps.
+ *
+ * Stated as a count of sweeps rather than the bare 40,000 cycles it used to be,
+ * for the reason CLAUDE.md gives about literals in tests of a machine that
+ * stops: 40,000 silently meant "at this instruction rate, for this sweep
+ * length", and both moved when the core did. At today's `SWEEP_INSTRUCTIONS`
+ * this is 40,005 cycles, or 0.686 s.
+ *
+ * What the figure has to satisfy is a floor and a ceiling, and 45 sweeps sits
+ * between them with room either side. The floor is that the ROM samples each
+ * strobe column once per sweep, so a dwell shorter than a few sweeps could be
+ * missed entirely; the ceiling is that the 20 s window has to hold enough lane
+ * moves for the gap distribution below to be a distribution, and this gives 29
+ * of them. Nothing here is a measurement of the machine - it is how the drive
+ * plays, and the assertions are about the gaps the sweep leaves while it does.
+ */
+const LANE_DWELL_CYCLES = 45 * SWEEP_INSTRUCTIONS;
+
 describe('the blank threshold against the intervals it separates', () => {
   const cycles = seconds(20);
   const input = [{ cycle: 0, change: { skill: 1 } }];
-  for (let at = 0, lane = 0; at < cycles; at += 40_000, lane = (lane + 1) % 3) {
+  for (let at = 0, lane = 0; at < cycles; at += LANE_DWELL_CYCLES, lane = (lane + 1) % 3) {
     input.push({ cycle: at, change: { lane } as never });
   }
   const run = runGame({ cycles, input: input as never, keepStrobes: true });
