@@ -1,5 +1,10 @@
 # Jet Fighters - Browser Replica PRD (v1)
 
+> **Historical.** This document specifies a behavioural replica with a modern game loop,
+> which `jet-fighters-v2.md` replaced with a machine emulation and `jet-fighters-v3.md`
+> rebuilt on the right processor. It is kept as the record of what the game's rules are and
+> where each was observed.
+
 ## Problem Statement
 
 Recreate the 1979 Gakken "Jet Fighter" tabletop electronic game (model 81582, sold in the UK

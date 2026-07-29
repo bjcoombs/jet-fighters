@@ -617,13 +617,13 @@ function longestSilenceMs(edges: readonly SpeakerEdge[], from: number, to: numbe
 interface PageRun {
   /** Every sample the transport played, in order. */
   readonly out: Float32Array;
-  /** Every D14 transition of the run, in cycle order. */
+  /** Every R15 transition of the run, in cycle order. */
   readonly edges: readonly SpeakerEdge[];
   /** The notes the ROM played, in the order it played them. */
   readonly notes: readonly Note[];
   /** Intervals during which the boat was on the tube, in cycle order. */
   readonly crossings: ReadonlyArray<readonly [number, number]>;
-  /** Cycle of the very first D14 transition of the run. */
+  /** Cycle of the very first R15 transition of the run. */
   readonly firstEdgeCycle: number;
 }
 

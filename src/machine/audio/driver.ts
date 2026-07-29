@@ -1,7 +1,7 @@
 // The Web Audio end of the speaker: the only file in src/machine/audio/ that
 // is allowed to know a browser exists.
 //
-// Everything upstream is pure. `edge-buffer.ts` places the D14 transitions on a
+// Everything upstream is pure. `edge-buffer.ts` places the R15 transitions on a
 // sample timeline, `square-synth.ts` band-limits them back into a waveform, and
 // `spectrum.ts` reads the result - none of them import an audio API, which is
 // what lets acceptance criterion V5 reconstruct and FFT the same waveform in

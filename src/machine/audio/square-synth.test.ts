@@ -15,7 +15,7 @@ const SAMPLE_RATE = 48_000;
 
 /**
  * Edges for a square wave of `hz` lasting `ms`, as the ROM would make it: a
- * delay loop toggling D14 every half period.
+ * delay loop toggling R15 every half period.
  */
 function toneEdges(hz: number, ms: number, fromCycle = 0): SpeakerEdgePair[] {
   const halfPeriod = CYCLE_HZ / (2 * hz);
@@ -64,7 +64,7 @@ describe('levelToValue', () => {
 
 describe('renderSquare - shape', () => {
   it('returns an empty buffer for a silent pin', () => {
-    // If the ROM never toggles D14 there is nothing to render. There is no
+    // If the ROM never toggles R15 there is nothing to render. There is no
     // event API that could produce sound instead.
     expect(renderSquare([], { cyclesPerSecond: CYCLE_HZ, sampleRate: SAMPLE_RATE }).length).toBe(0);
   });

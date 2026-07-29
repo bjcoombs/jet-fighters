@@ -1,4 +1,4 @@
-// Cycle-domain to sample-domain conversion for the D14 pin edge stream.
+// Cycle-domain to sample-domain conversion for the R15 pin edge stream.
 //
 // The speaker (src/machine/board/speaker.ts) records transitions stamped with
 // exact machine cycles. Audio hardware wants samples. This module is the only
@@ -121,7 +121,7 @@ export function normaliseEdges(input: EdgeInput): SpeakerEdge[] {
 }
 
 /**
- * The D14 edge stream on an audio timeline.
+ * The R15 edge stream on an audio timeline.
  *
  * Cycle zero of the timeline is the first edge ever pushed: the machine may
  * have run silently for a long while before the ROM first touched the pin, and

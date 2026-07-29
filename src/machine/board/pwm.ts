@@ -18,7 +18,7 @@
 
 /** One segment's share of a frame period. */
 export interface SegmentDuty {
-  /** Display grid, driven by D0-D9. */
+  /** Display grid, driven by R0-R8. */
   readonly grid: number;
   /** Plate (anode) bit index within the grid. */
   readonly plate: number;

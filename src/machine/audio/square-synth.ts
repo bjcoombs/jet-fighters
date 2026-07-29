@@ -1,4 +1,4 @@
-// Band-limited reconstruction of the D14 square wave from pin transitions.
+// Band-limited reconstruction of the R15 square wave from pin transitions.
 //
 // The speaker is a 1-bit piezo: the pin is high or it is low, and the sound is
 // entirely the ROM's timing between those two states. This module turns the

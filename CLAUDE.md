@@ -4,15 +4,17 @@ Emulation of the 1979 Gakken "Jet Fighter" / CGL "Jet Fighters" tabletop VFD gam
 4-bit microcontroller running a game program we author, scanning a vacuum fluorescent
 tube.
 
-**The unit's chip is a Texas Instruments TMS1370 (mask MP2110)**, not the Hitachi HMCS44
-this codebase currently implements - see `docs/evidence/open-questions.md` section 7 for
-the evidence, how the error entered, and what a rebuild must carry. The tube, audio and
-gameplay layers are unaffected; the CPU, assembler and ROM are being rebuilt.
+**The unit's chip is a Texas Instruments TMS1370 (mask MP2110)** - see
+`docs/evidence/open-questions.md` section 7 for the evidence and how the earlier
+misidentification entered. The instruction rate is provisional: MAME's fitted oscillator
+approximation over the architectural divide-by-six, not a measurement of this part. See
+`docs/research/mp2110-timing-measurement.md` before treating any cadence figure as
+settled.
 
-PRD: `docs/prd/jet-fighters-v2.md` (paths in this file are relative to the repo root),
-superseded on its hardware claim and annotated accordingly.
-`docs/prd/jet-fighters-v1.md` describes the superseded behavioural replica and is kept
-only as the record of what the rules are.
+PRD: `docs/prd/jet-fighters-v3.md` (paths in this file are relative to the repo root).
+`docs/prd/jet-fighters-v2.md` and `docs/prd/jet-fighters-v1.md` are historical - v2 for the
+machine this one replaced, v1 for the behavioural replica before it - and are kept as the
+record of what the rules are and how they were arrived at.
 
 ## Architecture rules
 
@@ -21,10 +23,10 @@ the physical machine:
 
 | Path                 | Layer                                                                     |
 | -------------------- | ------------------------------------------------------------------------- |
-| `asm/jetfighter.asm` | The game program - every rule, cadence, sound and score, in HMCS44 assembly |
-| `tools/hmasm/`       | The assembler, its CLI, and the Vite plugin that makes `.asm` importable    |
-| `src/machine/cpu/`   | HMCS44 core: 91 instructions, 4-bit ALU, 4-level stack, timer, R/D ports    |
-| `src/machine/board/` | PWM display state, input strobe matrix, D14 edge capture, power switch      |
+| `asm/jetfighter.asm` | The game program - every rule, cadence, sound and score, in TMS1000-family assembly |
+| `tools/tmsasm/`      | The assembler, its CLI, five static analyses, and the Vite plugin that makes `.asm` importable |
+| `src/machine/cpu/tms1370/` | TMS1370 core: 256 opcodes, 4-bit ALU, LFSR PC, one-level stack, R/O/K ports, output PLA |
+| `src/machine/board/` | PWM display state, K input matrix, R15 edge capture, power switch           |
 | `src/machine/tube/`  | Segment atlas and the renderer's phosphor rise/decay curves                 |
 | `src/machine/audio/` | Cycle-stamped edges band-limited into a waveform                            |
 | `src/ui/`, `src/input/`, `src/main.ts` | Case shell, keyboard/touch, and the frame driver          |
@@ -45,13 +47,17 @@ The rules that keep it honest:
   the spectral tests drive the real machine headlessly, and the Vitest `node` environment
   enforces it.
 - **No game state outside the emulated RAM.** Score, jets, lives and skill are nibbles the
-  program put there. A control movement reaches the game only by closing a contact on the
-  input matrix, which the program reads on its next sweep - never by writing state.
+  program put there. A control movement reaches the game only by closing a contact on the K
+  matrix, which the program reads on its next sample - never by writing state.
 - **Game behaviour is changed in `asm/jetfighter.asm`**, not in TypeScript. A gameplay bug
   is a ROM bug. Reassemble with a listing:
-  `npx vite-node tools/hmasm/cli.ts asm/jetfighter.asm --listing /tmp/jetfighter.lst`
-- **The power switch is the only reset.** On = core reset with RAM undefined then cleared
-  by the ROM; off = halt and invalidate RAM. Do not add a restart path.
+  `npx vite-node tools/tmsasm/cli.ts asm/jetfighter.asm --listing /tmp/jetfighter.lst`
+- **The power switch is the only reset.** On = core reset with RAM undefined, which the ROM
+  then clears; off = stop and invalidate RAM. Do not add a restart path, and do not clear
+  RAM on the board's behalf - the clear routine costs real instruction time before the
+  first sweep and that cost is a power-on behaviour the machine has.
+- **The program counter is an LFSR.** The n-th instruction of a page is not at offset n.
+  `tools/tmsasm/memory.ts` owns that map; nothing else may assume address order.
 - Geometry and palette values shared with other layers are **copied with a citation
   comment, not imported** - `src/machine/` depends on nothing above it.
 - Every gameplay rule lives in the PRD. If a rule is ambiguous, check

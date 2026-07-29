@@ -548,10 +548,10 @@ describe('SpeakerDriver - rendering', () => {
 // band-limited reconstruction - was correct and tested; what was not tested was
 // that the two clocks ever meet. The output pulls samples from the moment the
 // graph is connected, and a cold machine runs the best part of a second before
-// the ROM first touches D14, so by the time an edge exists the playhead is tens
+// the ROM first touches R15, so by the time an edge exists the playhead is tens
 // of thousands of samples past where the edge timeline anchors it.
 describe('SpeakerDriver - keeping the machine in step with the output', () => {
-  /** Samples the output pulls before the ROM's first D14 edge, on a cold machine. */
+  /** Samples the output pulls before the ROM's first R15 edge, on a cold machine. */
   const SILENT_BLOCKS = 293; // 37,504 frames: 0.78 s at 48 kHz
 
   /** Peak-to-peak swing of a block. Zero is a pin that never moved. */
