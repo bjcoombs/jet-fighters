@@ -71,7 +71,7 @@ describe('the TMS1370 pin budget', () => {
     expect(R_PIN_COUNT).toBe(16);
   });
 
-  it('scans nine grids on R0-R8, not the HMCS44 ten', () => {
+  it('scans nine grids on R0-R8, not the v2 machine\'s ten', () => {
     expect(R_GRID_FIRST).toBe(0);
     expect(R_GRID_LAST).toBe(8);
     expect(GRID_COUNT).toBe(9);
@@ -140,10 +140,10 @@ describe('Tms1370Ports - reset and R latches', () => {
   });
 
   it('separates R lines driven from grids driven', () => {
-    // The distinction that did not exist on the HMCS44, where the grids had a D
-    // port to themselves. Here the speaker, both strobe columns and the grids
-    // are bits of one latch, so a caller asking "which grids" must not be
-    // handed R9, R10 or R15.
+    // The distinction that did not exist on the v2 machine, where the grids had
+    // a port to themselves. Here the speaker, both strobe columns and the grids
+    // are bits of one latch, so a caller asking "which grids" must not be handed
+    // R9, R10 or R15.
     const ports = new Tms1370Ports();
     ports.setR(0);
     ports.setR(9);

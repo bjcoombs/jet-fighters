@@ -28,11 +28,11 @@ describe('KInputMatrix - resting state', () => {
     expect(matrix.skill).toBe(DEFAULT_SKILL);
   });
 
-  it('shares the case control vocabulary with the HMCS44 matrix', () => {
+  it('shares the case control vocabulary with the rest of the board', () => {
     // The lever positions and skill settings are properties of the case, not of
     // the chip behind it, so they are imported rather than restated. If they
-    // ever diverge that is a change to the physical unit, and this stops it
-    // happening by accident during the chip swap.
+    // ever diverge that is a change to the physical unit, and this stopped it
+    // happening by accident while the chip was being swapped.
     const lever: LeverPosition = DEFAULT_LEVER;
     const skill: SkillLevel = DEFAULT_SKILL;
     const matrix = new KInputMatrix();

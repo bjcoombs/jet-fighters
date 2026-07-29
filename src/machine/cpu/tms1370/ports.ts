@@ -2,8 +2,8 @@
 //
 // Sources: MAME's `ginv` driver (Gakken Invader, TMS1370 mask MP2110 - the mask
 // on our own board) and TI's *TMS 1000 Series Data Manual*, both quoted at
-// length in docs/research/tms1370-io.md sections 1 and 2. Unlike the HMCS44 map
-// in ../ports.ts, which was adopted from a sibling machine because our chip was
+// length in docs/research/tms1370-io.md sections 1 and 2. Unlike the v2 port
+// map, which was adopted from a sibling machine because our chip was
 // misidentified, every allocation below is read off the driver for our exact
 // ROM mask:
 //
@@ -212,8 +212,8 @@ export interface KInputSource {
 /**
  * The TMS1370 R/O/K port file.
  *
- * Three things about it differ from the HMCS44 model in ../ports.ts, and each of
- * them is load bearing:
+ * Three things about it differ from the v2 port model, and each of them is load
+ * bearing:
  *
  * 1. **There is no D port.** Grids, both input strobe columns and the speaker
  *    are all bits of the same 16-bit R latch. A caller asking "which R lines are
@@ -230,9 +230,9 @@ export interface KInputSource {
  *    exist; the constraint is enforced where the index is chosen, not here, but
  *    the naming keeps the shape visible.
  *
- * Nothing here is open drain. The HMCS44 model resolves pin state from an output
- * latch, a direction bit and an external level because that chip's D pins are
- * bidirectional and a program reads an input by releasing a pin. This family
+ * Nothing here is open drain. The v2 model resolved pin state from an output
+ * latch, a direction bit and an external level, because that chip's D pins were
+ * bidirectional and a program read an input by releasing a pin. This family
  * reads its inputs on four dedicated K pins instead, so an R or O pin is simply
  * the latch: what the program wrote is what the tube sees.
  *
@@ -247,7 +247,7 @@ export class Tms1370Ports {
   /**
    * Called on every R pin transition, whatever caused it. The board uses it to
    * timestamp grid strobes and R15 speaker edges by cycle - the same
-   * cycle-stamped edge model the HMCS44 board used on D14, on a different pin.
+   * cycle-stamped edge model the v2 board used, on a different pin.
    */
   onRChange?: (pin: number, value: number) => void;
 

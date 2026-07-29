@@ -3,10 +3,10 @@
 //
 // Paths in this header are relative to the repository root.
 //
-// This module is the reason `tools/tmsasm/` is not a search-and-replace of
-// `tools/hmasm/`. On the HMCS44 the n-th instruction of a page is at offset n.
-// On this machine it is not, and every other file here depends on that fact
-// being stated in exactly one place.
+// This module is the reason `tools/tmsasm/` is not a search-and-replace of the
+// v2 assembler. On that machine the n-th instruction of a page was at offset n.
+// On this one it is not, and every other file here depends on that fact being
+// stated in exactly one place.
 //
 // ## The program counter is a shift register
 //
@@ -63,7 +63,7 @@ export const ROM_CHAPTER_SIZE = ROM_PAGE_COUNT * ROM_PAGE_SIZE;
 /** The whole program region: 2048 eight-bit instruction words. */
 export const ROM_SIZE = ROM_CHAPTER_COUNT * ROM_CHAPTER_SIZE;
 
-/** Bits in one ROM word. Eight, not the HMCS44's ten. */
+/** Bits in one ROM word. Eight, not the v2 core's ten. */
 export const WORD_BITS = 8;
 
 /** Largest value a ROM word can hold. */

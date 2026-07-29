@@ -744,8 +744,8 @@ describe('indexes', () => {
   });
 
   it('carries at least one segment on every grid the hardware has', () => {
-    // Titled 'uses all ten grids' while the atlas was addressed for the
-    // HMCS44's ten. The count is nine now - the TMS1370 scans R0-R8 - and the
+    // Titled 'uses all ten grids' while the atlas was addressed for the v2
+    // machine's ten. The count is nine now - the TMS1370 scans R0-R8 - and the
     // assertion is deliberately the same one, re-derived against GRID_COUNT
     // rather than restated against a new literal.
     //

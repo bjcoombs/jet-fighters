@@ -210,7 +210,7 @@ export class Board {
    * True while the machine is executing.
    *
    * On this core that is exactly "the power switch is on". The TMS1000 family
-   * has no STOP instruction and no standby mode, so there is no way for a
+   * has no STOP instruction and no low-power halt, so there is no way for a
    * program to stop the machine and no state between running and unpowered.
    */
   get running(): boolean {

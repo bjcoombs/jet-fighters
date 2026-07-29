@@ -45,8 +45,8 @@ export interface DisplayTopology {
  * grids, and 9 + 12 electrodes is the 21 +/- 1 series resistors counted on the
  * board. See docs/research/tms1370-io.md sections 1 and 3.
  *
- * The v2 machine assumed ten grids and twenty plates, adopted from MAME's
- * `ghalien` while this project believed its chip was an HD38800. Both figures
+ * The v2 machine assumed ten grids and twenty plates, adopted from a sibling
+ * machine's driver while this project's chip was misidentified. Both figures
  * are superseded as descriptions of our hardware - see
  * docs/evidence/open-questions.md section 7 - and the core that held them has
  * been removed, so there is one topology in the tree again.

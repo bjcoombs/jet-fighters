@@ -1,12 +1,10 @@
 ; A fixture program for tools/tmsasm's end-to-end tests. Paths in this file are
 ; relative to the repository root.
 ;
-; Not the game. `asm/jetfighter.asm` is the game, and while the v3 rebuild is in
-; flight it is still HMCS44 source that tools/hmasm assembles; task 8 of the run
-; rewrites it for this machine. This file exists so the assembler, its CLI and
-; its Vite plugin can be proved end to end against a program that exercises every
-; directive and lands code on more than one page - which the real ROM will do too,
-; but not yet.
+; Not the game. `asm/jetfighter.asm` is the game. This file exists so the
+; assembler, its CLI and its Vite plugin can be proved end to end against a
+; program that exercises every directive and lands code on more than one page,
+; without the proof depending on what the game program happens to contain.
 ;
 ; It is deliberately small and deliberately not a display sweep: nothing here is
 ; a claim about how the game works.

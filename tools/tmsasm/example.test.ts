@@ -1,18 +1,18 @@
-// End-to-end proof against a real file on disk, and the stand-in for the
-// acceptance contract's V1 driver while `asm/jetfighter.asm` is still HMCS44
-// source. Paths in this file are relative to the repository root.
+// End-to-end proof against a real file on disk. Paths in this file are relative
+// to the repository root.
 //
-// V1 runs
+// The acceptance contract's V1 driver runs
 //
 //     npx vite-node tools/tmsasm/cli.ts asm/jetfighter.asm --listing /tmp/jf.lst
 //
-// and reads the listing. Task 8 of the v3 run rewrites `asm/jetfighter.asm` for
-// this machine; until it lands, that exact command assembles HMCS44 source with
-// a TMS1100 assembler and fails, so this suite drives the same code path over
+// and reads the listing. This suite drives the same code path over
 // `tools/tmsasm/fixtures/demo.asm` and asserts every conjunct of V1 that does
-// not depend on the size of the real game program. What it deliberately does not
-// assert is the >= 200 word floor: that is a claim about the ROM, and a fixture
-// padded to clear it would be a fixture lying on the ROM's behalf.
+// not depend on the size of the real game program, so a fault in the listing,
+// the CLI or the page allocator is caught by a fixture that exercises every
+// directive rather than by whatever the game happens to contain. What it
+// deliberately does not assert is the >= 200 word floor: that is a claim about
+// the ROM, and a fixture padded to clear it would be a fixture lying on the
+// ROM's behalf.
 
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';

@@ -15,13 +15,9 @@
 // scanner. Mnemonics arrive here as ordinary identifiers and are checked against
 // the table in isa.ts. That split is deliberate: the lexical grammar is the same
 // for any assembler this project has had, and it is the only layer of the tool
-// that the move from the HMCS44 to the TMS1370 leaves genuinely unchanged.
-//
-// It is consequently near-identical to `tools/hmasm/lexer.ts`. That duplication
-// is deliberate and temporary: `tools/hmasm/` is still the live assembler for
-// the v2 ROM and its tests must stay green until v3 removes it, and a shared
-// lexer would couple the assembler being deleted to the one replacing it for the
-// length of the rebuild.
+// that the move to the TMS1370 left genuinely unchanged - which is why it reads
+// as though it were carried over from the v2 assembler, because in substance it
+// was.
 //
 // ## Lexical grammar
 //

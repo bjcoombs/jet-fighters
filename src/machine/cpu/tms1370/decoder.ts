@@ -5,8 +5,8 @@
 // imports as well - one table, so a decoder/assembler drift cannot happen.
 //
 // The decoder cannot fail. Every one of the 256 patterns is assigned on this
-// core (isa.ts), so unlike the HMCS44 decoder this sits beside there is no
-// UNKNOWN instruction and no unassigned region: `decode` is total, and
+// core (isa.ts), so unlike the v2 core's decoder there is no UNKNOWN
+// instruction and no unassigned region: `decode` is total, and
 // `encode(decode(op)) === op` holds across the whole opcode space. That
 // round-trip is the property `decoder.test.ts` asserts, and it is the cheapest
 // check that the shared table is self-consistent.

@@ -154,7 +154,7 @@ describe('TMS1370 ROM addressing', () => {
 
 describe('TMS1370 register widths', () => {
   it('holds X in three bits, not four', () => {
-    // The TMS1100 core's X selects one of eight RAM files. The HMCS44 core this
+    // The TMS1100 core's X selects one of eight RAM files. The v2 core this
     // replaces used wider RAM pointers, so a 4-bit X here would be the clearest
     // possible sign of the old core wearing the new core's name.
     expect(X_MASK).toBe(0x07);

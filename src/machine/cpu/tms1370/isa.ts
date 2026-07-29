@@ -253,8 +253,8 @@ const NONE = OperandKind.NONE;
 /**
  * The standard TMS1100 opcode map, in opcode order.
  *
- * Rows are contiguous and, together, total {@link OPCODE_COUNT}: unlike the
- * HMCS44 core this replaces, **every** 8-bit pattern is assigned here, so there
+ * Rows are contiguous and, together, total {@link OPCODE_COUNT}: unlike the v2
+ * core this replaces, **every** 8-bit pattern is assigned here, so there
  * is no unassigned-opcode region and no `UNKNOWN` instruction. `isa.test.ts`
  * asserts the totalling and the absence of gaps and overlaps, which is what
  * makes `encode(decode(op)) === op` meaningful across the whole space.
