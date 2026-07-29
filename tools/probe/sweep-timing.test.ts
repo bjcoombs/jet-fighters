@@ -133,7 +133,7 @@ const BLANKING_CYCLES = Math.round(((MARCH_STEPS_TIMED * MARCH_STEP_MS) / 1000) 
 
 /** The assembled game ROM, kept so symbol addresses are read rather than typed. */
 const GAME_ASM = (() => {
-  const path = resolve(import.meta.dirname, '..', '..', 'asm', 'jetfighter.asm');
+  const path = resolve(import.meta.dirname, '..', '..', 'asm', 'jetfighter-hmcs44.asm');
   return assemble(readFileSync(path, 'utf8'), path);
 })();
 

@@ -24,7 +24,11 @@
 // the core and invalidates RAM. The real unit has no reset button, so neither
 // does this.
 
-import { highestAddress, ramHighWater, rom, symbols } from '../asm/jetfighter.asm';
+// The HMCS44 machine image, not the TMS1370 one. `asm/jetfighter.asm` is the
+// TMS1370 game program from v3 task 8 onward; `src/machine/` here is still the
+// HMCS44 core, so the shell keeps importing the source that core can run until
+// v3 task 11 swaps the core over and deletes the HMCS44 side entirely.
+import { highestAddress, ramHighWater, rom, symbols } from '../asm/jetfighter-hmcs44.asm';
 import { SpeakerDriver, type AudioContextLike } from './machine/audio/driver.js';
 import { Board } from './machine/board/board.js';
 import { createTubeRenderer, type TubeRenderer } from './machine/tube/renderer.js';

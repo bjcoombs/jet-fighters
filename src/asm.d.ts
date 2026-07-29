@@ -2,7 +2,7 @@
 //
 // `tools/hmasm/vite-plugin.ts` assembles an assembly source on import and emits
 // a module exporting the ROM image; this declaration is the type side of that
-// contract, so `import { rom } from '../asm/jetfighter.asm'` type-checks under
+// contract, so `import { rom } from '../asm/jetfighter-hmcs44.asm'` type-checks under
 // `tsc --noEmit` exactly as it resolves under Vite.
 
 declare module '*.asm' {

@@ -1,3433 +1,2866 @@
-; jetfighter.asm - the game ROM the emulator runs.
+; jetfighter.asm - the game ROM the machine runs, in TMS1370 assembly.
 ;
-; The whole game: the display sweep, the input matrix, the plate bus, the speaker
-; pin, and the rules from docs/prd/jet-fighters-v1.md R2/R6. Everything here is
-; meant to be edited, so every routine says what it does, what registers it
-; expects and what it leaves behind, and every constant that has an evidence item
-; cites it.
+; Paths in this file are relative to the repository root.
+;
+; The whole game: the four-pass display sweep, the K input matrix, the R plate
+; lines, the R15 speaker, and the rules from docs/prd/jet-fighters-v1.md R2/R6.
+; Everything here is meant to be edited, so every routine says what it expects
+; in X, Y and A and what it leaves behind, and every constant that has an
+; evidence item cites it.
 ;
 ; Assemble it:
-;   npx vite-node tools/hmasm/cli.ts asm/jetfighter.asm --listing /tmp/jf.lst
+;   npx vite-node tools/tmsasm/cli.ts asm/jetfighter.asm --listing /tmp/jf.lst
 ;
-; Run it:
-;   npx vite-node tools/probe/machine-probe.ts --cycles 400000
-;
-; --- The shape of the program -----------------------------------------------
-;
-; The device has no clock. There is no interrupt driving the frame, no vblank and
-; no scheduler: the display sweep *is* the timebase, and everything else happens
-; between grid strobes. So the whole program is one master loop:
-;
-;   for each grid D0..D9:
-;       put that grid's plate pattern on R0-R2
-;       raise the grid
-;       read D15 - on D0-D6 the grid line is also the input strobe line
-;       hold the grid lit for the dwell period
-;       drop the grid
-;   decode the sampled contacts        (input_scan)
-;   redraw the plate table             (render_field ... render_hundreds)
-;   advance the game one sweep         (tick ... tick_input)
-;   repeat
-;
-; Because D0-D6 do double duty as grid drives and input strobes (board.ts), the
-; sweep samples the case controls for free: whichever contact sits on the line
-; currently being lit answers on D15. There is no separate keyboard scan.
-;
-; --- Call depth --------------------------------------------------------------
-;
-; The subroutine stack is four levels deep and *wraps* rather than faulting
-; (src/machine/cpu/registers.ts), so a fifth simultaneous push silently corrupts
-; a return address. The deepest path in this ROM is exactly four and is load
-; bearing:
-;
-;   sweep -CALL-> tick -CALL-> play_sound -CALL-> note_half
-;
-; with add_score/score_cap/game_win reaching the same depth on the scoring path.
-; The `tick` and `render` chains are therefore linked with JMPL, not CALL: a jump
-; pushes nothing, so a chain of twenty blocks still costs one stack level. Adding
-; a CALL inside play_sound, note_half, or anything they reach would overflow.
-;
-; --- Paging ------------------------------------------------------------------
-;
-; BR and CAL carry a five-bit offset against 32-word pages (memory.ts), so a
-; BR can only reach a target in its own page. `.PAGE` starts a routine on a page
-; boundary, which is the blunt way to guarantee that - and for a long time every
-; routine here carried one.
-;
-; **Most of them did not need it.** A routine only needs its own page if its
-; branches would otherwise straddle a boundary, and most of these are short
-; enough to fall inside one wherever they land. Sixty `.PAGE` directives cost
-; 783 words of alignment padding - more than half the program region - against
-; 1240 words of actual code, and the ROM was within ten words of the ceiling
-; while nearly a quarter of it was padding. Twenty-four remain, one for each
-; routine that genuinely reaches across a boundary without one.
-;
-; The check is the assembler's, not a convention: a BR whose target is on
-; another page is a hard assembly error naming both pages, so a routine that
-; grows past what its placement allows fails the build rather than
-; miscompiling. If you add code and the assembler complains about a branch,
-; putting `.PAGE` back on that routine is the fix.
-;
-; One warning for anyone checking a paging change by diffing the assembled
-; words: **the word streams will not match, and that is expected.** JMPL and
-; CALL carry absolute addresses, so moving code necessarily changes their
-; operands. What must match is the emitted word *count* and the cycle timing;
-; comparing grid-on intervals between two builds is the check that actually
-; means something.
-;
-; A routine may still run past 32 words - draw_jet and close_up do - provided
-; nothing past the boundary is a branch target. CAL additionally fixes its page
-; at 0, which is why page 0 holds only `dwell`; everything else is reached with
-; the two-word CALL, which goes anywhere.
-;
-; --- Timing is provisional, and deliberately so -----------------------------
-;
-; docs/evidence/timing-analysis.md records that the per-skill gameplay video does
-; not exist, so **no** cadence in this game can be derived from the unit. Every
-; cadence constant is collected in the "Provisional cadence constants" block
-; below, is marked PROVISIONAL, and carries the reasoning that picked it. None of
-; them is a measurement and none should be read as one. When the video arrives,
-; that one block is the only thing that has to change.
-;
-; The *sound* constants are different: docs/evidence/audio-reference.md measured
-; every band from the owner's recordings of the real unit, and the sound table
-; near the bottom of this file cites the row each figure comes from. Pitches are
-; real targets; the note and burst *lengths* are a mixture (see that table).
-;
-; --- INSTRUCTION-RATE PROVISIONAL: a second, independent reason -------------
-;
-; Every sweep-count-to-wall-clock conversion in this file (the ~400 kHz figure
-; a few lines below, "5383 cycles = 13.46 ms" and its kin) is computed against
-; the *current* HMCS44 core's oscillator, not the TMS1370 this project is
-; rebuilding onto. docs/research/mp2110-timing-measurement.md records why the
-; TMS1370's own instruction rate is not measured - it is blocked on the
-; `mp2110` ROM dump - and sets out the non-circular route that would measure
-; it. Every cadence constant in this file therefore carries an
-; INSTRUCTION-RATE PROVISIONAL comment marking it, in addition to and
-; independent of the gameplay-video PROVISIONAL marking above: even once the
-; video arrives, these figures still need re-deriving against
-; `src/machine/cpu/tms1370/timing.ts`'s `CYCLE_HZ` once that stops being
-; provisional too. Values are unchanged here - re-deriving them against the
-; TMS1370 core is downstream work, not this comment's job.
-
-; --- Hardware map -----------------------------------------------------------
-;
-; Grids D0-D9, plates R0-R4 (20 lines), speaker D14, input read-back D15. This
-; mirrors src/machine/cpu/ports.ts and src/machine/board/display.ts; those files
-; carry the provenance for the topology.
-
-.EQU GRID_COUNT,    10          ; display grids, D0..D9
-.EQU GRID_LAST,      9
-
-.EQU R_PLATE0,       0          ; R0 drives plates 0-3
-.EQU R_PLATE1,       1          ; R1 drives plates 4-7
-.EQU R_PLATE2,       2          ; R2 drives plates 8-11
-; The board wires a twenty-line plate bus to R0-R4 (src/machine/board/display.ts,
-; PLATE_COUNT = R_PIN_COUNT = 20), so R3 and R4 are there when a grid needs more
-; than twelve plates. None does at the moment: the busiest is a jet column, at
-; twelve. See the sweep for when that changes.
-
-.EQU D_SPEAKER,     14          ; the 1-bit piezo
-.EQU D_INPUT,       15          ; the matrix read-back line
-
-; Strobe lines, which are the low grid lines. See INPUT_SWITCHES in
-; src/machine/board/input.ts - this table is the ROM's side of that wiring.
-.EQU LINE_FIRE,      0
-.EQU LINE_LEVER,     1          ; lines 1,2,3 = lever up, centre, down
-.EQU LINE_SKILL,     4          ; lines 4,5,6 = skill 1, 2, 3
-
-; --- Playfield geometry -----------------------------------------------------
-;
-; The tube is not ours to choose. Which phosphor segment sits at which
-; (grid, plate) address is fixed by the glass, and this machine's description of
-; that glass is the segment atlas, src/machine/tube/atlas.json - documented in
-; src/machine/tube/ATLAS-COORDINATES.md, "Grid and plate mapping". The ROM has to
-; drive the tube it is soldered to, so every address below is copied from that
-; table with this citation, not invented here:
-;
-;   grid 0        distance column 0 - the far side, BATTLE SHIP ZONE, ruler "10"
-;   grids 1-4     distance columns 1-4 - JET FIGHTER FLYING ZONE
-;   grid 5        distance column 5 - the G capture line and the launcher
-;   grids 7,8     SCORE - the tens digit with the hundreds half-digit beside
-;                 it, then the units digit with the lit SCORE label beside that.
-;                 This unit has no lives display, only the beeped damage
-;                 warnings
-;
-; Six distance columns, +x toward the missile station: a jet enters at grid 0 and
-; marches toward grid 5. There is no ground-line segment - the
-; playfield border, the lane dashes and the 10/3/2/1/G ruler are printed
-; silkscreen on the overlay, not phosphor.
-;
-; The *game's* column numbering runs the other way, and is deliberately left
-; alone: column 0 is the G line, column 6 the battleship zone, and the squadron
-; advances by counting down. PAT_COLUMN carries the column -> grid translation so
-; the tick chain never has to know which end of the glass it is looking at.
-;
-; **That translation is now one to one.** It used to send both column 5 and
-; column 6 to grid 0, because the atlas gave the playfield six grids and the
-; ROM has always had seven columns - so the far jet column and the battleship's
-; zone shared a grid and neither the ROM nor any test could tell them apart. The
-; teardown photographs (assets/reference/tube-teardown/) count seven printed
-; cell boxes, and the score is two digit cells rather than three, which is where
-; the seventh playfield grid comes from. Column N is now grid 6 - N, and a cell
-; and a grid are the same thing.
-;
-; The overlay's printed ruler reads 10 / 3 / 2 / 1 / G from the far side inwards
-; (PRD v1, "The original hardware"). Which column falls in which band is *not*
-; established by any reference asset, so the split below (5=3, 4,3=2, 2,1=1) is
-; this ROM's reading of the ruler and is recorded in PAT_COLUMN rather than
-; spread through the code.
-
-.EQU COL_LAUNCH,     0          ; the launcher's column, and the G line
-.EQU COL_MSL_START,  1          ; the column a launched missile appears in
-.EQU COL_JET_FAR,    5          ; the far column a jet enters the field at - the
-                                ; battleship side of the flying zone, grid 1
-.EQU COL_BSHIP,      6          ; the battleship's column
-.EQU COL_MSL_LAST,   5          ; the last column a missile is drawn in. The
-                                ; tube has no dart in the battleship's cell, so
-                                ; a shot that reaches column 6 to test the ship
-                                ; is not drawn on the way - which is what the
-                                ; video shows: the missile is never lit there.
-.EQU COL_NO_BURST,   6          ; the battleship's column, the one column with
-                                ; no burst on plates 9-11. The tube does carry a
-                                ; burst behind the ship, but it is a different
-                                ; shape in a cell of its own and is not drawn
-                                ; yet - see ATLAS-COORDINATES.md, known gaps.
-.EQU GRID_LAUNCH,    6          ; atlas: the launcher segments live on grid 6
-.EQU GRID_BSHIP,     0          ; atlas: the three battleship segments, grid 0
-.EQU GRID_SC_T,      7          ; score: the tens digit, and the hundreds
-                                ; half-digit that shares its cell
-.EQU GRID_SC_U,      8          ; score: the units digit, and the lit SCORE
-                                ; label that shares its cell
-
-; --- Plate assignments ------------------------------------------------------
-;
-; A segment is a (grid, plate) pair, so the same plate line means different
-; things under different grids - that is how a multiplexed tube works, not an
-; overload. Plates 0-11 are the ones the segment atlas addresses
-; (src/machine/tube/atlas-schema.ts), and the assignment below is that atlas's,
-; not a convention of this file. The two-colour split follows the real unit: red
-; for everything on the jets' side, cyan for the player's.
-;
-;   grid 0 (the battleship's own cell)
-;     plates 0-2   red:  the battleship standing in lane 0, 1, 2
-;   grids 1-5 (the five jet columns)
-;     plates 0-2   red:  the jet in lane 0, 1, 2 of that column
-;     plates 3-5   red:  that lane's attacker colon, the shot fired back
-;     plates 6-8   cyan: the missile dart crossing that cell
-;     plates 9-11  cyan: the burst a jet leaves when the missile kills it
-;   grid 6 (the player's own cell, at the G line)
-;     plates 6-8   cyan: the launcher standing in lane 0, 1, 2
-;     plates 9-11  red:  the burst where it is destroyed
-;   grid 7         cyan: plates 0-6 the tens digit a-g, plate 7 the hundreds
-;                        half-digit - two strokes reading 1, on one plate
-;   grid 8         cyan: plates 0-6 the units digit a-g, plate 7 the SCORE label
-;
-; Neither end cell carries a jet, so grids 0 and 6 have nothing on plates 0-5
-; and 3-5 respectively: the teardown photographs show no aircraft printed in the
-; battleship's cell or the player's. Those addresses are unwired, and
-; tools/probe/rom-atlas-conformance.test.ts fails if this ROM drives one.
-;
-; Plates 0-3 are R0, 4-7 are R1 and 8-11 are R2, so a segment's plate decides
-; which of the three plate files carries it. Several actors straddle a boundary
-; - the colons are plates 3,4,5 and the player's object 6,7,8 - so PAT_LANE
-; stores the *file* alongside the bit and or_plate below does the dispatch. The
-; battleship does not go through or_plate: it is the only thing in its cell, so
-; render_bship writes the file directly.
-
-.EQU PLATE_SC_LBL,  %1000       ; R1 bit 3 -> plate 7, under grid 8: the lit
-                                ; SCORE label, beside the units digit
-.EQU PLATE_SC_HUND, %1000       ; R1 bit 3 -> plate 7, under grid 7: the
-                                ; hundreds half-digit. The readout caps at 199,
-                                ; so it reads 1 or nothing and needs one bit
-                                ; rather than a seven-segment lookup.
-
-; --- Pattern tables ---------------------------------------------------------
-;
-; `P` reads one word of the pattern region and splits it: low nibble into A,
-; high nibble into B. Every table below therefore packs two nibbles per entry and
-; the comment says which is which. Eight tables of sixteen entries is the whole
-; pattern region (isa.ts, PATTERN_TABLE_COUNT), and all eight are in use.
-
-.EQU PAT_LANE,       0          ; actor+lane -> A = plate file, B = plate bit
-.EQU PAT_DIGIT,      1          ; 0-9   -> A = segments a-d,    B = segments e-g
-.EQU PAT_COLUMN,     2          ; column -> A = display grid,   B = points
-.EQU PAT_ROCKET,     3          ; skill -> rocket interval, sweeps (A lo, B hi)
-.EQU PAT_STEP,       4          ; speed -> squadron cadence, sweeps (A lo, B hi)
-.EQU PAT_SKILL,      5          ; skill -> A = base index into PAT_STEP
-.EQU PAT_SND_A,      6          ; sound -> A = half inner,      B = half outer
-.EQU PAT_SND_B,      7          ; sound -> A = half repeat,     B = periods-1
-
 ; ============================================================================
-; RAM map
+; What is different about this machine, and what the source has to do about it
 ; ============================================================================
 ;
-; 160 nibbles: ten files of sixteen, X selects the file and Y indexes within it
-; (src/machine/cpu/memory.ts). Eight files are used, so the static high-water
-; mark is 128 nibbles.
+; This is a rewrite and not a port. Five properties of the TMS1370 shape every
+; page below, and not one of them is a preference:
 ;
-; | file | name        | contents                                             |
-; |------|-------------|------------------------------------------------------|
-; |  0   | FILE_PLATE0 | per grid, the nibble driven onto R0 when it strobes   |
-; |  1   | FILE_PLATE1 | the same for R1                                       |
-; |  2   | FILE_PLATE2 | the same for R2                                       |
-; |  3   | FILE_STATE  | the game's entities and control positions             |
-; |  4   | FILE_INPUT  | one nibble per strobe line: 1 = contact closed        |
-; |  5   | FILE_SOUND  | the note being played and its loop counters           |
-; |  6   | FILE_TIME   | every countdown, plus the BCD score                   |
-; |  7   | FILE_JETS   | the three lanes' jets, and how each one is flown      |
+; 1. **The O port is a 32-entry PLA, not a latch.** `TDO` presents the mask the
+;    table in `asm/opla.inc.asm` holds for the five-bit index
+;    `status_latch:accumulator`. There is no eight-bit O write and no `CLO`, so
+;    blanking the low plates is `TDO` with A = 0 and the latch clear - slot 0.
+;    A jet column's O-visible state is 8 x 4 x 3 = 96 masks against 32 slots, so
+;    a grid cannot be drawn in one strobe: the sweep draws **one lane family per
+;    pass**. docs/research/pla-design.md works that arithmetic; this file spends
+;    the table that document designed and does not redesign it.
 ;
-; The plate table is the important one. Three files hold, per grid, the nibble
-; that goes to R0, R1 and R2 when that grid is strobed. The sweep does no drawing
-; at all - it copies three nibbles and lights the grid - so redrawing and
-; displaying are completely separate, which is what keeps the sweep short enough
-; to have a stable period. It also means the game state lives substantially *in*
-; the plate patterns: what is on the tube is a function of RAM files 0-2 and
-; nothing else, and every render_* block below writes only those three files.
+; 2. **The status latch is loaded by exactly one instruction, `YNEA`.** No set
+;    and no clear. A bank crossing is `CLA; TCY k; YNEA` and costs three
+;    instructions, so the sweep runs both low-bank passes, crosses once, runs
+;    both high-bank passes, and crosses back - two crossings a sweep and never
+;    one per grid. `YNEA` appears in exactly two places in this file for that
+;    reason, and nowhere else may use it: it is not a comparison here, it is the
+;    bank select.
+;
+; 3. **One level of subroutine return.** The return address is one 6-bit SR plus
+;    the chapter latch, and the save is guarded by the call latch, so a `CALL`
+;    inside a subroutine silently loses the outer return address and fails at
+;    some later `RETN`. `tools/tmsasm` rejects it at assembly time. Everything
+;    here is therefore a flat main loop of page-to-page branches - the call
+;    latch is clear through all of it - plus four leaf routines that call
+;    nothing: `strobe`, `note`, `clear_file` and `lane_bit`.
+;
+; 4. **A branch is conditional only when the test is the instruction before it.**
+;    Status is 1 at the start of every instruction and driven to 0 only by a
+;    test, so anything between a test and its branch makes the branch
+;    unconditional - and it assembles cleanly on real silicon. Three idioms
+;    follow and all three are used throughout. A two-armed test is written
+;    `<test> / BR true / BR false`, the second branch being unconditional
+;    because the first ended the sequence and the scan stops there. A jump that
+;    has to carry a page is `LDP page / BR target`, unconditional provided the
+;    four instructions behind it do not test - which is why the `LDP` of a
+;    *conditional* cross-page branch goes above its test rather than between the
+;    test and the branch. Where that cannot be arranged, the jump is written
+;    `LDP page / TCY 0 / YNEC 1 / BR target`: a test whose answer is in its own
+;    two operands, so the branch is conditional in form and always taken in fact.
+;
+; 5. **The program counter is a shift register.** A label is an LFSR state and
+;    not a position, and straight-line code walks a page in the LFSR's order.
+;    The assembler places the words; what this file has to respect is that flow
+;    **wraps within a page** rather than running on into the next one, so every
+;    page ends with a branch that goes somewhere.
+;
+; And one that is not the CPU's. `SETR` and `RSTR` index the R latch as
+; `BIT(X, 2) << 4 | Y`, so **X must be below 4 whenever an R line moves**. With
+; X >= 4 the write addresses R16-R31, which do not exist: the intended line
+; never moves and nothing reports it. That is why the four display files are
+; files 0-3 rather than any other four, and why the speaker's parameters live in
+; file 0 beside them - the sweep, the input strobes and every sound edge write R
+; lines, and every one of them does it with a display file selected.
+;
+; ============================================================================
+; The sweep, in one picture
+; ============================================================================
+;
+;   pass 1  near   plates 0-2   grids 0-5   6 strobes   latch clear
+;   pass 2  far    plates 3-5   grids 0-6   7 strobes   latch clear
+;   pass R  plates 8-11 on R11-R14, O dark, latch clear
+;   ---- CLA / TCY 1 / YNEA : the latch takes 1 ----
+;   pass 3  pair   plates 6-7   grids 0-8   9 strobes   latch set
+;   pass 4  digit  plates 0-6   grids 7-8   2 strobes   latch set
+;   ---- CLA / TCY 0 / YNEA : the latch takes 0 ----
+;
+; 24 O strobes and two crossings, which is exactly the 54-instruction selection
+; bound docs/research/pla-design.md states: two instructions a strobe - `TMA`
+; from the nibble the render step maintains for this grid and this pass, then
+; `TDO` - and three a crossing. No term depends on the game state, on how much
+; is on the tube or on the dial, because there is no search, no decode loop and
+; no table walk anywhere in the path.
+;
+; **What the R-plate pass costs, and the one fidelity this program trades.**
+; Plates 8-11 are R lines and stay where they are put, so they are not a fifth
+; O pass; they are a walk over the grids that holds one line high across one
+; grid's dwell. A grid's R-plate nibble names **one** line rather than carrying
+; a bitmap of four, and that is a deliberate limit rather than an oversight: a
+; bitmap needs `TBIT1`, whose bit index is a literal, so four unrolled sub-walks
+; with their own Y bookkeeping - about ninety words and up to 180 instructions a
+; sweep against this loop's thirty-five and seventy. The cost is that a grid
+; wanting two of plates 8-11 in the same sweep shows the later one only. Two
+; cases can reach it and both are transient: an explosion on the player's grid
+; while the lever is in lane 2 (plate 8 is `launcher_lane2` and plates 9-11 the
+; explosion), and a jet-kill burst in the same column as a lane-2 missile. Every
+; (grid, plate) the atlas defines is still driven - conformance is over pairs,
+; not over simultaneity - and the burst is what wins, which is the right way
+; round for a flash that lasts 210 ms.
 
-.EQU FILE_PLATE0,    0
-.EQU FILE_PLATE1,    1
-.EQU FILE_PLATE2,    2
-.EQU FILE_STATE,     3
-.EQU FILE_INPUT,     4
-.EQU FILE_SOUND,     5
-.EQU FILE_TIME,      6
-.EQU FILE_JETS,      7
+.INCLUDE "opla.inc.asm"
+
+; ============================================================================
+; Hardware map - src/machine/cpu/tms1370/ports.ts
+; ============================================================================
+;
+; R0-R8   the nine VFD grids            R9, R10  the two input strobe columns
+; R11-R14 plates 8-11                   R15      the speaker
+; O0-O7   plates 0-7, through the PLA   K1,K2,K4 strobed returns; K8 unstrobed
+
+.EQU GRID_BSHIP,     0          ; battleship, sea, battleship burst
+.EQU GRID_COL_FIRST, 1          ; the five playfield columns are grids 1-5, and
+.EQU GRID_COL_LAST,  5          ;   grid 1 is the far end, beside the horizon
+.EQU GRID_PLAYER,    6          ; launcher, capture burst, explosion
+.EQU GRID_SC_T,      7          ; score tens digit, hundreds indicator
+.EQU GRID_SC_U,      8          ; score units digit, SCORE label
+
+.EQU R_STROBE_SKILL, 9          ; drive R9 to read the skill dial on K1/K2/K4
+.EQU R_STROBE_LEVER, 10         ; drive R10 to read the lever on K1/K2/K4
+.EQU R_PLATE_FIRST,  11         ; R11 is plate 8; R11-R14 are plates 8-11. Spent
+                                ; as the `A10AAC` in sweep_rplate, for the
+                                ; reason the thresholds below are: an addend is
+                                ; part of its mnemonic and cannot be a name
+.EQU R_SPEAKER,      15
+
+.EQU K_BIT_FIRE,     3          ; K8, the fire contact, live on every K read
+
+; ============================================================================
+; RAM map - 7 files of 16 nibbles, 112 of the device's 128
+; ============================================================================
+;
+; Files 0-3 are the display, and they are the low four files for the reason the
+; header gives rather than by taste: every `SETR` and `RSTR` in this program
+; runs with one of them selected. The sound parameters sit in file 0's tail for
+; the same reason - `note` toggles R15 between its delays.
+
+.EQU FILE_D0,        0          ; near values, grids 0-5, then the sound state
+.EQU FILE_D1,        1          ; far values, grids 0-6
+.EQU FILE_D2,        2          ; pair values, grids 0-8
+.EQU FILE_D3,        3          ; R-plate codes, the two digits, render scratch
+.EQU FILE_STATE,     4          ; the entities
+.EQU FILE_TIME,      5          ; countdowns and the score
+.EQU FILE_JETS,      6          ; one jet per lane, and the squadron's own state
+
+; --- FILE_D0: the near pass's nibbles, then the sound ------------------------
+;
+; Nibbles 0-5 hold what the near pass hands `TDO` for grids 0-5: OPLA_A_NEAR
+; plus a three-bit lane bitmap, which on this table *is* the bitmap. The low
+; bits of a low-bank index are the lane map itself, so a routine that has worked
+; out which lanes are lit has already worked out the index and there is no
+; lookup anywhere in the display path.
+
+.EQU NIB_HALF_O,     6          ; note: half-period outer count
+.EQU NIB_HALF_I,     7          ;       half-period inner count
+.EQU NIB_PER,        8          ;       periods per burst, minus one
+.EQU NIB_BURSTS,     9          ;       bursts in the note, minus one
+.EQU NIB_PLEFT,     10          ;       periods left in this burst
+.EQU NIB_BLEFT,     11          ;       bursts left in this note
+.EQU NIB_BUZZ,      12          ; buzz: O strobes to the next edge, 0 = not running
+.EQU NIB_BPHASE,    13          ;       the square's phase, in bit 0
+.EQU NIB_KSCR,      14          ; the K sample being decoded
+.EQU NIB_SGRID,     15          ; `strobe`'s parked grid - see that routine
+
+; --- FILE_D1, FILE_D2: the far and pair passes -------------------------------
+;
+; Nibbles 0-6 and 0-8. A far value is OPLA_A_FAR plus a bitmap of plates 3-5, a
+; pair value OPLA_A_PAIR plus a bitmap of plates 6-7. Both blank to their own
+; group's empty subset and not to zero, because zero is the *near* group's empty
+; subset and writing it here would light plates 0-2 under every grid.
+
+; --- FILE_D3: the R plates, the digits, and the render's scratch -------------
+;
+; Nibbles 0-6 name one R plate line each for grids 0-6: 0 for none, then 1 to 4
+; for R11 to R14. Grids 7 and 8 have no R plates - the score block is plates 0-7
+; - so their nibbles carry the two decoded digits instead, which is what the
+; digit pass reads with `TMA` and hands straight to `TDO`.
+
+.EQU NIB_DIG_T,      7          ; tens digit, 0-9, or OPLA_A_DIGIT_BLANK
+.EQU NIB_DIG_U,      8          ; units digit, 0-9
+.EQU RPL_R11,        1          ; the code that names plate 8
+.EQU RPL_BURST,      2          ; +lane: plates 9-11, the burst and the explosion
+.EQU NIB_RGRID,     10          ; render scratch: the grid being drawn into
+.EQU NIB_RBIT,      11          ;                 the lane bit being drawn
+.EQU NIB_RLNE,      12          ;                 the lane `lane_bit` converts
 
 ; --- FILE_STATE: the entities ------------------------------------------------
+;
+; A column value is the grid the actor stands on, 1 to 5, with 0 for "not in
+; flight" - the same convention for the jets, the rocket and the player's
+; missile, so one `MNEZ` spells "is there one" for all three.
+
 .EQU NIB_LANE,       0          ; lever lane, 0 top .. 2 bottom
-.EQU NIB_SKILL,      1          ; skill dial, 1..3
-.EQU NIB_FIRE,       2          ; fire contact, this sweep
-.EQU NIB_FIRE_PREV,  3          ; fire contact, previous sweep
-.EQU NIB_KCOL,       4          ; the burst on the glass: the column it stands
-                                ; in plus one, 0 = nothing bursting. Held the
-                                ; squadron's leading column when the squadron
-                                ; was one rigid block, and has been spare since.
-.EQU NIB_MCOL,       5          ; player missile column, 0 = none in flight
+.EQU NIB_LANEB,      1          ; the same lane as a one-bit map, 1/2/4
+.EQU NIB_SKILL,      2          ; skill dial, 1..3
+.EQU NIB_FIRE,       3          ; fire contact this sweep
+.EQU NIB_FIREP,      4          ; fire contact last sweep - firing is edge triggered
+.EQU NIB_MCOL,       5          ; player missile grid, 0 = none in flight
 .EQU NIB_MLANE,      6          ; player missile lane
-.EQU NIB_RCOL,       7          ; jet rocket column, 0 = none in flight
+.EQU NIB_RCOL,       7          ; jet rocket grid, 0 = none in flight
 .EQU NIB_RLANE,      8          ; jet rocket lane
 .EQU NIB_BSLANE,     9          ; battleship lane, or BS_NONE when not crossing
 .EQU NIB_HITS,      10          ; launchers destroyed so far, 0..3
 .EQU NIB_STATE,     11          ; ST_PLAY / ST_OVER / ST_WIN
 .EQU NIB_KILLS,     12          ; jets shot down in this wave, 0..6
-.EQU NIB_WAVE,      13          ; squadrons cleared
-.EQU NIB_RAND,      14          ; free-running counter, sampled on a keypress
+.EQU NIB_ROTOR,     13          ; which lane fires the next rocket - see rocket_fire
+.EQU NIB_KCOL,      14          ; burst cell: the grid it stands on plus one
 .EQU NIB_KLANE,     15          ; the lane that burst is in
 
 ; --- FILE_TIME: countdowns and the score -------------------------------------
 ;
-; The two-nibble timers are (lo, hi) pairs at consecutive indices, because
-; dec_timer takes the lo index in Y and finds hi at Y+1. A pair counts
-; hi*16 + lo sweeps, which is the range a squadron cadence needs; the one-nibble
-; timers never exceed fifteen sweeps.
-.EQU NIB_TICK,       0          ; sweeps counted, wrapping every sixteen. It is
-                                ; also the battleship gap's prescaler: tick_bship
-                                ; steps that countdown only on the sweep this
-                                ; reads zero
-.EQU NIB_ENTRY_LO,   1          ; sweeps until the next jet enters, low nibble
-.EQU NIB_ENTRY_HI,   2          ;   "                               high nibble
-.EQU NIB_MSTEP,      3          ; sweeps until the player missile advances
-.EQU NIB_RSTEP,      4          ; sweeps until the jet rocket advances
-.EQU NIB_TSPARE,     5          ; free - held the battleship's step countdown
-                                ; while that was one nibble; a lane step is now
-                                ; seconds long and counts on NIB_BS_LO/HI
-.EQU NIB_ROCK_LO,    6          ; countdown to the next rocket launch, low
-.EQU NIB_ROCK_HI,    7          ;   "                                  high
-; The battleship's only countdown, and it counts two different things: the sweeps
-; until it advances a lane while a crossing is in progress, and the sweeps until
-; the next crossing while one is not. NIB_BSLANE says which, and the two states
-; are exclusive, so the pair is never asked to hold both.
-.EQU NIB_BS_LO,      8          ; the battleship's countdown, low
-.EQU NIB_BS_HI,      9          ;   "                         high
+; A countdown longer than fifteen sweeps is a low/high nibble pair holding
+; `high * 16 + low`, spent low first. The battleship's gap is longer than a pair
+; can express at all, so it counts sixteen-sweep units instead - see NIB_BS_LO.
+
+.EQU NIB_TICK,       0          ; sweeps, wrapping every sixteen. The only clock.
+.EQU NIB_ENTRY_LO,   1          ; sweeps until the next jet is released, low
+.EQU NIB_ENTRY_HI,   2          ;   "                                   high
+.EQU NIB_MSTEP,      3          ; sweeps until the player's missile advances
+.EQU NIB_RSTEP,      4          ; sweeps until the jet's rocket advances
+.EQU NIB_KSTEP,      5          ; sweeps the burst stays on the glass
+.EQU NIB_ROCK_LO,    6          ; sweeps to the next rocket launch, low
+.EQU NIB_ROCK_HI,    7          ;   "                              high
+.EQU NIB_BS_LO,      8          ; battleship countdown, low - see BSHIP_GAP_HI
+.EQU NIB_BS_HI,      9          ;   "                    high
 .EQU NIB_SC_U,      10          ; score, BCD units
 .EQU NIB_SC_T,      11          ; score, BCD tens
 .EQU NIB_SC_H,      12          ; score, BCD hundreds
-.EQU NIB_SCRATCH,   13          ; render/score scratch
-.EQU NIB_SCRATCH2,  14          ; render scratch
-.EQU NIB_KSTEP,     15          ; sweeps the burst stays lit for
+.EQU NIB_STEP_LO,   13          ; sweeps to the squadron's next step, low
+.EQU NIB_STEP_HI,   14          ;   "                                high
+.EQU NIB_CAPTURE,   15          ; sweeps the capture burst stays lit
 
-; --- FILE_SOUND: the note being played ---------------------------------------
+; --- FILE_JETS: one jet per lane, and the squadron's own state ---------------
 ;
-; NIB_HALF_IN..NIB_PERIODS are consecutive on purpose: play_sound writes all four
-; with two `P` lookups and four LMAIY, which is why their order may not change.
-.EQU NIB_HALF_IN,    0          ; inner delay count of the half-period loop
-.EQU NIB_HALF_OUT,   1          ; outer delay count
-.EQU NIB_HALF_REP,   2          ; whole-delay repeat count, minus one
-.EQU NIB_PERIODS,    3          ; square-wave periods per burst, minus one
-.EQU NIB_REP_LEFT,   4          ; note_half's repeat counter
-.EQU NIB_PERIOD_LEFT, 5         ; note_loop's period counter
-.EQU NIB_BURST_LEFT, 6          ; note_loop's burst counter
-.EQU NIB_SND_ID,     7          ; the sound being set up
-.EQU NIB_NOTE_LEFT,  8          ; win jingle: arpeggio repeats left
-.EQU NIB_BUZZ,       9          ; the battleship buzz's phase, 0 when it is not
-                                ; sounding. Read by `dwell`, once per grid, and
-                                ; it is the only nibble in this file that
-                                ; note_loop never touches - the buzz is not a
-                                ; note. See the dwell's own block.
-
-; --- FILE_JETS: one jet per lane, each flying its own step ---------------------
+; Not a rank in every lane and not a block: a wave is six jets released into
+; free lanes one at a time, and each stands where its nibble says.
+; assets/reference/device-front-gameplay.jpg is what that is read off - two jets
+; airborne, in different lanes, at different distances.
 ;
-; A lane's jet nibble is the column it stands in *plus one*, so that zero can
-; mean "no jet in this lane" without stealing column 0 - which is the G line, and
-; a jet has to be able to stand there for jet_move to notice it has arrived.
-; Nothing draws it there: draw_jet declines that column because the tube prints
-; no aircraft in the player's cell, and jm_capture clears the lane on the same
-; sweep. What the player sees at a capture is the burst in that cell.
-;
-; Each lane carries its own (lo, hi) step countdown, reloaded from the same
-; PAT_STEP cadence every jet steps on. Same period, different phase: the jets
-; therefore step one at a time rather than as a block, and the phases come from
-; the sweeps their lanes happened to be filled on.
-.EQU NIB_J_LANE0,    0          ; lane 0's jet: its column + 1, 0 = lane empty
-                                ; 1 and 2 are lanes 1 and 2, indexed by the lane
-.EQU NIB_J_STEP,     3          ; lane 0's step countdown (lo, hi); lane L's pair
-                                ; is at NIB_J_STEP + 2*L
-.EQU NIB_J_SENT,     9          ; jets of this wave released so far, 0..6
-.EQU NIB_J_ROTOR,   10          ; the lane the next entry tries
-.EQU NIB_J_WORK,    11          ; the lane being worked on
-.EQU NIB_J_TEMP,    12          ; scratch, for a cadence's high nibble
-.EQU NIB_J_FLAG,    13          ; this sweep: bit 0 a jet stepped, bit 1 captured
-.EQU FLAG_STEPPED,   0
-.EQU FLAG_CAPTURED,  1
+; The march itself is one squadron-wide countdown rather than three. That is
+; what the only measured figure here supports: the march beep's onsets run at
+; 205 ms (n = 21, sd 22 ms) in assets/reference/gameplay-audio.m4a, which is a
+; *squadron* step rate. Jets at different distances come from staggered entry,
+; which is what the photograph actually shows; three independent countdowns
+; would produce the same picture and would additionally produce a beep rate no
+; recording supports.
 
-; The assembler counts any constant named RAM_* into the high-water mark it
-; reports (tools/hmasm/assembler.ts). render_field and main select files through
-; LXA, whose operand is a register and therefore invisible to that count, so the
-; ceiling is declared here rather than left to be inferred from the LXI operands.
-.EQU RAM_TOP,      127          ; FILE_JETS * 16 + 15
+.EQU NIB_J_LANE0,    0          ; lane 0's jet: the grid it stands on, 0 = empty
+.EQU NIB_J_SENT,     3          ; jets of this wave released so far, 0..6
+.EQU NIB_J_ROTOR,    4          ; the lane the next entry tries first
+.EQU NIB_J_WORK,     5          ; the lane a loop is working on
+.EQU NIB_J_MOVED,    7          ; set when a jet stepped this sweep
+.EQU NIB_J_TMP,      8          ; arithmetic scratch
+.EQU NIB_J_SCR,      9          ; arithmetic scratch
 
-; --- Values -----------------------------------------------------------------
+; ============================================================================
+; Values
+; ============================================================================
 
-.EQU LANE_TOP,       0
-.EQU LANE_CENTRE,    1
-.EQU LANE_LAST,      2          ; three lanes, 0..2
-.EQU LANE_COUNT,     3
-.EQU SKILL_ONE,      1
-.EQU SKILL_LAST,     3          ; three skill settings, 1..3
-.EQU CONTACT_NONE,  15          ; find_contact's "nothing was closed" answer
+.EQU LANE_COUNT,     3          ; three lanes, 0..2
 .EQU BS_NONE,       15          ; NIB_BSLANE when no crossing is in progress
+;
+; The next two are thresholds rather than operands, and they read as unused
+; because of how a threshold is tested here. There is no compare-against-a-
+; constant instruction: "A >= n" is `A(16-n)AAC` and a read of the carry, so
+; JET_COUNT is spent as the `A10AAC` in jet_release and HITS_LAST as the
+; `A13AAC` in launcher_down. The addend is part of the mnemonic, so the name
+; cannot appear in the operand and has to appear in the comment beside it.
 .EQU JET_COUNT,      6          ; a squadron: six jets, released a few at a time
-; How many of the six may be in the air at once. Two, from
-; assets/reference/device-front-gameplay.jpg: the unit has two jets on the
-; screen, in different lanes, at different distances - not a rank in every lane.
-; This is a count read off a photograph of the running unit, not a cadence, so it
-; is not one of the provisional timing constants below.
-.EQU AIRBORNE_MAX,   2
-
-; PAT_LANE is four groups of three, one per actor, indexed by group base + lane.
-; Grouping them into one table rather than four costs an AI and keeps the pattern
-; region at the eight tables the hardware has (isa.ts, PATTERN_TABLE_COUNT).
-.EQU LANEP_JET,      0          ; +lane -> the jet segment of that lane
-.EQU LANEP_ROCKET,   4          ; +lane -> that lane's attacker colon
-.EQU LANEP_PLAYER,   8          ; +lane -> the player's own object in that cell
-.EQU LANEP_BURST,   12          ; +lane -> the burst in that cell
-; The atlas gives every playfield grid the same four plate roles, so the last two
-; groups each serve two actors: plates 6-8 are the missile dart under grids 0-4
-; and the launcher under grid 5, and plates 9-11 are the jet-kill burst under
-; grids 0-3 and the player's own destruction under grid 5. The grid decides
-; which segment the address reaches, which is what a multiplexed tube is; the
-; ROM needs one group each.
-.EQU LANEP_LAUNCH,   LANEP_PLAYER
-.EQU LANEP_MISSILE,  LANEP_PLAYER
-
-.EQU SPEED_LAST,    15          ; the last entry in PAT_STEP
-; NIB_WAVE saturates here rather than wrapping, and because speed_index adds
-; NIB_WAVE to the skill dial's entry point, this is also the entire reach of the
-; *permanent* part of the cadence descent: however many squadrons a game clears,
-; they can move it at most WAVE_LAST rungs. The thin-out term is separate and
-; unbounded by this - NIB_KILLS runs 0..6 and resets every wave.
-;
-; One, not fifteen, and the gameplay video is why. MEASURED, docs/evidence/
-; timing-analysis.md T1/T3: one game in that clip covers the whole scoring range,
-; 0 to the 199 cap, and its column step goes from 1067 ms at score 87 to 733 and
-; 900 ms at scores 164 and 188. Six rungs' worth of change across an entire game,
-; and the thin-out term supplies six rungs on its own. At WAVE_LAST 15 the sum
-; instead reached entry 15 at around score 30 and stayed pinned there for the
-; remaining 85% of the game, so every game converged on the same cadence within
-; its first two waves whatever the dial said. That is the "too fast to play"
-; complaint, and it is why the dial stopped mattering.
-;
-; What it costs, plainly: PRD v1 rule 2's second clause - "each cleared squadron
-; respawns faster" - is now worth one rung across a whole game rather than one
-; per wave. The video does **not** show that clause to be false. It shows the
-; combined rate was far too fast and that the readable data needs no permanent
-; term to account for it. T3 is what would size the term properly.
-.EQU WAVE_LAST,      1
-.EQU ST_PLAY,        0          ; game states; anything above ST_PLAY is an end
+.EQU HITS_LAST,      3          ; three launchers; the third loss ends the game
+.EQU ST_PLAY,        0
 .EQU ST_OVER,        1
 .EQU ST_WIN,         2
 
-; Sound identifiers - indices into PAT_SND_A / PAT_SND_B. See those tables for
-; the pitch each one produces and the audio-reference.md row it targets.
-; The battleship is deliberately not in this list. Its buzz is not a note - it is
-; clocked by the display sweep out of `dwell`, because it has to sound for four
-; seconds without blanking the tube. See that routine. The entry it used to have
-; here, and the $0FF / $090 pattern words behind it, were removed with it rather
-; than left as an unreachable 287 Hz that no longer describes anything the
-; machine does.
-.EQU SND_MISSILE,    0
-.EQU SND_MARCH,      1
-.EQU SND_WARN,       2
-.EQU SND_WIN1,       3          ; 750 Hz
-.EQU SND_WIN2,       4          ; 940 Hz
-.EQU SND_WIN3,       5          ; 1240 Hz
-.EQU SND_LOSS1,      6
-.EQU SND_LOSS2,      7
-.EQU SND_LOSS3,      8
-.EQU SND_LOSS4,      9
-.EQU SND_LOSS5,     10
-
-; The value `bship_enter` writes to NIB_BUZZ to start the buzz. Any odd nibble
-; works - the counter walks the odd numbers and never reaches zero - and 15 is
-; chosen so the first grid after the arrival drives the speaker high.
-.EQU BUZZ_START,    15
-
-; Burst counts, minus one, passed to play_sound in B. A burst is
-; (NIB_PERIODS + 1) periods, so a note is (bursts) * (periods) square-wave
-; cycles; the arithmetic for each is in the sound table at the foot of the file.
-;
-; These are note *lengths*, not game cadence: they say how long one sound lasts,
-; never how often the game triggers it. The provisional-cadence block below owns
-; the second question and none of these constants appear in it.
-.EQU BURSTS_MISSILE, 3
-.EQU BURSTS_MARCH,   2          ; 3 bursts x 15 periods = 70.4 ms, see the table
-.EQU BURSTS_WARN,    0
-.EQU BURSTS_WIN1,    8
-.EQU BURSTS_WIN2,    8
-.EQU BURSTS_WIN3,   11
-.EQU BURSTS_WINEND, 15
-.EQU BURSTS_LOSS1,   0
-.EQU BURSTS_LOSS2,   0
-.EQU BURSTS_LOSS3,   3
-.EQU BURSTS_LOSS4,   1
-.EQU BURSTS_LOSS5,   1
+.EQU SCORE_JET,      1          ; points for a jet
+.EQU SCORE_BSHIP,    5          ; points for the battleship
 
 ; ============================================================================
-; Provisional cadence constants
+; Timing, and why every figure here is a division rather than a number
 ; ============================================================================
 ;
-; PROVISIONAL - see docs/evidence/timing-analysis.md.
+; INSTRUCTION-RATE PROVISIONAL. Every wall-clock figure below is computed from
+; `src/machine/cpu/tms1370/timing.ts`'s CYCLE_HZ, which is MAME's fitted
+; RC-oscillator approximation OSCILLATOR_HZ = 350 kHz divided by the
+; architectural CLOCK_DIVIDER = 6, so **58333 instruction cycles a second**.
+; That figure carries MAME's own stated +/-50 kHz spread, so the honest range is
+; 50000 to 66667 cycles a second and 58333 is the midpoint of it, never a
+; threshold. docs/research/mp2110-timing-measurement.md records the four-step
+; non-circular route that would replace it with a measurement of the owner's
+; own unit; until then every constant in this section is provisional in exactly
+; that one way and says so.
 ;
-; Every number in this block, and every entry of PAT_STEP and PAT_ROCKET at the
-; foot of the file, is provisional. The gameplay video that T2-T10 of that
-; document are to be measured from is owner-supplied and still pending, so the
-; thin-out speed-up curve, the wave respawn speed-up, the battleship crossing
-; duration and interval, the missile and rocket travel times and the rocket fire
-; rate have **no measured values at all**.
+; One instruction is one cycle on this family, so a sweep's period is however
+; many instructions the sweep loop executed. This program has no dwell loop at
+; all - a grid is lit for the work `strobe` does while it is lit - so the sweep
+; period *is* the program's own cost, and that cost depends on what is on the
+; glass: the buzz ticks in every strobe while the boat is up and the R-plate
+; walk only visits grids that want a line. SWEEP_INSTRUCTIONS is therefore
+; **measured off the running machine** by tools/probe/tms1370-probe.ts rather
+; than counted off this source:
 ;
-; One row is no longer in that state. T1's audio cross-check has now been done:
-; the march beep fires once per sweep in which a jet stepped, and its onsets in
-; assets/reference/gameplay-audio.m4a run at 205 ms (n = 21 intervals inside five
-; uninterrupted runs, sd 22 ms, 55-121 s of that recording). timing-analysis.md
-; records the method and the interpretation limits. That figure is a squadron
-; step rate, not a per-jet period, so it bounds the *floor* of the ladder below -
-; the real unit was never observed to step faster than that - and it is cited
-; there as derived rather than invented. It does not fix any other rung.
+;   SWEEP_HZ = CYCLE_HZ / SWEEP_INSTRUCTIONS = 58333 / 889 = 65.6 Hz
 ;
-; What the rest of these numbers are: the v1 browser game's behavioural
-; approximations, which timing-analysis.md preserves in its "Current unverified
-; working values" table precisely so the v2 ROM would not guess a second time,
-; adjusted where the machine was measurably unplayable. v1 ran logic at 60 Hz, so
-; its tick counts convert to seconds as ticks/60; this ROM's sweep is its only
-; clock and runs at 13.46 ms with an idle playfield (measured by driving the
-; emulated machine, not off the unit - see DWELL below), so seconds convert back
-; to sweeps at roughly 74 per second. That is the figure every ms in this block
-; converts through, for the same reason the old block used the old 15.46 ms: it
-; is the sweep the ROM's own arithmetic produces, reproducibly, with nothing
-; drawn. A sweep during play is longer - see DWELL for the spread - so these
-; nominal figures run short of wall clock even before a sound stops the sweep.
-; The conversion is arithmetic on an approximation - it does not make the result
-; a measurement.
+; **It is not tuned to an interval, and that is a decision rather than a miss.**
+; docs/evidence/vfd-appearance.md section 2 leaves 70.6-72.5 Hz open: the
+; reference video's 10.6-12.5 Hz beat against a 30 fps camera admits only
+; disjoint refresh intervals and that is one of them. v2 reached it by tuning a
+; dwell loop, and doing the same here would be false precision, because
+; OSCILLATOR_HZ's stated +/-50 kHz puts this same 889-instruction sweep anywhere
+; from 56.2 Hz to 75.0 Hz depending on the unit - a range that contains the
+; video's interval whole. Tuning the instruction count so the *midpoint* landed
+; at 71.5 Hz would be tuning to the one number the contract says must appear
+; nowhere as a threshold. What pins the refresh is measuring the oscillator, not
+; moving this constant.
 ;
-; Every sweep count in this block was re-derived when the sweep rate moved from
-; 64.5 Hz to 71.5 Hz during play (D4 of docs/evidence/vfd-appearance.md). The
-; wall-clock figures are what the anchors are stated in - v1's tuning, a human
-; reaction window, the march beep's measured 205 ms - so the ms figures were held
-; and the sweep counts recomputed against the shorter sweep, not the other way
-; round.
-;
-; A sweep count is not the whole story in wall clock, and the gap matters here:
-; note_loop does not sweep the tube while a sound plays, so a cadence of N sweeps
-; lands longer than N * 13.46 ms whenever a note fires inside it. The measured
-; figures quoted below are wall clock off the probe; the nominal figures are the
-; sweep arithmetic. Both are given, because only the first is what a player
-; experiences and only the second is what the ROM stores.
-;
-; What the mechanism is, and is not: the cadence *mechanism* here is real work -
-; integer sweep counts, a per-skill entry point into one cadence ladder, a
-; thin-out and per-wave speed-up that walk down that ladder, and a floor at its
-; last entry. When the video arrives, only the numbers move.
+; The sweep is not frequency-stable either, and is not meant to be. Measured off
+; this ROM over 30 s of emulated time: 65.6 Hz median with nothing on the tube,
+; 65.6 Hz on a lever-only game and 65.3 Hz on a played one - and 60.5, 60.7 and
+; 60.2 Hz as *means*, once the sweeps a sound blanked are counted in. Quoting one
+; of those without saying which population it came from is what would make this
+; look tuned to two decimal places. `src/machine/board/tms1370-cadence.ts`
+; derives the probe side's horizons from the same figure, and a test asserts the
+; two agree, so they cannot drift.
 
-; DWELL: how long one grid stays lit, and with it the sweep rate. The loop below
-; costs (DWELL_OUTER + 1) * (2 * DWELL_INNER + 6) + 4 machine cycles - the 6
-; rather than 5 being the pad NOP, see below - so 15 * 32 + 4 = 484, and one grid
-; costs about 506 cycles including the sweep's own work. A whole sweep with an
-; idle playfield is
-;
-;   10 * ((DWELL_OUTER + 1) * (2 * DWELL_INNER + 6) + 4) + 543
-;
-; machine cycles - the 543 being the ten grids' own port and matrix work plus
-; input_scan, render_field and tick between sweeps with nothing on the tube. That
-; is 5383 cycles = 13.46 ms; a sweep during play runs about 210 cycles longer,
-; because render_field has jets, rockets and a score to lay out, so the rate that
-; matters lands near 71.5 Hz. Both figures are measured off the emulated machine.
-;
-; 64.5 Hz is **excluded by the reference video**. docs/evidence/vfd-appearance.md
-; section 2 measures the beat between the tube's refresh and the camera's 30 fps
-; sampling at 10.6-12.5 Hz; 64.5 Hz would beat at |64.5 - 60| = 4.5 Hz, 2.4x to
-; 2.8x too slow. Aliasing admits only disjoint intervals - 40.6-42.5, 47.5-49.4,
-; 70.6-72.5, 77.5-79.4, 100.6-102.5, 107.5-109.4 and 130.6-132.5 Hz - and 64.5 Hz
-; falls in the gap between the second and the third. 70.6-72.5 Hz is the interval
-; adjacent to what this ROM used to do, and is the one targeted here.
-;
-; **Which sweeps the interval is a statement about.** It brackets the *mean*
-; refresh rate of a tube being watched during play, so that is the population
-; tuned to here: the ROM playing a game, over the sweeps that carry no sound. A
-; sweep with a note in it is the note's length longer - note_loop does not strobe
-; the grids - and vfd-appearance.md excludes blanked frames from its own refresh
-; figures for the same reason. The spread across populations is real and is wider
-; than the interval: this ROM runs 74.3 Hz with nothing on the tube, 71.9 Hz on
-; an unattended game and 71.5 Hz on a played one. Quoting one number without the
-; population is what would make this look tuned to two decimal places.
-;
-; Why the extra NOP in the dwell loop. Both counters are nibbles, so
-; (DWELL_OUTER + 1) * (2 * DWELL_INNER + 5) can only take the values 465, 490,
-; 495 and 496 anywhere near the target, and the gaps between them are 1.8 Hz -
-; almost the whole width of the interval. Every one of those rungs puts a played
-; game at 69.5-70.2 Hz, below the interval, and the rung above overshoots it
-; entirely. One NOP inside the outer pass makes the multiplier even, which moves
-; the reachable set, and 15 * 32 + 4 = 484 lands the played-game mean at 71.5 Hz,
-; the middle of the interval. It is a timing pad in a delay loop, which is what
-; the loop is - the same device as the seven NOPs in note_half.
-;
-; The interval brackets the mean, not every pass: the video also shows the sweep
-; is not frequency-stable, and this ROM's is not either - the between-sweep game
-; work varies with what is on the tube, and a sound stops the sweep outright.
-; src/machine/board/display.ts derives the frame period from the ROM rather than
-; imposing one, which is what keeps that true.
-.EQU DWELL_OUTER,   14          ; INSTRUCTION-RATE PROVISIONAL - docs/research/
-                                ; mp2110-timing-measurement.md; ms figures above
-                                ; assume the HMCS44 core's oscillator, not TMS1370
-.EQU DWELL_INNER,   13          ; INSTRUCTION-RATE PROVISIONAL - see DWELL_OUTER
+.EQU SWEEP_INSTRUCTIONS_LO,  9  ; SWEEP_INSTRUCTIONS = 889, written as two
+.EQU SWEEP_INSTRUCTIONS_HI, 55  ; nibbles because every operand field on this
+                                ; machine is four bits wide: 55 * 16 + 9.
+                                ; Nothing reads these two. They are the sweep
+                                ; length every cadence constant below converts
+                                ; through, written down beside them rather than
+                                ; left in a comment.
 
-; How many sweeps a shot spends in each column. PROVISIONAL: v1 moved both a
-; missile and a rocket one column per 60 Hz tick, i.e. ~16.7 ms, which converts
-; to about one sweep here. T7 and T8 remain unmeasured.
+; --- The battleship's buzz ---------------------------------------------------
 ;
-; The two are no longer the same number, and the asymmetry is deliberate. The
-; rocket is the one shot the player has to *respond* to: the only defence is to
-; move the lever out of its lane before it lands, so its flight is the game's
-; reaction window. At ROCKET_SWEEPS = 2 the probe measured a rocket crossing the
-; whole board in 235 ms mean (n = 5, max 387 ms), and from a jet mid-board in
-; ~150 ms - at or below the ~250 ms floor for a simple human reaction, and well
-; below the 300-500 ms a see-decide-move-the-lever response costs. That is the
-; measured reason the game could not be played, and it is the anchor for the new
-; figure: 7 sweeps is ~94 ms nominal per column, so a full-board flight is a
-; little over half a second and a mid-board one is inside the reaction band.
-; The anchor is human reaction time, not the unit - still not a measurement of
-; the real machine. It was 6 sweeps at the old 15.46 ms sweep, which is the same
-; 93-94 ms window; the count moved with the sweep so the window would not.
+; MEASURED, docs/evidence/audio-reference.md, battleshipBuzz: a 93.4 Hz
+; repetition rate wandering between 79 and 111 Hz within a single arrival,
+; continuous for about 4.0 s. The wander is the evidence for the mechanism
+; rather than noise on top of it - it moves the same way in both arrivals,
+; starting near 100-106 Hz and drifting to 80-88 - and that is what a buzz
+; clocked off a display sweep does and what a delay-loop tone cannot do.
 ;
-; The player's missile keeps the fast figure. Nothing has to be dodged in
-; response to it, so slowing it would only take time away from the player, and
-; the complaint being fixed here is that the game is too fast. Two sweeps is
-; 26.9 ms, which already rounds up from v1's ~16.7 ms, so it did not move.
-.EQU MISSILE_SWEEPS, 2          ; INSTRUCTION-RATE PROVISIONAL - see docs/research/
-                                ; mp2110-timing-measurement.md; ms figures above
-                                ; assume the HMCS44 core's oscillator, not TMS1370
-.EQU ROCKET_SWEEPS,  7          ; INSTRUCTION-RATE PROVISIONAL - see MISSILE_SWEEPS
+; So the buzz is clocked by the sweep, one tick per O strobe inside `strobe`:
+;
+;   f = 24 strobes * SWEEP_HZ / (2 * BUZZ_DIV) = 24 * 72.4 / 18 = 96.5 Hz
+;
+; inside the measured band. It never blanks the tube, which is the property the
+; four-second figure forces: `note` does not strobe the grids, and four seconds
+; of a dark display cannot be right for a boat the player is meant to shoot at.
+.EQU BUZZ_DIV,       8          ; O strobes between speaker edges
 
-; The battleship. **Measured from the owner's own unit**, and it is the one row
-; of this block that does not rest on inference at all.
+; --- Travel ------------------------------------------------------------------
 ;
-; `assets/reference/battleship-arrival.m4a` and `battleship-interval.m4a` are the
-; measurement the previous revision of this block asked for and could not get.
-; The owner recorded his machine beside the speaker in a quiet room:
-; *"this is the sound, notice its 4s long the boat appears for 4s then
-; disappears if you haven't hit it"*, and of the second file, *"this ... is
-; longer as this show how long between it arriving again"*.
-;
-; **Read the two files as one recording, because that is what they are.** The
-; arrival clip is the interval clip's first 4.46 s, offset by 0.149 s -
-; cross-correlation puts the gain at 1.000 and Pearson r at 0.9955. They are one
-; take, trimmed twice. That matters because it means the pair is a sample of
-; *one* interval, not two independent ones, and nothing here should be read as
-; the average of a population. See docs/evidence/audio-reference.md for the
-; detector and its controls.
-;
-; What the recording gives, and every figure below is off that one take:
-;
-;   - the boat sounds for **4.05 s** and **3.80 s** on its two arrivals;
-;   - the arrivals are **19.80 s** apart, onset to onset, stable to 0.05 s
-;     across three detection thresholds;
-;   - the sound is **continuous**, not pulsed - 3 of 162 twenty-five
-;     millisecond windows fall more than 20 dB below the peak;
-;   - its repetition rate is **93.4 Hz**, wandering between 79 and 111 Hz
-;     inside a single arrival.
-;
-; Three things in this ROM were wrong, and all three are now measured.
-;
-; **The sound is continuous for the whole appearance.** It was one 383 ms note at
-; the arrival and then silence. It is now the sweep-clocked buzz in `dwell`,
-; which runs for as long as the boat is on the glass without ever stopping the
-; tube. That is the mechanism the four-second figure forces: `note_loop` blanks
-; the display for the length of the note, and four seconds of blanking cannot be
-; right for a boat the player is supposed to be shooting at.
-;
-; **The appearance is 4 s, not the 7.5 s the video was read as giving.** Three
-; lanes at 91 sweeps is 4.00 s at the 14.66 ms a sweep costs during a crossing,
-; which is measured off the buzz's own period in the emulated machine.
-;
-; **The tension with the video is real and is not averaged away here.** The video
-; (`assets/reference/sprites/README.md`) traces one descent frame by frame at
-; 1.3 / 2.1 / 5.8 s a lane, 9.3 s end to end, against the recording's 4 s. Both
-; are evidence. Two things decide it for the recording:
-;
-;   - the owner's sentence is about the *boat*, not the sound - "the boat appears
-;     for 4s then disappears" - so the 4 s is not merely how long the buzz lasts,
-;     and the recording independently measures the buzz at the same 4 s;
-;   - the traced descent's last lane is 5.8 s, longer than its other two lanes
-;     put together. A boat descending at a steady rate does not do that. Its
-;     first two lanes sum to 3.4 s, which is the recording's figure; the outlier
-;     is the third.
-;
-; **What would falsify it**: a video of one crossing, timed from the boat
-; appearing to it leaving, showing the boat lit for materially longer than the
-; buzz lasts. If the boat outlives its own sound, the appearance and the sound
-; are two constants rather than one, and only the sound is measured here.
-;
-; **How often: 19.8 s, and this openly contradicts the video.** The gap runs
-; while NIB_BSLANE holds BS_NONE, so it is the interval minus the appearance:
-; 19.80 - 4.00 = 15.8 s. BSHIP_GAP_HI = 4 gives 64 to 79 sixteen-sweep units,
-; 15.1 to 18.6 s, and an arrival every 19.1 to 22.6 s; the low nibble is
-; dominated by small values in practice (see bship_wait), so a played game sits
-; near the bottom of that, against the 19.80 s measured.
-;
-; The video says otherwise and the disagreement is a factor of 2.6: eight lane-0
-; episodes over 407.9 s is one crossing every 51 s, and that is what this
-; constant was set to before. The recording is preferred, with the reasons stated
-; rather than assumed:
-;
-;   - it measures the machine's own sound directly, in a quiet room, against a
-;     detector with controls that separate it from the rest of the game;
-;   - the video's count is an inference from a detection pass that is *known* to
-;     drop episodes - its own lane split is 8 / 2 / 7, and a detector that finds
-;     two of eight middle lanes is not one whose absolute counts can be trusted
-;     as arrival totals;
-;   - a 4 s appearance makes the boat harder to catch on video than the 7.5 s the
-;     count assumed, so the miss rate is worse than the split suggests.
-;
-; **But n = 1.** One interval, from one take, cannot establish a mean, and the
-; video is 6.8 minutes of play. If the interval is random at all (T6, still
-; unmeasured - see bship_wait) then 19.8 s could be a short draw from a longer
-; distribution. What would settle it is two minutes of the owner's unit recorded
-; the way these clips were, counting arrivals rather than timing one gap.
-;
-; **The opening crossing is deliberately not a full interval away.** Reset seeds
-; the countdown with BSHIP_GAP_OPEN rather than BSHIP_GAP_HI - 512 sweeps, about
-; seven and a half seconds - which keeps this ROM's long-standing behaviour of
-; showing the boat early in a game. The owner's complaint was that it appears too
-; often, never that it appears too soon, and a first crossing a full interval
-; away would mean a short game showed no battleship at all.
-;
-; The interval also is not **random**, whatever the low nibble suggests, and that
-; is a defect rather than a tuning question - see bship_wait.
-.EQU BSHIP_STEP_LO, 11          ; a lane step is BSHIP_STEP_HI*16 + BSHIP_STEP_LO
-.EQU BSHIP_STEP_HI,  5          ;   = 91 sweeps, 1.33 s; three of them is 4.00 s
-.EQU BSHIP_GAP_HI,   4          ; steady gap: (4*16 + rand) sixteen-sweep units
-.EQU BSHIP_GAP_OPEN, 2          ; and the first one after power-on, 512 sweeps
-; All four above: INSTRUCTION-RATE PROVISIONAL - the sweeps-to-seconds
-; conversions cited in their comments assume the HMCS44 core's oscillator, not
-; the TMS1370's. See docs/research/mp2110-timing-measurement.md.
+; PROVISIONAL. v1 moved both a missile and a rocket one column per 60 Hz tick;
+; T7 and T8 of docs/evidence/timing-analysis.md are unmeasured. The two are
+; deliberately different. The rocket is the one shot the player has to *respond*
+; to - the only defence is to move the lever out of its lane before it lands -
+; so its flight is the game's reaction window, and 7 sweeps is 97 ms a column,
+; putting a mid-board flight inside the 300-500 ms a see-decide-move response
+; costs. The player's missile keeps the fast figure because nothing is dodged in
+; response to it and slowing it would only take time away from the player.
+.EQU MISSILE_SWEEPS, 2          ; 28 ms a column
+.EQU ROCKET_SWEEPS,  7          ; 97 ms a column
 
-; How long a burst stays on the glass, in sweeps. PROVISIONAL, and the only
-; number this ROM has ever had for it: nothing drove a burst segment before, so
-; there is no earlier value to preserve and no measurement to honour. The
-; gameplay video shows a jet-kill burst persisting long enough to be caught in
-; several consecutive frames alongside a separately-visible missile, so it
-; outlives the sweep it is created on by a clear margin rather than flashing for
-; one; fifteen sweeps is about 200 ms at the current sweep rate. It is a nibble,
-; so fifteen is also the longest this counter can express.
-.EQU BURST_SWEEPS,  15          ; INSTRUCTION-RATE PROVISIONAL - "200 ms at the
-                                ; current sweep rate" above assumes the HMCS44
-                                ; core; see docs/research/mp2110-timing-measurement.md
+; --- The squadron's march ----------------------------------------------------
+;
+; DERIVED from the one measurement this cadence has: the march beep's onsets in
+; assets/reference/gameplay-audio.m4a run at 205 ms (n = 21 intervals inside
+; five uninterrupted runs, sd 22 ms). That is a squadron step rate, so it bounds
+; the *floor* of the ladder - the unit was never observed to step faster - and
+; it does not fix any other rung.
+;
+;   STEP_HI = STEP_HI_MAX - kills - STEP_SKILL * (skill - 1), floored
+;
+; and a step is STEP_HI * 16 sweeps. Skill 1 with a full squadron is 144 sweeps
+; = 1989 ms, which is the ~2040 ms slowest march the evidence gives; the floor
+; is 16 sweeps = 221 ms, just above the measured 205 ms. Thinning the squadron
+; walks it down six rungs and the dial another four, so both terms matter and
+; neither can pin it on its own.
+.EQU STEP_HI_MAX,    9          ; skill 1, full squadron: 144 sweeps, 1989 ms
+.EQU STEP_HI_MIN,    1          ; the floor: 16 sweeps, 221 ms
+.EQU STEP_SKILL,     2          ; rungs the dial is worth, per notch
 
-; The gap between launcher-hit warning beeps. This one is *measured*: 25-28 ms
-; (docs/evidence/audio-reference.md, launcherHitWarning.gapMs). The loop runs
-; WARN_GAP + 1 passes of two dwells plus two cycles. It is counted in dwells, so
-; it moved when the dwell did: a pass costs 972 cycles now against 1132 before,
-; so WARN_GAP = 8 would have given 8757 cycles = 21.9 ms, below the measured
-; band. Eleven passes is 10697 cycles = 26.7 ms, near the middle of it; ten is
-; 24.3 ms and twelve is 29.2 ms, both outside. All four figures are counted off
-; the machine.
-.EQU WARN_GAP,      10          ; INSTRUCTION-RATE PROVISIONAL - the measured
-                                ; 25-28 ms band above is real, but the cycle
-                                ; count tuned to hit it assumes the HMCS44
-                                ; core's oscillator; see docs/research/
-                                ; mp2110-timing-measurement.md
+; --- Releasing the squadron --------------------------------------------------
+;
+; PROVISIONAL. Six jets a wave, at most three airborne because there are three
+; lanes, released one at a time into whichever lane is free.
+.EQU ENTRY_HI,       3          ; 48 sweeps, 663 ms, between releases
 
-; PRESCALE: the timer runs free from reset and is read only by tick_input, which
-; samples it when the player presses fire. That sample is the machine's entire
-; randomness source (PRD R3) - there is no RNG - so it is started at reset rather
-; than on first use, because a counter with no history has no phase to read.
-; PROVISIONAL: 2^6 machine cycles per tick.
-.EQU PRESCALE,       6           ; INSTRUCTION-RATE PROVISIONAL - "2^6 machine
-                                ; cycles" above is cycles at the HMCS44 core's
-                                ; oscillator, not the TMS1370's; see docs/research/
-                                ; mp2110-timing-measurement.md
+; --- The rocket the jets fire ------------------------------------------------
+;
+; PROVISIONAL. Counted in sixteen-sweep units, like the battleship's gap, because
+; a low/high nibble pair tops out at 255 sweeps and a rocket every three seconds
+; at the easiest setting is not a game. The interval is
+; (ROCK_HI_BASE - (skill - 1)) * 16 units of 16 sweeps, so skill 1 is 768 sweeps
+; and skill 3 is 256 - about 10 s and 3.5 s at the rate the sweep actually runs.
+; A rocket only launches if a jet is airborne in the lane the rotor lands on, so
+; the effective rate is lower again early in a wave.
+.EQU ROCK_HI_BASE,   3
+
+; --- The battleship ----------------------------------------------------------
+;
+; MEASURED off the owner's unit for the two intervals, and off *this* machine
+; for the sweep counts that reproduce them. This is the one block here that
+; rests on no inference at all:
+; docs/evidence/audio-reference.md, battleshipBuzz. The owner recorded his own
+; unit in a quiet room - "the boat appears for 4s then disappears if you haven't
+; hit it" - and the two clips are one take trimmed twice, so this is a sample of
+; **one interval** rather than two.
+;
+;   appearance  4.05 s and 3.80 s   -> three lane steps of 65 sweeps = 3.9 s
+;   interval    19.80 s onset to onset, stable to 0.05 s across three thresholds
+;
+; The gap is the interval minus the appearance, 15.8 s, which overflows a
+; low/high nibble pair at any plausible sweep rate. It is counted in
+; sixteen-sweep units instead - 49 of them, 784 sweeps - which is what
+; NIB_BS_LO and NIB_BS_HI hold while NIB_BSLANE is BS_NONE.
+;
+; The gameplay video says one crossing every 51 s and the disagreement is a
+; factor of 2.6. The recording is preferred, for reasons rather than by
+; default: it measures the machine's own sound directly against a detector with
+; controls in the same file, while the video's count is an inference from a
+; detection pass whose own lane split is 8 / 2 / 7 and which therefore demonstrably
+; drops episodes. But n = 1, and two minutes of the unit recorded the way these
+; clips were, counting arrivals rather than timing one gap, is what would settle it.
+.EQU BSHIP_STEP_LO,  0          ; a lane step is BSHIP_STEP_HI * 16 + LO + 1 =
+.EQU BSHIP_STEP_HI,  4          ;   65 sweeps; three of them is 3.9 s MEASURED
+                                ;   off the running machine by tools/probe/
+                                ;   tms1370-probe.ts, because a sweep with the
+                                ;   boat on the glass is longer than an idle one
+                                ;   - the buzz ticks in every strobe - and the
+                                ;   nominal arithmetic would run 50% short
+.EQU BSHIP_GAP_LO,  13          ; the steady gap: 3 * 16 + 13 + 1 = 62 units of
+.EQU BSHIP_GAP_HI,   3          ;   sixteen sweeps = 992 sweeps. MEASURED off
+                                ;   the running machine at 19.7 s onset to onset
+                                ;   against the recording's 19.80 s: the gap
+                                ;   runs while the boat is away and the
+                                ;   appearance is the rest of the interval. A
+                                ;   sweep during a played game costs half as
+                                ;   much again as an idle one once the sounds
+                                ;   that blank it are counted, so the nominal
+                                ;   arithmetic cannot set this figure.
+.EQU BSHIP_OPEN_LO,  1          ; and the first crossing after power-on: 33
+.EQU BSHIP_OPEN_HI,  2          ;   units = 528 sweeps = 8.8 s. The owner's
+                                ;   complaint was that the boat comes too often
+                                ;   and never that it comes too soon, and a game
+                                ;   shorter than one interval should still show
+                                ;   it once.
+
+; --- Bursts ------------------------------------------------------------------
+;
+; PROVISIONAL, and the only figure this ROM has ever had for either. The
+; gameplay video shows a jet-kill burst caught in several consecutive frames
+; alongside a separately visible missile, so it outlives the sweep that made it
+; by a clear margin rather than flashing for one. Fifteen sweeps is 207 ms and
+; is also the longest a nibble can express.
+.EQU BURST_SWEEPS,  15
+.EQU CAPTURE_SWEEPS, 15         ; the capture burst on the player's own grid
 
 ; ============================================================================
-; the reset vector and the routines CAL can reach
+; The sounds
 ; ============================================================================
 ;
-; CAL carries a five-bit offset and its page is fixed at 0
-; (src/machine/cpu/isa.ts), so page 0 is the only place a one-word call can land.
-; It holds the one routine called from the tightest loop - the grid dwell.
-; Everything else is reached with CALL, which costs a second word but goes
-; anywhere.
+; Every one is a square wave on R15 built by `note` out of four nibbles, and
+; every one cites its row in docs/evidence/audio-reference.md, per PRD R7. The
+; frequency a recipe produces is
 ;
-; `find_contact` used to sit here too, on a CAL. It moved out when the dwell grew
-; the battleship's buzz tick: CAL reaches only the first 32 words, the two
-; routines together no longer fit in them, and `find_contact` is called twice
-; from `input_scan` - which runs once between sweeps, not ten times inside one -
-; so it is the one that can afford the second word.
+;   f = CYCLE_HZ / (2 * D + 9),  D = (HALF_O + 1) * (2 * HALF_I + 6) + 2
+;
+; and its length is (PER + 1) * (BURSTS + 1) periods of it. The `+ 9` and the
+; `+ 6` are `note`'s own instruction counts. They are **counted off the running
+; machine** by tools/probe/tms1370-probe.ts rather than off the source: the
+; first draft of this block counted seven for the outer term by reading the
+; loop, put the fire blip at 1423 Hz against a measured band of 1480-1632, and
+; assembled and sounded perfectly plausible. The frequency each recipe actually
+; reaches is written beside it, against the measured figure it targets, and
+; tools/probe/tms1370-sound.test.ts asserts each one lands in its band.
+;
+; missileFire - 1480-1632 Hz measured, ~20 ms, and owner-confirmed to be the
+; same beep a missile makes when it *hits*, so one recipe covers both events.
+.EQU SND_FIRE_O,     0          ; D = 14, f = 58333/37 = 1577 Hz
+.EQU SND_FIRE_I,     3
+.EQU SND_FIRE_P,    14          ; 15 x 2 = 30 periods = 19.0 ms
+.EQU SND_FIRE_B,     1
 
-.ORG $000
-reset:  JMPL main
+; jetMarch - 600-650 Hz measured, ~70 ms a step.
+.EQU SND_MARCH_O,    1          ; D = 42, f = 58333/93 = 627 Hz
+.EQU SND_MARCH_I,    7
+.EQU SND_MARCH_P,   14          ; 15 x 3 = 45 periods = 71.8 ms
+.EQU SND_MARCH_B,    2
 
-; --- dwell: hold the current grid lit ---------------------------------------
-;
-; In:  nothing. Out: nothing. Clobbers: B. Preserves X and Y.
-;
-; The sweep keeps the grid index in Y and the RAM file in X, and this routine
-; needs a spare counter, so it parks both in the shadow pointers with XSP and
-; puts them back on the way out. That is what XSP is for; saving Y to RAM would
-; cost more cycles than the counter it frees. warn_gap relies on the same
-; property to count its own loop in Y.
-;
-; --- and it carries the battleship's buzz ------------------------------------
-;
-; The buzz is the one sound this machine makes that is *not* a note. Every other
-; sound goes through note_loop, which holds the CPU in a delay loop and leaves
-; the tube dark for as long as it lasts; that is fine for a 20 ms blip and
-; impossible for a sound that has to last the whole four seconds the boat is on
-; the glass, because the player has to see the boat in order to shoot at it.
-;
-; So the buzz is clocked by the display sweep instead of by a delay loop. This
-; routine already runs exactly once per grid, ten times a sweep, and it already
-; has X and Y free between its two XSPs. NIB_BUZZ counts down by two through the
-; odd numbers 15, 13, 11, ... 1 and back to 15 - subtracting two from a nibble
-; preserves oddness, and 1 - 2 wraps to 15, so the sequence never reaches zero
-; and zero is free to mean "not sounding". Bit 3 of that counter drives D14
-; directly: it is high for 15, 13, 11, 9 and low for 7, 5, 3, 1, so the speaker
-; toggles every fourth grid and one square-wave period is eight grids, four
-; fifths of a sweep.
-;
-; **That the pitch comes out of the sweep rate is the measurement, not a
-; convenience.** docs/evidence/audio-reference.md (battleshipBuzz) recovers a
-; repetition rate of 93.4 Hz from the owner's isolated recording, and eight grids
-; at this ROM's played sweep rate is 89 Hz. It also recovers a fundamental that
-; *wanders* between 79 and 111 Hz within a single four-second arrival, and
-; wanders the same way in both arrivals - which is what a buzz clocked off a
-; sweep whose length depends on what is being drawn does, and is not what a
-; delay-loop note does. A note_loop tone is as stable as the crystal.
-;
-; The cost is five machine cycles a grid when the boat is not up - the four words
-; that load and test the counter, and the branch that leaves - which is fifty
-; cycles on a 5383-cycle sweep, and eight when it is.
-dwell:  XSP                     ; caller's X/Y -> SPX/SPY
-        LXI FILE_SOUND
-        LYI NIB_BUZZ
-        LAM
-        ALEI 0                  ; ST <- 1 when the nibble is zero: no buzz
-        BR dw_delay
-        AI 14                   ; phase - 2, wrapping 1 -> 15, never 0
-        XMA                     ; keep it; A is free from here
-        TM 3                    ; ST <- bit 3, the level the speaker wants
-        BR dw_high
-        RED D_SPEAKER
-        BR dw_delay
-dw_high:
-        SED D_SPEAKER
-dw_delay:
-        LBI DWELL_OUTER
-dw_out: LYI DWELL_INNER
-        NOP                     ; timing pad - see DWELL above for why one cycle
-                                ; per outer pass is the knob the sweep rate needs
-dw_in:  DY                      ; ST <- 1 until Y wraps out of four bits
-        BR dw_in
-        DB                      ; ST <- 1 until B wraps
-        BR dw_out
-        XSP                     ; SPX/SPY -> X/Y
-        RTN
+; launcherHitWarning - 455-545 Hz measured, ~10 ms a beep with 25-28 ms gaps.
+; Two beeps on the first hit and three on the second, both owner-confirmed; the
+; third hit plays the loss sound instead of a warning.
+.EQU SND_WARN_O,     1          ; D = 58, f = 58333/125 = 467 Hz
+.EQU SND_WARN_I,    11
+.EQU SND_WARN_P,     4          ; 5 periods = 10.7 ms
+.EQU SND_WARN_B,     0
 
-; --- find_contact: which of three matrix lines answered ---------------------
-;
-; In:  X = FILE_INPUT, Y = first strobe line to test, A = the value that line
-;      stands for. Out: A = the value of the closed line, or CONTACT_NONE.
-; Clobbers: B, Y, ST.
-;
-; The lever and the skill dial are both three-position switches on three
-; consecutive lines, so both decode through this. A position switch always has
-; exactly one contact closed, so CONTACT_NONE means the sweep has not sampled
-; those lines yet - which is true for the first sweep after reset, and is why
-; the caller checks for it rather than trusting the answer.
-;
-; `.PAGE` because it no longer fits behind the dwell inside CAL's first 32 words,
-; and its own two branches straddle the boundary wherever it lands next.
+; win - 750 / 940 / 1240 Hz measured by harmonic product spectrum, ~1.83 s:
+; three arpeggios and a sustained resolution. The note names in that document
+; are labels applied afterwards and two of the three were re-derived from their
+; own partials, so these target the measured fundamentals and not the tempered
+; pitches.
+.EQU SND_WIN1_O,     0          ; D = 34, f = 58333/77  = 758 Hz  (750 measured)
+.EQU SND_WIN1_I,    13
+.EQU SND_WIN1_P,    15          ; 16 x 9 = 144 periods = 190 ms
+.EQU SND_WIN1_B,     8
+.EQU SND_WIN2_O,     0          ; D = 26, f = 58333/61  = 956 Hz  (940 measured)
+.EQU SND_WIN2_I,     9
+.EQU SND_WIN2_P,    15          ; 16 x 9 = 144 periods = 151 ms
+.EQU SND_WIN2_B,     8
+.EQU SND_WIN3_O,     0          ; D = 20, f = 58333/49  = 1190 Hz (1240 measured)
+.EQU SND_WIN3_I,     6
+.EQU SND_WIN3_P,    15          ; 16 x 11 = 176 periods = 148 ms
+.EQU SND_WIN3_B,    10
+.EQU SND_WINE_B,    15          ; the resolution: SND_WIN2's pitch for 256
+                                ; periods, 268 ms. Three arpeggios and it is
+                                ; 1735 ms against the measured 1830.
 
-.PAGE
-find_contact:
-        LBI 2                   ; three lines: this one and two more
-fc_test:
-        TM 0                    ; ST <- bit 0 of M; the sweep stored 1 or 0
-        BR fc_found
-        IY                      ; next strobe line
-        AI 1                    ; next value
-        DB
-        BR fc_test
-        LAI CONTACT_NONE
-fc_found:
-        RTN
+; gameOver - a brief 455-545 Hz transient collapsing to an 80-97 Hz buzz, then a
+; 200-280 Hz rasp decaying to a ~147 Hz floor; five notes, 660 ms of tone. The
+; collapse band is what tells this sound from the battleship's buzz on any
+; silicon, which is why the two are reached by deliberately different mechanisms
+; - this one blanks the tube and the buzz never does.
+.EQU SND_LOSS1_O,    1          ; 467 Hz - the same pitch as the warning beep
+.EQU SND_LOSS1_I,   11
+.EQU SND_LOSS1_P,   11          ; 12 periods = 25.7 ms
+.EQU SND_LOSS1_B,    0
+.EQU SND_LOSS2_O,   12          ; D = 314, f = 58333/637 = 91.6 Hz (96 measured)
+.EQU SND_LOSS2_I,    9
+.EQU SND_LOSS2_P,    3          ; 4 periods = 43.7 ms
+.EQU SND_LOSS2_B,    0
+.EQU SND_LOSS3_O,    3          ; D = 114, f = 58333/237 = 246 Hz (240 measured)
+.EQU SND_LOSS3_I,   11
+.EQU SND_LOSS3_P,   14          ; 15 x 3 = 45 periods = 183 ms
+.EQU SND_LOSS3_B,    2
+.EQU SND_LOSS4_O,    4          ; D = 142, f = 58333/293 = 199 Hz (196 measured)
+.EQU SND_LOSS4_I,   11
+.EQU SND_LOSS4_P,   10          ; 11 x 3 = 33 periods = 166 ms
+.EQU SND_LOSS4_B,    2
+.EQU SND_LOSS5_O,    6          ; D = 198, f = 58333/405 = 144 Hz (147 measured)
+.EQU SND_LOSS5_I,   11
+.EQU SND_LOSS5_P,   11          ; 12 x 3 = 36 periods = 250 ms
+.EQU SND_LOSS5_B,    2
+
+; The gap between warning beeps: 25-28 ms MEASURED. `warn_gap` is the same
+; nested shape `note` uses with the speaker left alone, so the arithmetic is the
+; same: (WARN_GAP + 1) * (2 * 15 + 6) + 2 = 398 cycles a pass, and
+; (WARN_GAP_PASSES + 1) passes is 1592 cycles = 27.3 ms, inside the band. Ten
+; and three are the pair that lands there; nine gives 24.8 ms and eleven 29.8,
+; both outside it.
+.EQU WARN_GAP,      10
+.EQU WARN_GAP_PASSES, 3
 
 ; ============================================================================
-; the master loop
+; Page map
 ; ============================================================================
 ;
-; One pass is one display frame. The board closes a PWM frame when a grid rises
-; that has already risen since the last boundary (src/machine/board/display.ts),
-; so the frame period is decided here, by how long this loop takes, exactly as it
-; is on the real tube.
+; Chapter 0's sixteen pages. Page 15 is the reset page and the allocator
+; reserves it, so it is named with `.PAGE P_RESET` explicitly rather than
+; allocated. Every `LDP` in this file names one of these constants, and a page
+; with room left over holds whichever routine did not fit on its own - `BR` and
+; `CALL` carry six bits within a page, so where a routine lives is a placement
+; decision and not a structural one.
+
+.EQU P_SWEEP,        0          ; the main loop, the near pass, the far pass
+.EQU P_RPLATE,       1          ; the R-plate pass and the crossing into bank 1
+.EQU P_PAIR,         2          ; the pair pass, the digit pass, the crossing back
+.EQU P_STROBE,       3          ; `strobe`, and `fire_missile` in the room left
+.EQU P_LEAF,         4          ; `note`, `clear_file`, `lane_bit`
+.EQU P_INPUT,        5          ; the input matrix
+.EQU P_TICK,         6          ; the sweep counter, the burst, the missile
+.EQU P_HIT,          7          ; what a missile runs into
+.EQU P_SCORE,        8          ; the score, and the win test
+.EQU P_JETS,         9          ; the squadron's march
+.EQU P_SPAWN,       10          ; releasing jets, and the next wave
+.EQU P_ROCKET,      11          ; the rocket: travel, launch, and which jet fires
+.EQU P_SPILL,       12          ; whatever did not fit on the page it belongs to
+.EQU P_BSHIP,       13          ; the battleship
+.EQU P_SPARE,       14          ; the one page this program does not use. The
+                                ; render step was here and outgrew it - see
+                                ; C1_REND1 - and it is left named rather than
+                                ; deleted because a page is the unit a routine
+                                ; has to fit in, so "one page free" is the
+                                ; headroom figure that matters and not the 588
+                                ; words the listing reports.
+.EQU P_RESET,       15          ; the reset routine
+
+; Chapter 1. `BR` and `CALL` both copy the chapter buffer into the chapter
+; address, and `COMC` is the only thing that moves the buffer, so a crossing is
+; `COMC` then an ordinary paged jump and the buffer stays equal to the current
+; chapter everywhere else. That invariant is the whole discipline: a `BR`
+; executed with the two out of step lands in the other chapter.
 ;
-; This routine must stay inside page 1, because `BR sweep_grid` and `BR sweep`
-; both reach backwards within it. A fourth CALL would not fit; the three below
-; each head a JMPL chain, which is how the game gets more code without more
-; stack or more pages here.
+; The endgame lives here because it is the one part of the program that is
+; reached from a handful of places, runs to completion and returns to exactly
+; one - so it costs three crossings in and three out, and buys back two pages of
+; chapter 0 for the loop that runs every sweep.
 ;
-; It drove a fourth plate file onto R3 for as long as the battleship sat above
-; plate 11, which it did only because it shared the far jet column's grid. The
-; seventh playfield grid gave the ship a cell of its own and its first three
-; plates with it, so nothing on this tube is above plate 11 any more and R3
-; would be a nibble of zeroes written ten times a sweep. It comes back the
-; moment the player's cell gets the rest of what is printed in it.
+; A `CALL` from here to a chapter-0 leaf is `COMC` / `LDP` / `CALL` / `COMC`:
+; the call copies the buffer into the address, `RETN` restores the address from
+; the saved chapter latch, and the second `COMC` puts the buffer back in step
+; with it. Without that second one the next `BR` would leave for chapter 0.
 
-.PAGE
-sweep:  LYI 0                   ; Y is the grid index for the whole sweep
-sweep_grid:
-        ; --- put this grid's plate pattern on the bus ---
-        LXI FILE_PLATE0
-        LAM
-        LRA R_PLATE0
-        LXI FILE_PLATE1
-        LAM
-        LRA R_PLATE1
-        LXI FILE_PLATE2
-        LAM
-        LRA R_PLATE2
+.EQU C1_LOSE,        0          ; a launcher lost, and the warning beeps
+.EQU C1_OVER,        1          ; the loss sound
+.EQU C1_WIN,         2          ; the win jingle
+.EQU C1_FIRE,        3          ; which jet fires the next rocket
+.EQU C1_BSHIP,       4          ; the battleship arriving and leaving
+.EQU C1_REND1,       5          ; the render step: blanking every nibble
+.EQU C1_REND2,       6          ;                  the jets and the rocket
+.EQU C1_REND3,       7          ;                  the rocket
+.EQU C1_REND4,       8          ;                  the missile
+.EQU C1_REND5,       9          ;                  the launcher
+.EQU C1_REND6,      10          ;                  the burst
+.EQU C1_REND7,      11          ;                  the capture and the score
+.EQU C1_WINTEST,    12          ; the win test, which P_SCORE had no room for
+.EQU C1_LADDER,     13          ; the cadence ladder
+.EQU C1_REND0,      14          ; the render step: the battleship
+.EQU C1_LAUNCH,     15          ; deciding to launch a rocket
 
-        ; --- light the grid; on D0-D6 this also strobes the input matrix ---
-        SEDY                    ; D(Y) <- 1
-        SED D_INPUT             ; release the read line so the matrix drives it
-        TD D_INPUT              ; ST <- 1 when a contact on this line is closed
-        LAI 0                   ; does not disturb ST
-        BR sweep_hit
-        BR sweep_store          ; ST is 1 again after a branch is not taken
-sweep_hit:
-        LAI 1
-sweep_store:
-        LXI FILE_INPUT
-        XMA                     ; input[line Y] <- A; the old sample is discarded
-
-        ; --- hold it lit, then blank before stepping on ---
-        CAL dwell
-        REDY                    ; D(Y) <- 0
-        IY
-        YNEI GRID_COUNT         ; ST <- 0 once Y has passed the last grid
-        BR sweep_grid
-
-        ; --- between sweeps: everything that is not the display ---
-        CALL input_scan
-        CALL render_field
-        CALL tick
-        BR sweep
 
 ; ============================================================================
-; turn the sampled matrix lines into control positions
-; ============================================================================
-
-.PAGE
-; In:  FILE_INPUT holds one nibble per strobe line, written by the sweep.
-; Out: FILE_STATE's lane, skill, fire and fire-previous nibbles.
-input_scan:
-        ; --- carry last sweep's fire state forward before overwriting it ---
-        ; The missile launches on the press, not on the hold, so the edge has to
-        ; survive from one sweep to the next.
-        LXI FILE_STATE
-        LYI NIB_FIRE
-        LAM
-        LYI NIB_FIRE_PREV
-        XMA
-
-        ; --- fire: a momentary contact, read straight off its line ---
-        LXI FILE_INPUT
-        LYI LINE_FIRE
-        LAM
-        LXI FILE_STATE
-        LYI NIB_FIRE
-        XMA
-
-        ; --- lever: lines 1-3 stand for lanes 0-2 ---
-        LXI FILE_INPUT
-        LYI LINE_LEVER
-        LAI LANE_TOP
-        CALL find_contact
-        ALEI LANE_LAST          ; ST <- 0 when the answer was CONTACT_NONE
-        BR input_lever_ok
-        BR input_skill
-input_lever_ok:
-        LXI FILE_STATE
-        LYI NIB_LANE
-        XMA
-
-        ; --- skill dial: lines 4-6 stand for settings 1-3 ---
-input_skill:
-        LXI FILE_INPUT
-        LYI LINE_SKILL
-        LAI SKILL_ONE
-        CALL find_contact
-        ALEI SKILL_LAST
-        BR input_skill_ok
-        RTN
-input_skill_ok:
-        LXI FILE_STATE
-        LYI NIB_SKILL
-        XMA
-        RTN
-
-; ============================================================================
-; redraw the plate table - the field and the launcher
+; Page 0 - the main loop, and the two low-bank passes
 ; ============================================================================
 ;
-; Rendering writes RAM only. Nothing here touches a port: the sweep is the only
-; code that drives the tube, so a half-finished redraw can never reach the glass.
+; The loop is entered by branch and never by call, so the call latch is clear
+; through every page of it and each leaf routine can be reached with `CALL`.
+; That is the whole reason this program has no call tree: a second level would
+; silently lose the first level's return address, and `tools/tmsasm` would
+; refuse to assemble it.
+
+.PAGE P_SWEEP
+
+; --- pass 1: near, plates 0-2, grids 0-5, latch clear ------------------------
 ;
-; The launcher is drawn from the lever position on every pass, in every game
-; state. That is deliberate: the real unit leaves the launcher lit after the game
-; ends, and it also means the lever keeps moving something on the tube whatever
-; else has happened, which is what contract criterion V4 observes.
+; The battleship on grid 0 and a jet column on each of grids 1-5. Six strobes,
+; two instructions each: `TMA` from the nibble the render step left for this
+; grid, then `TDO` inside `strobe`.
 
-render_field:
-        ; --- clear all three plate files ---
-        ; The file number comes out of B, so the assembler's static RAM
-        ; high-water mark cannot see these accesses - which is why RAM_TOP above
-        ; declares the ceiling explicitly.
-        LBI FILE_PLATE2
-rf_file:
-        LAB
-        LXA                     ; X <- the file number in B
-        LYI 0
-rf_nibble:
-        LMIIY 0                 ; M <- 0, Y <- Y + 1, ST <- 1 until Y wraps
-        BR rf_nibble
-        DB
-        BR rf_file
+sweep:
+        CLA
+        TAY                     ; Y is the grid for the whole pass
+sw_near:
+        LDX  FILE_D0
+        TMA                     ; A <- OPLA_A_NEAR + this grid's lane bitmap
+        LDP  P_STROBE
+        CALL strobe
+        IYC
+        YNEC GRID_COL_LAST + 1
+        BR   sw_near
 
-        ; --- the launcher, in whichever lane the lever selects ---
-        ; There is no ground line to draw first: the playfield border, the lane
-        ; dashes and the ruler are printed silkscreen, not phosphor. See the
-        ; playfield geometry block.
-        LXI FILE_STATE
-        LYI NIB_LANE
-        LAM
-        AI LANEP_LAUNCH
-        LYI GRID_LAUNCH         ; LYI does not disturb A
-        CALL or_plate
-
-        JMPL render_status      ; a jump, not a call: the tail returns for us
-
-; ============================================================================
-; one segment onto the plate table
-; ============================================================================
+; --- pass 2: far, plates 3-5, grids 0-6, latch clear -------------------------
 ;
-; In:  A = a PAT_LANE index (an actor's group base plus its lane), Y = the grid
-;      the segment hangs under. Out: nothing. Clobbers A, B, X; preserves Y.
+; The printed sea on grid 0, the attacker's colon on grids 1-5, the capture
+; burst on grid 6. Seven strobes.
+
+        CLA
+        TAY
+sw_far:
+        LDX  FILE_D1
+        TMA                     ; A <- OPLA_A_FAR + bitmap
+        LDP  P_STROBE
+        CALL strobe
+        IYC
+        YNEC GRID_PLAYER + 1
+        BR   sw_far
+
+        LDP  P_RPLATE
+        BR   sweep_rplate
+
+; --- back from the sweep: the game's own work --------------------------------
 ;
-; Every actor on the playfield is drawn through here, which is what keeps the
-; atlas's plate numbers in one table instead of spread through four routines.
-; The plate *file* has to be dispatched rather than computed because RAM is
-; addressed by X and the file arrives in a register: A and B are both spoken for
-; by the time the write happens (B holds the bit, X and Y are the address), so
-; there is no register left to carry the file number into LXA. Three LXIs cost
-; less than the shadow-pair juggling the alternative would need.
+; Reached from the end of the digit pass. Everything from here to `render` runs
+; with the tube dark, which is what the real unit does between sweeps too.
+
+main_work:
+        LDP  P_INPUT
+        BR   input_scan
+
+; --- what a missile runs into, when it runs past the last column -------------
 ;
-; The write ORs rather than overwrites: one grid's nibble can carry three jets,
-; or a rocket alongside the battleship.
+; Placed here rather than on P_HIT because that page is full and this one is
+; not. It is reached by branch like everything else in the loop.
 
-or_plate:
-        P PAT_LANE              ; A <- the plate file, B <- the plate bit
-        ALEI FILE_PLATE0
-        BR op_file0
-        ALEI FILE_PLATE1
-        BR op_file1
-        LXI FILE_PLATE2
-        BR op_write
-op_file1:
-        LXI FILE_PLATE1
-        BR op_write
-op_file0:
-        LXI FILE_PLATE0
-op_write:
-        LAM                     ; A <- what is already lit on that plate nibble
-        OR                      ; A <- A | the segment's bit
-        XMA
-        RTN
+ms_horizon:
+        LDX  FILE_STATE
+        TCY  NIB_BSLANE
+        TMA
+        TCY  NIB_MLANE
+        MNEA                    ; status = the boat is in some other lane
+        BR   ms_missed
+        BR   bship_kill
+ms_missed:
+        LDX  FILE_STATE
+        TCY  NIB_MCOL
+        TCMIY 0                 ; the missile is spent against the horizon
+        LDP  P_JETS
+        BR   jet_march
 
-; ============================================================================
-; the SCORE label
-; ============================================================================
-;
-; One segment: the lit SCORE label, plate 7 of grid 8, sharing the units digit's
-; cell. There is no lives display on this tube - owner-confirmed against his own
-; CGL unit. The three white marks outside the right-hand border of the printed
-; playfield are paint on the overlay, not phosphor, which is why the atlas has no
-; segment for them. Damage is signalled by sound alone - launcher_hit's two- and
-; three-beep warnings.
-;
-; The label used to have a grid to itself, grid 9. It does not any more, and the
-; reason is the chip rather than the artwork: the TMS1370 on the real board
-; drives **nine** grids from R0-R8, not ten, so there is no tenth grid for a
-; one-segment status cell to sit on (docs/research/tms1370-io.md section 1, and
-; the teardown photograph's nine printed cells in section 3). The label goes
-; where the glass has room for it, which is beside the units digit - grid 8 used
-; plates 0-6 and plate 7 was free.
-;
-; This routine used to look NIB_HITS up in PAT_COLUMN and write a tally into
-; plates 1-3 alongside the label. Those three addresses reach no phosphor, so the
-; write was the ROM telling the hardware to light segments that do not exist -
-; the same fault as the invented ground line. The label is a constant, so no
-; lookup is needed to draw it.
-;
-; NIB_HITS itself is untouched: the count of destroyed launchers is real game
-; state and drives the warnings and the loss. Only its display was phantom.
-;
-; It writes the nibble outright rather than ORing into it, which is safe for
-; exactly one reason: render_field has just cleared all three plate files and
-; nothing has drawn into grid 8 yet. render_score comes later in the chain and
-; shares this nibble, so it is that routine that has to OR - see rs_units_hi.
 
-render_status:
-        LAI PLATE_SC_LBL        ; grid 8's R1 nibble, the label bit alone
-        LXI FILE_PLATE1
-        LYI GRID_SC_U
-        XMA
-        JMPL render_actors
-
-; ============================================================================
-; the squadron
-; ============================================================================
-;
-; At most one jet flies in each lane, so the squadron is three nibbles: lane L's
-; jet is FILE_JETS nibble L, holding the column it stands in plus one.
-;
-; It is not a rank in every lane, and it is not a block. A wave is still six jets
-; (JET_COUNT) but they are released into free lanes a few at a time, each flying
-; its own countdown, which is what the reference photograph shows -
-; assets/reference/device-front-gameplay.jpg has two jets airborne, in different
-; lanes, at different distances. See jet_release and jet_advance.
-
-render_actors:
-        LXI FILE_JETS
-        LYI 0
-ra_jet:
-        LAM
-        ALEI 0                  ; ST <- 1 when no jet is flying in this lane
-        BR ra_next
-        CALL draw_jet           ; preserves X and Y for the loop
-ra_next:
-        IY
-        YNEI LANE_COUNT
-        BR ra_jet
-        JMPL render_bship
-
-; ============================================================================
-; one jet
-; ============================================================================
-;
-; In:  X = FILE_JETS, Y = the lane, 0..2. Out: nothing. Preserves X and Y.
-;
-; The caller's pointers are parked in the shadow pair so the loop above can keep
-; walking, which is also how the lane is recovered - LASPY reads it back. It is
-; read twice: once to reach the jet's nibble, and once after `P` has taken the
-; accumulator, because LANEP_JET is zero and the lane is therefore its own
-; PAT_LANE index.
-
-.PAGE
-draw_jet:
-        XSP                     ; park the loop's X/Y
-        LASPY                   ; A <- the lane
-        LYA
-        LXI FILE_JETS
-        LAM                     ; A <- the jet's column, plus one
-        AI 15                   ; A <- the column it stands in
-        ALEI COL_LAUNCH         ; ST <- 1 when it stands on the capture line
-        BR dj_captured          ; the tube prints no jet in the player's cell
-        P PAT_COLUMN            ; A <- the grid that column is strobed on
-        LYA                     ; Y <- the grid
-        LASPY                   ; A <- the lane, which is its own PAT_LANE index
-        CALL or_plate
-dj_captured:
-        XSP                     ; give the loop its X/Y back
-        RTN
-
-; ============================================================================
-; the battleship
-; ============================================================================
-;
-; Three segments, one per lane, on grid 0's plates 12-14 - the far cell, which
-; is where the gameplay video finds the ship and the only place it ever finds
-; it. It has a segment per lane because the video finds it in all three, and it
-; is stationary in whichever one it is lit in, so a crossing is segments
-; lighting and going out rather than a sprite moving. NIB_BSLANE is that lane,
-; and it is now what reaches the glass rather than a counter that showed nowhere.
-;
-; The ship has its cell to itself, so it takes that grid's first three plates
-; rather than the high ones it needed while it shared the far jet column's grid.
-; The plate bit is 1 << lane; the machine has no shift, and the three PAT_LANE
-; slots a fifth group would need are the ones that keep the other four groups a
-; single AI apart, so the bit is branched out here instead.
-
-render_bship:
-        LXI FILE_STATE
-        LYI NIB_BSLANE
-        LAM
-        ALEI LANE_LAST          ; ST <- 0 when the nibble holds BS_NONE
-        BR rb_draw
-        JMPL render_rocket
-rb_draw:
-        LBI %0001               ; lane 0 -> plate 0, R0 bit 0
-        ALEI LANE_TOP
-        BR rb_write
-        LBI %0010               ; lane 1 -> plate 1
-        ALEI LANE_CENTRE
-        BR rb_write
-        LBI %0100               ; lane 2 -> plate 2
-rb_write:
-        LXI FILE_PLATE0
-        LYI GRID_BSHIP
-        LAM
-        OR
-        XMA
-        JMPL render_rocket
-
-; ============================================================================
-; the jet rocket in flight
-; ============================================================================
-
-.PAGE
-render_rocket:
-        LXI FILE_STATE
-        LYI NIB_RCOL
-        LAM
-        ALEI 0                  ; ST <- 1 when no rocket is in flight
-        BR rr_done
-        LYI NIB_RLANE
-        LAM
-        AI LANEP_ROCKET
-        LXI FILE_TIME
-        LYI NIB_SCRATCH
-        XMA                     ; scratch <- the PAT_LANE index
-        LXI FILE_STATE
-        LYI NIB_RCOL
-        LAM
-        P PAT_COLUMN            ; A <- the grid that column is strobed on
-        LXI FILE_TIME
-        LYI NIB_SCRATCH2
-        XMA                     ; scratch2 <- the grid
-        LYI NIB_SCRATCH
-        LBM                     ; B <- the PAT_LANE index
-        LYI NIB_SCRATCH2
-        LAM
-        LYA                     ; Y <- the grid
-        LAB
-        CALL or_plate
-rr_done:
-        JMPL render_missile
-
-; ============================================================================
-; the player's missile
-; ============================================================================
-;
-; The tube carries fifteen dart segments: one per lane in each of the five
-; columns the shot crosses. So the missile is drawn where it actually is, and
-; NIB_MCOL - which the tick chain has always advanced column by column for the
-; hit tests - now reaches the glass. The atlas used to carry six segments on one
-; grid and this routine drew the shot parked there for its whole flight;
-; ATLAS-COORDINATES.md named that as the atlas's most likely omission and it was.
-;
-; The one column it is not drawn in is the battleship's. NIB_MCOL runs one past
-; the flying zone so that missile_bship can test the ship, and the tube has no
-; dart there - the video never catches one lit in that cell either. A shot in
-; that column is in the air and about to hit or expire; it is simply not shown.
-
-render_missile:
-        LXI FILE_STATE
-        LYI NIB_MCOL
-        LAM
-        ALEI 0                  ; ST <- 1 when no missile is in flight
-        BR rs_done
-        ALEI COL_MSL_LAST       ; ST <- 0 once it has run past the flying zone
-        BR rs_draw
-        JMPL render_burst
-rs_draw:
-        LYI NIB_MLANE
-        LAM
-        AI LANEP_MISSILE
-        LXI FILE_TIME
-        LYI NIB_SCRATCH
-        XMA                     ; scratch <- the PAT_LANE index
-        LXI FILE_STATE
-        LYI NIB_MCOL
-        LAM
-        P PAT_COLUMN            ; A <- the grid that column is strobed on
-        LXI FILE_TIME
-        LYI NIB_SCRATCH2
-        XMA                     ; scratch2 <- the grid
-        LYI NIB_SCRATCH
-        LBM                     ; B <- the PAT_LANE index
-        LYI NIB_SCRATCH2
-        LAM
-        LYA                     ; Y <- the grid
-        LAB
-        CALL or_plate
-rs_done:
-        JMPL render_burst
-
-; ============================================================================
-; the burst
-; ============================================================================
-;
-; One actor, two meanings, because the tube gives plates 9-11 of every playfield
-; grid to whatever bursts in that cell: under grids 0-3 that is the cyan pair a
-; jet leaves when the missile kills it, and under grid 5 it is the red starburst
-; thrown up where the player's launcher is destroyed. Both are set the same way -
-; a column, a lane and a countdown - so both are drawn here.
-;
-; NIB_KCOL holds the column plus one, so zero means nothing is bursting, the
-; same convention the jets use for an empty lane. The battleship's column is
-; skipped: the tube does carry a burst behind the ship, but it is a wider shape
-; in that cell's own right and is not drawn yet.
-
-render_burst:
-        LXI FILE_STATE
-        LYI NIB_KCOL
-        LAM
-        ALEI 0                  ; ST <- 1 when nothing is bursting
-        BR rk_done
-        MNEI COL_NO_BURST + 1   ; the nibble is the column plus one, so this is
-                                ; the battleship's column: ST <- 0 there, 1
-                                ; everywhere else
-        BR rk_draw
-rk_done:
-        JMPL render_score
-rk_draw:
-        LYI NIB_KLANE
-        LAM
-        AI LANEP_BURST
-        LXI FILE_TIME
-        LYI NIB_SCRATCH
-        XMA                     ; scratch <- the PAT_LANE index
-        LXI FILE_STATE
-        LYI NIB_KCOL
-        LAM
-        AI 15
-        P PAT_COLUMN            ; A <- the grid that column is strobed on
-        LXI FILE_TIME
-        LYI NIB_SCRATCH2
-        XMA                     ; scratch2 <- the grid
-        LYI NIB_SCRATCH
-        LBM                     ; B <- the PAT_LANE index
-        LYI NIB_SCRATCH2
-        LAM
-        LYA                     ; Y <- the grid
-        LAB
-        CALL or_plate
-        JMPL render_score
-
-; ============================================================================
-; the score digits
-; ============================================================================
-;
-; Grids 6-8 are not playfield - nothing else on the tube hangs under them - so
-; these lookups own their nibbles outright and no OR is needed here. Segments a-d
-; are plates 0-3 (R0) and e,f,g plates 4-6 (R1), which is the atlas's own
-; seven-segment order.
-;
-; A leading digit is dark while it and every digit above it is zero, so the tube
-; carries a 1-3 digit number and never a leading zero. The units digit is not a
-; leading digit and always lights: a score of nothing reads as a single `0`, which
-; is what both photographs of the lit unit show
-; (assets/reference/tube-closeup-score0.webp shows one `0`,
-; tube-closeup-score10.webp shows `10` with the tens column lit). PRD v1 rule 6
-; calls the readout "2-3 digit", which describes the field on the glass - three
-; digit positions, two of them lit through most of a game; the photographs are
-; what settle how a score under ten is drawn into it.
-;
-; The blank is an omitted write, not a write of zero - render_field has already
-; cleared all three plate files, so a column nothing draws into stays dark for the
-; whole sweep.
-
-render_score:
-        ; --- the units digit, which is never blanked ---
-        LXI FILE_TIME
-        LYI NIB_SC_U
-        LAM
-        P PAT_DIGIT             ; A <- segments a-d, B <- segments e-g
-        LXI FILE_PLATE0
-        LYI GRID_SC_U
-        XMA
-rs_units_hi:
-        ; Segments e, f and g share grid 8's R1 nibble with the SCORE label on
-        ; plate 7, which render_status wrote at the head of the chain. So this
-        ; half ORs where the low half overwrites - the same reason, and the same
-        ; idiom, as render_hundreds sharing grid 7's R1 nibble with the tens.
-        ; B still holds e-g from the P above; LXI and XMA leave it alone.
-        LXI FILE_PLATE1         ; Y is still GRID_SC_U
-        LAM
-        OR
-        XMA
-
-        ; --- the tens digit, blanked while it and the hundreds are both zero ---
-        LXI FILE_TIME
-        LYI NIB_SC_T
-        LAM
-        ALEI 0                  ; ST <- 1 while the tens digit is zero
-        BR rs_tens_leading      ; a zero tens may still be a leading zero
-rs_tens_show:
-        P PAT_DIGIT
-        LXI FILE_PLATE0
-        LYI GRID_SC_T
-        XMA
-        LAB
-        LXI FILE_PLATE1
-        XMA
-        BR rs_tens_done
-rs_tens_leading:
-        LYI NIB_SC_H            ; X is still FILE_TIME
-        LAM
-        ALEI 0                  ; ST <- 1 when the hundreds digit is zero as well
-        BR rs_tens_done         ; under ten: leave the column dark
-        LAI 0                   ; 100 and up: a zero tens is not a leading zero
-        BR rs_tens_show
-rs_tens_done:
-        JMPL render_hundreds
-
-; ============================================================================
-; the hundreds, which is half a digit
-; ============================================================================
-;
-; The tube's readout is two digit cells, not three: the left one carries the
-; tens as a full seven-segment digit and the hundreds beside it as two strokes
-; reading `1` (assets/reference/tube-teardown/score-block.jpg). The score caps
-; at 199, so the hundreds is only ever 1 or nothing and one plate expresses it -
-; there is no digit lookup here any more, and the five seven-segment addresses
-; the atlas used to carry for it were phosphor the glass does not have.
-;
-; It ORs rather than overwrites because it shares grid 7's R1 nibble with the
-; tens digit's e, f and g segments, which the block above has already written.
-; This is the tail of the render chain, so its RTN returns to the sweep.
-
-render_hundreds:
-        LXI FILE_TIME
-        LYI NIB_SC_H
-        LAM
-        ALEI 0                  ; ST <- 1 below one hundred: nothing to light
-        BR rh_blank
-        LXI FILE_PLATE1
-        LYI GRID_SC_T
-        LBI PLATE_SC_HUND
-        LAM
-        OR
-        XMA
-rh_blank:
-        RTN
-
-; ============================================================================
-; one sweep's worth of game state
-; ============================================================================
-;
-; The head of the tick chain. Every block below is entered with JMPL and leaves
-; with JMPL, so the whole chain costs the single stack level `sweep` spent
-; calling it, and the last block's RTN is the one that returns.
-
-.PAGE
-tick:   ; --- the sweep counter, which is the only clock the program has ---
-        LXI FILE_TIME
-        LYI NIB_TICK
-        LAM
-        AI 1
-        XMA
-
-        ; --- a finished game stops moving; only a power cycle restarts it ---
-        ; PRD v1 rule 6 and the back label: "To start new game simply slide
-        ; switch to 'off' and then to 'on' again." There is deliberately no
-        ; restart path in this ROM.
-        LXI FILE_STATE
-        LYI NIB_STATE
-        LAM
-        ALEI ST_PLAY
-        BR tk_playing
-        RTN
-tk_playing:
-        JMPL tick_burst
-
-; ============================================================================
-; a burst goes out
-; ============================================================================
-;
-; A burst is the one thing on this tube that is neither an object with a
-; position nor a permanent readout: it is lit for a fixed number of sweeps and
-; then it is not. It has no rule of its own beyond that - a jet-kill burst does
-; not collide with anything and the player's own does not either.
-
-tick_burst:
-        LXI FILE_STATE
-        LYI NIB_KCOL
-        LAM
-        ALEI 0                  ; ST <- 1 when nothing is bursting
-        BR tk_burst_done
-        LXI FILE_TIME
-        LYI NIB_KSTEP
-        LAM
-        ALEI 0
-        BR tk_burst_gone
-        AI 15                   ; A - 1
-        XMA
-        BR tk_burst_done        ; unconditional: ST is 1 after the untaken BR
-tk_burst_gone:
-        LXI FILE_STATE
-        LYI NIB_KCOL
-        LAI 0
-        XMA                     ; the glass goes dark again
-tk_burst_done:
-        JMPL tick_missile
-
-; ============================================================================
-; the player's missile advances
-; ============================================================================
-
-.PAGE
-tick_missile:
-        LXI FILE_STATE
-        LYI NIB_MCOL
-        LAM
-        ALEI 0                  ; ST <- 1 when nothing is in flight
-        BR tm_done
-
-        ; --- one column every MISSILE_SWEEPS sweeps ---
-        LXI FILE_TIME
-        LYI NIB_MSTEP
-        LAM
-        ALEI 0
-        BR tm_advance
-        AI 15                   ; A - 1
-        XMA
-        BR tm_done              ; unconditional: ST is 1 after the untaken BR
-
-tm_advance:
-        LXI FILE_TIME
-        LYI NIB_MSTEP
-        LAI MISSILE_SWEEPS
-        XMA
-        LXI FILE_STATE
-        LYI NIB_MCOL
-        LAM
-        AI 1                    ; the missile travels away from the player
-        XMA
-        LAM                     ; A <- the column it has just reached
-        ALEI COL_BSHIP          ; still on the field?
-        BR tm_hit_test
-        LAI 0                   ; off the far end: the shot is spent
-        XMA
-tm_done:
-        JMPL tick_jets
-tm_hit_test:
-        JMPL missile_hit
-
-; ============================================================================
-; did the missile reach anything
-; ============================================================================
-;
-; One jet to test: the one flying down the lane the shot is in, if there is one.
-; Its nibble is its column plus one, so the comparison is against the missile's
-; column plus one - done the other way round, taking one off the jet, so that an
-; empty lane (nibble zero) is rejected before the arithmetic.
-
-.PAGE
-missile_hit:
-        LXI FILE_STATE
-        LYI NIB_MLANE
-        LAM
-        LYA                     ; Y <- the lane the shot is flying down
-        LXI FILE_JETS
-        LAM
-        ALEI 0                  ; ST <- 1 when no jet is flying in that lane
-        BR mh_bship
-        AI 15                   ; A <- the column that jet stands in
-        LXI FILE_STATE
-        LYI NIB_MCOL
-        ANEM                    ; ST <- 1 when the shot has not reached it
-        BR mh_bship
-        LYI NIB_MLANE
-        LAM
-        LYA
-        LXI FILE_JETS
-        LAI 0
-        XMA                     ; the jet is destroyed and its lane is free
-        JMPL missile_kill
-mh_bship:
-        JMPL missile_bship
-
-; ============================================================================
-; or the battleship
-; ============================================================================
-;
-; The tube has a battleship segment per lane, and NIB_BSLANE says which one is
-; lit, so the shot has to be in that lane to reach it. This used to test the
-; centre lane instead - not because the ship was there, but because the centre
-; lane was the only one the tube could draw it in, and NIB_BSLANE showed nowhere
-; on the glass. The player can now see which lane the ship is in, so that is the
-; lane the shot has to be in. See render_bship.
-
-missile_bship:
-        LXI FILE_STATE
-        LYI NIB_BSLANE
-        LAM
-        ALEI LANE_LAST          ; ST <- 0 when no crossing is in progress
-        BR mb_lane
-        JMPL tick_jets
-mb_lane:
-        LYI NIB_MLANE
-        ANEM                    ; ST <- 1 when the shot is in another lane
-        BR mb_none
-        LAI COL_BSHIP
-        LYI NIB_MCOL
-        ANEM                    ; ST <- 1 when the missile is not in that column
-        BR mb_none
-        JMPL bship_kill
-mb_none:
-        JMPL tick_jets
-
-; ============================================================================
-; a jet is destroyed
-; ============================================================================
-;
-; PRD v1 rule 4: jets are worth 3 / 2 / 1 by the distance band they are hit in,
-; read off PAT_COLUMN's high nibble so the geometry lives in one table. The beep
-; is the missile-fire beep: audio-reference.md records the owner's confirmation
-; that a missile hitting something makes the same sound as firing it, and that
-; there is no separate explosion.
-
-missile_kill:
-        ; --- the burst the dying jet leaves, where it was standing ---
-        ; Set before the score, because add_score can run off into the win
-        ; jingle and never come back to this block. The shot is still in the
-        ; nibble that says where it got to, which is where the jet was.
-        LXI FILE_STATE
-        LYI NIB_MLANE
-        LBM
-        LYI NIB_MCOL
-        LAM
-        CALL start_burst
-
-        LXI FILE_TIME
-        LYI NIB_SCRATCH
-        LAI 0
-        XMA                     ; add_score's tens addend: jets never score ten
-        LXI FILE_STATE
-        LYI NIB_KILLS
-        LAM
-        AI 1
-        XMA                     ; one fewer jet in this squadron
-
-        ; The hit beep first, then the score. Scoring can reach 199 and take the
-        ; win jingle with it, and the jingle has to follow the hit it was earned
-        ; by rather than interrupt it.
-        LAI SND_MISSILE
-        LBI BURSTS_MISSILE
-        CALL play_sound
-
-        LXI FILE_STATE
-        LYI NIB_MCOL
-        LAM
-        P PAT_COLUMN            ; B <- the scoring band for that column
-        LAI 0
-        XMA                     ; the shot is spent; B still holds the band
-        LAB
-        CALL add_score
-        JMPL tick_jets
-
-; ============================================================================
-; the battleship is destroyed
-; ============================================================================
-;
-; Ten points, per the printed ruler's "10" over the battleship zone. Ten is not a
-; BCD digit, so it is added as a one in the tens place rather than as a ten in
-; the units place - which is what add_score's scratch addend is for.
+; --- the battleship is hit ---------------------------------------------------
 
 bship_kill:
-        LXI FILE_STATE
-        LYI NIB_BSLANE
-        LAI BS_NONE
-        XMA                     ; it leaves the zone
-        LYI NIB_MCOL
-        LAI 0
-        XMA
+        LDX  FILE_STATE
+        TCY  NIB_MCOL
+        TCMIY 0
+        TCY  NIB_BSLANE
+        TMA
+        TCY  NIB_KLANE
+        TAM
+        TCY  NIB_KCOL
+        TCMIY GRID_BSHIP + 1
+        TCY  NIB_BSLANE
+        TCMIY BS_NONE           ; the crossing ends early
+        LDX  FILE_D0
+        TCY  NIB_BUZZ
+        TCMIY 0                 ; and the buzz stops with the boat
+        TCY  R_SPEAKER
+        RSTR                    ; leaving the pin low
+        LDX  FILE_TIME
+        TCY  NIB_KSTEP
+        TCMIY BURST_SWEEPS
+        TCY  NIB_BS_LO
+        TCMIY BSHIP_GAP_LO
+        TCMIY BSHIP_GAP_HI
+        LDP  P_SCORE
+        BR   score_bship
 
-        ; Shot out from under the buzz. The missile beep below is played by
-        ; note_loop and would otherwise fight the dwell for the same pin.
-        CALL bship_hush
 
-        ; --- schedule the next crossing ---
-        ; Inline rather than a jump to bship_wait: that block is the tail of the
-        ; battleship's own turn and returns to tick_input, which from here would
-        ; cost the jets and the rockets their turn on this sweep.
-        LYI NIB_RAND
-        LAM
-        LXI FILE_TIME
-        LYI NIB_BS_LO
-        LMAIY
-        LAI BSHIP_GAP_HI
-        LMAIY
-
-        LAI SND_MISSILE
-        LBI BURSTS_MISSILE
-        CALL play_sound
-
-        ; Ten points, and the beep comes first for the same reason it does in
-        ; missile_kill: this score can be the winning one.
-        LXI FILE_TIME
-        LYI NIB_SCRATCH
-        LAI 1
-        XMA                     ; tens addend: 10 points
-        LAI 0                   ; units addend
-        CALL add_score
-        JMPL tick_jets
 
 ; ============================================================================
-; the score, in BCD
+; Page 1 - the R-plate pass, and the crossing into the high bank
 ; ============================================================================
 ;
-; In:  A = the units addend (0..9), FILE_TIME[NIB_SCRATCH] = the tens addend.
-; Out: nothing. May end the game through score_cap.
+; Plates 8-11 are R11-R14 and are outside the output PLA entirely: `SETR` and
+; `RSTR` drive them one line at a time and they stay where they are put. So this
+; is not a fifth O pass. It is a walk over grids 0-6 that, for each grid naming
+; a line, raises that line, lights the grid for a dwell, and puts both back.
 ;
-; Three BCD digits in RAM, added with AM/AMC and adjusted with DAA, which is what
-; the family's decimal adjust is for: DAA turns a binary nibble sum into a
-; decimal digit and leaves the decimal carry in the carry flag, so the three
-; digits chain with AMC. Nothing between the adds writes carry (isa.ts flag rule
-; 1 lists every instruction that does), so the chain is safe to read straight
-; down.
-
-add_score:
-        LXI FILE_TIME
-        LYI NIB_SC_U
-        AM                      ; A <- addend + units
-        DAA                     ; -> a decimal digit, carry <- decimal carry
-        XMA
-
-        LYI NIB_SCRATCH
-        LAM                     ; A <- the tens addend
-        LYI NIB_SC_T
-        AMC                     ; A <- addend + tens + carry
-        DAA
-        XMA
-
-        LAI 0
-        LYI NIB_SC_H
-        AMC
-        DAA
-        XMA
-
-        JMPL score_cap
-
-; ============================================================================
-; 199 is the ceiling and the win
-; ============================================================================
+; O has to be dark for all of it or the far pass's mask would be lit again under
+; every grid this one strobes. Dark is slot 0 - `TDO` with A = 0 and the latch
+; clear - which is why this pass runs before the crossing rather than after it.
 ;
-; PRD v1 rule 6 and R2: the player wins at 199 and the score caps there. The
-; check is an explicit digit-by-digit compare rather than a subtraction, because
-; the score is BCD and a binary compare of a BCD triple is only correct by
-; accident.
+; The grid index has to be parked in NIB_RGRID rather than kept in a register,
+; because Y is needed twice with different values (the plate line, then the
+; grid) and A is needed for the line arithmetic in between.
 
-.PAGE
-score_cap:
-        LXI FILE_TIME
-        LYI NIB_SC_H
-        LAM
-        ALEI 1                  ; ST <- hundreds <= 1
-        BR sc_have_h
-        BR sc_win               ; 200 or more: cap it back to 199
-sc_have_h:
-        ALEI 0                  ; ST <- hundreds == 0
-        BR sc_done              ; below 100: nothing to cap
-        LYI NIB_SC_T
-        LAM
-        ALEI 8                  ; ST <- tens <= 8
-        BR sc_done
-        LYI NIB_SC_U
-        LAM
-        ALEI 8                  ; ST <- units <= 8
-        BR sc_done
-sc_win:
-        LXI FILE_TIME
-        LYI NIB_SC_U
-        LAI 9
-        LMAIY
-        LAI 9
-        LMAIY
-        LAI 1
-        XMA                     ; the readout is pinned at 199
-        JMPL game_win
-sc_done:
-        RTN
+.PAGE P_RPLATE
 
-; ============================================================================
-; the squadron's turn
-; ============================================================================
+sweep_rplate:
+        LDX  FILE_D3
+        CLA
+        TDO                     ; O dark; the latch is still clear
+        CLA
+        TAY                     ; Y = grid 0
+rp_grid:
+        LDX  FILE_D3
+        MNEZ                    ; does this grid name a plate line?
+        BR   rp_lit
+        BR   rp_next
+rp_lit:
+        TYA
+        TCY  NIB_RGRID
+        TAM                     ; park the grid
+        TMY                     ; and take it straight back into Y
+        TMA                     ; A <- the line code, 1..4
+        A10AAC                  ; A <- 11..14, the R line itself
+        TAY
+        SETR                    ; the plate line up
+        TCY  NIB_RGRID
+        TMY                     ; Y <- the grid
+        SETR                    ; the grid on
+        CLA
+        A3AAC
+rp_dwell:
+        A15AAC                  ; the dwell, matched to an O strobe's
+        BR   rp_dwell
+        RSTR                    ; the grid off
+        TCY  NIB_RGRID
+        TMY
+        TMA                     ; the line code again
+        A10AAC
+        TAY
+        RSTR                    ; the plate line down
+        TCY  NIB_RGRID
+        TMY                     ; Y <- the grid, for the walk
+rp_next:
+        IYC
+        YNEC GRID_PLAYER + 1
+        BR   rp_grid
+
+; --- the crossing: latch clear -> latch set ----------------------------------
 ;
-; A wave is six jets (JET_COUNT), and they are neither all in the air at once nor
-; moved as one. Each sweep: release a jet if one is due and a lane is free, then
-; give each airborne jet's own countdown a tick. PRD v1 rule 2's "step, pause,
-; step" is that countdown, and its "as a squadron thins out, the survivors speed
-; up" is speed_index, which every jet reloads from on every step. What the six of
-; them add up to at any moment is the squadron - two or so jets, in different
-; lanes at different distances, as in assets/reference/device-front-gameplay.jpg.
+; `YNEA` is the only instruction on this core that loads the status latch. There
+; is no set and no clear, so three instructions with Y != A is the whole
+; mechanism, and the sweep is ordered so that it is needed exactly twice.
 
-.PAGE
+        CLA
+        TCY  1
+        YNEA                    ; Y != A, so the latch takes 1
+        LDP  P_PAIR
+        TCY  0
+        YNEC 1
+        BR   sweep_pair
+
+; --- pressing fire -----------------------------------------------------------
+;
+; Edge triggered, so a held button fires once. There is no auto-repeat in the
+; hardware and there is none here.
+
+tick_fire:
+        LDX  FILE_STATE
+        TCY  NIB_FIREP
+        MNEZ                    ; was it already down last sweep?
+        BR   tick_jets
+        TCY  NIB_FIRE
+        MNEZ
+        BR   tk_fired
+        BR   tick_jets
+tk_fired:
+        TCY  NIB_MCOL
+        MNEZ                    ; one missile at a time
+        BR   tick_jets
+        LDP  P_STROBE
+        BR   fire_missile
+
 tick_jets:
-        ; --- a wave shot down to the last jet is replaced ---
-        LXI FILE_STATE
-        LYI NIB_KILLS
-        MNEI JET_COUNT          ; ST <- 0 when the last jet of the wave is down
-        BR tj_release
-        JMPL new_wave
-tj_release:
-        JMPL jet_release
+        LDP  P_JETS
+        BR   jet_march
+
+
 
 ; ============================================================================
-; is another jet due
+; Page 2 - the two high-bank passes
+; ============================================================================
+
+.PAGE P_PAIR
+
+; --- pass 3: pair, plates 6-7, grids 0-8, latch set --------------------------
+;
+; The battleship's burst on grid 0, the player's missile on grids 1-5, the
+; launcher on grid 6, and one indicator each on grids 7 and 8 - `score_hundreds`
+; and `score_label`, both plate 7. Nine strobes.
+;
+; The single exception in the whole layout lives here and is enforced by the
+; render step rather than by this loop: on grids 7 and 8 plate 6 is segment g of
+; the digit, so those two nibbles may carry lane 1 and must never carry lane 0.
+; A pair strobe with lane 0 set would put a bar through the numeral at half
+; brightness and read as a renderer fault rather than as a ROM one.
+
+sweep_pair:
+        CLA
+        TAY
+sw_pair:
+        LDX  FILE_D2
+        TMA                     ; A <- OPLA_A_PAIR + bitmap
+        LDP  P_STROBE
+        CALL strobe
+        IYC
+        YNEC GRID_SC_U + 1
+        BR   sw_pair
+
+; --- pass 4: digit, plates 0-6, grids 7-8, latch set -------------------------
+;
+; The BCD nibble passes through the table untouched: the seven-segment decode
+; lives in the mask, so a score digit is drawn by `TDO` with no conversion at
+; all and no ROM page is spent on a decoder. The blank tens digit has its own
+; high-bank slot so that suppressing a leading zero costs the same two
+; instructions as drawing one and does not move the latch.
+
+        TCY  GRID_SC_T
+sw_digit:
+        LDX  FILE_D3
+        TMA                     ; A <- the digit, or OPLA_A_DIGIT_BLANK
+        LDP  P_STROBE
+        CALL strobe
+        IYC
+        YNEC GRID_SC_U + 1
+        BR   sw_digit
+
+; --- the crossing back: latch set -> latch clear -----------------------------
+
+        CLA
+        TCY  0
+        YNEA                    ; Y == A, so the latch takes 0
+        LDP  P_SWEEP
+        TCY  0
+        YNEC 1
+        BR   main_work
+
+; --- the fire button, read with both strobe columns low ----------------------
+
+input_fire:
+        LDX  FILE_STATE
+        TCY  NIB_FIRE
+        TMA
+        TCY  NIB_FIREP
+        TAM                     ; last sweep's contact, before this one is taken
+        LDX  FILE_D0
+        TKA                     ; R9 and R10 are both low: this is K8 alone
+        TCY  NIB_KSCR
+        TAM
+        TBIT1 K_BIT_FIRE
+        BR   if_down
+        BR   if_up
+if_down:
+        LDX  FILE_STATE
+        TCY  NIB_FIRE
+        TCMIY 1
+        BR   if_done
+if_up:
+        LDX  FILE_STATE
+        TCY  NIB_FIRE
+        TCMIY 0
+        BR   if_done
+if_done:
+        LDP  P_TICK
+        BR   tick
+
+
+
+; ============================================================================
+; Page 3 - `strobe`, and the room left over
 ; ============================================================================
 ;
-; In:  nothing. Out: nothing.
+; `strobe` is called 24 times a sweep, once per O strobe.
 ;
-; The wave's six enter a few at a time on their own countdown. Once all six have
-; been sent that countdown stops mattering: what is left of the wave is whatever
-; is still flying.
-
-jet_release:
-        LXI FILE_JETS
-        LYI NIB_J_SENT
-        MNEI JET_COUNT          ; ST <- 0 when the whole wave has been sent
-        BR jr_timer
-        JMPL jet_advance
-jr_timer:
-        LXI FILE_TIME
-        LYI NIB_ENTRY_LO
-        CALL dec_timer          ; A <- 1 on the sweep the countdown reaches zero
-        ALEI 0                  ; ST <- 1 while it is still running
-        BR jr_done
-        JMPL jet_enter
-jr_done:
-        JMPL jet_advance
-
-; ============================================================================
-; the gap to the jet after this one
-; ============================================================================
+;   in    A = the accumulator half of the PLA index, Y = the grid
+;   out   Y unchanged, A = the grid, X = FILE_D0
 ;
-; In:  nothing. Out: nothing.
+; It is a leaf and calls nothing. That is not a style choice: the return address
+; is one register guarded by the call latch, so a `CALL` from in here would lose
+; the sweep's own return and the assembler refuses it.
 ;
-; Twice the current step period, plus the sampled counter. Two periods is what
-; keeps about two jets in the air at once, which is the formation the reference
-; photograph shows; taking it from PAT_STEP rather than from a constant of its
-; own means the field stays about that sparse at every skill setting and every
-; rung of the thin-out ladder, instead of emptying out as the survivors speed up.
-; The low nibble is NIB_RAND - the free-running counter as the player's last
-; press left it, the machine's only randomness (PRD R3) - which is what stops the
-; entries settling into a fixed diagonal.
-
-jet_enter:
-        CALL speed_index
-        P PAT_STEP              ; A <- the period's low nibble, B <- its high
-        REC
-        ROTL                    ; A <- lo * 2; the carry belongs to the high half
-        LAB
-        ROTL                    ; A <- hi * 2 plus that carry
-        LXI FILE_TIME
-        LYI NIB_ENTRY_HI
-        XMA
-        LXI FILE_STATE
-        LYI NIB_RAND
-        LAM
-        LXI FILE_TIME
-        LYI NIB_ENTRY_LO
-        XMA
-        JMPL jet_room
-
-; ============================================================================
-; is there room for it
-; ============================================================================
+; X is loaded here rather than trusted from the caller because `SETR` and `RSTR`
+; index the R latch as `BIT(X, 2) << 4 | Y`. With X >= 4 the grid would never
+; light and nothing anywhere would report it.
 ;
-; In:  nothing. Out: nothing.
+; The buzz is ticked *between* `SETR` and `RSTR` so that its work is part of the
+; grid's dwell rather than added to the dark time between strobes. The grid
+; index is parked in A across it, which works because `DMAN`, `MNEZ`, `TCMIY`,
+; `TBIT1`, `SBIT`, `RBIT`, `SETR` and `RSTR` all leave A alone - one register is
+; enough to get Y back.
+
+.PAGE P_STROBE
+
+strobe:
+        TDO                     ; O <- the mask this index selects
+        LDX  FILE_D0
+        SETR                    ; the grid on
+        TYA                     ; park the grid in A
+        TCY  NIB_BUZZ
+        MNEZ                    ; is the battleship's buzz running?
+        BR   st_buzz
+        BR   st_off
+st_buzz:
+        TCY  NIB_SGRID
+        TAM                     ; and park it in RAM as well, because `DMAN` is
+        TCY  NIB_BUZZ           ; decrement-into-*accumulator* and would take
+        DMAN                    ; the grid with it. Only this arm pays for it,
+        TAM                     ; and it is the arm the boat is on the glass for
+        MNEZ                    ; zero is the edge; anything else is still
+        BR   st_grid            ; counting down to it
+        TCMIY BUZZ_DIV          ; reload, and step Y on to the phase nibble
+        TBIT1 0
+        BR   st_fall
+        BR   st_rise
+st_fall:
+        RBIT 0
+        TCY  R_SPEAKER
+        RSTR
+        BR   st_grid
+st_rise:
+        SBIT 0
+        TCY  R_SPEAKER
+        SETR
+        BR   st_grid
+st_grid:
+        TCY  NIB_SGRID
+        TMA                     ; A <- the grid, back out of RAM
+        BR   st_off
+st_off:
+        TAY                     ; the grid, back out of A
+        RSTR                    ; the grid off
+        RETN
+
+; --- fire_missile ------------------------------------------------------------
 ;
-; The gap above is reloaded whether or not this jet gets in, so a full sky costs
-; the wave a turn rather than queueing one up to arrive the moment a lane frees.
-; AIRBORNE_MAX is the photograph's two.
-
-.PAGE
-jet_room:
-        LXI FILE_JETS
-        LYI NIB_J_LANE0
-        LBI 0
-jrm_lane:
-        LAM
-        ALEI 0                  ; ST <- 1 when this lane is empty
-        BR jrm_next
-        IB                      ; one more jet already in the air
-jrm_next:
-        IY
-        YNEI LANE_COUNT
-        BR jrm_lane
-        LAB
-        ALEI AIRBORNE_MAX - 1   ; ST <- 1 while the sky has room for another
-        BR jrm_spawn
-        JMPL jet_advance
-jrm_spawn:
-        JMPL jet_spawn
-
-; ============================================================================
-; and where it comes in
-; ============================================================================
-;
-; In:  nothing. Out: nothing.
-;
-; A rotor picks the lane, so three consecutive entries land in three different
-; lanes; where the rotor starts is the sampled counter, so which lane leads is
-; not the same every wave. A lane that still holds a jet is skipped rather than
-; queued: the field is allowed to stay sparse, and the wave simply takes longer
-; to come out. The rotor moves on either way, so a busy lane cannot stall it.
-
-.PAGE
-jet_spawn:
-        LXI FILE_JETS
-        LYI NIB_J_ROTOR
-        LAM
-        LBA                     ; B <- the lane this entry tries
-        AI 1
-        ALEI LANE_LAST          ; ST <- 1 while the rotor is still on the field
-        BR jsp_rotor
-        LAI 0                   ; three lanes, so it wraps back to the top one
-jsp_rotor:
-        XMA                     ; left pointing at the lane after this one
-        LAB
-        LYA                     ; Y <- this entry's lane
-        LAM
-        ALEI 0                  ; ST <- 1 when that lane is empty
-        BR jsp_place
-        JMPL jet_advance        ; the lane is busy: nothing enters this time
-jsp_place:
-        LAI COL_JET_FAR + 1     ; a jet nibble is its column plus one, so that
-        XMA                     ; zero can mean "no jet in this lane"
-        LAB
-        LYI NIB_J_WORK
-        XMA                     ; jet_reload takes the lane in NIB_J_WORK
-        LYI NIB_J_SENT
-        LAM
-        AI 1
-        XMA                     ; one more of the wave's six is airborne
-        CALL jet_reload         ; its step countdown starts from this sweep
-        JMPL jet_advance
-
-; ============================================================================
-; a lane's step countdown
-; ============================================================================
-;
-; In:  NIB_J_WORK = the lane. Out: nothing. Clobbers A, B, X, Y.
-;
-; Every jet reloads the same cadence - one squadron, one step period, the whole
-; of PRD v1 rule 2's speed-up curve intact - but reloads it at the moment *it*
-; stepped. Same period, different phase, which is the difference between a
-; squadron and a block: the jets step one at a time.
-;
-; The pair is written in two passes because the cadence needs both A and B and
-; the index needs A as well; the lane is read back from NIB_J_WORK each time
-; rather than parked in a register that the lookup would take.
-
-jet_reload:
-        CALL speed_index
-        P PAT_STEP              ; A <- sweeps low nibble, B <- high nibble
-        LXI FILE_JETS
-        LYI NIB_J_TEMP
-        XMB                     ; temp <- the high nibble
-        LBA                     ; B <- the low nibble
-        LYI NIB_J_WORK
-        LAM
-        REC
-        ROTL                    ; A <- lane * 2
-        AI NIB_J_STEP           ; A <- this lane's countdown, low nibble
-        LYA
-        LAB
-        XMA
-        LYI NIB_J_TEMP
-        LBM                     ; B <- the high nibble again
-        LYI NIB_J_WORK
-        LAM
-        REC
-        ROTL
-        AI NIB_J_STEP + 1       ; A <- the same countdown's high nibble
-        LYA
-        LAB
-        XMA
-        RTN
-
-; ============================================================================
-; every jet takes its turn
-; ============================================================================
-;
-; In:  nothing. Out: nothing.
-;
-; Three lanes, walked with the lane in RAM rather than in a register, so the walk
-; is a JMPL loop and costs no stack. Two things are collected across the walk in
-; NIB_J_FLAG: whether any jet stepped, so the march beep sounds once a sweep
-; rather than once a jet, and whether any jet reached the G line.
-
-jet_advance:
-        LXI FILE_JETS
-        LYI NIB_J_FLAG
-        LAI 0
-        XMA                     ; nothing has stepped or captured this sweep
-        LYI NIB_J_WORK
-        LAI 0
-        XMA                     ; the walk starts at lane 0
-        JMPL jet_lane
-
-.PAGE
-jet_lane:
-        LXI FILE_JETS
-        LYI NIB_J_WORK
-        LAM
-        LYA                     ; Y <- the lane; its jet shares that index
-        LAM
-        ALEI 0                  ; ST <- 1 when no jet is flying in this lane
-        BR jl_next
-        JMPL jet_lane_step
-jl_next:
-        JMPL jet_next
-
-jet_lane_step:
-        LXI FILE_JETS
-        LYI NIB_J_WORK
-        LAM
-        REC
-        ROTL                    ; A <- lane * 2
-        AI NIB_J_STEP           ; A <- this lane's countdown, low nibble
-        LYA
-        CALL dec_timer          ; A <- 1 on the sweep the countdown reaches zero
-        ALEI 0                  ; ST <- 1 while it is still running
-        BR jls_next
-        JMPL jet_move
-jls_next:
-        JMPL jet_next
-
-; ============================================================================
-; one jet steps
-; ============================================================================
-;
-; In:  NIB_J_WORK = the lane. Out: nothing.
-;
-; The step happens first and the capture test second, so a jet that arrives on
-; the G line is recognised on the sweep it arrives, not the one after.
-;
-; PRD v1 rule 6, as amended: reaching G costs a launcher rather than ending the
-; game. The jet is taken off the field here, on the same two nibbles a jet
-; shot down goes through in missile_hit - its lane nibble cleared and NIB_KILLS
-; incremented. Both are load bearing. Leaving the jet standing would cost the
-; player a second launcher on its next step, because a nibble of 1 fails the
-; same ALEI 1 again; and leaving NIB_KILLS alone would strand the wave, because
-; tick_jets renews a squadron on the kill count reaching JET_COUNT and only six
-; are ever sent. A captured jet is one of the six that has left the field, so
-; the count that decides the wave is over has to see it, whatever removed it.
-;
-; It scores nothing - only missile_kill reaches add_score - but it does move the
-; survivors down a rung of the thin-out ladder, which speed_index reads from the
-; same counter. A squadron that put a jet through the player's line has thinned
-; by one, so that is the right answer rather than an artefact.
-;
-; Nothing is drawn differently: draw_jet already declines to draw a jet in
-; column COL_LAUNCH, because the tube prints no aircraft in the player's cell.
-; What the player sees at a capture is the red starburst launcher_down lights in
-; that cell, which is the segment the tube does have for it.
-
-.PAGE
-jet_move:
-        CALL jet_reload         ; this jet's next step, from this moment
-        LXI FILE_JETS
-        LYI NIB_J_FLAG
-        SEM FLAG_STEPPED        ; one march beep will follow this sweep
-        LYI NIB_J_WORK
-        LAM
-        LYA                     ; Y <- the lane
-        LAM
-        AI 15                   ; one column closer to the missile station
-        XMA
-        LAM
-        ALEI 1                  ; ST <- 1 when the jet now stands on the G line
-        BR jm_capture
-        JMPL jet_next
-jm_capture:
-        LXI FILE_JETS
-        LYI NIB_J_WORK
-        LAM
-        LYA                     ; Y <- the lane; its jet shares that index
-        LAI 0
-        XMA                     ; the jet has arrived and leaves the field
-        LXI FILE_STATE
-        LYI NIB_KILLS
-        LAM
-        AI 1
-        XMA                     ; one fewer jet in this squadron
-        LXI FILE_JETS
-        LYI NIB_J_FLAG
-        SEM FLAG_CAPTURED
-        JMPL jet_next
-
-jet_next:
-        LXI FILE_JETS
-        LYI NIB_J_WORK
-        LAM
-        AI 1
-        XMA                     ; on to the next lane
-        LAM
-        ALEI LANE_LAST          ; ST <- 1 while there are lanes left to walk
-        BR jn_lane
-        JMPL jet_swept
-jn_lane:
-        JMPL jet_lane
-
-; ============================================================================
-; what the walk found
-; ============================================================================
-;
-; In:  NIB_J_FLAG. Out: nothing.
-;
-; One march beep per sweep at most, however many jets stepped on it: the beep is
-; the squadron's step, and audio-reference.md's jetMarch is one note, not a
-; chord. A capture beats it - the warning beeps are what the player has to hear,
-; and launcher_down owns the speaker for the rest of the sweep.
-;
-; One launcher per sweep at most, too, for the same reason and by the same
-; mechanism: NIB_J_FLAG carries one capture bit however many jets set it. Two
-; jets arriving on the same sweep is one event to a player - they land inside
-; the same few milliseconds - and charging two launchers for it would make the
-; cost of a capture depend on whether two lanes' countdowns happened to be in
-; phase. Both jets still leave the field and both are still counted out of the
-; wave; it is only the charge that is capped.
-
-jet_swept:
-        LXI FILE_JETS
-        LYI NIB_J_FLAG
-        TM FLAG_CAPTURED        ; ST <- 1 when a jet reached the G line
-        BR js_capture
-        LXI FILE_JETS
-        LYI NIB_J_FLAG
-        TM FLAG_STEPPED         ; ST <- 1 when a jet stepped this sweep
-        BR js_march
-        JMPL tick_rocket
-js_march:
-        LAI SND_MARCH
-        LBI BURSTS_MARCH
-        CALL play_sound
-        JMPL tick_rocket
-js_capture:
-        JMPL launcher_down
-
-; ============================================================================
-; a fresh squadron
-; ============================================================================
-
-.PAGE
-new_wave:
-        ; --- the field is clear and none of the next six has been sent ---
-        LXI FILE_JETS
-        LYI NIB_J_LANE0
-        LMIIY 0
-        LMIIY 0
-        LMIIY 0                 ; three empty lanes
-        LYI NIB_J_SENT
-        LAI 0
-        XMA
-
-        ; --- which lane the first of them tries, from the sampled counter ---
-        LXI FILE_STATE
-        LYI NIB_RAND
-        LAM
-nw_lane:
-        ALEI LANE_LAST          ; ST <- 1 once the counter has come down to a lane
-        BR nw_rotor
-        AI 13                   ; less three, and round again
-        BR nw_lane              ; unconditional: ST is 1 after the untaken BR
-nw_rotor:
-        LXI FILE_JETS
-        LYI NIB_J_ROTOR
-        XMA
-        JMPL new_wave_count
-
-; ============================================================================
-; and its place on the speed ladder
-; ============================================================================
-
-new_wave_count:
-        LXI FILE_STATE
-        LYI NIB_KILLS
-        LAI 0
-        XMA
-        LYI NIB_WAVE
-        LAM
-        ALEI WAVE_LAST - 1      ; the wave count saturates rather than wrapping:
-                                ; a nibble that rolled over to zero would hand
-                                ; the player back the slowest cadence
-        BR nwc_bump
-        JMPL tick_rocket
-nwc_bump:
-        AI 1
-        XMA
-        JMPL tick_rocket
-
-; ============================================================================
-; where the squadron's cadence comes from
-; ============================================================================
-;
-; Out: A = an index into PAT_STEP, 0..15. Clobbers A, B, X, Y.
-;
-; One ladder of sixteen cadences. The skill dial picks the entry point
-; (PAT_SKILL), each jet shot down this wave takes one step down it, and each
-; cleared wave takes one more - which is PRD v1 rule 2's "as a squadron thins
-; out, the survivors speed up; each cleared squadron respawns faster", expressed
-; as a table walk. The bottom of the ladder is the floor: the sum saturates
-; rather than wrapping, so the cadence can never reach zero.
-
-speed_index:
-        LXI FILE_STATE
-        LYI NIB_SKILL
-        LAM
-        P PAT_SKILL             ; A <- this skill's entry point
-        LYI NIB_KILLS
-        AM
-        TC                      ; ST <- carry: the sum left four bits
-        BR si_floor
-        LYI NIB_WAVE
-        AM
-        TC
-        BR si_floor
-        RTN
-si_floor:
-        LAI SPEED_LAST
-        RTN
-
-; ============================================================================
-; a two-nibble countdown
-; ============================================================================
-;
-; In:  X = the file, Y = the low nibble's index; the high nibble is at Y + 1.
-; Out: A = 1 on the sweep the pair reaches zero, 0 otherwise. Clobbers X, Y, ST.
-;
-; The pair counts hi*16 + lo sweeps, which is the range a squadron cadence needs
-; - forty-eight sweeps does not fit in a nibble. Reloading is the caller's job,
-; because every caller reloads from a different table.
-
-.PAGE
-dec_timer:
-        LAM
-        ALEI 0                  ; ST <- 1 when the low nibble is spent
-        BR dt_low_spent
-        AI 15
-        XMA
-        LAI 0
-        RTN
-dt_low_spent:
-        IY                      ; -> the high nibble
-        LAM
-        ALEI 0
-        BR dt_fired
-        AI 15
-        XMA                     ; borrow from the high nibble
-        DY
-        LAI 15
-        XMA                     ; and the low nibble wraps to fifteen
-        LAI 0
-        RTN
-dt_fired:
-        LAI 1
-        RTN
-
-; ============================================================================
-; the jets shoot back
-; ============================================================================
-
-.PAGE
-tick_rocket:
-        LXI FILE_STATE
-        LYI NIB_RCOL
-        LAM
-        ALEI 0                  ; ST <- 1 when no rocket is in flight
-        BR tr_launch
-
-        LXI FILE_TIME
-        LYI NIB_RSTEP
-        LAM
-        ALEI 0
-        BR tr_move
-        AI 15
-        XMA
-        JMPL tick_bship
-tr_move:
-        JMPL rocket_move
-tr_launch:
-        JMPL rocket_launch
-
-; ============================================================================
-; a rocket travels down its lane
-; ============================================================================
-
-.PAGE
-rocket_move:
-        LXI FILE_TIME
-        LYI NIB_RSTEP
-        LAI ROCKET_SWEEPS
-        XMA
-        LXI FILE_STATE
-        LYI NIB_RCOL
-        LAM
-        AI 15                   ; rockets travel toward the player
-        XMA
-        LAM
-        ALEI COL_LAUNCH         ; ST <- 1 when it has reached the station
-        BR rm_arrived
-        JMPL tick_bship
-rm_arrived:
-        LXI FILE_STATE
-        LYI NIB_RLANE
-        LAM
-        LYI NIB_LANE
-        ANEM                    ; ST <- 1 when the launcher is in another lane
-        BR rm_missed
-        JMPL launcher_hit
-rm_missed:
-        LXI FILE_STATE
-        LYI NIB_RCOL
-        LAI 0
-        XMA
-        JMPL tick_bship
-
-; ============================================================================
-; deciding to launch one
-; ============================================================================
-
-rocket_launch:
-        LXI FILE_TIME
-        LYI NIB_ROCK_LO
-        CALL dec_timer
-        ALEI 0
-        BR rl_done
-
-        ; --- reload from the per-skill interval ---
-        LXI FILE_STATE
-        LYI NIB_SKILL
-        LAM
-        P PAT_ROCKET            ; A <- sweeps low nibble, B <- high nibble
-        LXI FILE_TIME
-        LYI NIB_ROCK_LO
-        LMAIY
-        LAB
-        LMAIY
-        JMPL rocket_fire
-rl_done:
-        JMPL tick_bship
-
-; ============================================================================
-; which jet fires it
-; ============================================================================
-;
-; The lane comes from NIB_RAND - the free-running counter as it stood the last
-; time the player pressed fire. That is the machine's only randomness: there is
-; no generator, and a counter read at a moment a human chose is the standard way
-; these ROMs get an unpredictable number. Values above the last lane fall back to
-; the centre rather than being retried, because a retry loop on a nibble that is
-; only re-sampled on a keypress would not terminate.
-
-.PAGE
-rocket_fire:
-        LXI FILE_STATE
-        LYI NIB_RAND
-        LAM
-        ALEI LANE_LAST
-        BR rf_lane
-        LAI LANE_CENTRE
-rf_lane:
-        LXI FILE_STATE
-        LYI NIB_RLANE
-        XMA                     ; the rocket's lane
-        LAM
-        LXI FILE_JETS
-        LYA                     ; Y <- the jet flying in that lane
-        LAM
-        ALEI 0                  ; ST <- 1 when there is no jet there to fire
-        BR rf_none
-        AI 15                   ; A <- the column that jet stands in
-        LXI FILE_STATE
-        LYI NIB_RCOL
-        XMA                     ; the rocket starts from the jet that fired it
-        LXI FILE_TIME
-        LYI NIB_RSTEP
-        LAI ROCKET_SWEEPS
-        XMA
-rf_none:
-        JMPL tick_bship
-
-; ============================================================================
-; a launcher is destroyed
-; ============================================================================
-;
-; PRD v1 R6 and audio-reference.md, launcherHitWarning: two beeps on the first
-; hit, three on the second, and on the third the full loss sound. All three are
-; owner-confirmed.
-;
-; Two ways in, because the player has two ways to lose a launcher and they cost
-; the same thing. `launcher_hit` is a rocket arriving at the station, and clears
-; the rocket that arrived. `launcher_down` is the launcher being destroyed by
-; whatever destroyed it, and is where jet_swept comes in when a jet reaches the
-; G line. Splitting the label rather than clearing NIB_RCOL on both paths is
-; deliberate: a capture is not a rocket, and zeroing that nibble from the
-; capture path would delete a rocket still in flight down another lane.
-;
-; Both entries are reached by JMPL from the `tick` chain, so both stand two
-; stack levels deep and the CALLs below can still reach note_half without
-; wrapping the four-level stack.
-
-launcher_hit:
-        LXI FILE_STATE
-        LYI NIB_RCOL
-        LAI 0
-        XMA                     ; the rocket is spent
-
-launcher_down:
-        ; --- the red starburst where the launcher stood ---
-        ; The same three nibbles the jet-kill burst uses, on the capture line's
-        ; own column, which is where the tube puts the player's destruction.
-        LXI FILE_STATE
-        LYI NIB_LANE
-        LBM
-        LAI COL_LAUNCH
-        CALL start_burst
-
-        LXI FILE_STATE
-        LYI NIB_HITS
-        LAM
-        AI 1
-        XMA
-        LAM                     ; A <- launchers destroyed so far
-        ALEI 1
-        BR lh_two
-        ALEI 2
-        BR lh_three
-        JMPL game_lost
-lh_three:                       ; ahead of lh_two so that the BR above still
-        JMPL warn_three         ; lands inside its own page
-lh_two:
-        LAI SND_WARN
-        LBI BURSTS_WARN
-        CALL play_sound
-        CALL warn_gap
-        LAI SND_WARN
-        LBI BURSTS_WARN
-        CALL play_sound
-        JMPL tick_bship
-
-; ============================================================================
-; three beeps
-; ============================================================================
-
-warn_three:
-        LAI SND_WARN
-        LBI BURSTS_WARN
-        CALL play_sound
-        CALL warn_gap
-        LAI SND_WARN
-        LBI BURSTS_WARN
-        CALL play_sound
-        CALL warn_gap
-        LAI SND_WARN
-        LBI BURSTS_WARN
-        CALL play_sound
-        JMPL tick_bship
-
-; ============================================================================
-; light a burst
-; ============================================================================
-;
-; In:  A = the column it stands in, B = the lane. Out: nothing.
-; Clobbers A, B, X, Y.
-;
-; Both the burst a jet leaves and the burst the player leaves come through here,
-; because on this tube they are the same three plates under different grids. The
-; column is stored plus one so that zero can mean "nothing is bursting" without
-; stealing column 0, which is the column the player's own destruction happens in.
-;
-; It calls nothing, which is what lets missile_kill and launcher_hit reach it on
-; the same sweep they also reach play_sound: the stack is four deep and wraps
-; silently, and both of those blocks already spend three levels.
-
-start_burst:
-        AI 1                    ; A <- the column, plus one
-        LXI FILE_STATE
-        LYI NIB_KCOL
-        XMA
-        LAB
-        LYI NIB_KLANE
-        XMA
-        LXI FILE_TIME
-        LYI NIB_KSTEP
-        LAI BURST_SWEEPS
-        XMA
-        RTN
-
-; ============================================================================
-; the silence between two warning beeps
-; ============================================================================
-;
-; In:  nothing. Out: nothing. Clobbers B; preserves X and Y through dwell's own
-; shadow-pair discipline, which is why the counter can live in Y.
-;
-; Two dwells per pass so eleven passes land on 26.7 ms - inside the measured
-; 25-28 ms gap (audio-reference.md, launcherHitWarning.gapMs). One dwell per pass
-; would need nineteen, and the counter is a nibble.
-
-.PAGE
-warn_gap:
-        LYI WARN_GAP
-wg_pass:
-        CAL dwell
-        CAL dwell
-        DY
-        BR wg_pass
-        RTN
-
-; ============================================================================
-; the battleship's turn
-; ============================================================================
-
-;
-; The countdown to the next crossing runs at a sixteenth of the sweep rate. The
-; prescaler is NIB_TICK, the sweep counter tick already keeps and nothing read
-; until now: it wraps every sixteen sweeps, so stepping the pair only on the
-; sweep it reads zero turns hi*16 + lo from a count of sweeps into a count of
-; sixteen-sweep units, and 4080 sweeps of interval become expressible in the two
-; nibbles that are already there. See the battleship's entry in the
-; provisional-cadence block for why fifty seconds is the figure wanted.
-;
-; The prescaler is not applied to the lane step, which is a matter of sweeps and
-; fits.
-
-tick_bship:
-        LXI FILE_STATE
-        LYI NIB_BSLANE
-        LAM
-        ALEI LANE_LAST          ; ST <- 0 when the nibble holds BS_NONE
-        BR tb_cross
-
-        LXI FILE_TIME
-        LYI NIB_TICK
-        LAM
-        ALEI 0                  ; ST <- 1 only on the sweep the counter wrapped
-        BR tb_gap
-        JMPL tick_input
-tb_gap:
-        LYI NIB_BS_LO
-        CALL dec_timer
-        ALEI 0
-        BR tb_done
-        JMPL bship_enter
-tb_cross:
-        JMPL bship_move
-tb_done:
-        JMPL tick_input
-
-; ============================================================================
-; it enters the far zone
-; ============================================================================
-;
-; PRD v1 rule 4: the crossing is "announced by a distinctive lower-pitch buzz".
-; audio-reference.md turns "lower" into the rule that matters - the buzz must
-; read below the jet march - and the buzz this ROM now produces is 89 Hz against
-; the march's 640 Hz.
-;
-; **The buzz starts here and runs for the whole crossing.** It is not announced
-; and then dropped: the owner's isolated recording measures a *continuous* sound
-; across the full four seconds the boat is up - 3 of 162 twenty-five millisecond
-; windows fall more than 20 dB below the peak, which is a sound that is on, not
-; a sound that is pulsing. Starting it is one nibble; `dwell` does the rest, ten
-; times a sweep, without ever stopping the tube.
-
-bship_enter:
-        LXI FILE_STATE
-        LYI NIB_BSLANE
-        LAI LANE_TOP
-        XMA
-        CALL bship_step_timer
-        LXI FILE_SOUND
-        LYI NIB_BUZZ
-        LAI BUZZ_START          ; the dwell takes it from here
-        XMA
-        JMPL tick_input
-
-; ============================================================================
-; stopping the buzz
-; ============================================================================
-;
-; In:  nothing. Out: nothing. Clobbers A, X, Y.
-;
-; Clearing the phase is what stops `dwell` toggling; the RED is what leaves the
-; pin low rather than wherever the last grid happened to leave it, so the next
-; note_loop sound starts from a known level and the reconstructed waveform
-; carries no DC step.
-;
-; **Every way a crossing can end has to come through here**, and there are four:
-; the boat reaching the bottom (`bship_wait`), the player shooting it
-; (`bship_kill`), and the game ending underneath it (`game_lost`, `game_win`).
-; The last two are not hypothetical - the buzz is the first sound in this ROM
-; that outlives the routine that started it, and the first probe run after it was
-; written left a boat frozen in lane 1 buzzing for eighty seconds, because the
-; third launcher went while the boat was still on its way down and `tick_bship`
-; never ran again to retire it.
-
-bship_hush:
-        LXI FILE_SOUND
-        LYI NIB_BUZZ
-        LAI 0
-        XMA
-        RED D_SPEAKER
-        RTN
-
-; ============================================================================
-; how long it holds a lane
-; ============================================================================
-;
-; In:  nothing. Out: nothing. Clobbers A, X, Y.
-;
-; Called from both ends of a lane step, so the reload is written once.
-
-bship_step_timer:
-        LXI FILE_TIME
-        LYI NIB_BS_LO
-        LAI BSHIP_STEP_LO
-        LMAIY
-        LAI BSHIP_STEP_HI
-        LMAIY
-        RTN
-
-; ============================================================================
-; and crosses it
-; ============================================================================
-;
-; Down the lanes, not across the columns: NIB_BSLANE walks LANE_TOP to LANE_LAST
-; and the column the tube draws it in never changes. That is what the owner
-; describes as moving "down the slots", and it is the succession the video traces
-; - lane 0, then lane 1, then lane 2. draw_bship holds COL_BSHIP for all three.
-;
-; Its own page: `bm_step` branches to `bm_store`, and BR reaches only inside a
-; page.
-
-.PAGE
-bship_move:
-        LXI FILE_TIME
-        LYI NIB_BS_LO
-        CALL dec_timer
-        ALEI 0
-        BR bm_holding
-        JMPL bm_step
-bm_holding:
-        JMPL tick_input
-bm_step:
-        LXI FILE_STATE
-        LYI NIB_BSLANE
-        LAM
-        AI 1
-        ALEI LANE_LAST          ; ST <- 1 while it is still inside the zone
-        BR bm_store
-        LAI BS_NONE
-        XMA                     ; it has left the far side
-        JMPL bship_wait
-bm_store:
-        XMA
-        CALL bship_step_timer
-        JMPL tick_input
-
-; ============================================================================
-; when the next crossing is due
-; ============================================================================
-;
-; BSHIP_GAP_HI*16 sixteen-sweep units plus the sampled counter, so successive
-; crossings are 2816-3056 sweeps apart. See the provisional-cadence block.
-;
-; **"Shows up randomly" is a thing this ROM does not currently do, and the cause
-; is not here.** NIB_RAND is written in exactly one place - `ti_press`, which
-; samples the free-running timer on the sweep the player closes the fire contact
-; - so what this block reads is not chance, it is the phase of the player's last
-; button press. Two consequences, both measured by driving the machine:
-;
-;   - a player who never fires leaves NIB_RAND at zero for the whole game, and
-;     every gap is then exactly BSHIP_GAP_HI*16 units. The interval is not
-;     approximately regular, it is identical to the sweep;
-;   - a player who does fire produces values that cluster on his own rhythm -
-;     4, 5, 6 and 7 dominated a fifteen-crossing run - rather than spreading.
-;
-; And the low nibble is only a sixteenth of the interval, so even a uniform
-; sample would move a 176-unit gap by under 9%. Nothing here would read as random
-; to a player.
-;
-; **This is the same defect as `rocket_fire`'s lane** and it is deliberately not
-; fixed here: it is the subject of an open question with the owner
-; (docs/evidence/open-questions.md section 3) covering the machine's only
-; randomness source, and fixing one caller of NIB_RAND while the source itself is
-; under question would make the answer harder to see, not easier. T6 - whether
-; the real interval is random at all - is still unmeasured.
-
-bship_wait:
-        CALL bship_hush         ; the boat is gone, so the buzz goes with it
-        LXI FILE_STATE
-        LYI NIB_RAND
-        LAM
-        LXI FILE_TIME
-        LYI NIB_BS_LO
-        LMAIY
-        LAI BSHIP_GAP_HI
-        LMAIY
-        JMPL tick_input
-
-; ============================================================================
-; what the fire button does
-; ============================================================================
-;
-; The tail of the tick chain: its RTN is the one that returns to the sweep.
-; One missile in flight at a time (PRD v1 R2), and the press edge - not the hold
-; - is what launches it.
-
-.PAGE
-tick_input:
-        ; --- a game that ended earlier in this very chain stops here ---
-        ; tick tested NIB_STATE at the top of the sweep, but scoring can end the
-        ; game halfway down: a hit that reaches 199 sets ST_WIN from inside
-        ; add_score. Without this second test the rest of that one chain would
-        ; still run and the player would get one more shot after winning.
-        LXI FILE_STATE
-        LYI NIB_STATE
-        LAM
-        ALEI ST_PLAY
-        BR ti_playing
-        RTN
-ti_playing:
-        LYI NIB_FIRE
-        LAM
-        ALEI 0
-        BR ti_done              ; not pressed
-        LYI NIB_FIRE_PREV
-        LAM
-        ALEI 0
-        BR ti_press             ; pressed now, not last sweep: an edge
-        BR ti_done              ; still held: no second missile
-ti_press:
-        ; --- the randomness source, sampled at a human input instant ---
-        LAT                     ; A <- the free-running counter's low nibble
-        LXI FILE_STATE
-        LYI NIB_RAND
-        XMA
-        LYI NIB_MCOL
-        LAM
-        ALEI 0                  ; ST <- 1 when the tube is clear to fire
-        BR ti_launch
-        BR ti_done
-ti_launch:
-        JMPL fire_missile
-ti_done:
-        RTN
-
-; ============================================================================
-; launching one
-; ============================================================================
+; One missile at a time, which is what NIB_MCOL being a single column nibble
+; means. It leaves in the lane the lever is in and travels outward, grid 5
+; toward grid 1 and then the horizon.
 
 fire_missile:
-        LXI FILE_STATE
-        LYI NIB_LANE
-        LAM
-        LYI NIB_MLANE
-        XMA                     ; it leaves in the lane the lever is set to
-        LYI NIB_MCOL
-        LAI COL_MSL_START
-        XMA
-        LXI FILE_TIME
-        LYI NIB_MSTEP
-        LAI MISSILE_SWEEPS
-        XMA
-        LAI SND_MISSILE
-        LBI BURSTS_MISSILE
-        CALL play_sound
-        RTN
+        LDX  FILE_STATE
+        TCY  NIB_LANE
+        TMA
+        TCY  NIB_MLANE
+        TAM
+        TCY  NIB_MCOL
+        TCMIY GRID_COL_LAST
+        LDX  FILE_TIME
+        TCY  NIB_MSTEP
+        TCMIY MISSILE_SWEEPS
+        LDX  FILE_D0
+        TCY  NIB_HALF_O
+        TCMIY SND_FIRE_O
+        TCMIY SND_FIRE_I
+        TCMIY SND_FIRE_P
+        TCMIY SND_FIRE_B
+        LDP  P_LEAF
+        CALL note               ; missileFire: 1496 Hz, 20.1 ms
+        LDP  P_JETS
+        BR   jet_march
+
 
 ; ============================================================================
-; the end of the game
+; Page 4 - the three remaining leaves
+; ============================================================================
+
+.PAGE P_LEAF
+
+; --- note: one square-wave burst on R15 --------------------------------------
+;
+;   in    X = FILE_D0, with NIB_HALF_O / NIB_HALF_I / NIB_PER / NIB_BURSTS set
+;   out   the speaker low, X = FILE_D0
+;
+; The tube is dark for the whole of it. That is what the real machine does -
+; docs/evidence/vfd-appearance.md records that every beep is a visible blink -
+; and it is exactly why the battleship's four-second buzz cannot be a note and
+; is clocked off the sweep instead.
+;
+; The delay is nested because a single nibble loop bottoms out around 380 Hz and
+; gameOver's collapse is at 92.
+
+note:
+        TCY  NIB_BURSTS
+        TMA
+        TCY  NIB_BLEFT
+        TAM
+nt_burst:
+        TCY  NIB_PER
+        TMA
+        TCY  NIB_PLEFT
+        TAM
+nt_period:
+        TCY  R_SPEAKER
+        SETR
+        TCY  NIB_HALF_O
+        TMA
+nt_hi_out:
+        TCY  NIB_HALF_I
+        TMY
+nt_hi_in:
+        DYN
+        BR   nt_hi_in
+        A15AAC
+        BR   nt_hi_out
+        TCY  R_SPEAKER
+        RSTR
+        TCY  NIB_HALF_O
+        TMA
+nt_lo_out:
+        TCY  NIB_HALF_I
+        TMY
+nt_lo_in:
+        DYN
+        BR   nt_lo_in
+        A15AAC
+        BR   nt_lo_out
+        TCY  NIB_PLEFT
+        DMAN                    ; A <- periods left - 1
+        BR   nt_next_period
+        TCY  NIB_BLEFT
+        DMAN
+        BR   nt_next_burst
+        RETN
+nt_next_period:
+        TAM
+        BR   nt_period
+nt_next_burst:
+        TAM
+        BR   nt_burst
+
+; --- clear_file: sixteen nibbles of the selected file, to zero ---------------
+;
+;   in    X = the file      out   X unchanged, Y = 0, A = 0
+;
+; Reset calls it seven times. **RAM is not cleared by hardware reset on this
+; part**, and clearing it costs 112 nibbles times five instructions - about
+; 10 ms at this rate - so it has to finish before the first strobe or the tube
+; shows one frame of whatever the RAM powered up holding.
+
+clear_file:
+        CLA
+        TAY
+cf_nibble:
+        CLA
+        TAM
+        IYC                     ; carry only when Y wraps out of the file
+        BR   cf_done
+        BR   cf_nibble
+cf_done:
+        RETN
+
+; --- lane_bit: a lane number, as the bit the display files want --------------
+;
+;   in    X = FILE_D3, NIB_RLNE = the lane      out   NIB_RBIT = 1, 2 or 4
+;
+; Three lanes and no shifter, so it is a three-way test rather than arithmetic -
+; and it is a subroutine rather than four copies of itself because the render
+; step needs it for the battleship, the rocket, the missile and the burst.
+
+lane_bit:
+        TCY  NIB_RLNE
+        TBIT1 1
+        BR   lb_two
+        TBIT1 0
+        BR   lb_one
+        TCY  NIB_RBIT
+        TCMIY 1
+        RETN
+lb_one:
+        TCY  NIB_RBIT
+        TCMIY 2
+        RETN
+lb_two:
+        TCY  NIB_RBIT
+        TCMIY 4
+        RETN
+
+
+; ============================================================================
+; Page 5 - the input matrix
 ; ============================================================================
 ;
-; Two ways out (PRD v1 rule 6, as amended): 199 points, or the third launcher
-; gone. Nothing clears NIB_STATE - the power switch is the only reset the unit
-; has.
+; Three reads a sweep, and their shape is the wiring:
 ;
-; A jet reaching the G line used to be a third way out, and `game_capture` was
-; a second label on this address. It is not an ending any more: a capture costs
-; a launcher and goes through launcher_down like a rocket hit, so it reaches
-; here only as the third one. That label is gone rather than kept as an alias,
-; because the whole defect it caused was two names on one address reading as
-; two rules while implementing one.
+;   R9  high  -> K1/K2/K4 return the skill dial's three positions
+;   R10 high  -> K1/K2/K4 return the lever's three positions
+;   neither   -> K8 returns the fire button, which is not on a column at all
 ;
-; What an ending looks like from tools/probe/machine-probe.ts, which is worth
-; knowing before a long run gets read as a fault: the sweep goes on turning and
-; `tick` returns at its first test, so the machine keeps refreshing a picture
-; that no longer changes and never touches the speaker again. An unattended
-; probe run therefore reports its last edge some seconds in and identical lit
-; segments from there to the end of the run - which reads exactly like a delay
-; loop that stopped terminating, and is not one. The distinction is held down by
-; tools/probe/game-lifetime.test.ts.
+; **One column at a time, never both.** `read_inputs` is a plain wired-OR over
+; the driven columns, so with both up the dial and the lever arrive superimposed
+; on the same three lines and cannot be told apart. The hardware does not
+; object - it returns the OR and carries on - which is exactly why it has to be
+; the program that never does it.
+;
+; The fire read is deliberately taken with both columns *low* rather than folded
+; into either strobed sample. K8 is ORed into every K read whatever R9 and R10
+; are doing, so the separate read costs three instructions and is the one that
+; demonstrates the difference: a build that routed fire through a strobe column
+; would see nothing here.
+;
+; There is no input latch and no edge detector anywhere on the input side, so a
+; contact closed and released between two reads is never seen at all. Debounce
+; and edge detection are this program's problem, which is what NIB_FIRE and
+; NIB_FIREP are for.
+
+.PAGE P_INPUT
+
+input_scan:
+        LDX  FILE_D0
+        TCY  R_STROBE_SKILL
+        SETR
+        TKA                     ; K1/K2/K4 from R9, plus K8
+        TCY  NIB_KSCR
+        TAM
+        TCY  R_STROBE_SKILL
+        RSTR
+        TCY  NIB_KSCR
+        TBIT1 0
+        BR   is_skill1
+        TBIT1 1
+        BR   is_skill2
+        TBIT1 2
+        BR   is_skill3
+        BR   is_lever           ; nothing closed - leave the dial where it was
+is_skill1:
+        LDX  FILE_STATE
+        TCY  NIB_SKILL
+        TCMIY 1
+        BR   is_lever
+is_skill2:
+        LDX  FILE_STATE
+        TCY  NIB_SKILL
+        TCMIY 2
+        BR   is_lever
+is_skill3:
+        LDX  FILE_STATE
+        TCY  NIB_SKILL
+        TCMIY 3
+        BR   is_lever
+
+is_lever:
+        LDX  FILE_D0
+        TCY  R_STROBE_LEVER
+        SETR
+        TKA                     ; K1/K2/K4 from R10, plus K8
+        TCY  NIB_KSCR
+        TAM
+        TCY  R_STROBE_LEVER
+        RSTR
+        TCY  NIB_KSCR
+        TBIT1 0
+        BR   is_lane0
+        TBIT1 1
+        BR   is_lane1
+        TBIT1 2
+        BR   is_lane2
+        BR   is_fire            ; the lever between detents - hold the lane
+is_lane0:
+        LDX  FILE_STATE
+        TCY  NIB_LANE
+        TCMIY 0                 ; NIB_LANEB follows NIB_LANE, so one run of
+        TCMIY 1                 ; TCMIY writes the lane and its bit together
+        BR   is_fire
+is_lane1:
+        LDX  FILE_STATE
+        TCY  NIB_LANE
+        TCMIY 1
+        TCMIY 2
+        BR   is_fire
+is_lane2:
+        LDX  FILE_STATE
+        TCY  NIB_LANE
+        TCMIY 2
+        TCMIY 4
+        BR   is_fire
+
+; --- the fire button ---------------------------------------------------------
+;
+; Read on P_PAIR, in the room the two high-bank passes leave over. Every lane
+; arm above falls to this jump rather than carrying its own, which is four words
+; on this page instead of twelve.
+
+is_fire:
+        LDP  P_PAIR
+        BR   input_fire
+
+
+; ============================================================================
+; Page 6 - the clock, the burst, and the player's missile
+; ============================================================================
+;
+; A sweep is the only clock this program has. There is no timer read anywhere in
+; it: NIB_TICK counts sweeps and wraps every sixteen, and every countdown in
+; FILE_TIME is spent once per pass through here.
+
+.PAGE P_TICK
+
+tick:
+        LDX  FILE_TIME
+        TCY  NIB_TICK
+        IMAC                    ; NIB_TICK + 1 -> A
+        TAM
+
+        LDX  FILE_STATE
+        TCY  NIB_STATE
+        MNEZ                    ; anything above ST_PLAY is a finished game
+        BR   tk_ended
+        BR   tick_burst
+tk_ended:
+        COMC
+        LDP  C1_REND1
+        BR   render             ; a finished game still shows its final score
+
+; --- the burst on the glass --------------------------------------------------
+
+tick_burst:
+        LDX  FILE_STATE
+        TCY  NIB_KCOL
+        MNEZ
+        BR   tk_burst_live
+        BR   tick_capture
+tk_burst_live:
+        LDX  FILE_TIME
+        TCY  NIB_KSTEP
+        DMAN                    ; A <- one sweep off its life
+        BR   tk_burst_left
+        LDX  FILE_STATE
+        TCY  NIB_KCOL
+        TCMIY 0                 ; spent, and the cell goes dark
+        BR   tick_capture
+tk_burst_left:
+        TAM
+        BR   tick_capture
+
+; --- the capture burst on the player's own grid ------------------------------
+
+tick_capture:
+        LDX  FILE_TIME
+        TCY  NIB_CAPTURE
+        MNEZ
+        BR   tk_capture_live
+        BR   tick_missile
+tk_capture_live:
+        DMAN                    ; A <- one sweep off it
+        BR   tk_capture_left
+        BR   tick_missile       ; spent: it was already zero, so leave it there
+tk_capture_left:
+        TAM
+tick_missile:
+        LDX  FILE_STATE
+        TCY  NIB_MCOL
+        MNEZ
+        BR   tk_missile_live
+        BR   tk_to_fire
+tk_missile_live:
+        LDX  FILE_TIME
+        TCY  NIB_MSTEP
+        DMAN                    ; A <- one sweep off the step
+        BR   tk_missile_wait
+        LDP  P_HIT
+        BR   missile_step
+tk_missile_wait:
+        TAM
+        BR   tk_to_fire
+
+; --- pressing fire, and the squadron -----------------------------------------
+;
+; Both read on P_RPLATE, in the room the R-plate walk leaves over. Two arms
+; above reach the first through this jump rather than each carrying a page.
+
+tk_to_fire:
+        LDP  P_RPLATE
+        BR   tick_fire
+
+
+; ============================================================================
+; Page 7 - what a missile runs into
+; ============================================================================
+
+.PAGE P_HIT
+
+missile_step:
+        LDX  FILE_TIME
+        TCY  NIB_MSTEP
+        TCMIY MISSILE_SWEEPS
+        LDX  FILE_STATE
+        TCY  NIB_MCOL
+        DMAN                    ; outward: grid 5 toward grid 1
+        BR   ms_step_ok
+        LDP  P_SWEEP
+        BR   ms_horizon         ; past the last column is the battleship's row
+ms_step_ok:
+        TAM
+        MNEZ                    ; grid 0 is the horizon, not a column
+        BR   ms_flying
+        LDP  P_SWEEP
+        BR   ms_horizon
+ms_flying:
+        TCY  NIB_MLANE
+        TMA
+        LDX  FILE_JETS
+        TAY
+        TMA                     ; A <- the grid the jet in that lane stands on
+        LDX  FILE_STATE
+        TCY  NIB_MCOL
+        MNEA                    ; status = that jet is somewhere else
+        BR   ms_clear
+        BR   missile_kill
+ms_clear:
+        LDP  P_JETS
+        BR   jet_march
+
+; --- a jet is shot down ------------------------------------------------------
+
+missile_kill:
+        LDX  FILE_STATE
+        TCY  NIB_MLANE
+        TMA
+        TCY  NIB_KLANE
+        TAM                     ; the burst stands where the jet did
+        TCY  NIB_MCOL
+        TMA
+        A1AAC                   ; NIB_KCOL is the grid plus one, so 0 is "none"
+        TCY  NIB_KCOL
+        TAM
+        LDX  FILE_TIME
+        TCY  NIB_KSTEP
+        TCMIY BURST_SWEEPS
+        LDX  FILE_STATE
+        TCY  NIB_MCOL
+        TCMIY 0
+        TCY  NIB_MLANE
+        TMA
+        LDX  FILE_JETS
+        TAY
+        CLA
+        TAM                     ; that lane is empty again
+        LDX  FILE_STATE
+        TCY  NIB_KILLS
+        IMAC
+        TAM                     ; and the squadron is one thinner, which is a
+        LDP  P_SCORE            ; rung down the cadence ladder
+        TCY  0
+        YNEC 1
+        BR   score_jet
+
+; ============================================================================
+; Page 8 - the score
+; ============================================================================
+;
+; Three BCD nibbles. A digit carries the classic way: add six and read the
+; carry, because a nibble sum of ten or more is exactly a nibble sum of sixteen
+; or more once six is added, and adding ten afterwards takes the six back off
+; when it was not wanted. One instruction more than a comparison, and no
+; scratch nibble at all.
+
+.PAGE P_SCORE
+
+score_jet:
+        CLA
+        TCY  SCORE_JET
+        TYA
+        BR   add_score
+score_bship:
+        CLA
+        TCY  SCORE_BSHIP
+        TYA
+        BR   add_score
+
+add_score:
+        LDX  FILE_TIME
+        TCY  NIB_SC_U
+        AMAAC                   ; A <- points + units
+        A6AAC
+        BR   as_carry_u
+        A10AAC                  ; no carry, so the six comes straight back off
+        TAM
+        TCY  0
+        YNEC 1
+        BR   as_to_done
+as_carry_u:
+        TAM                     ; the six left A holding units - 10
+        TCY  NIB_SC_T
+        IMAC
+        TAM
+        A6AAC
+        BR   as_carry_t
+        BR   as_to_done
+as_carry_t:
+        LDX  FILE_TIME
+        TCY  NIB_SC_T
+        TCMIY 0                 ; the tens wrap
+        TCY  NIB_SC_H
+        IMAC
+        TAM
+        TCY  0
+        YNEC 1
+        BR   as_to_done
+
+as_to_done:
+        COMC
+        LDP  C1_WINTEST
+        BR   as_done
+
+as_out2:
+        LDP  P_JETS
+        BR   jet_march
+
+
+; ============================================================================
+; Page 9 - the squadron's march
+; ============================================================================
+;
+; One countdown for the squadron, not three. When it runs out every airborne jet
+; steps one grid closer to the player and the march beep sounds once, which is
+; the rate assets/reference/gameplay-audio.m4a measures. A jet that steps off
+; grid 5 has reached the launcher, and that is a capture.
+
+.PAGE P_JETS
+
+jet_march:
+        LDX  FILE_TIME
+        TCY  NIB_STEP_LO
+        DMAN                    ; a pair is spent low first; the low nibble
+        BR   jm_low_left        ; wrapping to 15 is what spends a high one
+        TAM
+        TCY  NIB_STEP_HI
+        DMAN
+        BR   jm_high_left
+        BR   jm_step
+jm_high_left:
+        TAM
+        BR   jm_waiting
+jm_low_left:
+        TAM
+        BR   jm_waiting
+jm_waiting:
+        LDP  P_SPAWN
+        BR   jet_release
+
+jm_step:
+        LDX  FILE_JETS
+        TCY  NIB_J_WORK
+        TCMIY 0
+        TCY  NIB_J_MOVED
+        TCMIY 0
+jm_lane:
+        LDX  FILE_JETS
+        TCY  NIB_J_WORK
+        TMA
+        TAY                     ; Y <- the lane
+        MNEZ                    ; is there a jet in it?
+        BR   jm_move
+        BR   jm_lane_next
+jm_move:
+        IMAC                    ; one grid closer
+        TAM
+        A10AAC                  ; carry iff it has stepped past grid 5
+        BR   jm_to_capture
+        LDX  FILE_JETS
+        TCY  NIB_J_MOVED
+        TCMIY 1
+jm_lane_next:
+        LDX  FILE_JETS
+        TCY  NIB_J_WORK
+        IMAC
+        TAM
+        A13AAC                  ; carry iff every lane has been walked
+        BR   jm_lane_done
+        BR   jm_lane
+
+jm_to_capture:
+        LDP  P_SPILL
+        BR   jm_capture
+
+jm_lane_done:
+        LDX  FILE_JETS
+        TCY  NIB_J_MOVED
+        MNEZ
+        BR   jm_beep
+        BR   jm_reload
+jm_beep:
+        LDX  FILE_D0
+        TCY  NIB_HALF_O
+        TCMIY SND_MARCH_O
+        TCMIY SND_MARCH_I
+        TCMIY SND_MARCH_P
+        TCMIY SND_MARCH_B
+        LDP  P_LEAF
+        CALL note               ; jetMarch: 641 Hz, 70.2 ms
+        COMC
+        LDP  C1_LADDER
+        BR   step_reload
+jm_reload:
+        COMC
+        LDP  C1_LADDER
+        BR   step_reload
+
+
+; ============================================================================
+; Page 10 - releasing jets, the next wave, and the cadence ladder
+; ============================================================================
+
+.PAGE P_SPAWN
+
+; --- releasing one jet -------------------------------------------------------
+
+jet_release:
+        LDX  FILE_JETS
+        TCY  NIB_J_SENT
+        TMA
+        A10AAC                  ; carry iff the whole squadron has been released
+        BR   jr_to_wave
+        LDX  FILE_TIME
+        TCY  NIB_ENTRY_LO
+        DMAN
+        BR   jr_low_left
+        TAM
+        TCY  NIB_ENTRY_HI
+        DMAN
+        BR   jr_high_left
+        BR   jet_enter
+jr_high_left:
+        TAM
+        BR   jr_out
+jr_low_left:
+        TAM
+        BR   jr_out
+
+jet_enter:
+        LDX  FILE_JETS
+        TCY  NIB_J_TMP
+        TCMIY LANE_COUNT        ; three lanes to try before giving up
+je_try:
+        LDX  FILE_JETS
+        TCY  NIB_J_ROTOR
+        IMAC
+        TAM
+        A13AAC                  ; carry iff the rotor ran past lane 2
+        BR   je_wrap
+        BR   je_look
+je_wrap:
+        LDX  FILE_JETS
+        TCY  NIB_J_ROTOR
+        TCMIY 0
+        BR   je_look
+je_look:
+        LDX  FILE_JETS
+        TCY  NIB_J_ROTOR
+        TMY                     ; Y <- the lane the rotor names
+        MNEZ                    ; is a jet already flying in it?
+        BR   je_busy
+        BR   je_place
+je_busy:
+        LDX  FILE_JETS
+        TCY  NIB_J_TMP
+        DMAN                    ; A <- tries left - 1
+        BR   je_retry
+        BR   jr_out             ; all three lanes busy - wait a sweep
+je_retry:
+        TAM
+        BR   je_try
+je_place:
+        TCMIY GRID_COL_FIRST    ; the jet enters at the far end of the field
+        LDX  FILE_JETS
+        TCY  NIB_J_SENT
+        IMAC
+        TAM
+        LDX  FILE_TIME
+        TCY  NIB_ENTRY_LO
+        TCMIY 15
+        TCMIY ENTRY_HI
+        BR   jr_out
+
+jr_to_wave:
+        LDP  P_SPILL
+        BR   jr_wave_test
+
+jr_out:
+        LDP  P_ROCKET
+        BR   tick_rocket
+
+
+; ============================================================================
+; Page 11 - the rocket
+; ============================================================================
+
+.PAGE P_ROCKET
+
+tick_rocket:
+        LDX  FILE_STATE
+        TCY  NIB_RCOL
+        LDP  P_ROCKET
+        MNEZ
+        BR   tr_flying
+        BR   tr_to_launch
+tr_to_launch:
+        COMC
+        LDP  C1_LAUNCH
+        BR   rocket_launch
+tr_flying:
+        LDX  FILE_TIME
+        TCY  NIB_RSTEP
+        DMAN                    ; A <- one sweep off the step
+        BR   tr_step_left
+        BR   rocket_move
+tr_step_left:
+        TAM
+        BR   tr_done
+
+rocket_move:
+        LDX  FILE_TIME
+        TCY  NIB_RSTEP
+        TCMIY ROCKET_SWEEPS
+        LDX  FILE_STATE
+        TCY  NIB_RCOL
+        IMAC                    ; inward: toward the player
+        TAM
+        A10AAC                  ; carry iff it has reached the launcher line
+        BR   rm_arrived
+        BR   tr_done
+rm_arrived:
+        LDX  FILE_STATE
+        TCY  NIB_RCOL
+        TCMIY 0                 ; spent, whatever it found there
+        TCY  NIB_RLANE
+        TMA
+        TCY  NIB_LANE
+        MNEA                    ; status = the launcher is in some other lane
+        BR   tr_done
+        COMC
+        LDP  C1_LOSE
+        BR   launcher_hit
+
+tr_done:
+        LDP  P_BSHIP
+        BR   tick_bship
+
+; ============================================================================
+; Page 12 - the spill page
+; ============================================================================
+;
+; `BR` and `CALL` carry six bits within a page, so where a routine lives is a
+; placement decision and not a structural one. This page holds the ones whose
+; own page filled up: each is reached by a paged branch, runs to a paged branch,
+; and carries nothing across the boundary.
+
+.PAGE P_SPILL
+
+; --- a jet reaches the launcher: the player is captured ----------------------
+;
+; Placed on P_SPILL because P_JETS is full; it is reached
+; by branch like the rest of the loop and carries no state across the page.
+
+jm_capture:
+        LDX  FILE_JETS
+        CLA
+        TAM                     ; the lane empties whether or not it cost
+        TYA                     ; anything: the jet has crossed the G line
+        LDX  FILE_STATE
+        TCY  NIB_KLANE
+        TAM
+        TCY  NIB_LANE
+        MNEA                    ; status = the launcher is in some other lane
+        BR   jm_flew_past
+        LDX  FILE_TIME
+        TCY  NIB_CAPTURE
+        TCMIY CAPTURE_SWEEPS
+        COMC
+        LDP  C1_LOSE
+        BR   launcher_down
+
+; A jet that crosses the line the player is *not* standing in costs nothing.
+; That is the whole of what moving the lever is for, and without it the machine
+; loses all three launchers to the first squadron whatever the player does.
+jm_flew_past:
+        LDP  P_JETS
+        BR   jm_lane_next
+
+
+
+; --- a squadron cleared ------------------------------------------------------
+
+jr_wave_test:
+        LDX  FILE_JETS
+        LDP  P_SPAWN            ; PB holds until something else loads it, so the
+                                ; three tests below share one, above them all
+                                ; rather than between each test and its branch
+        TCY  NIB_J_LANE0
+        MNEZ
+        BR   jr_out
+        TCY  NIB_J_LANE0 + 1
+        MNEZ
+        BR   jr_out
+        TCY  NIB_J_LANE0 + 2
+        MNEZ
+        BR   jr_out
+        LDX  FILE_JETS
+        TCY  NIB_J_SENT
+        TCMIY 0
+        LDX  FILE_STATE
+        TCY  NIB_KILLS
+        TCMIY 0                 ; a fresh squadron, and the ladder resets with it
+        LDP  P_SPAWN
+        BR   jr_out
+
+
+; ============================================================================
+; Page 13 - the battleship
+; ============================================================================
+
+.PAGE P_BSHIP
+
+tick_bship:
+        LDX  FILE_STATE
+        TCY  NIB_BSLANE
+        TMA
+        LDX  FILE_JETS
+        TCY  NIB_J_TMP
+        TCMIY BS_NONE
+        TCY  NIB_J_TMP
+        MNEA                    ; status = the boat is on the glass
+        BR   bs_crossing
+        BR   bs_waiting
+
+; --- between crossings, counted in sixteen-sweep units -----------------------
+
+bs_waiting:
+        LDX  FILE_TIME
+        TCY  NIB_TICK
+        MNEZ                    ; spend a unit only on the sweep the tick wraps
+        BR   bs_out
+        TCY  NIB_BS_LO
+        DMAN
+        BR   bw_low_left
+        TAM
+        TCY  NIB_BS_HI
+        DMAN
+        BR   bw_high_left
+        COMC
+        LDP  C1_BSHIP
+        BR   bship_enter
+bw_high_left:
+        TAM
+        BR   bs_out
+bw_low_left:
+        TAM
+        BR   bs_out
+
+; --- crossing ----------------------------------------------------------------
+
+bs_crossing:
+        LDX  FILE_TIME
+        TCY  NIB_BS_LO
+        DMAN
+        BR   bc_low_left
+        TAM
+        TCY  NIB_BS_HI
+        DMAN
+        BR   bc_high_left
+        BR   bc_step
+bc_high_left:
+        TAM
+        BR   bs_out
+bc_low_left:
+        TAM
+        BR   bs_out
+bc_step:
+        LDX  FILE_STATE
+        TCY  NIB_BSLANE
+        IMAC
+        TAM
+        A13AAC                  ; carry iff it has run past the last lane
+        BR   bs_to_leave
+        LDX  FILE_TIME
+        TCY  NIB_BS_LO
+        TCMIY BSHIP_STEP_LO
+        TCMIY BSHIP_STEP_HI
+        BR   bs_out
+
+bs_to_leave:
+        COMC
+        LDP  C1_BSHIP
+        BR   bs_leave
+
+bs_out:
+        COMC
+        LDP  C1_REND1
+        BR   render
+
+; ============================================================================
+; Page 15 - reset
+; ============================================================================
+;
+; The machine enters here: chapter 0, page 15, PC 0. Nothing about page 15 is
+; guessable from the rest of the layout, which is why the assembler's page
+; allocator reserves it rather than letting a program grow into it and collide
+; at the end of an assembly.
+;
+; **RAM is not cleared by hardware reset on this part.** Reset clears the R
+; latches, writes O index 0, clears status and the call latch, and leaves the
+; 128 nibbles holding whatever they powered up with. So the first thing the
+; program does is clear them, and it must finish before the first strobe. At
+; five instructions a nibble that is 83 cycles a file and 581 for the seven -
+; about 10 ms, and 833 cycles from reset to the first grid rising once the state
+; below is written too. Every one of those cycles is time the tube would
+; otherwise be showing whatever the RAM powered up holding, and
+; tools/probe/tms1370-rom.test.ts asserts nothing lights before them.
+
+.PAGE P_RESET
+
+reset:
+        LDX  FILE_D0
+        LDP  P_LEAF
+        CALL clear_file
+        LDX  FILE_D1
+        LDP  P_LEAF
+        CALL clear_file
+        LDX  FILE_D2
+        LDP  P_LEAF
+        CALL clear_file
+        LDX  FILE_D3
+        LDP  P_LEAF
+        CALL clear_file
+        LDX  FILE_STATE
+        LDP  P_LEAF
+        CALL clear_file
+        LDX  FILE_TIME
+        LDP  P_LEAF
+        CALL clear_file
+        LDX  FILE_JETS
+        LDP  P_LEAF
+        CALL clear_file
+
+; --- the state a cleared RAM does not already describe -----------------------
+
+        LDX  FILE_STATE
+        TCY  NIB_LANE
+        TCMIY 1                 ; the lever starts centred
+        TCMIY 2                 ; and NIB_LANEB with it
+        TCMIY 1                 ; NIB_SKILL follows: the dial starts at 1
+        TCY  NIB_BSLANE
+        TCMIY BS_NONE           ; no crossing in progress
+        LDX  FILE_TIME
+        TCY  NIB_BS_LO
+        TCMIY BSHIP_OPEN_LO     ; the opening crossing comes sooner than a full
+        TCMIY BSHIP_OPEN_HI     ; interval, so a short game still sees the boat
+        TCY  NIB_STEP_LO
+        TCMIY 15
+        TCMIY STEP_HI_MAX
+        TCY  NIB_ENTRY_LO
+        TCMIY 15
+        TCMIY ENTRY_HI
+        TCY  NIB_ROCK_LO
+        TCMIY 15
+        TCMIY ROCK_HI_BASE
+        LDX  FILE_D3
+        TCY  NIB_DIG_T
+        TCMIY OPLA_A_DIGIT_BLANK
+        COMC
+        LDP  C1_REND1
+        BR   render
+
+; ============================================================================
+; Chapter 1, page 0 - losing a launcher
+; ============================================================================
+
+.CHAPTER 1
+.PAGE C1_LOSE
+
+; --- a rocket arrives in the launcher's lane ---------------------------------
+
+launcher_hit:
+        LDX  FILE_STATE
+        TCY  NIB_RLANE
+        TMA
+        TCY  NIB_KLANE
+        TAM
+        LDX  FILE_TIME
+        TCY  NIB_CAPTURE
+        TCMIY CAPTURE_SWEEPS
+        BR   launcher_down
+
+; --- a launcher is destroyed, however it happened ----------------------------
+;
+; Two ways in, because the player has two ways to lose one and they cost the
+; same thing: a rocket arriving at the station, and a jet reaching the G line.
+; PRD v1 R6 and audio-reference.md's launcherHitWarning: two beeps on the first
+; hit, three on the second, and on the third the full loss sound. All three are
+; owner-confirmed.
+
+launcher_down:
+        LDX  FILE_STATE
+        TCY  NIB_KCOL
+        TCMIY GRID_PLAYER + 1   ; the starburst on the player's own grid: the
+        LDX  FILE_TIME          ; same three plates a jet-kill burst uses, which
+        TCY  NIB_KSTEP          ; is what the tube gives every playfield cell
+        TCMIY BURST_SWEEPS
+        LDX  FILE_STATE
+        TCY  NIB_HITS
+        IMAC
+        TAM
+        A13AAC                  ; carry iff all three launchers are gone
+        BR   ld_to_over
+        LDX  FILE_STATE
+        TCY  NIB_HITS
+        TMA
+        LDX  FILE_JETS
+        TCY  NIB_J_TMP
+        TAM                     ; hits is 1 or 2, so beeps is hits + 1
+lw_beep:
+        LDX  FILE_D0
+        TCY  NIB_HALF_O
+        TCMIY SND_WARN_O
+        TCMIY SND_WARN_I
+        TCMIY SND_WARN_P
+        TCMIY SND_WARN_B
+        COMC
+        LDP  P_LEAF
+        CALL note
+        COMC               ; launcherHitWarning: 474 Hz, 10.5 ms
+        LDX  FILE_JETS
+        TCY  NIB_J_SCR
+        TCMIY WARN_GAP_PASSES
+lw_gap_out:
+        CLA
+        A10AAC                  ; WARN_GAP passes of the middle loop
+lw_gap_mid:
+        TCY  15
+lw_gap_in:
+        DYN
+        BR   lw_gap_in
+        A15AAC
+        BR   lw_gap_mid
+        LDX  FILE_JETS
+        TCY  NIB_J_SCR
+        DMAN
+        BR   lw_gap_more
+        LDX  FILE_JETS
+        TCY  NIB_J_TMP
+        DMAN
+        BR   lw_next_beep
+        LDP  C1_REND1
+        BR   render
+lw_gap_more:
+        TAM
+        BR   lw_gap_out
+lw_next_beep:
+        TAM
+        BR   lw_beep
+
+; The third hit is the loss sound rather than a warning. The trampoline sits
+; here, past the last branch of the routine above, because a page's words run in
+; the shift register's order and anything placed mid-routine is fallen into.
+ld_to_over:
+        LDP  C1_OVER
+        BR   game_lost
+
+; ============================================================================
+; Chapter 1, page 1 - the loss sound
+; ============================================================================
+
+.PAGE C1_OVER
 
 game_lost:
-        CALL bship_hush         ; a crossing can outlive the last launcher
-        LXI FILE_STATE
-        LYI NIB_STATE
-        LAI ST_OVER
-        XMA
-        JMPL play_loss
+        LDX  FILE_STATE
+        TCY  NIB_STATE
+        TCMIY ST_OVER
+        LDX  FILE_D0
+        TCY  NIB_HALF_O
+        TCMIY SND_LOSS1_O
+        TCMIY SND_LOSS1_I
+        TCMIY SND_LOSS1_P
+        TCMIY SND_LOSS1_B
+        COMC
+        LDP  P_LEAF
+        CALL note
+        COMC               ; the 474 Hz transient
+        LDX  FILE_D0
+        TCY  NIB_HALF_O
+        TCMIY SND_LOSS2_O
+        TCMIY SND_LOSS2_I
+        TCMIY SND_LOSS2_P
+        TCMIY SND_LOSS2_B
+        COMC
+        LDP  P_LEAF
+        CALL note
+        COMC               ; the collapse to 92 Hz
+        LDX  FILE_D0
+        TCY  NIB_HALF_O
+        TCMIY SND_LOSS3_O
+        TCMIY SND_LOSS3_I
+        TCMIY SND_LOSS3_P
+        TCMIY SND_LOSS3_B
+        COMC
+        LDP  P_LEAF
+        CALL note
+        COMC               ; the rasp body
+        LDX  FILE_D0
+        TCY  NIB_HALF_O
+        TCMIY SND_LOSS4_O
+        TCMIY SND_LOSS4_I
+        TCMIY SND_LOSS4_P
+        TCMIY SND_LOSS4_B
+        COMC
+        LDP  P_LEAF
+        CALL note
+        COMC               ; drifting down
+        LDX  FILE_D0
+        TCY  NIB_HALF_O
+        TCMIY SND_LOSS5_O
+        TCMIY SND_LOSS5_I
+        TCMIY SND_LOSS5_P
+        TCMIY SND_LOSS5_B
+        COMC
+        LDP  P_LEAF
+        CALL note
+        COMC               ; the low decay
+        LDP  C1_REND1
+        BR   render
+
 
 ; ============================================================================
-; the loss sound
+; Chapter 1, page 2 - the win jingle
 ; ============================================================================
+
+.PAGE C1_WIN
+
+; --- the win jingle ----------------------------------------------------------
 ;
-; Five stages, transcribed from audio-reference.md's gameOver envelope table:
-; a 466 Hz transient, a collapse to 96 Hz, the 240 Hz rasp body, a drift down to
-; 196 Hz and a 147 Hz decay. Those five stages sum to ~0.66 s of the measured
-; ~1.13 s total; the remainder of the real sound is a decaying noise layer, and a
-; single square-wave pin cannot produce noise. What is here is the tonal skeleton
-; the measurement describes, not the whole recording.
+; Three arpeggios of 750 / 940 / 1240 Hz and a sustained 940, which is the
+; sequence audio-reference.md transcribes. The E6 pass-tone an earlier v1
+; transcription carried was re-analysed and is not in the recording: do not
+; reintroduce it.
 
-play_loss:
-        LAI SND_LOSS1
-        LBI BURSTS_LOSS1
-        CALL play_sound
-        LAI SND_LOSS2
-        LBI BURSTS_LOSS2
-        CALL play_sound
-        LAI SND_LOSS3
-        LBI BURSTS_LOSS3
-        CALL play_sound
-        LAI SND_LOSS4
-        LBI BURSTS_LOSS4
-        CALL play_sound
-        LAI SND_LOSS5
-        LBI BURSTS_LOSS5
-        CALL play_sound
-        RTN
-
-; ============================================================================
-; the win jingle
-; ============================================================================
-;
-; audio-reference.md's `win` transcription: the arpeggio 750, 940, 1240 played
-; three times, resolving on a long 940. The three repeats are a loop rather than
-; nine note entries, which is what fits the whole jingle in one page - and it has
-; to be one page, because `BR gw_pass` closes the loop and BR cannot leave its
-; own page.
-;
-; 1240 Hz is the measurement. 1244 Hz is the equal-tempered frequency of the note
-; name D#6 that was attached to it afterwards, and audio-reference.md shows the
-; substitution being caught: the observed second partial is 2480, which is
-; 2 x 1240 and not 2 x 1244. SND_WIN3 targets 1240.
-
-.PAGE
 game_win:
-        CALL bship_hush         ; and it can outlive the winning shot
-        LXI FILE_STATE
-        LYI NIB_STATE
-        LAI ST_WIN
-        XMA
-        LXI FILE_SOUND
-        LYI NIB_NOTE_LEFT
-        LAI 2                   ; three passes of the arpeggio
-        XMA
+        LDX  FILE_STATE
+        TCY  NIB_STATE
+        TCMIY ST_WIN
+        LDX  FILE_JETS
+        TCY  NIB_J_TMP
+        TCMIY 2                 ; three passes of the arpeggio
 gw_pass:
-        LAI SND_WIN1
-        LBI BURSTS_WIN1
-        CALL play_sound
-        LAI SND_WIN2
-        LBI BURSTS_WIN2
-        CALL play_sound
-        LAI SND_WIN3
-        LBI BURSTS_WIN3
-        CALL play_sound
-        LXI FILE_SOUND
-        LYI NIB_NOTE_LEFT
-        LAM
-        AI 15
-        XMA
-        TC                      ; ST <- carry: 1 until the counter borrowed
-        BR gw_pass
-        LAI SND_WIN2
-        LBI BURSTS_WINEND       ; the sustained A#5 the jingle resolves on
-        CALL play_sound
-        RTN
+        LDX  FILE_D0
+        TCY  NIB_HALF_O
+        TCMIY SND_WIN1_O
+        TCMIY SND_WIN1_I
+        TCMIY SND_WIN1_P
+        TCMIY SND_WIN1_B
+        COMC
+        LDP  P_LEAF
+        CALL note
+        COMC
+        LDX  FILE_D0
+        TCY  NIB_HALF_O
+        TCMIY SND_WIN2_O
+        TCMIY SND_WIN2_I
+        TCMIY SND_WIN2_P
+        TCMIY SND_WIN2_B
+        COMC
+        LDP  P_LEAF
+        CALL note
+        COMC
+        LDX  FILE_D0
+        TCY  NIB_HALF_O
+        TCMIY SND_WIN3_O
+        TCMIY SND_WIN3_I
+        TCMIY SND_WIN3_P
+        TCMIY SND_WIN3_B
+        COMC
+        LDP  P_LEAF
+        CALL note
+        COMC
+        LDX  FILE_JETS
+        TCY  NIB_J_TMP
+        DMAN
+        BR   gw_again
+        BR   gw_last
+gw_again:
+        TAM
+        BR   gw_pass
+gw_last:
+        LDX  FILE_D0
+        TCY  NIB_HALF_O
+        TCMIY SND_WIN2_O
+        TCMIY SND_WIN2_I
+        TCMIY SND_WIN2_P
+        TCMIY SND_WINE_B
+        COMC
+        LDP  P_LEAF
+        CALL note
+        COMC
+        LDP  C1_REND1
+        BR   render
+
+
 
 ; ============================================================================
-; setting up a note
-; ============================================================================
-;
-; In:  A = a sound identifier, B = bursts to play minus one.
-; Out: nothing. Clobbers everything.
-;
-; Two pattern lookups fill the four consecutive nibbles note_loop and note_half
-; read: the two halves of the delay count, the whole-delay repeat, and the
-; periods per burst. The whole sound system is one pin toggled in a timed loop,
-; so a "note" is nothing more than those four numbers.
-
-play_sound:
-        LXI FILE_SOUND
-        LYI NIB_BURST_LEFT
-        XMB                     ; the burst count, straight out of B
-        LYI NIB_SND_ID
-        XMA                     ; park the identifier: P clobbers A and B
-        LAM
-        P PAT_SND_A             ; A <- inner delay, B <- outer delay
-        LYI NIB_HALF_IN
-        LMAIY
-        LAB
-        LMAIY
-        LYI NIB_SND_ID
-        LAM
-        P PAT_SND_B             ; A <- delay repeats, B <- periods per burst
-        LYI NIB_HALF_REP
-        LMAIY
-        LAB
-        LMAIY
-        JMPL note_loop
-
-; ============================================================================
-; the note itself
-; ============================================================================
-;
-; The whole sound system: one pin, toggled in a timed loop. The display is not
-; swept while this runs, which is what a machine with one core and no sound
-; hardware does - the tube holds its last state for as long as the note lasts.
-;
-; The period is (2 * note_half) + 13 machine cycles: the thirteen are this loop's
-; own two port writes, two calls and RAM-held counter decrement. The counter has
-; to live in RAM rather than in B because note_half needs B for its outer delay,
-; and a delay routine that ate its caller's loop counter produced an endless tone
-; once already.
-
-.PAGE
-note_loop:
-nl_burst:
-        LXI FILE_SOUND
-        LYI NIB_PERIODS
-        LAM
-        LYI NIB_PERIOD_LEFT
-        XMA
-nl_period:
-        SED D_SPEAKER           ; rising edge, timestamped here
-        CALL note_half
-        RED D_SPEAKER           ; falling edge
-        CALL note_half
-        LXI FILE_SOUND
-        LYI NIB_PERIOD_LEFT
-        LAM
-        AI 15
-        XMA
-        TC
-        BR nl_period
-        LXI FILE_SOUND
-        LYI NIB_BURST_LEFT
-        LAM
-        AI 15
-        XMA
-        TC
-        BR nl_burst
-        RTN
-
-; ============================================================================
-; half a period
-; ============================================================================
-;
-; In:  FILE_SOUND's four pitch nibbles. Out: nothing. Clobbers A, B, X, Y.
-;
-; Three nested counters, which is what it takes to cover every band the unit
-; produces from one routine: 1509 Hz for the missile blip down to 96 Hz for the
-; collapse in the loss sound is a range of sixteen to one, and two nibbles cannot
-; span it at usable resolution. The cost is
-;
-;   6 + repeats * (12 + outer * (2 * inner + 12))
-;
-; machine cycles, and the seven NOPs are what puts the "+ 12" there - they are a
-; deliberate timing pad, not dead code. Removing them shortens the reachable
-; half-period by a third and puts the battleship buzz above the jet march, which
-; audio-reference.md records as an owner-confirmed ordering constraint.
-;
-; Edit the numbers in PAT_SND_A / PAT_SND_B, not the shape of this loop: the
-; frequency table at the foot of the file is derived from the formula above.
-
-.PAGE
-note_half:
-        LXI FILE_SOUND
-        LYI NIB_HALF_REP
-        LAM
-        LYI NIB_REP_LEFT
-        XMA
-nh_rep:
-        LXI FILE_SOUND
-        LYI NIB_HALF_IN
-        LAM
-        LYI NIB_HALF_OUT
-        LBM
-nh_out: LYA
-nh_in:  DY
-        BR nh_in
-        NOP                     ; timing pad - see the header of this page
-        NOP
-        NOP
-        NOP
-        NOP
-        NOP
-        NOP
-        DB
-        BR nh_out
-        LXI FILE_SOUND
-        LYI NIB_REP_LEFT
-        LAM
-        AI 15
-        XMA
-        TC
-        BR nh_rep
-        RTN
-
-; ============================================================================
-; reset
+; Chapter 1, page 3 - which jet fires the next rocket
 ; ============================================================================
 
-.PAGE
-main:   ; --- clear every RAM file this program uses ---
-        ; RAM comes up undefined on the real device (src/machine/cpu/memory.ts),
-        ; so nothing may be read before it is written.
-        LBI FILE_JETS           ; the highest file in use
-mn_file:
-        LAB
-        LXA
-        LYI 0
-mn_nibble:
-        LMIIY 0
-        BR mn_nibble
-        DB
-        BR mn_file
+.PAGE C1_FIRE
 
-        ; --- the controls the program assumes until the first sweep reports ---
-        LXI FILE_STATE
-        LYI NIB_LANE
-        LAI LANE_CENTRE
-        LMAIY                   ; lane, then Y steps on to NIB_SKILL
-        LAI SKILL_ONE
-        LMAIY
-        LYI NIB_BSLANE
-        LAI BS_NONE
-        XMA                     ; no crossing in progress
-        JMPL main_timers
+; --- which jet fires it ------------------------------------------------------
+;
+; **This is the v2 defect PRD R5 forbids inheriting, fixed.** v2 drew this lane
+; from NIB_RAND - the free-running timer as it stood the last time the *player*
+; pressed fire. A player who never fires never moves it, so two of the three
+; lanes were permanently safe and the launcher could only ever be threatened in
+; one; docs/evidence/open-questions.md section 3d records it and contract
+; criterion V7 parks the lever in each lane in turn and requires a warning burst
+; in all three.
+;
+; The lane now comes from NIB_ROTOR, a round robin this routine owns and that
+; nothing on the input path touches. It advances on every launch attempt whether
+; or not the attempt finds a jet, and an empty lane walks it on to the next - so
+; all three lanes are reached, in turn, from a source with no dependence on the
+; player whatsoever.
 
-; The squadron needs nothing here. An empty sky is three zeroed jet nibbles and
-; no jets sent, which is what the RAM clear above already left, and a zeroed
-; entry countdown fires on the first tick - so the first jet of the first wave
-; comes in on the first sweep, at the far column, in the lane the rotor starts
-; on.
+rocket_fire:
+        LDX  FILE_JETS
+        TCY  NIB_J_TMP
+        TCMIY LANE_COUNT
+rf_try:
+        LDX  FILE_STATE
+        TCY  NIB_ROTOR
+        IMAC
+        TAM
+        A13AAC                  ; carry iff the rotor ran past lane 2
+        BR   rf_wrap
+        BR   rf_look
+rf_wrap:
+        LDX  FILE_STATE
+        TCY  NIB_ROTOR
+        TCMIY 0
+        BR   rf_look
+rf_look:
+        LDX  FILE_STATE
+        TCY  NIB_ROTOR
+        TMA
+        LDX  FILE_JETS
+        TAY
+        MNEZ                    ; is a jet flying in that lane?
+        BR   rf_fire
+        BR   rf_empty
+rf_empty:
+        LDX  FILE_JETS
+        TCY  NIB_J_TMP
+        DMAN                    ; A <- tries left - 1
+        BR   rf_retry
+        COMC
+        LDP  P_ROCKET
+        BR   tr_done   ; nothing airborne - no rocket this time round
+rf_retry:
+        TAM
+        BR   rf_try
+rf_fire:
+        TMA                     ; A <- the grid that jet stands on
+        LDX  FILE_STATE
+        TCY  NIB_RCOL
+        TAM                     ; the rocket starts from the jet that fired it
+        TCY  NIB_ROTOR
+        TMA
+        TCY  NIB_RLANE
+        TAM
+        LDX  FILE_TIME
+        TCY  NIB_RSTEP
+        TCMIY ROCKET_SWEEPS
+        COMC
+        LDP  P_ROCKET
+        BR   tr_done
 
-; ============================================================================
-; the rest of reset
-; ============================================================================
-
-main_timers:
-        LXI FILE_STATE
-        LYI NIB_SKILL
-        LAM
-        P PAT_ROCKET
-        LXI FILE_TIME
-        LYI NIB_ROCK_LO
-        LMAIY
-        LAB
-        LMAIY
-
-        ; The opening crossing comes sooner than a steady interval - see the
-        ; battleship's entry in the provisional-cadence block.
-        LXI FILE_TIME
-        LYI NIB_BS_LO
-        LAI 0
-        LMAIY
-        LAI BSHIP_GAP_OPEN
-        LMAIY
-
-        ; --- start the timer free running ---
-        ; tick_input reads it when the player presses fire, and that sample is
-        ; the game's only randomness. A counter started on first use has no
-        ; phase to read, so it starts here.
-        LPI PRESCALE
-        LTI 0
-        RECF                    ; timer mode, not event counting
-        RETF                    ; clear any stale overflow flag
-
-        SED D_INPUT             ; release the read line before the first strobe
-        JMPL sweep
-
-; ============================================================================
-; The pattern region
-; ============================================================================
-;
-; 128 ten-bit words above the program, read by `P` rather than executed. Each
-; word splits low nibble -> A, high nibble -> B.
-
-; --- Actor and lane -> where that segment lives -----------------------------
-; A = the plate file (FILE_PLATE0/1/2, i.e. which of R0, R1, R2 carries it).
-; B = the bit within that file. or_plate reads both.
-;
-; Four groups of three, indexed by LANEP_* + lane. Every address is the segment
-; atlas's (src/machine/tube/atlas.json); the plate numbers in the comments are
-; the atlas's plate indices, and file/bit is just plate/4 and 1 << (plate mod 4).
-; The groups are not contiguous because a fourth slot each keeps the arithmetic
-; to a single AI.
-.PATTERN PAT_LANE
-lane_plates:
-        .DW $010                ;  0: jet, lane 0        - plate 0,  R0 bit 0
-        .DW $020                ;  1: jet, lane 1        - plate 1,  R0 bit 1
-        .DW $040                ;  2: jet, lane 2        - plate 2,  R0 bit 2
-        .DW $000                ;  3: unused
-        .DW $080                ;  4: rocket, lane 0     - plate 3,  R0 bit 3
-        .DW $011                ;  5: rocket, lane 1     - plate 4,  R1 bit 0
-        .DW $021                ;  6: rocket, lane 2     - plate 5,  R1 bit 1
-        .DW $000                ;  7: unused
-        .DW $041                ;  8: player, lane 0     - plate 6,  R1 bit 2
-        .DW $081                ;  9: player, lane 1     - plate 7,  R1 bit 3
-        .DW $012                ; 10: player, lane 2     - plate 8,  R2 bit 0
-        .DW $000                ; 11: unused
-        .DW $022                ; 12: burst, lane 0      - plate 9,  R2 bit 1
-        .DW $042                ; 13: burst, lane 1      - plate 10, R2 bit 2
-        .DW $082                ; 14: burst, lane 2      - plate 11, R2 bit 3
-        .DW $000                ; 15: unused
-; Groups 8 and 12 each serve two actors, because the tube gives the same plate
-; the same *role* under every playfield grid and lets the grid say which segment
-; that is: 6-8 are the missile dart under grids 0-4 and the launcher under grid
-; 5, and 9-11 the jet-kill burst under grids 0-3 and the player's own
-; destruction under grid 5. The battleship is not here - it is the only actor
-; above plate 11, and render_bship writes its file directly.
-
-; --- Digit -> seven-segment plates ------------------------------------------
-; Segments a,b,c,d on plates 0-3 (R0) and e,f,g on plates 4-6 (R1):
-;   a=$01 b=$02 c=$04 d=$08 e=$10 f=$20 g=$40
-.PATTERN PAT_DIGIT
-digit_plates:
-        .DW $03F                ; 0: a b c d e f
-        .DW $006                ; 1: b c
-        .DW $05B                ; 2: a b d e g
-        .DW $04F                ; 3: a b c d g
-        .DW $066                ; 4: b c f g
-        .DW $06D                ; 5: a c d f g
-        .DW $07D                ; 6: a c d e f g
-        .DW $007                ; 7: a b c
-        .DW $07F                ; 8: all seven
-        .DW $06F                ; 9: a b c d f g
-        .DW $000, $000, $000, $000, $000, $000
-
-; --- Column -> its display grid, and what a jet there is worth ---------------
-; A = the display grid that column is strobed on. The game counts columns from
-; the G line outwards and the tube numbers its grids from the far side inwards,
-; so this is the whole of that translation: grid = 6 - column, one to one.
-;
-; It used to be grid = 5 - column with columns 5 and 6 both landing on grid 0,
-; because the atlas gave the playfield six grids. Seven printed cell boxes and a
-; two-cell score readout (assets/reference/tube-teardown/) freed the seventh, so
-; the battleship's zone now has a grid of its own and nothing is collapsed.
-; B = the scoring band, read by missile_kill. The printed ruler is 10 / 3 / 2 /
-; 1 / G from the far side inwards; the battleship zone carries the 10 and is
-; scored through add_score's tens addend, so its band here is zero.
-;
-; Column 0 is the capture line. Its grid is real - the launcher and the burst
-; that marks its destruction hang there - but the tube prints no jet in that
-; cell, so draw_jet stops short of it rather than driving an address the glass
-; has nothing at.
-.PATTERN PAT_COLUMN
-column_plates:
-        .DW $006                ; 0: grid 6, the G line - a jet here captures
-        .DW $015                ; 1: grid 5, near band, 1 point
-        .DW $014                ; 2: grid 4, near band, 1 point
-        .DW $023                ; 3: grid 3, middle band, 2 points
-        .DW $022                ; 4: grid 2, middle band, 2 points
-        .DW $031                ; 5: grid 1, far band, 3 points
-        .DW $000                ; 6: grid 0, the battleship zone
-        .DW $000, $000, $000, $000, $000    ; 7-11:  unused
-        .DW $000, $000, $000, $000          ; 12-15: unused
-
-; --- Skill -> how often the jets fire back ----------------------------------
-; Sweeps between rocket launches, as A = low nibble and B = high nibble.
-; PROVISIONAL - no measurement, see docs/evidence/timing-analysis.md (T9).
-; v1's per-tick fire chances gave mean intervals of ~556 / ~278 / ~167 ms, which
-; at this ROM's ~74 sweeps per second are ~41 / ~21 / ~12 sweeps. Those means
-; came from v1's tuning, not from the unit, and they were shorter than a rocket's
-; own flight: at 7 sweeps per column (ROCKET_SWEEPS) a full-board flight is 42
-; sweeps, so skill 3 launched a second rocket into a lane while the first was
-; still in it and the lane never cleared. A player cannot dodge a lane that is
-; permanently occupied, whatever the flight time is.
-;
-; The figures below are therefore derived from ROCKET_SWEEPS rather than from
-; v1: each is longer than the 42-sweep flight, so at most one rocket per lane is
-; ever airborne and the dodge window the flight time buys actually exists. The
-; skill ordering and the spread are v1's; the floor under them is arithmetic.
-; The counts moved with the sweep rate; the milliseconds they stand for did not.
-;
-; INSTRUCTION-RATE PROVISIONAL (in addition to the gameplay-video PROVISIONAL
-; marking above): every ms figure in the table below converts sweeps at the
-; HMCS44 core's oscillator, not the TMS1370's. See docs/research/
-; mp2110-timing-measurement.md.
-.PATTERN PAT_ROCKET
-rocket_interval:
-        .DW $000                ; 0: unused - the dial reads 1..3
-        .DW $045                ; skill 1: 69 sweeps, ~929 ms
-        .DW $037                ; skill 2: 55 sweeps, ~740 ms
-        .DW $02E                ; skill 3: 46 sweeps, ~619 ms
-        .DW $000, $000, $000, $000
-        .DW $000, $000, $000, $000
-        .DW $000, $000, $000, $000
-
-; --- Speed index -> the squadron's step cadence -----------------------------
-; Sweeps between steps, as A = low nibble and B = high nibble. One ladder:
-; PAT_SKILL picks the entry point, each kill and each cleared wave takes one step
-; down it, and entry 15 is the floor.
-;
-; The **top of the ladder is measured**; everything below it is that measurement
-; carried down the ladder's existing shape. docs/evidence/timing-analysis.md T1.
-;
-; Entry 0 is the slowest steady march the gameplay video shows: **2033 and
-; 2050 ms**, at t=64.4 and t=90.2, each a jet crossing three columns with its two
-; step intervals agreeing to 100 ms. 110 sweeps runs at 1995 ms of measured wall
-; clock, 2% under it.
-;
-; **Wall clock, not `sweeps x 13.46 ms`.** `note_loop` stops sweeping the tube
-; while a sound plays, so a step lands 40-60% longer than its nominal: entry 0 is
-; 1481 ms nominal and 1995 ms in wall clock off the probe. The video measures wall
-; clock, so the comparison has to be made there. The previous entry 0 was 55
-; sweeps - 740 ms nominal, **1075 ms measured** - so the ladder was 1.9x too fast
-; at its top, not 2.8x as the nominal figures alone would suggest.
-;
-; **Why this needs no knowledge of the skill dial.** Entry 0 *is* skill 1's entry
-; point, the slowest cadence the ROM can produce at any dial position and any
-; point in a game. The unit demonstrably marched at ~2040 ms. So the observed
-; behaviour was outside the range this ladder could express at all, whatever the
-; dial was set to - a refutation, not a mistuning.
-;
-; **The assumption, stated so it can be corrected.** Putting 2040 ms at entry 0
-; assumes the session showing it was at **skill 1 and near the top of its ladder**.
-; It was at score 42-45, so it had already made some progress, and skill 1's true
-; entry is if anything slower than this. If that session was at skill 2 or 3
-; instead, every entry here is still too fast and by a larger factor. When the
-; dial is visible in a recording, that is the number to re-derive against.
-;
-; **The floor is a consequence, not a claim.** The other fifteen rungs are the
-; previous ladder's shape scaled by the same factor - which comes out at almost
-; exactly 2x, though it was derived from the top rung and not chosen as a
-; doubling. Entry 15 lands at 30 sweeps, 652 ms measured. That is *unevidenced*
-; rather than measured, and the distinction matters: the video's long session was
-; still descending when it ended - 733 ms at score 164 and 900 ms at score 188,
-; against a 199 cap - so it may never have reached bottom, and nothing in the
-; footage says where bottom is. Note 652 ms is faster than the fastest step seen
-; anywhere in 408 s (700 ms), so if it is wrong it is still wrong in the fast
-; direction. T4 is what would settle it.
-;
-; **What the video refutes outright.** Entry 15 was previously derived from the
-; 205 ms march-beep interval in gameplay-audio.m4a, on the premise that the beep
-; fires once per squadron step. Over t=122-128 four consecutive column steps are
-; timed at 1067-1200 ms in two lanes at once, while the 590-720 Hz band's own
-; repetition period in that same window is 763 ms and its notes fall in the gaps
-; between the steps. Clip-wide that band repeats at 700-800 ms and missile
-; launches - directly observable as a cyan onset at column 1 - at 600-1000 ms, so
-; it tracks how often the player fires. 205 ms never bounded the squadron rate.
-;
-; Whether the shape between the ends is right is still T2, and still unmeasured.
-;
-; INSTRUCTION-RATE PROVISIONAL: the wall-clock figures cited throughout this
-; comment (1995 ms, 652 ms, etc.) were measured off the emulated HMCS44 core,
-; not the TMS1370. See docs/research/mp2110-timing-measurement.md.
-.PATTERN PAT_STEP
-step_cadence:
-        .DW 110, 104, 96, 90
-        .DW 82, 78, 74, 68
-        .DW 62, 56, 50, 46
-        .DW 42, 36, 32, 30
-
-; --- Skill -> where on that ladder a fresh squadron starts ------------------
-; INSTRUCTION-RATE PROVISIONAL: the ms figures in this table's comments carry
-; the same HMCS44-oscillator dependency as PAT_STEP above. See docs/research/
-; mp2110-timing-measurement.md.
-.PATTERN PAT_SKILL
-skill_base:
-        .DW $000                ; 0: unused - the dial reads 1..3
-        .DW $000                ; skill 1: 110 sweeps, 1995 ms measured wall clock
-        .DW $004                ; skill 2: 82, 1528 ms
-        .DW $009                ; skill 3: 56, 1159 ms
-        .DW $000, $000, $000, $000
-        .DW $000, $000, $000, $000
-        .DW $000, $000, $000, $000
 
 ; ============================================================================
-; The sound table
+; Chapter 1, page 4 - the battleship arriving and leaving
 ; ============================================================================
 ;
-; A sound is four numbers. PAT_SND_A carries the half-period delay's inner count
-; in its low nibble and its outer count in its high nibble; PAT_SND_B carries the
-; whole-delay repeat count minus one in its low nibble and the periods per burst
-; minus one in its high nibble. Bursts are passed to play_sound in B.
-;
-; The period of the square wave that comes out is, in machine cycles,
-;
-;   period = 25 + repeats * (24 + outer * (4 * inner + 24))
-;
-; where `repeats` and `outer` are the stored values plus one. At the 400 kHz
-; oscillator the frequency is 400000 / period. Every entry below is the closest
-; this loop can land to its target, and the target is cited.
-;
-; **One way this arithmetic gets misread.** `outer` is the stored value *plus
-; one*, because DB leaves the loop only after the counter borrows. Dropping the
-; plus one puts every entry in this table about 6% sharp, and the error is
-; invisible because the shape of the answer still looks right.
-;
-; The calibration point is the march: drive the machine, reconstruct the tone
-; from D14, and it reads 640.0 Hz against a measured 600-650, which is what says
-; the model behind these numbers is the right one.
-; tools/probe/speaker-bands.test.ts asserts it.
-;
-; **The battleship buzz is not in this table and cannot be.** It used to be entry
-; 2, at 287 Hz, and the ROM carried a long argument here about how much room
-; there was underneath it. That argument is now moot: the buzz is 89 Hz, which
-; this loop can reach, but it also has to last four seconds without blanking the
-; tube, which this loop cannot do at any entry. It is clocked by the display
-; sweep out of `dwell` instead. See that routine.
-;
-; One wrinkle, and it is real hardware behaviour rather than a defect: the period
-; that straddles a burst boundary is **twelve cycles longer**, because note_loop
-; has to reload the period counter and decrement the burst counter between
-; bursts and the machine has no timer to hide that behind. A four-burst note
-; therefore contains three slightly flat periods out of sixty-four. It matters
-; for exactly one sound - the missile blip, whose band contract criterion V5
-; asserts against - so that entry is chosen so that *both* its periods land
-; inside 1480-1632 Hz: 257 cycles is 1556 Hz and 269 is 1487 Hz. Retuning it
-; means re-checking the boundary period as well as the nominal one.
-;
-; | id | sound      | in | out | rep | per | period | Hz   | target (audio-reference.md) |
-; |----|------------|----|-----|-----|-----|--------|------|-----------------------------|
-; |  0 | missile    |  7 |   3 |   0 |  15 |    257 | 1556 | 1480-1632, centre 1520      |
-; |  1 | jet march  | 12 |   7 |   0 |   7 |    625 |  640 | 600-650                     |
-; |  2 | warning    | 13 |   9 |   0 |   4 |    809 |  494 | 455-545                     |
-; |  3 | win 1      |  5 |  10 |   0 |  15 |    533 |  751 | 750 (measured fundamental)  |
-; |  4 | win 2      | 13 |   4 |   0 |  15 |    429 |  932 | 940 (measured fundamental)  |
-; |  5 | win 3      | 11 |   3 |   0 |  15 |    321 | 1246 | 1240 (not the 1244 label)   |
-; |  6 | loss 1     | 14 |   9 |   0 |  11 |    849 |  471 | 455-545 opening transient   |
-; |  7 | loss 2     | 12 |  13 |   3 |   3 |   4153 |   96 | 80-97 collapse              |
-; |  8 | loss 3     | 14 |   9 |   1 |  10 |   1673 |  239 | 200-280 rasp body           |
-; |  9 | loss 4     | 13 |  12 |   1 |  15 |   2049 |  195 | ~196 drifting down          |
-; | 10 | loss 5     | 11 |  12 |   2 |  15 |   2749 |  146 | ~147 decay floor            |
-;
-; The battleship's row is gone from this table; see above. Its buzz is 89 Hz,
-; sweep-clocked, and lasts as long as the boat is on the glass.
-;
-; Note *lengths* are a mixture and are not all measured. A length here is how
-; long one sound lasts; how often the game triggers it is the provisional-cadence
-; block's business and is deliberately not decided here.
-;
-; A length is also not free of perceptual consequence. A burst of eight cycles is
-; not a short tone, it is a click: pitch does not establish itself in under
-; roughly twenty milliseconds, so a note shorter than that reaches the ear as a
-; speaker pop whatever its period says. The march was 12.5 ms and was exactly
-; that - which is why the unit sounded like it was popping rather than playing,
-; with its pitch sitting correctly inside the measured band the whole time. It is
-; now at the ~70 ms the reference records for a march step. (The battleship buzz
-; had the same fault and no longer appears here at all: it is not a note.)
-;
-;  - missile: 4 bursts of 16 periods = 42 ms. audio-reference.md measures ~20 ms;
-;    contract criterion V5 requires under 150 ms. PROVISIONAL, and longer than the
-;    measurement.
-;  - jet march: 3 bursts of 15 periods = 70.4 ms, against the 70 ms recorded in
-;    audio-reference.md as jetMarch.stepDurationMs. That figure is a v1
-;    *synthesis* rather than a measurement, so it is a target and not a contract,
-;    but it is the only duration the evidence carries and 12.5 ms was audibly
-;    wrong against it.
-;  - battleship: **not in this list.** The buzz is not a note and has no burst
-;    count. It sounds for as long as the boat is on the tube - about four
-;    seconds - because `dwell` toggles the speaker every fourth grid while
-;    NIB_BUZZ is set, and that is the only way to make a sound last four seconds
-;    on a machine whose note player stops the display.
-;
-;    Three revisions read the reference's word *sustained* as a note length, and
-;    each was a better note than the last: three ~70 ms blips one per lane, then
-;    the same three bunched closer together, then one 383 ms note at the arrival
-;    against the 380 ms v1 had synthesized. The owner's isolated recording ends
-;    that line of reasoning rather than continuing it - the sound is **4.0 s and
-;    continuous**, so it was never a note length at all, and no note this loop
-;    can play is within an order of magnitude of it.
-;
-;    The 380 ms it was matched against was itself a v1 *synthesis*, not a
-;    measurement; audio-reference.md now says so in the row it is cited from.
-;  - warning beep: 1 burst of 5 periods = 10.1 ms, against a measured ~10 ms.
-;    Short, but this one is the measurement.
-;  - win: 9, 9 and 12 bursts of 16 periods = 192 / 154 / 154 ms against the
-;    transcribed 200 / 150 / 150 ms, and 16 bursts = 274 ms for the resolution
-;    against a transcribed 330 ms - the resolution is short because the burst
-;    count is a nibble.
-;  - loss: 1, 1, 4, 2 and 2 bursts = 25 / 42 / 184 / 164 / 220 ms against the
-;    transcribed 25 / 45 / 180 / 170 / 240 ms.
+; The two ends of a crossing, which happen once every 19.8 s each. The sweep
+; between them is on P_BSHIP with the rest of the loop.
 
-.PATTERN PAT_SND_A
-sound_pitch:
-        .DW $037                ; 0  missile fire
-        .DW $07C                ; 1  jet march
-        .DW $09D                ; 2  launcher-hit warning beep
-        .DW $0A5                ; 3  win, 750 Hz
-        .DW $04D                ; 4  win, 940 Hz
-        .DW $03B                ; 5  win, 1240 Hz
-        .DW $09E                ; 6  loss, opening transient
-        .DW $0DC                ; 7  loss, collapse
-        .DW $09E                ; 8  loss, rasp body
-        .DW $0CD                ; 9  loss, drifting down
-        .DW $0CB                ; 10 loss, decay floor
-        .DW $000, $000, $000, $000, $000
+.PAGE C1_BSHIP
 
-.PATTERN PAT_SND_B
-sound_shape:
-        .DW $0F0                ; 0  16 periods per burst
-        .DW $0E0                ; 1  15
-        .DW $040                ; 2   5
-        .DW $0F0                ; 3  16
-        .DW $0F0                ; 4  16
-        .DW $0F0                ; 5  16
-        .DW $0B0                ; 6  12
-        .DW $033                ; 7   4 periods, delay repeated 4 times
-        .DW $0A1                ; 8  11 periods, delay repeated twice
-        .DW $0F1                ; 9  16 periods, delay repeated twice
-        .DW $0F2                ; 10 16 periods, delay repeated three times
-        .DW $000, $000, $000, $000, $000
+bship_enter:
+        LDX  FILE_STATE
+        TCY  NIB_BSLANE
+        TCMIY 0                 ; it enters in lane 0
+        LDX  FILE_TIME
+        TCY  NIB_BS_LO
+        TCMIY BSHIP_STEP_LO
+        TCMIY BSHIP_STEP_HI
+        LDX  FILE_D0
+        TCY  NIB_BUZZ
+        TCMIY BUZZ_DIV
+        TCMIY 1                 ; the phase, so the first edge drives R15 high
+        COMC
+        LDP  P_BSHIP
+        BR   bs_out
+
+bs_leave:
+        LDX  FILE_STATE
+        TCY  NIB_BSLANE
+        TCMIY BS_NONE
+        LDX  FILE_D0
+        TCY  NIB_BUZZ
+        TCMIY 0                 ; the buzz stops with the boat
+        TCY  NIB_BPHASE
+        TCMIY 0
+        TCY  R_SPEAKER
+        RSTR                    ; and the pin is left low
+        LDX  FILE_TIME
+        TCY  NIB_BS_LO
+        TCMIY BSHIP_GAP_LO
+        TCMIY BSHIP_GAP_HI
+        COMC
+        LDP  P_BSHIP
+        BR   bs_out
+
+
+; ============================================================================
+; Chapter 1, pages 5-8 - the playfield, laid out into the display files
+; ============================================================================
+;
+; One pass over the game state, writing the twenty-four nibbles the sweep reads.
+; Everything is blanked first, to each group's *own* empty subset - zero is the
+; near group's, and writing it into a far or pair nibble would light plates 0-2
+; under every grid.
+
+.PAGE C1_REND1
+
+render:
+        LDX  FILE_D0
+        TCY  GRID_BSHIP
+        TCMIY OPLA_A_NEAR
+        TCMIY OPLA_A_NEAR
+        TCMIY OPLA_A_NEAR
+        TCMIY OPLA_A_NEAR
+        TCMIY OPLA_A_NEAR
+        TCMIY OPLA_A_NEAR
+        LDX  FILE_D1
+        TCY  GRID_BSHIP
+        TCMIY OPLA_A_FAR + 7    ; the printed sea reads as one horizon
+        TCMIY OPLA_A_FAR
+        TCMIY OPLA_A_FAR
+        TCMIY OPLA_A_FAR
+        TCMIY OPLA_A_FAR
+        TCMIY OPLA_A_FAR
+        TCMIY OPLA_A_FAR
+        LDX  FILE_D2
+        TCY  GRID_BSHIP
+        TCMIY OPLA_A_PAIR
+        TCMIY OPLA_A_PAIR
+        TCMIY OPLA_A_PAIR
+        TCMIY OPLA_A_PAIR
+        TCMIY OPLA_A_PAIR
+        TCMIY OPLA_A_PAIR
+        TCMIY OPLA_A_PAIR
+        TCMIY OPLA_A_PAIR       ; grid 7, the hundreds indicator's grid
+        TCMIY OPLA_A_PAIR + 2   ; grid 8: SCORE, plate 7, and never plate 6
+        LDX  FILE_D3
+        TCY  GRID_BSHIP
+        TCMIY 0
+        TCMIY 0
+        TCMIY 0
+        TCMIY 0
+        TCMIY 0
+        TCMIY 0
+        TCMIY 0
+        LDP  C1_REND0
+        BR   rd_bship
+
+.PAGE C1_REND2
+
+; --- the squadron, on grids 1-5's near plates --------------------------------
+;
+; Three lanes can stand in one column, which is why the near group holds all
+; eight subsets and not four, and why this adds rather than overwrites.
+
+rd_jets:
+        LDX  FILE_D3
+        TCY  NIB_RLNE
+        TCMIY 0
+        TCMIY 1                 ; NIB_RBIT follows NIB_RLNE
+rd_jet_lane:
+        LDX  FILE_D3
+        TCY  NIB_RLNE
+        TMY                     ; Y <- the lane
+        LDX  FILE_JETS
+        MNEZ                    ; is there a jet in it?
+        BR   rd_jet_draw
+        BR   rd_jet_next
+rd_jet_draw:
+        TMA                     ; A <- the grid it stands on
+        LDX  FILE_D3
+        TCY  NIB_RGRID
+        TAM
+        TCY  NIB_RBIT
+        TMA                     ; A <- this lane's bit
+        TCY  NIB_RGRID
+        TMY                     ; Y <- the grid, with A untouched
+        LDX  FILE_D0
+        AMAAC
+        TAM
+rd_jet_next:
+        LDX  FILE_D3
+        LDP  C1_REND2           ; the loop below branches within this page
+        TCY  NIB_RBIT
+        TMA
+        AMAAC                   ; the bit walks left: 1, 2, 4
+        TAM
+        TCY  NIB_RLNE
+        IMAC
+        TAM
+        A13AAC                  ; carry iff every lane has been walked
+        BR   rd_to_rocket
+        BR   rd_jet_lane
+rd_to_rocket:
+        LDP  C1_REND3
+        BR   rd_rocket
+
+.PAGE C1_REND3
+
+; --- the rocket, on its column's far plates ----------------------------------
+
+rd_rocket:
+        LDX  FILE_STATE
+        TCY  NIB_RCOL
+        LDP  C1_REND3           ; the in-page arm needs PB naming this page too
+        MNEZ
+        BR   rd_rk_draw
+        BR   rd_to_missile
+rd_to_missile:
+        LDP  C1_REND4
+        BR   rd_missile
+rd_rk_draw:
+        TMA
+        LDX  FILE_D3
+        TCY  NIB_RGRID
+        TAM
+        LDX  FILE_STATE
+        TCY  NIB_RLANE
+        TMA
+        LDX  FILE_D3
+        TCY  NIB_RLNE
+        TAM
+        COMC
+        LDP  P_LEAF
+        CALL lane_bit
+        COMC
+        LDX  FILE_D3
+        TCY  NIB_RBIT
+        TMA
+        TCY  NIB_RGRID
+        TMY
+        LDX  FILE_D1
+        AMAAC
+        TAM
+        LDP  C1_REND4
+        TCY  0
+        YNEC 1
+        BR   rd_missile
+
+.PAGE C1_REND4
+
+; --- the player's missile, on the pair plates --------------------------------
+;
+; Lanes 0 and 1 are plates 6 and 7 and go through the PLA; lane 2 is plate 8,
+; which is R11, so it names a line in FILE_D3 instead.
+
+rd_missile:
+        LDX  FILE_STATE
+        TCY  NIB_MCOL
+        LDP  C1_REND4           ; the in-page arm needs PB naming this page, so
+                                ; the other one goes through a trampoline
+        MNEZ
+        BR   rd_ms_draw
+        BR   rd_ms_none
+rd_ms_none:
+        LDP  C1_REND5
+        BR   rd_launcher
+rd_ms_draw:
+        TMA
+        LDX  FILE_D3
+        TCY  NIB_RGRID
+        TAM
+        LDX  FILE_STATE
+        TCY  NIB_MLANE
+        TMA
+        LDX  FILE_D3
+        TCY  NIB_RLNE
+        TAM
+        TBIT1 1                 ; lane 2 is the one that is not on the O port
+        BR   rd_ms_plate8
+        COMC
+        LDP  P_LEAF
+        CALL lane_bit
+        COMC
+        LDX  FILE_D3
+        TCY  NIB_RBIT
+        TMA
+        TCY  NIB_RGRID
+        TMY
+        LDX  FILE_D2
+        AMAAC
+        TAM
+        LDP  C1_REND5
+        TCY  0
+        YNEC 1
+        BR   rd_launcher
+rd_ms_plate8:
+        LDX  FILE_D3
+        TCY  NIB_RGRID
+        TMY
+        TCMIY RPL_R11
+        LDP  C1_REND5
+        BR   rd_launcher
+
+.PAGE C1_REND5
+
+; --- the launcher, on grid 6's pair plates -----------------------------------
+
+rd_launcher:
+        LDX  FILE_STATE
+        TCY  NIB_LANE
+        TMA
+        LDX  FILE_D3
+        TCY  NIB_RLNE
+        TAM
+        TCY  NIB_RGRID
+        TCMIY GRID_PLAYER
+        TCY  NIB_RLNE
+        TBIT1 1
+        BR   rd_ln_plate8
+        COMC
+        LDP  P_LEAF
+        CALL lane_bit
+        COMC
+        LDX  FILE_D3
+        TCY  NIB_RBIT
+        TMA
+        LDX  FILE_D2
+        TCY  GRID_PLAYER
+        AMAAC
+        TAM
+        LDP  C1_REND6
+        TCY  0
+        YNEC 1
+        BR   rd_burst
+rd_ln_plate8:
+        LDX  FILE_D3
+        TCY  GRID_PLAYER
+        TCMIY RPL_R11
+        LDP  C1_REND6
+        BR   rd_burst
+
+.PAGE C1_REND6
+
+; --- the burst, and the capture --------------------------------------------
+;
+; One actor with two meanings, because the tube gives plates 9-11 of every
+; playfield grid to whatever bursts in that cell: under grids 1-5 that is the
+; pair a jet leaves when the missile kills it, and under grid 6 the starburst
+; where the player's own launcher goes. Both are a grid, a lane and a countdown,
+; so both are drawn here. On grid 0 the boat's burst is the pair family instead,
+; and that case writes a pair nibble rather than an R line.
+
+rd_burst:
+        LDX  FILE_STATE
+        TCY  NIB_KCOL
+        LDP  C1_REND6
+        MNEZ
+        BR   rd_bk_draw
+        BR   rd_bk_none
+rd_bk_none:
+        LDP  C1_REND7
+        BR   rd_capture
+rd_bk_draw:
+        TMA
+        A15AAC                  ; NIB_KCOL is the grid plus one
+        LDX  FILE_D3
+        TCY  NIB_RGRID
+        TAM
+        LDX  FILE_STATE
+        TCY  NIB_KLANE
+        TMA
+        LDX  FILE_D3
+        TCY  NIB_RLNE
+        TAM
+        TCY  NIB_RGRID
+        MNEZ                    ; grid 0 is the boat's burst, on the pair plates
+        BR   rd_bk_plate
+        COMC
+        LDP  P_LEAF
+        CALL lane_bit
+        COMC
+        LDX  FILE_D3
+        TCY  NIB_RBIT
+        TMA
+        LDX  FILE_D2
+        TCY  GRID_BSHIP
+        AMAAC
+        TAM
+        LDP  C1_REND7
+        TCY  0
+        YNEC 1
+        BR   rd_capture
+rd_bk_plate:
+        LDX  FILE_D3
+        TCY  NIB_RLNE
+        TMA
+        A2AAC                   ; lane L is R(12 + L), the code RPL_BURST + L
+        LDX  FILE_D3
+        TCY  NIB_RBIT
+        TAM
+        TCY  NIB_RGRID
+        TMY
+        LDX  FILE_D3
+        TCY  NIB_RBIT
+        TMA
+        TCY  NIB_RGRID
+        TMY
+        TAM
+        LDP  C1_REND7
+        BR   rd_capture
+
+.PAGE C1_REND7
+
+; --- the capture burst, on grid 6's far plates ------------------------------
+
+rd_capture:
+        LDX  FILE_TIME
+        TCY  NIB_CAPTURE
+        MNEZ
+        BR   rd_cp_draw
+        BR   rd_score
+rd_cp_draw:
+        LDX  FILE_STATE
+        TCY  NIB_KLANE
+        TMA
+        LDX  FILE_D3
+        TCY  NIB_RLNE
+        TAM
+        COMC
+        LDP  P_LEAF
+        CALL lane_bit
+        COMC
+        LDX  FILE_D3
+        TCY  NIB_RBIT
+        TMA
+        LDX  FILE_D1
+        TCY  GRID_PLAYER
+        AMAAC
+        TAM
+        TCY  0
+        YNEC 1
+        BR   rd_score
+
+; --- the score --------------------------------------------------------------
+;
+; The units digit always shows. The tens digit is blanked when the whole score
+; is below ten, which is what OPLA_A_DIGIT_BLANK is for - a dark slot in the
+; *high* bank, so suppressing it costs the same two instructions as drawing it
+; and does not move the status latch. The hundreds indicator is plate 7 of grid
+; 7, one lamp rather than a digit, which is why 199 is the top of the range.
+
+rd_score:
+        LDX  FILE_TIME
+        TCY  NIB_SC_U
+        TMA
+        LDX  FILE_D3
+        TCY  NIB_DIG_U
+        TAM
+        LDX  FILE_TIME
+        TCY  NIB_SC_T
+        MNEZ
+        BR   rd_sc_tens
+        TCY  NIB_SC_H
+        MNEZ
+        BR   rd_sc_tens
+        LDX  FILE_D3
+        TCY  NIB_DIG_T
+        TCMIY OPLA_A_DIGIT_BLANK
+        BR   rd_sc_hund
+rd_sc_tens:
+        LDX  FILE_TIME
+        TCY  NIB_SC_T
+        TMA
+        LDX  FILE_D3
+        TCY  NIB_DIG_T
+        TAM
+        BR   rd_sc_hund
+rd_sc_hund:
+        LDX  FILE_TIME
+        TCY  NIB_SC_H
+        MNEZ
+        BR   rd_sc_lamp
+        BR   rd_done
+rd_sc_lamp:
+        LDX  FILE_D2
+        TCY  GRID_SC_T
+        TCMIY OPLA_A_PAIR + 2   ; plate 7, and never plate 6 on a digit grid
+        BR   rd_done
+rd_done:
+        COMC
+        LDP  P_SWEEP
+        BR   sweep
+
+
+
+; ============================================================================
+; Chapter 1, page 12 - the win test
+; ============================================================================
+
+.PAGE C1_WINTEST
+
+; --- the win is 199 ----------------------------------------------------------
+;
+; Two ways to reach it, and both are here because a score that steps by five can
+; jump the exact value. Hundreds reaching two is a score above 199 and is capped
+; back to it; otherwise 1-9-9 is tested digit by digit. `A7AAC` carries exactly
+; when a BCD digit is nine, which is what makes the test two instructions
+; instead of a scratch nibble and a compare.
+
+as_done:
+        LDX  FILE_TIME
+        TCY  NIB_SC_H
+        TMA
+        A14AAC                  ; carry iff hundreds >= 2
+        BR   as_cap
+        BR   as_test_h
+as_cap:
+        LDX  FILE_TIME
+        TCY  NIB_SC_U
+        TCMIY 9
+        TCMIY 9
+        TCMIY 1                 ; 199, the cap
+        BR   as_win
+as_test_h:
+        LDX  FILE_TIME
+        TCY  NIB_SC_H
+        MNEZ
+        BR   as_test_t
+        BR   as_out
+as_test_t:
+        TCY  NIB_SC_T
+        TMA
+        A7AAC                   ; carry iff the tens digit is nine
+        BR   as_test_u
+        BR   as_out
+as_test_u:
+        TCY  NIB_SC_U
+        TMA
+        A7AAC
+        BR   as_win
+        BR   as_out
+as_win:
+        LDP  C1_WIN
+        BR   game_win
+as_out:
+        COMC
+        LDP  P_SCORE
+        BR   as_out2
+
+
+
+; ============================================================================
+; Chapter 1, page 13 - the cadence ladder
+; ============================================================================
+
+.PAGE C1_LADDER
+
+; --- the ladder --------------------------------------------------------------
+;
+; STEP_HI = STEP_HI_MAX - kills - STEP_SKILL * (skill - 1), floored at
+; STEP_HI_MIN. `SAMAN` is memory minus accumulator, so the subtrahend is built
+; in A and the constant put in memory rather than the other way round.
+
+step_reload:
+        LDX  FILE_STATE
+        TCY  NIB_SKILL
+        TMA
+        A15AAC                  ; A <- skill - 1
+        LDX  FILE_JETS
+        TCY  NIB_J_TMP
+        TAM
+        AMAAC                   ; A <- 2 * (skill - 1), which is STEP_SKILL
+        TCY  NIB_J_TMP
+        TAM
+        LDX  FILE_STATE
+        TCY  NIB_KILLS
+        TMA
+        LDX  FILE_JETS
+        TCY  NIB_J_TMP
+        AMAAC                   ; A <- kills + 2 * (skill - 1)
+        TCY  NIB_J_SCR
+        TCMIY STEP_HI_MAX
+        TCY  NIB_J_SCR
+        SAMAN                   ; A <- STEP_HI_MAX - A
+        BR   sr_ok
+        CLA
+        A1AAC                   ; the floor: one high nibble
+sr_ok:
+        LDX  FILE_TIME
+        TCY  NIB_STEP_HI
+        TAM
+        TCY  NIB_STEP_LO
+        TCMIY 15
+        COMC
+        LDP  P_SPAWN
+        BR   jet_release
+
+
+
+; ============================================================================
+; Chapter 1, page 14 - the battleship, on grid 0's near plates
+; ============================================================================
+
+.PAGE C1_REND0
+
+rd_bship:
+        LDX  FILE_STATE
+        TCY  NIB_BSLANE
+        TMA
+        LDX  FILE_D3
+        TCY  NIB_RLNE
+        TAM
+        TCY  NIB_RGRID
+        TCMIY BS_NONE
+        TCY  NIB_RGRID
+        LDP  C1_REND0           ; a taken branch always copies PB into PA, so
+                                ; even the in-page arm needs PB naming this
+                                ; page; the other arm goes through a trampoline
+        MNEA                    ; status = the boat is on the glass
+        BR   rd_bs_draw
+        BR   rd_to_jets
+rd_to_jets:
+        LDP  C1_REND2
+        BR   rd_jets
+rd_bs_draw:
+        COMC
+        LDP  P_LEAF
+        CALL lane_bit
+        COMC
+        LDX  FILE_D3
+        TCY  NIB_RBIT
+        TMA
+        LDX  FILE_D0
+        TCY  GRID_BSHIP
+        TAM
+        LDP  C1_REND2
+        BR   rd_jets
+
+
+; ============================================================================
+; Chapter 1, page 15 - deciding to launch a rocket
+; ============================================================================
+
+.PAGE C1_LAUNCH
+
+rocket_launch:
+        LDX  FILE_TIME
+        TCY  NIB_TICK
+        MNEZ                    ; a unit is sixteen sweeps: spend one only on
+        BR   rl_wait            ; the sweep the tick counter wraps
+        TCY  NIB_ROCK_LO
+        DMAN
+        BR   rl_low_left
+        TAM
+        TCY  NIB_ROCK_HI
+        DMAN
+        BR   rl_high_left
+        BR   rl_due
+rl_high_left:
+        TAM
+        COMC
+        LDP  P_ROCKET
+        BR   tr_done
+rl_low_left:
+        TAM
+rl_wait:
+        COMC
+        LDP  P_ROCKET
+        BR   tr_done
+rl_due:
+        LDX  FILE_STATE
+        TCY  NIB_SKILL
+        TMA
+        A15AAC                  ; A <- skill - 1
+        LDX  FILE_JETS
+        TCY  NIB_J_SCR
+        TCMIY ROCK_HI_BASE
+        TCY  NIB_J_SCR
+        SAMAN
+        BR   rl_ok
+        CLA
+        A1AAC
+rl_ok:
+        LDX  FILE_TIME
+        TCY  NIB_ROCK_HI
+        TAM
+        TCY  NIB_ROCK_LO
+        TCMIY 15
+        LDP  C1_FIRE
+        BR   rocket_fire
 
 .END
-

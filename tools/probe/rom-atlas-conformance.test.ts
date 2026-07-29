@@ -254,7 +254,7 @@ interface Coverage {
 
 /** Play scenarios in order until the atlas is covered, or the space runs out. */
 function sweepScenarios(): Coverage {
-  const path = resolve(import.meta.dirname, '..', '..', 'asm', 'jetfighter.asm');
+  const path = resolve(import.meta.dirname, '..', '..', 'asm', 'jetfighter-hmcs44.asm');
   const image = romImage(assemble(readFileSync(path, 'utf8'), path));
   const unmapped = new Set<string>();
   const grids = new Map<string, Set<number>>();

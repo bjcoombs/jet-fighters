@@ -321,3 +321,31 @@ step:   TCY 0
     expect(result.resetVectorPresent).toBe(true);
   });
 });
+
+describe('the AnAAC family counts as a test', () => {
+  // The core writes the carry out of every AnAAC to status
+  // (src/machine/cpu/tms1370/isa.ts, `A + n -> A, carry -> status`), so an add
+  // is a test and a branch after one is conditional. The table here omitted the
+  // family until v3 task 8's ROM ran into both halves of the consequence.
+  it('names all fifteen adds', () => {
+    for (let addend = 1; addend <= 15; addend += 1) {
+      expect(setsStatus(`A${addend}AAC`), `A${addend}AAC`).toBe(true);
+    }
+  });
+
+  it('does not name CLA, which shares the encoding block and adds nothing', () => {
+    expect(setsStatus('CLA')).toBe(false);
+  });
+
+  it('rejects an instruction between an add and its branch', () => {
+    const message = rejection('        A6AAC\n        LDP 1\n        BR start\nstart:  RETN\n');
+    expect(message).toContain('A6AAC');
+    expect(message).toContain('always taken');
+  });
+
+  it('accepts an add used as the test of the branch that follows it', () => {
+    expect(() =>
+      assemble('        AMAAC\n        A6AAC\n        BR carry\ncarry:  RETN\n', 'ok.asm'),
+    ).not.toThrow();
+  });
+});

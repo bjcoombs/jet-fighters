@@ -47,6 +47,14 @@
 // `A15AAC`, adding fifteen being subtracting one in four bits. Both are accepted
 // as aliases so the source can say what it means.
 //
+// **Every one of them writes the carry out to status**, which is what makes
+// `A6AAC` a BCD carry test and `A15AAC` a loop counter, and which is why the
+// summaries below say so: `analysis/status.ts` reads this table's summaries as
+// its cross-check on the list of instructions a branch can be conditional on.
+// The core states the same effect - `src/machine/cpu/tms1370/isa.ts`,
+// `A + n -> A, carry -> status`. `CLA` at `0x7F` is the one member of the
+// encoding block that is not an add and does not touch status.
+//
 // Node-side tool: no DOM, no Web APIs, no runtime dependencies.
 
 import { PC_MASK, RAM_FILE_COUNT, RAM_FILE_SIZE, ROM_PAGE_COUNT, WORD_MASK } from './memory.js';
@@ -150,7 +158,7 @@ const ADD_CONSTANT_OPCODES: readonly IsaEntry[] = Object.freeze(
     return fixed(
       `A${addend}AAC`,
       0x70 | low,
-      `add ${addend} to the accumulator, result to the accumulator`,
+      `add ${addend} to the accumulator, result to the accumulator, status = carry`,
       aliases,
     );
   }),
