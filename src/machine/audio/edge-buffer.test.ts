@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CYCLE_HZ } from '../cpu/cpu.js';
+import { CYCLE_HZ } from '../cpu/tms1370/timing.js';
 import { Speaker, type SpeakerEdgePair } from '../board/speaker.js';
 import {
   cyclesToSamples,
@@ -12,6 +12,26 @@ import {
 } from './edge-buffer.js';
 
 const SAMPLE_RATE = 48_000;
+
+/**
+ * Machine cycles one output sample lasts.
+ *
+ * Every cycle count below is written as a multiple of this rather than as a
+ * figure. Under v2 they were literals that all silently meant "at 400 kHz"; at
+ * this machine's instruction rate the same durations are seven times fewer
+ * cycles, and nothing about a literal says so.
+ */
+const CYCLES_PER_SAMPLE = CYCLE_HZ / SAMPLE_RATE;
+
+/** Machine cycles `ms` milliseconds of emulated time costs. */
+function cyclesForMs(ms: number): number {
+  return (CYCLE_HZ * ms) / 1000;
+}
+
+/** Machine cycles `samples` output samples span. */
+function cyclesForSamples(samples: number): number {
+  return samples * CYCLES_PER_SAMPLE;
+}
 
 function buffer(overrides: Partial<{ latencyMs: number; maxEdges: number }> = {}): EdgeBuffer {
   return new EdgeBuffer({
@@ -37,19 +57,23 @@ function togglePairs(halfPeriod: number, toggles: number, from = 0): SpeakerEdge
 describe('cycle to time conversion', () => {
   it('divides cycles by the CPU clock rate', () => {
     expect(cyclesToSeconds(CYCLE_HZ, CYCLE_HZ)).toBe(1);
-    expect(cyclesToSeconds(200_000, 400_000)).toBe(0.5);
+    expect(cyclesToSeconds(CYCLE_HZ / 2, CYCLE_HZ)).toBe(0.5);
     expect(cyclesToSeconds(0, CYCLE_HZ)).toBe(0);
   });
 
   it('scales seconds into samples', () => {
     expect(cyclesToSamples(CYCLE_HZ, CYCLE_HZ, SAMPLE_RATE)).toBe(SAMPLE_RATE);
-    expect(cyclesToSamples(400, 400_000, 48_000)).toBeCloseTo(48, 10);
+    expect(cyclesToSamples(cyclesForSamples(48), CYCLE_HZ, SAMPLE_RATE)).toBeCloseTo(48, 10);
   });
 
   it('keeps sub-sample precision rather than rounding to a sample boundary', () => {
-    // 400 kHz / 48 kHz is 8.333... cycles per sample, so most edges land between
-    // samples. Rounding here would quantise every pitch to the sample grid.
-    expect(cyclesToSamples(1, 400_000, 48_000)).toBeCloseTo(0.12, 10);
+    // A machine cycle is a fraction of an output sample, so most edges land
+    // between samples. Rounding here would quantise every pitch to the sample
+    // grid.
+    const sample = cyclesToSamples(1, CYCLE_HZ, SAMPLE_RATE);
+    expect(sample).toBeCloseTo(1 / CYCLES_PER_SAMPLE, 10);
+    expect(sample).toBeGreaterThan(0);
+    expect(sample).toBeLessThan(1);
   });
 
   it('rejects a non-positive clock or sample rate', () => {
@@ -156,13 +180,16 @@ describe('EdgeBuffer - placing edges on the audio timeline', () => {
 
 describe('EdgeBuffer - priming', () => {
   it('is unprimed until a full latency of sound is queued', () => {
-    const buf = buffer({ latencyMs: 20 });
-    // 20 ms of emulated time at 400 kHz is 8000 cycles.
-    buf.push(togglePairs(1000, 5));
+    const latencyMs = 20;
+    const buf = buffer({ latencyMs });
+    const latency = cyclesForMs(latencyMs);
+    // A quarter of a latency of sound, in five toggles: short of the threshold
+    // however many edges it is made of.
+    buf.push(togglePairs(latency / 20, 5));
     expect(buf.primed).toBe(false);
     buf.push([
-      [8000, 0],
-      [9000, 1],
+      [latency, 0],
+      [latency * 1.125, 1],
     ] as SpeakerEdgePair[]);
     expect(buf.primed).toBe(true);
   });
@@ -180,7 +207,7 @@ describe('EdgeBuffer - priming', () => {
     const buf = buffer();
     buf.push([
       [0, 1],
-      [400, 0],
+      [cyclesForSamples(48), 0],
     ] as SpeakerEdgePair[]);
     buf.take(1024);
     expect(buf.available).toBeLessThan(0);
@@ -197,10 +224,9 @@ describe('EdgeBuffer - taking blocks', () => {
 
   it('returns edge positions relative to the block start', () => {
     const buf = buffer();
-    // 4167 cycles is ~500 samples at 400 kHz / 48 kHz.
     buf.push([
       [0, 1],
-      [5000, 0],
+      [cyclesForSamples(600), 0],
     ] as SpeakerEdgePair[]);
     const first = buf.take(128);
     expect(first.edges).toEqual([{ sample: 0, level: 1 }]);
@@ -211,7 +237,7 @@ describe('EdgeBuffer - taking blocks', () => {
 
   it('leaves edges beyond the block queued', () => {
     const buf = buffer();
-    buf.push(togglePairs(4000, 10));
+    buf.push(togglePairs(cyclesForSamples(480), 10));
     buf.take(64);
     expect(buf.pending).toBeGreaterThan(0);
   });
@@ -250,7 +276,10 @@ describe('EdgeBuffer - taking blocks', () => {
 
   it('emits every queued edge exactly once across successive blocks', () => {
     const buf = buffer();
-    const pairs = togglePairs(400, 200);
+    // 200 toggles a sample apart, drained by 100 blocks of 128 samples: the
+    // whole stream fits inside the window with room to spare, whatever the
+    // machine's cycle rate is.
+    const pairs = togglePairs(cyclesForSamples(48), 200);
     buf.push(pairs);
     let seen = 0;
     for (let i = 0; i < 100; i += 1) {

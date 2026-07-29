@@ -1,7 +1,7 @@
 // A small real-signal FFT, written here rather than taken from a package.
 //
 // The project ships zero runtime dependencies (PRD, CLAUDE.md) and acceptance
-// criterion V5 has to reconstruct the D14 waveform and take its FFT headlessly
+// criterion V8 has to reconstruct the R15 waveform and take its FFT headlessly
 // in Node, so the transform has to exist inside the repo and outside any audio
 // API. It is deliberately plain: an iterative radix-2 Cooley-Tukey, a Hann
 // window, and enough peak interpolation to read a fundamental off a bin grid

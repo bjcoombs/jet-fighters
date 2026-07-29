@@ -4,14 +4,14 @@
 // Everything below this file is a device. `Board` is the CPU, the tube, the
 // speaker and the case contacts wired together, and it advances only when it is
 // stepped; `createTubeRenderer` paints whatever PWM duty the tube reached;
-// `SpeakerDriver` plays whatever the ROM did to pin D14. None of them owns a
+// `SpeakerDriver` plays whatever the ROM did to pin R15. None of them owns a
 // timer. This file supplies the one thing they lack - elapsed wall-clock time -
 // and does nothing else:
 //
 //   1. read how long the last frame took;
 //   2. run the board for that many machine cycles;
 //   3. draw the tube's PWM state, with the same elapsed time for the phosphor;
-//   4. hand the drained D14 edges to the speaker.
+//   4. hand the drained R15 edges to the speaker.
 //
 // There is no game state here, and there is nowhere for any to hide. The score,
 // the jets, the lives and the skill level exist only as nibbles in the emulated
@@ -24,13 +24,13 @@
 // the core and invalidates RAM. The real unit has no reset button, so neither
 // does this.
 
-// The HMCS44 machine image, not the TMS1370 one. `asm/jetfighter.asm` is the
-// TMS1370 game program from v3 task 8 onward; `src/machine/` here is still the
-// HMCS44 core, so the shell keeps importing the source that core can run until
-// v3 task 11 swaps the core over and deletes the HMCS44 side entirely.
-import { highestAddress, ramHighWater, rom, symbols } from '../asm/jetfighter-hmcs44.asm';
+// The machine image: the program ROM and the mask's output PLA, both assembled
+// from `asm/jetfighter.asm` on import. The PLA is a separate export because it
+// is mask-programmed data rather than executed words - see src/asm.d.ts.
+import { highestAddress, opla, ramHighWater, rom, symbols } from '../asm/jetfighter.asm';
 import { SpeakerDriver, type AudioContextLike } from './machine/audio/driver.js';
 import { Board } from './machine/board/board.js';
+import { CYCLE_HZ } from './machine/cpu/tms1370/timing.js';
 import { createTubeRenderer, type TubeRenderer } from './machine/tube/renderer.js';
 import {
   attachScreenTouch,
@@ -77,12 +77,12 @@ function start(mount: HTMLElement): void {
 
   // The machine, dark. A real unit on a shelf is switched off, and the power
   // switch is the only thing that starts it.
-  const board = new Board(rom, { power: 'off' });
-  const cyclesPerSecond = board.cpu.getCyclesPerSecond();
+  const board = new Board({ rom, opla }, { power: 'off' });
+  const cyclesPerSecond = CYCLE_HZ;
 
   // Audio is built on the first deliberate input, because a browser will not
   // let an AudioContext produce sound before a user gesture. Until then the
-  // board still buffers its D14 edges; nothing is lost, it is merely unheard.
+  // board still buffers its R15 edges; nothing is lost, it is merely unheard.
   let speaker: SpeakerDriver | null = null;
   let muted = false;
 
@@ -183,7 +183,7 @@ function start(mount: HTMLElement): void {
       owed = 0;
     }
 
-    // Drain D14 before drawing, so a burst produced this frame is queued at the
+    // Drain R15 before drawing, so a burst produced this frame is queued at the
     // cycle stamps it actually happened at.
     speaker?.pump();
     renderer.draw(board.getLitSegments(), elapsedMs);

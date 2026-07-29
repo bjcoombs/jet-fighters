@@ -15,8 +15,8 @@ import { ATLAS_TOPOLOGY } from '../topology.js';
 /**
  * Display grids on the tube: nine, driven by R0-R8.
  *
- * This used to be a literal 10, borrowed from MAME's `ghalien` when the chip on
- * our board was believed to be an HD38800. It is now derived from
+ * This used to be a literal 10, borrowed from a sibling machine's driver while
+ * the chip on our board was misidentified. It is now derived from
  * {@link ATLAS_TOPOLOGY}, which is the TMS1370's - MAME's driver for our own ROM
  * mask configures a 9 x 12 matrix, and the teardown photograph agrees twice
  * over. See src/machine/topology.ts and docs/research/tms1370-io.md section 3.
@@ -29,7 +29,7 @@ export const GRID_COUNT = ATLAS_TOPOLOGY.gridCount;
  * The exclusive upper bound on a segment's `plate` index, not the count wired
  * under every grid - the score grids use seven and eight of them. Twelve was
  * always enough for this tube: the atlas has never addressed a plate above 11,
- * which is why moving the bound down from the HMCS44's 20 rejects addresses
+ * which is why moving the bound down from the v2 machine's 20 rejects addresses
  * rather than invalidating data.
  */
 export const PLATE_COUNT = ATLAS_TOPOLOGY.plateCount;

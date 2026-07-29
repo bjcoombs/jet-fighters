@@ -1,12 +1,17 @@
 ; A fixture program for tools/tmsasm's end-to-end tests. Paths in this file are
 ; relative to the repository root.
 ;
-; Not the game. `asm/jetfighter.asm` is the game, and while the v3 rebuild is in
-; flight it is still HMCS44 source that tools/hmasm assembles; task 8 of the run
-; rewrites it for this machine. This file exists so the assembler, its CLI and
-; its Vite plugin can be proved end to end against a program that exercises every
-; directive and lands code on more than one page - which the real ROM will do too,
-; but not yet.
+; Not the game. `asm/jetfighter.asm` is the game. This file exists so the
+; assembler, its CLI and its Vite plugin can be proved end to end against a
+; program that lands code on more than one page, without the proof depending on
+; what the game program happens to contain.
+;
+; Directives exercised here: `.EQU`, `.PAGE`, `.INCLUDE`, `.DB`, `.DW`, `.END`,
+; and `.OPLA` by way of the included table. **`.ORG`, `.CHAPTER` and `.RES` are
+; not**, and the claim is narrowed rather than the fixture padded: each of those
+; three moves where code or data lands, and a fixture that used them to say it
+; covered them would be asserting about its own layout rather than about the
+; assembler. They are covered by unit tests in `../assembler.test.ts`.
 ;
 ; It is deliberately small and deliberately not a display sweep: nothing here is
 ; a claim about how the game works.
@@ -82,3 +87,16 @@ step:   TCY RAM_STATE
 grids:  .DB GRID_COUNT, 0, 1, 2, 3, 4, 5, 6, 7, 8
 name:   .DB "JET"
 wide:   .DW $1234, $ABCD
+
+; --- The end of this file ----------------------------------------------------
+;
+; `.END` stops assembling *this* file. The label below it is deliberately live
+; assembly that must never reach the image: `example.test.ts` asserts
+; `after_end` is absent from the symbol table, so the directive is proved to do
+; something rather than merely to parse. An `.END` that was quietly ignored
+; would leave the label defined and that test would fail.
+
+.END
+
+after_end:
+        .DB $FF

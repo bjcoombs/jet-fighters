@@ -28,11 +28,11 @@ describe('KInputMatrix - resting state', () => {
     expect(matrix.skill).toBe(DEFAULT_SKILL);
   });
 
-  it('shares the case control vocabulary with the HMCS44 matrix', () => {
+  it('shares the case control vocabulary with the rest of the board', () => {
     // The lever positions and skill settings are properties of the case, not of
     // the chip behind it, so they are imported rather than restated. If they
-    // ever diverge that is a change to the physical unit, and this stops it
-    // happening by accident during the chip swap.
+    // ever diverge that is a change to the physical unit, and this stopped it
+    // happening by accident while the chip was being swapped.
     const lever: LeverPosition = DEFAULT_LEVER;
     const skill: SkillLevel = DEFAULT_SKILL;
     const matrix = new KInputMatrix();
@@ -228,5 +228,48 @@ describe('KInputMatrix - a whole sweep', () => {
     expect(matrix.getState()).toEqual({ fire: false, lever: DEFAULT_LEVER, skill: DEFAULT_SKILL });
     expect(ports.readInputMux(), 'the power switch does not move the lever').toBe(0b01);
     expect(ports.readK(matrix)).toBe(K1);
+  });
+});
+
+describe('KInputMatrix - setControl', () => {
+  it('presses fire with no value', () => {
+    const input = new KInputMatrix();
+    input.setControl('fire');
+    expect(input.fire).toBe(true);
+  });
+
+  it('releases fire on an explicit value', () => {
+    const input = new KInputMatrix();
+    input.setFire(true);
+    input.setControl('fire', 'off');
+    expect(input.fire).toBe(false);
+  });
+
+  it.each([
+    ['up', 0],
+    ['centre', 1],
+    ['down', 2],
+  ])('moves the lever for %s', (value, lane) => {
+    const input = new KInputMatrix();
+    input.setControl('lever', value);
+    expect(input.lever).toBe(lane);
+  });
+
+  it.each(['1', '2', '3'])('turns the dial to %s', (value) => {
+    const input = new KInputMatrix();
+    input.setControl('skill', value);
+    expect(input.skill).toBe(Number(value));
+  });
+
+  it('rejects an unknown control', () => {
+    const input = new KInputMatrix();
+    expect(() => input.setControl('turbo')).toThrow(RangeError);
+  });
+
+  it('rejects a value the case cannot express', () => {
+    const input = new KInputMatrix();
+    expect(() => input.setControl('lever', 'sideways')).toThrow(RangeError);
+    expect(() => input.setControl('skill', '4')).toThrow(RangeError);
+    expect(() => input.setControl('fire', 'maybe')).toThrow(RangeError);
   });
 });

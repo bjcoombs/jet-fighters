@@ -24,8 +24,8 @@ export const NIBBLE_MASK = (1 << NIBBLE_WIDTH) - 1;
  * 3-bit value mask for the X register.
  *
  * This is the TMS1100 core's width and the single most load-bearing difference
- * from the 4-bit RAM pointers of the HMCS44 core this replaces: X selects one
- * of eight 16-nibble RAM files (research doc §3).
+ * from the 4-bit RAM pointers of the v2 core this replaces: X selects one of
+ * eight 16-nibble RAM files (research doc §3).
  */
 export const X_MASK = 0x07;
 

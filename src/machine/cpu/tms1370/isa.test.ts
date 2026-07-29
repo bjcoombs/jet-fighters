@@ -21,8 +21,8 @@ import { NIBBLE_MASK, PAGE_MASK, PC_MASK, X_MASK } from './registers.js';
 
 describe('TMS1370 opcode map', () => {
   it('assigns every one of the 256 eight-bit patterns', () => {
-    // Unlike the HMCS44 core this sits beside, the TMS1100 map has no
-    // unassigned region: research doc section 5 accounts for all 256 words
+    // Unlike the v2 core this replaces, the TMS1100 map has no unassigned
+    // region: research doc section 5 accounts for all 256 words
     // between the fixed half and the microinstruction-defined half.
     const total = ISA.reduce((sum, row) => sum + row.opcodeCount, 0);
     expect(total).toBe(OPCODE_COUNT);

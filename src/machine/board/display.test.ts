@@ -21,7 +21,7 @@ import type { PwmFrame } from './pwm.js';
  * v3.contract.md` criterion V14 requires exactly this: `getStrobedGrids`
  * compared against `GRID_COUNT`, never against a literal grid list. A `[0..9]`
  * written out is a ten-grid assumption that survives a re-addressing without
- * saying so, and there are now two real answers to how many grids there are.
+ * saying so - which is exactly the assumption the v2 machine left behind.
  */
 function everyGrid(gridCount: number): number[] {
   return Array.from({ length: gridCount }, (_unused, grid) => grid);
@@ -50,30 +50,29 @@ function sweep(display: Display, plates: number, dwell: number, from = 0): numbe
 
 describe('Display - geometry', () => {
   it('addresses every segment the tube renderer can ask it for', () => {
-    // This asserted equality with the atlas, and equality is not the invariant
-    // - it was true only while there was one candidate topology. There are two
-    // now and they are different facts: ten is a count of *grid pins the HMCS44
-    // bonds out*, nine is a count of *electrodes on the glass*, and the atlas
-    // moved onto the second (src/machine/topology.ts) ahead of the board, which
-    // v3 task 11.3 moves over with the core and the ROM.
+    // The two counts are now equal by construction, not by luck:
+    // `ATLAS_TOPOLOGY` and `DEFAULT_TOPOLOGY` are the same `TMS1370_TOPOLOGY`
+    // object, so the board scans exactly the matrix the atlas is addressed in.
+    // The `toBe` pair below is the load-bearing assertion, and it fails the
+    // moment anything points those two aliases at different objects.
     //
-    // What has to hold in the meantime, and what still has to hold afterwards,
-    // is containment: every address the atlas defines must be one this board can
-    // drive. A board with fewer grids than the tube cannot light the whole tube,
-    // and that is the failure worth catching.
+    // They were briefly different numbers - the board on the v2 part's ten
+    // bonded grid pins, the atlas on the nine electrodes the glass has - and for
+    // that period containment was the only honest invariant. That period is
+    // over. The containment checks are kept because they name the failure that
+    // actually matters if the two ever separate again: a board with fewer grids
+    // than the tube cannot light the whole tube.
     expect(GRID_COUNT).toBeGreaterThanOrEqual(ATLAS_GRID_COUNT);
     expect(PLATE_COUNT).toBeGreaterThanOrEqual(ATLAS_PLATE_COUNT);
+    expect(GRID_COUNT).toBe(ATLAS_GRID_COUNT);
+    expect(PLATE_COUNT).toBe(ATLAS_PLATE_COUNT);
   });
 
-  it('defaults to the live board: ten grids on D0-D9, twenty plates on R0-R19', () => {
-    // The default is deliberately still the HMCS44's. asm/jetfighter.asm drives
-    // ten grid lines and the core under it is an HD38800 model, so a board
-    // scanning nine here would not be a TMS1370 - it would be an HMCS44 with a
-    // grid pin silently masked off.
-    expect(GRID_COUNT).toBe(10);
-    expect(GRID_MASK).toBe(0x3ff);
-    expect(PLATE_COUNT).toBe(20);
-    expect(PLATE_MASK).toBe(0xfffff);
+  it('defaults to the live board: nine grids on R0-R8, twelve plates', () => {
+    expect(GRID_COUNT).toBe(9);
+    expect(GRID_MASK).toBe(0x1ff);
+    expect(PLATE_COUNT).toBe(12);
+    expect(PLATE_MASK).toBe(0xfff);
   });
 
   it('scans whatever matrix it is handed, not the default one', () => {
@@ -81,8 +80,8 @@ describe('Display - geometry', () => {
     expect(display.matrix).toBe(TMS1370_TOPOLOGY);
     expect(display.matrix.gridCount).toBe(9);
     expect(display.matrix.plateCount).toBe(12);
-    // The bound moves with the topology, so the grid and plate the HMCS44 has
-    // and the TMS1370 does not are rejected rather than silently accepted.
+    // The bound moves with the topology, so an address past the end of this
+    // matrix is rejected rather than silently accepted.
     expect(() => display.setGridPin(9, 1, 0)).toThrow(RangeError);
     expect(() => display.setPlatePin(12, 1, 0)).toThrow(RangeError);
     expect(() => display.setGridPin(8, 1, 0)).not.toThrow();
@@ -158,7 +157,7 @@ describe('Display - driving grids and plates', () => {
     expect(frame.segments.map((s) => s.plate)).toEqual([0, 1, 3]);
   });
 
-  it('masks grid bits above D9 - they are the speaker and input pins', () => {
+  it('masks grid bits above R8 - they are the strobe and speaker pins', () => {
     const display = new Display();
     display.setGrids(0xffff, 0);
     expect(display.gridMask).toBe(GRID_MASK);
@@ -167,9 +166,9 @@ describe('Display - driving grids and plates', () => {
   it('drives one line at a time through the pin setters', () => {
     const display = new Display();
     display.setGridPin(4, 1, 0);
-    display.setPlatePin(19, 1, 0);
+    display.setPlatePin(11, 1, 0);
     expect(display.gridMask).toBe(1 << 4);
-    expect(display.plateMask).toBe(1 << 19);
+    expect(display.plateMask).toBe(1 << 11);
 
     display.setGridPin(4, 0, 10);
     expect(display.gridMask).toBe(0);
@@ -181,7 +180,7 @@ describe('Display - driving grids and plates', () => {
     expect(() => display.setPlatePin(PLATE_COUNT, 1, 0)).toThrow(RangeError);
   });
 
-  it('records which grids have been strobed (contract V3)', () => {
+  it('records which grids have been strobed (contract V5)', () => {
     const display = new Display();
     sweep(display, 1, 40);
     expect(display.getStrobedGrids()).toEqual(everyGrid(GRID_COUNT));
@@ -189,29 +188,45 @@ describe('Display - driving grids and plates', () => {
 });
 
 describe('Display - frame periods from the sweep', () => {
-  it('closes a frame when the sweep wraps to a grid already driven', () => {
+  it('closes a frame when the sweep wraps past the last grid to grid 0', () => {
+    // The wrap, not "a grid rises that has already risen this frame". The ROM
+    // makes four passes over the glass and reaches grid 0 in three of them, so
+    // the repeat rule would call every pass a frame and hand the renderer one
+    // segment family at a time. The highest grid is only reached in the
+    // high-bank passes, which is what makes it the boundary marker.
     const display = new Display();
     const end = sweep(display, 1 << 3, 40);
     expect(display.frameCount).toBe(0);
 
     display.setGrids(1 << 0, end);
     expect(display.frameCount).toBe(1);
-    expect(display.getFrame().cycles).toBe(400);
+    expect(display.getFrame().cycles).toBe(GRID_COUNT * 40);
   });
 
-  it('gives each grid of a ten-grid sweep a duty of one tenth', () => {
+  it('does not close a frame on a repeat that is not the wrap', () => {
+    // Grid 0 rising a second time without the last grid having been reached is
+    // the next pass of a multi-pass sweep, not a new frame.
+    const display = new Display();
+    display.setPlates(1, 0);
+    display.setGrids(1 << 0, 0);
+    display.setGrids(1 << 1, 40);
+    display.setGrids(1 << 0, 80);
+    expect(display.frameCount).toBe(0);
+  });
+
+  it('gives each grid of a nine-grid sweep an equal share of the frame', () => {
     const display = new Display();
     const end = sweep(display, 0b101, 40);
     display.setGrids(1 << 0, end);
 
     const frame = display.getFrame();
-    expect(frame.segments).toHaveLength(20);
+    expect(frame.segments).toHaveLength(GRID_COUNT * 2);
     for (const segment of frame.segments) {
-      expect(segment.duty).toBeCloseTo(0.1, 12);
+      expect(segment.duty).toBeCloseTo(1 / GRID_COUNT, 12);
     }
   });
 
-  it('produces a duty strictly between 0 and 1 (contract V3)', () => {
+  it('produces a duty strictly between 0 and 1 (contract V5)', () => {
     const display = new Display();
     const end = sweep(display, 1 << 5, 40);
     display.setGrids(1 << 0, end);
@@ -224,13 +239,13 @@ describe('Display - frame periods from the sweep', () => {
     const display = new Display();
     display.setPlates(1, 0);
     display.setGrids(1 << 0, 0);
-    display.setGrids(1 << 1, 40);
+    display.setGrids(1 << (GRID_COUNT - 1), 40);
     display.setGrids(1 << 0, 440);
 
-    // Grid 0 held 40 cycles of a 440-cycle frame: dimmer than the 0.1 of an
-    // even sweep, which is the flicker character the criterion is after.
+    // Grid 0 held 40 cycles of a 440-cycle frame: dimmer than the even sweep's
+    // 1/9, which is the flicker character the criterion is after.
     expect(dutyOf(display.getFrame(), 0, 0)).toBeCloseTo(40 / 440, 12);
-    expect(dutyOf(display.getFrame(), 1, 0)).toBeCloseTo(400 / 440, 12);
+    expect(dutyOf(display.getFrame(), GRID_COUNT - 1, 0)).toBeCloseTo(400 / 440, 12);
   });
 
   it('does not close a frame while the sweep is still stepping forward', () => {
@@ -260,11 +275,14 @@ describe('Display - frame periods from the sweep', () => {
     expect(dutyOf(display.getFrame(), 2, 1)).toBe(1);
   });
 
-  it('starts counting grids afresh in the new frame', () => {
+  it('arms the wrap detector afresh in the new frame', () => {
     const display = new Display();
     const end = sweep(display, 1, 40);
     display.setGrids(1 << 0, end);
     display.setGrids(1 << 1, end + 40);
+    // Grid 0 again, but the last grid has not been reached since the boundary,
+    // so this is the next pass rather than the next sweep.
+    display.setGrids(1 << 0, end + 80);
     expect(display.frameCount).toBe(1);
   });
 
@@ -284,7 +302,7 @@ describe('Display - reading segment state', () => {
     const end = sweep(display, 1 << 2, 40);
     display.setGrids(1 << 0, end);
 
-    expect(display.getSegmentDuty(7, 2)).toBeCloseTo(0.1, 12);
+    expect(display.getSegmentDuty(7, 2)).toBeCloseTo(1 / GRID_COUNT, 12);
     expect(display.getSegmentDuty(7, 3)).toBe(0);
   });
 

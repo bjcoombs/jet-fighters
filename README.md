@@ -18,19 +18,21 @@ not approximated; they fall out of running it. When the machine plays a note it 
 scanning the tube, because it has one core and no sound hardware - so on the real unit, and
 on this one, **every beep is also a visible blink of the whole display**.
 
-> **The processor is wrong, and is being rebuilt.** The unit's microcontroller is a
-> **Texas Instruments TMS1370**, custom mask **MP2110** - legible in
-> [the teardown photograph](assets/reference/tube-teardown/), and named in MAME's own
-> device list as *"1980, Gakken Invader/Tandy Fire Away"*. So this machine runs the Gakken
-> Invader program behind Jet Fighters artwork, which is why its logic reads as Space
-> Invaders.
->
-> The core in `src/machine/cpu/` currently implements a **Hitachi HMCS44**, chosen early
-> from a generalisation about Gakken's suppliers and a match between the box's "2K Bytes
-> L.S.I." and a datasheet - neither ever checked against the chip. Everything measured from
-> the glass and the speaker is unaffected; the CPU, the assembler and the ROM are not.
-> [`docs/evidence/open-questions.md`](docs/evidence/open-questions.md) records the finding,
-> how the error entered, and what a rebuild has to carry.
+The processor is a **Texas Instruments TMS1370**, custom mask **MP2110** - legible in
+[the teardown photograph](assets/reference/tube-teardown/), and named in MAME's own device
+list as *"1980, Gakken Invader/Tandy Fire Away"*. So the unit runs the Gakken Invader
+program behind Jet Fighters artwork, which is why its logic reads as Space Invaders. The
+core in `src/machine/cpu/tms1370/` is that part: 9 display grids on R0-R8, 12 plates on
+O0-O7 plus R11-R14, four input pins, one instruction per six oscillator pulses, and an
+output PLA that gives the program 32 plate patterns and no thirty-third.
+
+The instruction rate itself is **not measured**. It is MAME's fitted oscillator
+approximation divided by the architectural divide-by-six, and it carries that figure's
+stated tolerance; [`docs/research/mp2110-timing-measurement.md`](docs/research/mp2110-timing-measurement.md)
+records what would replace it with a measurement, and every cadence constant derived from
+it is marked provisional.
+[`docs/evidence/open-questions.md`](docs/evidence/open-questions.md) records what else is
+still unsettled, including the earlier misidentification and how it entered.
 
 ## What the teardown changed
 
@@ -141,11 +143,11 @@ Five layers, mirroring the physical machine. Data flows the way electricity did.
 
 ```mermaid
 flowchart LR
-    ASM[asm/jetfighter.asm<br/>the game program] -->|assembled by tools/hmasm| ROM[ROM image<br/>2048 x 10 bits]
-    ROM --> CPU[src/machine/cpu/<br/>HMCS44 core - being rebuilt as TMS1370]
-    SW[src/ui/ case controls] -->|strobe matrix| CPU
-    CPU -->|D0-D9 grids, R-port plates| BOARD[src/machine/board/<br/>grid x plate PWM state]
-    CPU -->|D14 pin edges| SPK[src/machine/audio/<br/>square reconstruction]
+    ASM[asm/jetfighter.asm<br/>the game program] -->|assembled by tools/tmsasm| ROM[machine image<br/>2048 x 8 bits + 32-slot O PLA]
+    ROM --> CPU[src/machine/cpu/tms1370/<br/>TMS1370 core]
+    SW[src/ui/ case controls] -->|K1, K2, K4 on R9/R10; fire on K8| CPU
+    CPU -->|R0-R8 grids, O0-O7 + R11-R14 plates| BOARD[src/machine/board/<br/>grid x plate PWM state]
+    CPU -->|R15 pin edges| SPK[src/machine/audio/<br/>square reconstruction]
     BOARD --> TUBE[src/machine/tube/<br/>segment atlas + phosphor]
     MAIN[src/main.ts<br/>the only clock] -.->|steps| CPU
     MAIN -.->|draws| TUBE
@@ -154,10 +156,10 @@ flowchart LR
 
 | Path                 | What lives there                                                                                                                     |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `asm/jetfighter.asm` | The game itself - every rule, cadence, sound and score, in assembly under the chip's program and RAM limits. Currently HMCS44; see the note above.  |
-| `tools/hmasm/`       | The assembler, its CLI, and the Vite plugin that makes an `.asm` file an importable module.                                            |
-| `src/machine/cpu/`   | The CPU core: 4-bit ALU, stack, timer, output ports. Advances only when stepped. Currently an HMCS44; the unit's chip is a TMS1370.     |
-| `src/machine/board/` | The board: PWM display state, the input strobe matrix, D14 edge capture, and the power switch.                                         |
+| `asm/jetfighter.asm` | The game itself - every rule, cadence, sound and score, in TMS1000-family assembly under the chip's 2048-word program and 128-nibble RAM ceilings. |
+| `tools/tmsasm/`      | The assembler, its CLI, its five static analyses, and the Vite plugin that makes an `.asm` file an importable module.                  |
+| `src/machine/cpu/tms1370/` | The CPU core: 4-bit ALU, LFSR program counter, one-level stack, R/O/K ports, output PLA. Advances only when stepped.             |
+| `src/machine/board/` | The board: PWM display state, the K input matrix, R15 edge capture, and the power switch.                                             |
 | `src/machine/tube/`  | The tube: the segment atlas (shape and (grid, plate) address of every phosphor segment) and the renderer's phosphor rise/decay curves. |
 | `src/machine/audio/` | The speaker: cycle-stamped edges placed on a sample timeline and band-limited into a waveform.                                         |
 | `src/ui/`            | The case shell - the moulded body, the scope window, and the four controls.                                                           |
@@ -195,31 +197,35 @@ Zero runtime dependencies. Everything above ships as the application's own code.
 ### Changing the game
 
 Game behaviour is changed by editing `asm/jetfighter.asm`, not by editing TypeScript. The
-Vite plugin in `tools/hmasm/vite-plugin.ts` assembles it on import, so `npm run dev`
+Vite plugin in `tools/tmsasm/vite-plugin.ts` assembles it on import, so `npm run dev`
 reassembles and reloads the moment the assembly changes - there is no generated ROM file
 to go stale.
 
 Assemble it yourself, with a listing showing address, opcode and source line:
 
 ```bash
-npx vite-node tools/hmasm/cli.ts asm/jetfighter.asm --listing /tmp/jetfighter.lst
+npx vite-node tools/tmsasm/cli.ts asm/jetfighter.asm --listing /tmp/jetfighter.lst
 ```
 
-The assembler enforces the real ceilings: overflowing 2048 program words or 160 RAM
-nibbles is an error, not a warning.
+The assembler enforces the real ceilings: overflowing 2048 program words or 128 RAM
+nibbles is an error, not a warning. It also rejects five silent-failure classes this
+architecture makes easy to write - a page-crossing branch inside a subroutine, a call
+reachable from inside one, `SETR`/`RSTR` with X out of range, an instruction between a
+status-setting test and its branch, and code laid down in address order rather than in the
+program counter's LFSR order.
 
 ### Watching the machine run, without a browser
 
 ```bash
-# 400k cycles (one emulated second): which grids were strobed, which segments
-# lit and at what duty
-npx vite-node tools/probe/machine-probe.ts --cycles 400000
+# 250k cycles, a little over four emulated seconds: which grids were strobed,
+# which segments lit and at what duty
+npx vite-node tools/probe/machine-probe.ts --cycles 250000
 
 # move the lever mid-run and compare the tube before and after
-npx vite-node tools/probe/machine-probe.ts --cycles 400000 --input lever=up@200000
+npx vite-node tools/probe/machine-probe.ts --cycles 250000 --input lever=up@120000
 
-# capture the D14 transition stream for spectral analysis
-npx vite-node tools/probe/machine-probe.ts --cycles 400000 --input fire@200000 --emit-edges
+# capture the R15 transition stream for spectral analysis
+npx vite-node tools/probe/machine-probe.ts --cycles 250000 --input fire@120000 --emit-edges
 ```
 
 The probe writes one JSON object to stdout and reads everything off the board's own

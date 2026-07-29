@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { CYCLE_HZ } from '../cpu/cpu.js';
+import { CYCLE_HZ } from '../cpu/tms1370/timing.js';
 import { Speaker, type SpeakerEdgePair } from '../board/speaker.js';
 import { DEFAULT_LATENCY_MS, type EdgeInput } from './edge-buffer.js';
 import { DEFAULT_AMPLITUDE } from './square-synth.js';
@@ -433,11 +433,15 @@ describe('SpeakerDriver - transport selection', () => {
 
 describe('SpeakerDriver - cycle to sample conversion', () => {
   it('places an edge using the CPU clock rate, not a clock of its own', () => {
-    // 4000 cycles at 400 kHz is 10 ms, which is 480 samples at 48 kHz.
-    const { driver, source } = setup({ cyclesPerSecond: 400_000 });
+    // Ten milliseconds of emulated time is 480 samples at 48 kHz, whatever the
+    // machine's cycle rate is - which is the property being asserted. The rate
+    // is supplied rather than assumed, so it is stated here rather than taken
+    // from the machine.
+    const cyclesPerSecond = 400_000;
+    const { driver, source } = setup({ cyclesPerSecond });
     source.push([
       [0, 1],
-      [4000, 0],
+      [cyclesPerSecond / 100, 0],
     ]);
 
     const samples = driver.render(600);
@@ -544,10 +548,10 @@ describe('SpeakerDriver - rendering', () => {
 // band-limited reconstruction - was correct and tested; what was not tested was
 // that the two clocks ever meet. The output pulls samples from the moment the
 // graph is connected, and a cold machine runs the best part of a second before
-// the ROM first touches D14, so by the time an edge exists the playhead is tens
+// the ROM first touches R15, so by the time an edge exists the playhead is tens
 // of thousands of samples past where the edge timeline anchors it.
 describe('SpeakerDriver - keeping the machine in step with the output', () => {
-  /** Samples the output pulls before the ROM's first D14 edge, on a cold machine. */
+  /** Samples the output pulls before the ROM's first R15 edge, on a cold machine. */
   const SILENT_BLOCKS = 293; // 37,504 frames: 0.78 s at 48 kHz
 
   /** Peak-to-peak swing of a block. Zero is a pin that never moved. */
@@ -566,6 +570,17 @@ describe('SpeakerDriver - keeping the machine in step with the output', () => {
     return toneEdges(hz, ms).map(([at, level]) => [at + cycle, level] as SpeakerEdgePair);
   }
 
+  /**
+   * The cycle the machine has reached when it first makes a sound.
+   *
+   * Roughly three quarters of a second of emulated time, derived rather than
+   * written down: under v2 this was the literal 311893, which meant "0.78 s"
+   * only at 400 kHz. Nothing here depends on the exact figure - it exists so
+   * the first edge does not arrive at cycle 0, which is the case the
+   * realignment logic has to handle.
+   */
+  const FIRST_SOUND_CYCLE = Math.round(0.78 * CYCLE_HZ);
+
   /** Render `blocks` blocks and return the loudest swing any of them had. */
   function play(driver: SpeakerDriver, blocks: number): number {
     let loudest = 0;
@@ -581,9 +596,9 @@ describe('SpeakerDriver - keeping the machine in step with the output', () => {
     // The machine is powered but quiet: the output pulls, and the pin holds.
     expect(play(driver, SILENT_BLOCKS)).toBe(0);
 
-    // The ROM finally toggles D14 - a blip shorter than the buffer's own depth,
+    // The ROM finally toggles R15 - a blip shorter than the buffer's own depth,
     // so this also holds the cushion refill to something a blip can survive.
-    source.push(toneAt(311_893, 1520, 20));
+    source.push(toneAt(FIRST_SOUND_CYCLE, 1520, 20));
 
     expect(play(driver, 64)).toBeGreaterThan(DEFAULT_AMPLITUDE);
     expect(driver.stats.realignments).toBe(1);
@@ -602,7 +617,7 @@ describe('SpeakerDriver - keeping the machine in step with the output', () => {
     const FRAME_BLOCKS = Math.round(((FRAME_MS / 1000) * SAMPLE_RATE) / DEFAULT_BLOCK_FRAMES);
     let loudest = 0;
     for (let frame = 0; frame < 60; frame += 1) {
-      source.push(toneAt(311_893 + frame * FRAME_CYCLES, 1520, FRAME_MS));
+      source.push(toneAt(FIRST_SOUND_CYCLE + frame * FRAME_CYCLES, 1520, FRAME_MS));
       loudest = Math.max(loudest, play(driver, FRAME_BLOCKS));
     }
 
@@ -616,13 +631,17 @@ describe('SpeakerDriver - keeping the machine in step with the output', () => {
     // come back behind the playhead. The speaker has to find them again.
     const { driver, source } = setup();
     play(driver, SILENT_BLOCKS);
-    source.push(toneAt(311_893, 1520, 20));
+    source.push(toneAt(FIRST_SOUND_CYCLE, 1520, 20));
     play(driver, 64);
     expect(driver.stats.realignments).toBe(1);
 
-    // Half a second of output with the machine stalled, then it resumes.
-    play(driver, 188);
-    source.push(toneAt(400_000, 1520, 20));
+    // Half a second of output with the machine stalled, then it resumes having
+    // advanced only a fifth of a second: the cycle stamps come back well behind
+    // the playhead, which is the condition under test.
+    const STALL_SECONDS = 0.5;
+    const ADVANCED_SECONDS = 0.2;
+    play(driver, Math.round((STALL_SECONDS * SAMPLE_RATE) / DEFAULT_BLOCK_FRAMES));
+    source.push(toneAt(FIRST_SOUND_CYCLE + Math.round(ADVANCED_SECONDS * CYCLE_HZ), 1520, 20));
 
     expect(play(driver, 64)).toBeGreaterThan(DEFAULT_AMPLITUDE);
     expect(driver.stats.realignments).toBe(2);

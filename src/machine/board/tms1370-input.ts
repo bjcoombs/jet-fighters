@@ -2,10 +2,9 @@
 // that bypasses them.
 //
 // Sources: MAME's `ginv` input ports, quoted in docs/research/tms1370-io.md
-// section 1. Unlike the HMCS44 matrix in ./input.ts, whose strobe assignment was
-// this repository's own convention adopted because seven contacts happened to
-// match seven spare D pins, the shape below is read off the driver for our own
-// ROM mask:
+// section 1. The v2 machine's strobe assignment was this repository's own
+// convention, adopted because seven contacts happened to match seven spare pins;
+// the shape below is read off the driver for our own ROM mask:
 //
 //   PORT_START("IN.0") // R9   skill, one-hot on K1/K2/K4
 //   PORT_START("IN.1") // R10  lever, up/centre/down on K1/K2/K4
@@ -39,8 +38,8 @@ import {
   STROBE_COLUMN_COUNT,
   type KInputSource,
 } from '../cpu/tms1370/ports.js';
-import type { LeverPosition, SkillLevel } from './input.js';
-import { DEFAULT_LEVER, DEFAULT_SKILL } from './input.js';
+import type { ControlState, LeverPosition, SkillLevel } from './input.js';
+import { DEFAULT_LEVER, DEFAULT_SKILL, parseFire, parseLever, parseSkill } from './input.js';
 
 /** Strobe column carrying the skill switch: R9, column 0. */
 export const SKILL_COLUMN = 0;
@@ -111,6 +110,30 @@ export class KInputMatrix implements KInputSource {
   }
 
   /**
+   * Move a control by name, as the probe's `--input name=value` does (V7).
+   *
+   * @param name `fire`, `lever` or `skill`.
+   * @param value `lever` takes `up`/`centre`/`down` or `0`/`1`/`2`; `skill`
+   *   takes `1`/`2`/`3`; `fire` takes `down`/`up`, `on`/`off`, `true`/`false`,
+   *   or nothing at all, which presses it.
+   */
+  setControl(name: string, value?: string): void {
+    switch (name) {
+      case 'fire':
+        this.setFire(parseFire(value));
+        return;
+      case 'lever':
+        this.setLever(parseLever(value));
+        return;
+      case 'skill':
+        this.setSkill(parseSkill(value));
+        return;
+      default:
+        throw new RangeError(`unknown control: ${name} (expected fire, lever or skill)`);
+    }
+  }
+
+  /**
    * K lines closed on one strobe column.
    *
    * Exactly one bit in each column, always: both controls are position switches
@@ -142,7 +165,7 @@ export class KInputMatrix implements KInputSource {
   }
 
   /** Position of every control, for tests, the probe and debug UIs. */
-  getState(): { fire: boolean; lever: LeverPosition; skill: SkillLevel } {
+  getState(): ControlState {
     return { fire: this._fire, lever: this._lever, skill: this._skill };
   }
 

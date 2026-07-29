@@ -29,9 +29,6 @@
 //     {@link OSCILLATOR_PULSES_PER_INSTRUCTION}, which is `CLOCK_DIVIDER`, so
 //     refining the oscillator constant moves this engine without touching it.
 //
-// This module is built alongside the HMCS44 core in `src/machine/cpu/*.ts`, not
-// in place of it; PRD R8 does the swap. Nothing here imports from that core.
-//
 // Pure state only: no DOM, no timers, no Web APIs. The engine has no clock of
 // its own - it advances only when stepped.
 

@@ -3,14 +3,13 @@ import { describe, it, expect } from 'vitest';
 import {
   ATLAS_TOPOLOGY,
   DEFAULT_TOPOLOGY,
-  HMCS44_TOPOLOGY,
   TMS1370_TOPOLOGY,
   type DisplayTopology,
 } from './topology.js';
 import { GRID_COUNT as ATLAS_GRID_COUNT, PLATE_COUNT as ATLAS_PLATE_COUNT } from './tube/atlas-schema.js';
 import { GRID_COUNT as BOARD_GRID_COUNT, PLATE_COUNT as BOARD_PLATE_COUNT } from './board/display.js';
 
-const ALL: readonly DisplayTopology[] = [HMCS44_TOPOLOGY, TMS1370_TOPOLOGY];
+const ALL: readonly DisplayTopology[] = [TMS1370_TOPOLOGY];
 
 /** Set bits in a mask - a topology's mask must have exactly as many as it counts. */
 function popcount(mask: number): number {
@@ -22,13 +21,6 @@ function popcount(mask: number): number {
 }
 
 describe('display topologies', () => {
-  it('gives the HMCS44 ten grids and twenty plates', () => {
-    expect(HMCS44_TOPOLOGY.gridCount).toBe(10);
-    expect(HMCS44_TOPOLOGY.gridMask).toBe(0x3ff);
-    expect(HMCS44_TOPOLOGY.plateCount).toBe(20);
-    expect(HMCS44_TOPOLOGY.plateMask).toBe(0xfffff);
-  });
-
   it('gives the TMS1370 nine grids and twelve plates', () => {
     // MAME's driver for our own ROM mask: `set_size(9, 12)`. Corroborated by
     // the teardown photograph twice over - seven printed playfield cells plus a
@@ -47,12 +39,13 @@ describe('display topologies', () => {
     }
   });
 
-  it('leaves the live board on the HMCS44 until the core and the ROM move', () => {
-    // The line v3 task 11.3 changes, asserted so that changing it is a
-    // deliberate act with a failing test attached rather than a silent edit.
-    // asm/jetfighter.asm drives ten grid lines: a board scanning nine here
-    // would not be a TMS1370, it would be an HMCS44 with a grid pin masked off.
-    expect(DEFAULT_TOPOLOGY).toBe(HMCS44_TOPOLOGY);
+  it('puts the live board on the TMS1370, the core and the ROM having moved', () => {
+    // The v2 core scanned ten grids and this default was deliberately still its
+    // while that core drove the tube: pointing it at nine before the core and
+    // the ROM had been rebuilt would not have made the board a TMS1370, it would
+    // have made it the old machine with its top grid pin silently masked off.
+    // Both have been rebuilt, so this now says what the hardware says.
+    expect(DEFAULT_TOPOLOGY).toBe(TMS1370_TOPOLOGY);
     expect(BOARD_GRID_COUNT).toBe(DEFAULT_TOPOLOGY.gridCount);
     expect(BOARD_PLATE_COUNT).toBe(DEFAULT_TOPOLOGY.plateCount);
   });
@@ -64,10 +57,10 @@ describe('display topologies', () => {
   });
 
   it('keeps the board able to drive everything the atlas addresses', () => {
-    // The invariant that has to hold through the transition and after it. The
-    // two topologies may differ - one counts pins on a core being replaced, the
-    // other electrodes on glass - but a board that cannot reach the whole tube
-    // is broken in either era.
+    // The invariant that had to hold through the transition and still has to
+    // hold after it. The two are the same object now, but they answer different
+    // questions - one counts pins a core bonds out, the other electrodes on
+    // glass - and a board that cannot reach the whole tube is broken either way.
     expect(DEFAULT_TOPOLOGY.gridCount).toBeGreaterThanOrEqual(ATLAS_TOPOLOGY.gridCount);
     expect(DEFAULT_TOPOLOGY.plateCount).toBeGreaterThanOrEqual(ATLAS_TOPOLOGY.plateCount);
   });
@@ -75,9 +68,12 @@ describe('display topologies', () => {
   it('states the two counts once, not once per consumer', () => {
     // atlas-schema.ts carried literals and display.ts carried port-derived
     // values, and only a test asserting they were equal kept them together.
-    // Both now read from here, so the pair cannot drift apart in silence.
-    expect(ATLAS_GRID_COUNT).not.toBe(BOARD_GRID_COUNT);
+    // Both now read from here, so the pair cannot drift apart in silence - and
+    // they agree again, this time because they describe the same machine rather
+    // than by coincidence.
+    expect(ATLAS_GRID_COUNT).toBe(BOARD_GRID_COUNT);
+    expect(ATLAS_PLATE_COUNT).toBe(BOARD_PLATE_COUNT);
     expect(ATLAS_GRID_COUNT).toBe(TMS1370_TOPOLOGY.gridCount);
-    expect(BOARD_GRID_COUNT).toBe(HMCS44_TOPOLOGY.gridCount);
+    expect(BOARD_GRID_COUNT).toBe(TMS1370_TOPOLOGY.gridCount);
   });
 });

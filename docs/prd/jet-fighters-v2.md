@@ -1,6 +1,8 @@
 # Jet Fighters v2 - Full-Machine Rebuild PRD
 
-> **Superseded on its central hardware claim.** This document specifies a Hitachi HMCS44.
+> **Historical. Superseded by `jet-fighters-v3.md`**, which is the PRD the shipped machine
+> is built to. This document specifies a Hitachi HMCS44, and that core no longer exists in
+> the tree.
 > The unit's microcontroller is a **Texas Instruments TMS1370**, custom mask **MP2110**,
 > legible in `assets/reference/tube-teardown/board-L1001567.jpg` and named in MAME's device
 > list as *"1980, Gakken Invader/Tandy Fire Away"*.

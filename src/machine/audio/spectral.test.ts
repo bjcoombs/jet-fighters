@@ -3,8 +3,8 @@
 // Everything here runs on a `[cycle, level]` array and nothing else: the edges
 // go through `renderSquare` and out through `magnitudeSpectrum`, with no
 // AudioContext, no driver and no event API anywhere in the chain. That is the
-// boundary acceptance criterion V5 depends on - it drives the machine
-// headlessly, captures the D14 edge stream, reconstructs it and reads the
+// boundary acceptance criterion V8 depends on - it drives the machine
+// headlessly, captures the R15 edge stream, reconstructs it and reads the
 // dominant frequency, all in plain Node.
 //
 // The bands asserted against are the measured ones in
@@ -13,7 +13,7 @@
 // the reading is what is targeted here.
 
 import { describe, it, expect } from 'vitest';
-import { CYCLE_HZ } from '../cpu/cpu.js';
+import { CYCLE_HZ } from '../cpu/tms1370/timing.js';
 import { Speaker, type SpeakerEdgePair } from '../board/speaker.js';
 import { edgeSpanMs, renderSquare } from './square-synth.js';
 import { binWidthHz, dominantFrequency, magnitudeAt, magnitudeSpectrum } from './spectrum.js';
@@ -23,7 +23,7 @@ const SAMPLE_RATE = 48_000;
 /**
  * Measured bands from `docs/evidence/audio-reference.md`.
  *
- * `missileFire` is the band contract criterion V5 checks. The win jingle's
+ * `missileFire` is the band contract criterion V8 checks. The win jingle's
  * third note is 1240 Hz - the measured fundamental, recovered from its 2480 Hz
  * second partial. 1244 Hz is the equal-tempered D#6 label and is not a reading;
  * the evidence document exists largely to keep that substitution from being
@@ -41,7 +41,7 @@ const MEASURED = {
 } as const;
 
 /**
- * The pin transitions of a ROM delay loop toggling D14 every `halfPeriod`
+ * The pin transitions of a ROM delay loop toggling R15 every `halfPeriod`
  * cycles, for `ms` of emulated time.
  *
  * Positions are rounded to whole machine cycles because that is all the machine
@@ -73,7 +73,7 @@ function measure(edges: SpeakerEdgePair[]): number {
   return dominantFrequency(samples, SAMPLE_RATE);
 }
 
-describe('reconstruct and FFT - the V5 chain', () => {
+describe('reconstruct and FFT - the V8 chain', () => {
   it('reads back the frequency a synthetic edge stream was toggled at', () => {
     for (const hz of [230, 300, 466, 620, 750, 940, 1240, 1520]) {
       const measured = measure(toneEdges(hz, 200));
@@ -104,7 +104,7 @@ describe('reconstruct and FFT - the V5 chain', () => {
 
   it('needs no audio API to be present', () => {
     // The whole point of the pure path. If this file could only run in a
-    // browser, V5 could not be checked in CI.
+    // browser, V8 could not be checked in CI.
     expect((globalThis as { AudioContext?: unknown }).AudioContext).toBeUndefined();
     expect((globalThis as { AudioWorkletNode?: unknown }).AudioWorkletNode).toBeUndefined();
     expect(measure(toneEdges(1520, 100))).toBeGreaterThan(0);
@@ -119,7 +119,7 @@ describe('reconstruct and FFT - the V5 chain', () => {
 describe('measured bands - missileFire', () => {
   const { min, max, centre, maxMs } = MEASURED.missileFire;
 
-  it('lands inside the 1480-1632 Hz band that criterion V5 asserts', () => {
+  it('lands inside the 1480-1632 Hz band that criterion V8 asserts', () => {
     const edges = toneEdges(centre, 20);
     const measured = measure(edges);
 
@@ -140,11 +140,19 @@ describe('measured bands - missileFire', () => {
   });
 
   it('stays in band on the nearest half-period the machine can actually count', () => {
-    // The ROM counts whole cycles, so it cannot toggle at exactly 1520 Hz: at
-    // 400 kHz the nearest loop is 132 cycles, which is 1515.15 Hz. The band has
-    // to be reachable from the cycle grid or no ROM could satisfy V5.
+    // The ROM counts whole instructions, so it cannot toggle at exactly
+    // 1520 Hz - and this machine's grid is far coarser than the v2 core's was.
+    // At the v2 core's rate a delay loop had ~132 instructions to spend on a
+    // half period and the reachable pitches sat ~12 Hz apart; here the same
+    // half period is a couple of dozen instructions and the neighbours are
+    // ~80 Hz apart. The band has to be reachable from that grid or no ROM on
+    // this chip could satisfy V8, so the assertion is that the reachable pitch
+    // is in band rather than that the loop is any particular length.
     const halfPeriod = Math.round(CYCLE_HZ / (2 * centre));
-    expect(halfPeriod).toBe(132);
+    const reachable = CYCLE_HZ / (2 * halfPeriod);
+    expect(reachable).toBeGreaterThanOrEqual(min);
+    expect(reachable).toBeLessThanOrEqual(max);
+
     const measured = measure(loopEdges(halfPeriod, 20));
     expect(measured).toBeGreaterThanOrEqual(min);
     expect(measured).toBeLessThanOrEqual(max);
@@ -204,17 +212,20 @@ describe('measured bands - win jingle', () => {
   it('targets the measured 1240 Hz rather than the D#6 note label', () => {
     // 1240 Hz is the reading: the observed second partial was 2480, and 2 x
     // 1244 is 2488. The 4 Hz difference is below what the machine can express
-    // anyway - at 400 kHz the loop lengths either side of 1240 Hz are 161 and
-    // 160 cycles, which is 1242.2 and 1250.0 Hz, an 8 Hz grid. There is no ROM
-    // that plays 1244 and not 1240, so the label cannot be a target.
-    const grid = [161, 160].map((halfPeriod) => CYCLE_HZ / (2 * halfPeriod));
-    expect(grid[0]).toBeCloseTo(1242.24, 2);
-    expect(grid[1]).toBe(1250);
-
+    // anyway, and on this chip it is far below it - the loop lengths either
+    // side of 1240 Hz differ by one instruction and put the reachable pitches
+    // tens of hertz apart. There is no ROM on this machine that plays 1244 and
+    // not 1240, so the label cannot be a target.
+    //
+    // The grid is derived rather than stated. The v2 core's figures - 161 and
+    // 160 cycles for 1242.2 and 1250.0 Hz - were true at 400 kHz and are one of
+    // PRD R5's six re-derivation classes.
     const nearest = Math.round(CYCLE_HZ / (2 * 1240));
-    expect(nearest).toBe(161);
+    const step = Math.abs(CYCLE_HZ / (2 * (nearest - 1)) - CYCLE_HZ / (2 * nearest));
+    expect(Math.abs(1244 - 1240)).toBeLessThan(step);
+
     const measured = measure(loopEdges(nearest, 150));
-    expect(Math.abs(measured - 1240)).toBeLessThan(grid[1] - grid[0]);
+    expect(Math.abs(measured - 1240)).toBeLessThan(step);
   });
 });
 

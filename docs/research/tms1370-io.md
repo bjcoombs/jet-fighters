@@ -842,18 +842,19 @@ against a photograph we already own.
 
 ## What this changes in the repository
 
-No code was changed by this task. These are the consequences it hands on, each with the
-section that argues it.
+No code was changed by this task. These were the consequences it handed on, each with the
+section that argues it. The "in the repo at the time" column records the state this
+research was written against; the v3 rebuild has since carried every row.
 
-| Currently in the repo | What this research says | Section |
+| In the repo at the time | What this research says | Section |
 | --- | --- | --- |
 | `GRID_COUNT = 10` and `PLATE_COUNT = 20` (`src/machine/tube/atlas-schema.ts`, `src/machine/board/display.ts`) | 9 and 12. The 10/20 figures were borrowed from `ghalien`, an HD38800 machine, and have no remaining basis. | 1, 3 |
-| Six playfield columns (`ATLAS-COORDINATES.md` assumption 3) | Seven, with no jet in the first cell or the last. The catalogue's printed reading was right and the atlas's was not. | 3 |
+| Six playfield columns (`ATLAS-COORDINATES.md` assumption 3) | Seven, with no jet in the first cell or the last. The catalogue's printed reading was right and the atlas's was not. **Carried:** the atlas has been retraced on seven cells. | 3 |
 | Grids on D0-D9, the twenty-line plate bus on the R ports (`display.ts`) | Grids are **R0-R8**; plates are **O0-O7 plus R11-R14**. There is no D port on this chip at all. | 1, 2 |
 | Speaker on D14, with edge capture in `src/machine/board/speaker.ts` | Speaker is **R15**, one of the same 16 R latches the grids come from, set and reset by `SETR`/`RSTR`. The cycle-stamped edge model carries; the pin and the write mechanism do not. | 1, 2 |
 | Inputs read through a strobe matrix on a dedicated input port | K1/K2/K4 strobed from R9/R10 by wired-OR, plus **K8 unstrobed** for fire. Only one of R9/R10 may be high at a time or the two columns superimpose. | 1 |
 | A display sweep free to write any plate pattern per grid | The low 8 plates come through a 32-entry O PLA indexed by status latch and accumulator. The pattern set is finite, and it is ours to design rather than to discover. | 2 |
-| Score modelled as three full digits | Two full digits plus a `1`-only hundreds place, which is why the cap is 199. | 3 |
+| Score modelled as three full digits | Two full digits plus a `1`-only hundreds place, which is why the cap is 199. **Carried:** `atlas.json` holds `score_tens`, `score_units` and a single `score_hundreds` stroke. | 3 |
 
 ## What this does not settle
 

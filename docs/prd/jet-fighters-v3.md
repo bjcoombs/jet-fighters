@@ -1,5 +1,9 @@
 # Jet Fighters v3 - TMS1370 Rebuild PRD
 
+> **Current.** This is the PRD the shipped machine is built to.
+> `jet-fighters-v2.md` and `jet-fighters-v1.md` are historical and are kept as the record
+> of the machines this one replaced and of how the hardware claim was corrected.
+
 ## Problem Statement
 
 v2 is a careful, measured emulation of the wrong processor.

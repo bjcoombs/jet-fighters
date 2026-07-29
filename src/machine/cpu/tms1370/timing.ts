@@ -11,10 +11,6 @@
 // must import CYCLE_HZ from here rather than restating a cycles-per-second
 // figure, so that refining OSCILLATOR_HZ or CLOCK_DIVIDER moves every
 // consumer at once instead of drifting out of step with a copy.
-//
-// This module does not touch src/machine/cpu/*.ts at the top level - that is
-// the HMCS44 core this project is replacing (docs/prd/jet-fighters-v3.md R8),
-// live until R8 removes it, and out of scope here.
 
 /**
  * MAME's fitted RC-oscillator approximation for the TMS1370, in hertz.

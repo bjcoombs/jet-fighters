@@ -84,7 +84,7 @@ describe('instructions', () => {
     expect(() => parse('ORG 4\n')).toThrow(/directives start with a dot, as '\.ORG'/);
   });
 
-  it('rejects an HMCS44 mnemonic - this is a different machine', () => {
+  it('rejects a v2-core mnemonic - this is a different machine', () => {
     expect(() => parse('LAI 3\n')).toThrow(/unknown mnemonic/);
   });
 });

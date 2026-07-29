@@ -1,9 +1,9 @@
 // PWM duty-cycle accumulator for the multiplexed VFD.
 //
-// Sources: the sibling device MAME emulates (Gakken Heiankyo Alien, HD38800 at
-// 400 kHz) scans 10 grids on D0-D9 against ~20 plates on the R ports plus
-// D10-D13. See docs/prd/jet-fighters-v2.md (Technical Context, R4). Only one
-// grid is lit at a time, so a segment's apparent brightness is the fraction of
+// Sources: MAME's driver for our own ROM mask scans 9 grids against 12 plates
+// (docs/research/tms1370-io.md sections 1 and 3). The counts are a caller's to
+// supply - this module is handed a matrix and accumulates against it - and only
+// one grid is lit at a time, so a segment's apparent brightness is the fraction of
 // the frame period during which its grid and its plate were driven together -
 // exactly the quantity this module accumulates, and the quantity v1 faked by
 // drawing sprites at full brightness.
@@ -18,7 +18,7 @@
 
 /** One segment's share of a frame period. */
 export interface SegmentDuty {
-  /** Display grid, driven by D0-D9. */
+  /** Display grid, driven by R0-R8. */
   readonly grid: number;
   /** Plate (anode) bit index within the grid. */
   readonly plate: number;

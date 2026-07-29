@@ -1,12 +1,10 @@
 // The multiplexed VFD as the board wires it.
 //
 // The matrix is a constructor parameter rather than a fact of this module. It
-// defaults to the live board's - 10 grids on D0-D9 against ~20 plates on the R
-// ports plus D10-D13, the HMCS44 arrangement borrowed from MAME's `ghalien` in
-// docs/prd/jet-fighters-v2.md (Technical Context, R4) - and the TMS1370's 9 x 12
-// is available beside it, from src/machine/topology.ts. Neither is hardcoded
-// here, because which one the board scans is a fact about which core is
-// soldered to the tube and this module drives whichever it is handed.
+// defaults to the live board's - 9 grids on R0-R8 against 12 plates on O0-O7
+// plus R11-R14, from src/machine/topology.ts. It is not hardcoded here, because
+// which matrix the board scans is a fact about which core is soldered to the
+// tube and this module drives whichever it is handed.
 //
 // This module owns the frame period. The duty arithmetic lives in pwm.ts, which
 // knows nothing about ports.
@@ -19,33 +17,29 @@ import { PwmAccumulator, type PwmFrame, type SegmentDuty } from './pwm.js';
 import { REFRESH_TIMEOUT_CYCLES } from './tms1370-cadence.js';
 
 /**
- * Display grids the board scans by default: ten, driven by D0-D9.
+ * Display grids the board scans by default: nine, driven by R0-R8.
  *
  * The counts and masks below are {@link DEFAULT_TOPOLOGY}'s, re-exported so the
  * many callers that only ever want the live board's figures do not each have to
  * reach through a topology object. A caller that wants a *specific* machine's
- * figures - a test driving the TMS1370's 9 x 12 matrix, say - passes that
- * topology to the {@link Display} constructor and reads the counts off it.
+ * figures passes that topology to the {@link Display} constructor and reads the
+ * counts off it.
  */
 export const GRID_COUNT = DEFAULT_TOPOLOGY.gridCount;
 
-/** D0-D9 as a bit mask. */
+/** R0-R8 as a bit mask, in the R latch's own bit positions. */
 export const GRID_MASK = DEFAULT_TOPOLOGY.gridMask;
 
 /**
- * Plate (anode) lines per grid on the default topology.
+ * Plate (anode) lines per grid on the default topology: twelve.
  *
- * The research fixes the HMCS44 count at "~20 plates (R ports + D10-D13)"
- * without saying how many come from each side, and the segment atlas addresses
- * plates by *R-port bit index*. That model therefore wires the whole 20-line
- * plate bus to R0-R19 and leaves D10-D13 unassigned - a stated assumption, not a
- * measured fact. It is not load bearing: the atlas uses plates 0-11 and the real
- * chip has twelve of them (src/machine/topology.ts), so all the assumption ever
- * fixed was where plates 12-19 would have come from.
+ * O0-O7 are plates 0-7 and R11-R14 are plates 8-11 - the board resolves that
+ * split before it reaches this module, which addresses plates 0-11 and takes no
+ * position on which pin each came from. See src/machine/topology.ts.
  */
 export const PLATE_COUNT = DEFAULT_TOPOLOGY.plateCount;
 
-/** R0-R19 as a bit mask. */
+/** Plates 0-11 as a bit mask. */
 export const PLATE_MASK = DEFAULT_TOPOLOGY.plateMask;
 
 /**
@@ -53,7 +47,7 @@ export const PLATE_MASK = DEFAULT_TOPOLOGY.plateMask;
  *
  * The ROM has one core and no sound hardware, so it bit-bangs the speaker in a
  * timed delay loop and stops strobing the grids for as long as the note lasts
- * (`note_loop` in asm/jetfighter.asm). The tube goes out - measured on the real
+ * (the note delay loops in asm/jetfighter.asm). The tube goes out - measured on the real
  * unit at 133-167 ms on every sound, 14-17% of all frames during active play
  * (docs/evidence/vfd-appearance.md, section 5 and D1).
  *
@@ -76,8 +70,8 @@ export const PLATE_MASK = DEFAULT_TOPOLOGY.plateMask;
  * neither ordinary sweep jitter nor a longer-than-average pass through the game
  * logic could reach it. 5 ms at the 400 kHz oscillator.
  *
- * **That figure was a literal, and every part of the table above is the HMCS44's
- * 400 kHz.** At the TMS1370's instruction rate the same wall-clock intervals are
+ * **That figure was a literal, and every part of the table above is the v2
+ * machine's 400 kHz.** At the TMS1370's instruction rate the same wall-clock intervals are
  * seven times fewer cycles and 2000 lands the wrong side of them, which is the
  * first of PRD R5's six re-derivation classes and what
  * `docs/contract/v3.contract.md` criterion V14 forbids: no listed cycle constant
@@ -96,9 +90,9 @@ export { REFRESH_TIMEOUT_CYCLES };
 
 /** Immutable view of the tube at an instant. */
 export interface DisplaySnapshot {
-  /** Grids currently driven, as a bit mask over D0-D9. */
+  /** Grids currently driven, as a bit mask over R0-R8. */
   readonly gridMask: number;
-  /** Plates currently driven, as a bit mask over R0-R19. */
+  /** Plates currently driven, as a bit mask over plates 0-11. */
   readonly plateMask: number;
   /** Frame periods completed since the last `clear()`. */
   readonly frameCount: number;
@@ -111,16 +105,25 @@ export interface DisplaySnapshot {
 /**
  * The tube's electrical state and its PWM history.
  *
- * Frame periods are derived from the sweep, not imposed on it. The ROM's master
- * loop strobes each grid in turn and starts over; this class calls a frame
- * complete the moment a grid is driven that has already been driven since the
- * last boundary. That makes the frame rate a property of the program - if the
- * ROM spends longer on one pass through the game logic, the frame lengthens and
- * every duty in it is measured against the longer period, exactly as the real
- * display dims when the sweep slows.
+ * Frame periods are derived from the sweep, not imposed on it. The frame closes
+ * when the sweep *wraps*: grid 0 rising after the highest grid has been strobed.
+ * That makes the frame rate a property of the program - if the ROM spends longer
+ * on one pass through the game logic, the frame lengthens and every duty in it
+ * is measured against the longer period, exactly as the real display dims when
+ * the sweep slows.
  *
- * A sweep that never repeats a grid never completes a frame on its own; callers
- * that need a boundary anyway (the probe taking a snapshot) call `endFrame`.
+ * The wrap, rather than "a grid rises that has already risen this frame". The
+ * second rule was right for a machine that drew each grid exactly once per
+ * sweep. This ROM makes four passes over the glass and reaches grid 0 in three
+ * of them, so that rule would call every *pass* a frame and hand the renderer
+ * one segment family at a time. The highest grid is only reached in the
+ * high-bank passes, which is what makes it the sweep's boundary marker without
+ * this module having to know the pass order - the same marker
+ * `tools/probe/tms1370-probe.ts` takes its measured sweep periods between.
+ *
+ * A sweep that never reaches the highest grid never completes a frame on its
+ * own; callers that need a boundary anyway (the probe taking a snapshot) call
+ * `endFrame`.
  *
  * A sweep that *stops* is the other case, and it is not hypothetical: the ROM
  * stops sweeping on every sound. Two things follow, and both live here rather
@@ -134,18 +137,17 @@ export class Display {
   /**
    * The matrix this instance scans.
    *
-   * Defaults to the live board's, so every existing caller is unchanged. It is a
-   * constructor parameter rather than a module constant because there are now
-   * two real answers - the HMCS44's 10 x 20 and the TMS1370's 9 x 12 - and a
-   * test that wants to drive the second one should not have to wait for the
-   * first to be retired. See src/machine/topology.ts.
+   * Defaults to the live board's. It is a constructor parameter rather than a
+   * module constant so a test can drive a matrix of its own choosing without
+   * reaching past this class to change what every other caller scans. See
+   * src/machine/topology.ts.
    */
   private readonly topology: DisplayTopology;
   private readonly pwm: PwmAccumulator;
 
   private _gridMask = 0;
   private _plateMask = 0;
-  private _seenGrids = 0;
+  private _sawLastGrid = false;
   private _strobedGrids = 0;
   private _frameCount = 0;
   private _lastFrame: PwmFrame | undefined;
@@ -166,7 +168,7 @@ export class Display {
     return this._gridMask;
   }
 
-  /** Plates currently driven, as a bit mask over R0-R19. */
+  /** Plates currently driven, as a bit mask over plates 0-11. */
   get plateMask(): number {
     return this._plateMask;
   }
@@ -184,9 +186,9 @@ export class Display {
   /**
    * Drive the grid lines.
    *
-   * A rising edge on a grid already driven this frame is the sweep wrapping, so
-   * the frame closes at `cycle` - crediting the interval that just ended to the
-   * outgoing state - before the new grid is recorded in the next period.
+   * Grid 0 rising after the highest grid has been strobed is the sweep wrapping,
+   * so the frame closes at `cycle` - crediting the interval that just ended to
+   * the outgoing state - before the new grid is recorded in the next period.
    */
   setGrids(mask: number, cycle: number): void {
     const next = mask & this.topology.gridMask;
@@ -207,7 +209,9 @@ export class Display {
     }
 
     const rising = next & ~this._gridMask;
-    if ((rising & this._seenGrids) !== 0) {
+    if ((rising >>> (this.topology.gridCount - 1)) & 1) {
+      this._sawLastGrid = true;
+    } else if (this._sawLastGrid && (rising & 1) !== 0) {
       this.endFrame(cycle);
     }
 
@@ -220,7 +224,6 @@ export class Display {
     }
 
     this._gridMask = next;
-    this._seenGrids |= rising;
     this._strobedGrids |= rising;
     this.pwm.recordState(next, this._plateMask, cycle);
   }
@@ -235,13 +238,13 @@ export class Display {
     this.pwm.recordState(this._gridMask, next, cycle);
   }
 
-  /** Raise or drop one grid line, as a single D-pin transition does. */
+  /** Raise or drop one grid line, as a single R-pin transition does. */
   setGridPin(pin: number, value: number, cycle: number): void {
     assertIndex(pin, this.topology.gridCount, 'grid');
     this.setGrids(setBit(this._gridMask, pin, value), cycle);
   }
 
-  /** Raise or drop one plate line, as a single R-pin transition does. */
+  /** Raise or drop one plate line, as a single O- or R-pin transition does. */
   setPlatePin(pin: number, value: number, cycle: number): void {
     assertIndex(pin, this.topology.plateCount, 'plate');
     this.setPlates(setBit(this._plateMask, pin, value), cycle);
@@ -257,7 +260,7 @@ export class Display {
     const frame = this.pwm.endFrame(cycle);
     this._lastFrame = frame;
     this._frameCount += 1;
-    this._seenGrids = 0;
+    this._sawLastGrid = false;
     return frame;
   }
 
@@ -306,8 +309,8 @@ export class Display {
    * answer for a refreshing display and it is what this returns almost always.
    *
    * It is the wrong answer while the sweep has *stopped*. A frame period closes
-   * only when a grid rises that has already risen, so a stalled sweep completes
-   * no period, and `getFrame()` goes on reporting the last fully lit sweep for
+   * only when the sweep wraps, so a stalled sweep completes no period, and
+   * `getFrame()` goes on reporting the last fully lit sweep for
    * as long as the stall lasts. The ROM stalls the sweep on every sound - it
    * bit-bangs the speaker in a delay loop and cannot strobe at the same time -
    * so the tube the ROM has switched off reads as lit, for 71 ms on a march
@@ -366,7 +369,7 @@ export class Display {
     this.pwm.clear(cycle);
     this._gridMask = 0;
     this._plateMask = 0;
-    this._seenGrids = 0;
+    this._sawLastGrid = false;
     this._strobedGrids = 0;
     this._frameCount = 0;
     this._lastFrame = undefined;

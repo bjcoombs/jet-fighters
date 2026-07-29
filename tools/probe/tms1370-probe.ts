@@ -2,11 +2,11 @@
 //
 // Paths in this file are relative to the repository root.
 //
-// This is the harness the v3 game program is measured with. `machine-probe.ts`
-// beside it still drives the HMCS44 board and is task 11's to repoint; what this
-// one needs is smaller and lives one layer down: the core, the ROM, the output
-// PLA, and the R and O pins as they actually move. No DOM, no timers, no clock
-// of its own.
+// This is the harness the game program is measured with. `machine-probe.ts`
+// beside it is the contract's CLI drive surface and goes through the whole
+// board; what this one needs is smaller and lives one layer down: the core, the
+// ROM, the output PLA, and the R and O pins as they actually move. No DOM, no
+// timers, no clock of its own.
 //
 // It is a module rather than a CLI because everything that reads it is a test.
 // A sweep here is a *measured* quantity - the cycles between two successive

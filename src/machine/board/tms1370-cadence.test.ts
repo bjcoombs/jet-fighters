@@ -87,9 +87,9 @@ describe('the horizons PRD R5 names', () => {
   });
 
   it('carries no 400 kHz-era figure', () => {
-    // v2's literals, at the HMCS44's rate. Every one of them is wrong here by
-    // about a factor of seven, and a literal says nothing about which machine
-    // it belonged to.
+    // The v2 machine's literals, at its 400 kHz rate. Every one of them is
+    // wrong here by about a factor of seven, and a literal says nothing about
+    // which machine it belonged to.
     const v2 = [8_000, 600_000, 80_000, 3_000, 200];
     for (const stale of v2) {
       expect([

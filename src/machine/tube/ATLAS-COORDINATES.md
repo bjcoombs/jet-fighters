@@ -1,7 +1,7 @@
 # VFD Segment Atlas - Coordinate System and Provenance
 
 `atlas.json` is the geometry of the real Futaba DM-series tube: every phosphor
-anode segment, its outline, and the `(grid, plate)` address the HD38800 drives it
+anode segment, its outline, and the `(grid, plate)` address the TMS1370 drives it
 from. It is pure data. Nothing in this directory renders, and nothing imports the
 DOM, so the atlas loads in plain Node (headless machine probe, Vitest) as well as
 in the browser. `atlas.json` is imported statically - there is no `fetch()` path.
@@ -42,7 +42,7 @@ radius 150 and the left tab is `0,78 213x144`.
 Every segment is checked to fall inside that circle-plus-rectangle window, not
 merely inside the bounding rectangle.
 
-### Relationship to `src/render/layout.ts`
+### Relationship to the v1 replica's layout maths
 
 The printed playfield is taken unchanged from v1's `PLAYFIELD_FRACTION`
 (`left 0.055, right 0.95, top 0.34, bottom 0.66` of the scope bounding box):
@@ -66,18 +66,16 @@ playfield.x                  field.x                       playfield right
 | --- | --- | --- |
 | SCORE box | `x 19.965, width 64.977` | 20% of the playfield width, photo-measured |
 | Distance-column field | `x 84.942, width 259.908` | The remainder |
-| Cell | `43.318 x 32` | field width / 6 columns, field height / 3 lanes |
+| Cell | `43.318 x 32` | field width / 6 cells, field height / 3 lanes |
 | Column centres | `106.6, 149.9, 193.2, 236.5, 279.9, 323.2` | `field.x + (c + 0.5) * cellW` |
 | Lane centres | `118, 150, 182` | `field.y + (l + 0.5) * cellH` |
 
-This is the one place the atlas deviates from v1's layout maths, and it is
-deliberate: v1 draws the SCORE readout on top of the column-0 jet cells. Two
-phosphor segments cannot occupy the same area of glass, so the atlas separates
-them. Task 11 deletes `src/render/`; until then, the two disagree by design.
-
-**Nothing in `src/machine/` imports `src/render/` or `src/game/`.** Geometry
-values were copied here with a comment citing where each came from, exactly so
-that deleting the v1 modules cannot break the machine.
+This is the one place the atlas deviates from the v1 replica's layout maths, and
+it was deliberate: that renderer drew the SCORE readout on top of the leftmost
+jet cells, and two phosphor segments cannot occupy the same area of glass. The v1
+modules have since been deleted; the geometry values above were copied here with
+a comment citing where each came from, exactly so that deleting them could not
+break the machine, and that is what happened.
 
 ## Provenance
 
@@ -328,8 +326,8 @@ very nearly the atlas's, which the video's was not.
 
 ### Shapes, and where each one comes from
 
-The score digits and the SCORE label are still the v1 shape tables from
-`src/render/sprites.ts`, scaled and translated into atlas units.
+The score digits and the SCORE label are still the v1 replica's shape tables,
+scaled and translated into atlas units.
 
 **Every playfield outline in the shipped atlas is traced from the bare tube**,
 by `tools/trace/` - including the player's ship and the two bursts in its cell,
@@ -555,8 +553,8 @@ and there is no colour field in the board's PWM state.
 
 Two other sources disagree in naming, and neither is authoritative here:
 
-- `src/render/sprites.ts` `PALETTE` calls the attacker colour **`amber`**
-  (`#ff9a2e`) and the v1 PRD says "orange/amber". That is v1's rendition of the
+- The v1 replica's `PALETTE` called the attacker colour **`amber`**
+  (`#ff9a2e`), and the v1 PRD says "orange/amber". That is v1's rendition of the
   photographed colour, not a claim about the phosphor.
 - The Task Master description for this task also says `'cyan' | 'amber'`.
 
@@ -566,13 +564,13 @@ two phosphor regions a segment sits in.
 
 | Region | Segments |
 | --- | --- |
-| `red` | jets (18), attacker colons (18), battleship (3), the player's destruction (3) - everything the machine attacks with, plus the burst it makes of the player |
-| `cyan` | missile darts (15), jet-kill bursts (12), the player's ship (3), score digits (21), SCORE label (1) |
+| `red` (42) | jets (15), attacker colons (15), the battleship (3), the sea under it (3), the capture stipple (3), the player's destruction (3) - everything the machine attacks with, plus the burst it makes of the player |
+| `cyan` (52) | player missiles (15), jet-kill bursts (15), the battleship's burst (3), the launcher (3), seven-segment digit strokes (14 - two digits of seven), the hundreds stroke (1), SCORE label (1) |
 
-94 segments in all. The two burst families are the same three plates under
+94 segments in all. The two burst families sit on the same three plates under
 different grids and are opposite colours, which is only possible because colour
-is a property of the glass rather than of the address: `red` under D5, `cyan`
-under D0-D3.
+is a property of the glass rather than of the address: the player's destruction
+is `red` on grid 6, a jet kill is `cyan` on grids 1-5.
 
 ## Grid and plate mapping
 
@@ -582,99 +580,73 @@ from there, by way of `src/machine/topology.ts`. The atlas uses 94 of the 108
 available addresses; the highest plate index used is 11.
 
 **That is a correction, and the numbers it replaced were 10 and 20.** Those came
-from MAME's `ghalien` (Gakken Heiankyo Alien, HD38800 at 400 kHz), adopted while
-this project believed its chip was an HD38800. It is a TMS1370 running mask
-MP2110, and MAME drives that mask as a 9 x 12 matrix - corroborated by the
-teardown photograph twice over, since seven printed playfield cells plus a
-two-cell score block is nine grids and 9 + 12 electrodes matches the 21 +/- 1
-series resistors counted on the board. See `docs/research/tms1370-io.md`
-sections 1 and 3, and `docs/evidence/open-questions.md` section 7 for how the
-error entered.
-
-One segment moved as a result: **`score_label` had grid 9 to itself and now sits
-on grid 8, plate 7**, beside the units digit on the plate that column was not
-using. Nothing else moved - the atlas had never addressed a plate above 11, so
-narrowing the plate bound rejects addresses rather than invalidating data.
-
-The rest of this section predates the teardown and is not reliable as an address
-table; `atlas.json` is. It is kept for the *reasoning* about plate-assignment
-regularity, which survives the chip correction, and for the assumption list
-below.
+from a sibling machine's MAME driver, adopted while this project's chip was
+misidentified. It is a TMS1370 running mask MP2110, and MAME drives that mask as
+a 9 x 12 matrix - corroborated by the teardown photograph twice over, since seven
+printed playfield cells plus a two-cell score block is nine grids and 9 + 12
+electrodes matches the 21 +/- 1 series resistors counted on the board. See
+`docs/research/tms1370-io.md` sections 1 and 3, and
+`docs/evidence/open-questions.md` section 7 for how the error entered.
 
 Grids are assigned as vertical strips of the tube, left to right, which is how a
-scanned VFD is normally laid out and what the sweep loop in the game ROM will
-expect:
+scanned VFD is normally laid out and what the sweep loop in the game ROM expects.
+**`atlas.json` is the address table; this document is not.** What follows is the
+shape of the assignment, so a reader can see the regularity the ROM's plate table
+depends on - not a list to look an address up in.
 
-| Grid | Region | Plates |
-| --- | --- | --- |
-| D0 | Distance column 0 (BATTLE SHIP ZONE, ruler "10") | 0-2 jets, 3-5 colons, 6-8 missile darts, 9-11 jet-kill bursts, 12-14 battleship lanes 0-2 |
-| D1 | Distance column 1 | 0-2 jets, 3-5 colons, 6-8 darts, 9-11 bursts |
-| D2 | Distance column 2 | as D1 |
-| D3 | Distance column 3 | as D1 |
-| D4 | Distance column 4 | 0-2 jets, 3-5 colons, 6-8 darts |
-| D5 | Distance column 5 (the G / capture line) | 0-2 jets, 3-5 colons, 6-8 the player's ship at lanes 0-2, 9-11 the burst where it is destroyed |
-| D6 | SCORE digit 0 (hundreds) | 0-6 = seven-segment a-g |
-| D7 | SCORE digit 1 (tens) | 0-6 = seven-segment a-g |
-| D8 | SCORE digit 2 (units) | 0-6 = seven-segment a-g, 7 the SCORE label |
+| Grid | Region |
+| --- | --- |
+| R0 | The battleship zone: the boat, the sea below it, and the burst that destroys it |
+| R1-R5 | Distance columns 1 to 5, R5 being the G / capture line |
+| R6 | The player's cell: the capture stipple, the launcher, and its destruction |
+| R7 | SCORE tens digit, plus the hundreds stroke on its spare plate |
+| R8 | SCORE units digit, plus the SCORE label on its spare plate |
 
-The plate assignment is deliberately regular, and the regularity is now four
-roles rather than two. **On every playfield grid, plate `n` is lane `n`'s jet,
-`n + 3` its attacker colon, `n + 6` the player's own object in that cell, and
-`n + 9` the burst that happens there.** The last two each mean different things
-under different grids - `n + 6` is the missile dart under D0-D4 and the launcher
-itself under D5, `n + 9` the cyan jet-kill burst under D0-D3 and the player's
-red destruction under D5 - which is what a multiplexed tube is, not an overload.
-A ROM routine that steps the squadron writes the same bit pattern shifted
-between grids, and `PAT_LANE` needs one group per role rather than one per
-actor, which is how the whole playfield fits four table entries wide.
+The plate assignment on the five distance columns is deliberately regular, and
+the regularity is four roles rather than two. **On every distance grid, plate `n`
+is lane `n`'s jet, `n + 3` its attacker colon, `n + 6` the player's missile in
+that cell, and `n + 9` the burst that happens there.** The player's own cell
+keeps three of those four roles at the same offsets - the capture stipple at
+`n + 3`, the launcher at `n + 6`, its destruction at `n + 9` - and has no jet.
+A ROM routine that steps the squadron therefore writes the same bit pattern
+shifted between grids, and the plate table needs one group per role rather than
+one per actor, which is how the whole playfield fits four entries wide.
 
-Two holes in that lattice are deliberate: D4 has no plates 9-11 and D5 no dart.
-The video finds no jet, and therefore no kill, in the two cells nearest the
-launcher, and no dart in the launcher's own cell.
+Two consequences of nine grids rather than ten are worth stating, because both
+moved segments. `score_label` had a grid to itself and now sits on **grid 8,
+plate 7**, beside the units digit on the plate that column was not using. And the
+battleship no longer hangs off the far distance column's spare plates: it has
+**grid 0 to itself**, at plates 0-2, with the sea at 3-5 and its burst at 6-8.
+The atlas had never addressed a plate above 11, so narrowing the plate bound
+rejects addresses rather than invalidating data.
 
-### Twelve plates a grid was the ROM's habit, not the tube's
-
-`PLATE_COUNT` was 20 here and in `src/machine/board/display.ts`, where the board
-wired the whole twenty-line plate bus to R0-R4. The real chip has twelve, so the
-paragraph below reads as an argument for a ceiling the hardware turns out to
-impose after all - by a route this section did not anticipate. The game ROM declared only
-`R_PLATE0..2` - R0, R1, R2, twelve plates - for as long as every grid fitted in
-twelve, and that made the twelve look like a hardware ceiling. It is not one.
-
-The far column does not fit: it carries a jet, a colon, a dart, a burst and the
-battleship, which is fifteen segments. **No consolidation recovers those three
-plates** - each of the five families is placed there by direct observation - so
-the battleship sits at plates 12-14 and the ROM drives a fourth plate file onto
-R3. It is the only actor on the tube above plate 11.
+Plate 8 is R11 - the first plate past the output PLA's eight lines - so the third
+lane of every family on grid 0 is driven from the R port rather than through the
+PLA. `tools/probe/rom-atlas-conformance.test.ts` is where that split is asserted
+from the ROM's side.
 
 ### Assumptions - read this before depending on an address
 
-The exact HD38800Axx and Futaba serials are unknown without a teardown, Jet
-Fighter's mask ROM was never dumped, and the owner's angled-light photo of the
-dark tube (the shot that would show the complete segment atlas at once) is listed
-as **pending** in the v2 PRD's evidence pipeline. Everything below is a reasoned
-assumption, not an observation, and is expected to be revised when that photo
-arrives.
+The Futaba serial is unknown without a further teardown, Jet Fighter's mask ROM
+was never dumped, and `ginv.svg` - the MAME artwork file that would give the
+per-segment addressing directly - has not been obtained. Everything below is a
+reasoned assumption, not an observation, and is expected to be revised when one
+of those arrives.
 
-1. **Every address in the table above.** No photo shows which grid drives which
-   segment. The assignment is derived from the sibling hardware's topology and
-   from what a 2 KB scan loop makes cheap, not from the unit.
-2. **Grid count applied to this layout.** Ten grids for six distance columns,
-   three score digits and one status strip is a clean fit, but a real tube might
-   for example give the battleship its own grid and share the score digits.
-3. **Six distance columns.** From `src/game/constants.ts` `GRID_COLUMNS = 6`
-   (v1 PRD R2 expected 5-7). The dotted ruler in `screen-overlay-closeup.jpg`
-   appears to have more than six dot groups, so the real column count may be
-   higher. If it changes, the atlas and this table change with it.
-4. **The battleship shares the far column's grid.** The video puts it in a
-   seventh cell that this atlas does not model, so its three segments hang under
-   D0 alongside that column's own five. If the real tube gives the far cell its
-   own grid - which is what a seventh printed cell suggests - these three
-   addresses move.
-5. **Plates 12-14, and R3 with them.** The board wires twenty plate lines, so
-   nothing here is out of range, but no observation says the far column's grid
-   is the one with more plates on it. It is the column that needs them.
-6. **The colon's placement, though no longer its shape.** The shape is now
+1. **Every address in the atlas.** No photograph shows which grid drives which
+   segment. The assignment is derived from the chip's matrix shape and from what
+   a 2 KB scan loop makes cheap, not from the unit. Settling it needs `ginv.svg`
+   from the MAME romset; see `docs/research/tms1370-io.md`, "What this does not
+   settle".
+2. **Grid count applied to this layout.** Nine grids for the battleship zone,
+   five distance columns, the player's cell and two score digits is a clean fit
+   and matches the printed cells one for one, but the fit is an argument rather
+   than a trace.
+3. **The battleship has grid 0 to itself.** The video puts it in the far cell,
+   and seven printed playfield cells against five distance columns plus the
+   player's cell leaves exactly one over. If the real tube instead shares that
+   grid with a distance column, these addresses move.
+4. **The colon's placement, though no longer its shape.** The shape is now
    traced (`video/attacker-colon-2.png`). Where it sits inside its cell is not:
    no frame locates a colon against the jet that fired it, so it keeps the
    offset the old round dot had, `cellW * 0.358` toward the player, chosen to
@@ -682,21 +654,21 @@ arrives.
    segment that overlaps nothing else in its own cell, and the only one whose
    position is a choice rather than a measurement.
 
-   **Which columns carry a colon is also unevidenced.** All six do here, by
-   symmetry with the jets, because a shot travelling from a jet to the player
+   **Which columns carry a colon is also unevidenced.** All five distance
+   columns do here, by symmetry with the jets, because a shot travelling from a jet to the player
    crosses every cell between them. The video never caught a colon in flight at
    a known column, so this is the ROM's model rather than the tube's.
-7. **The player's destruction keeps its address and its outline.** The three
-   `explosion_lane{0-2}` segments are still on D5 plates 9-11, and the video
+5. **The player's destruction keeps its address and its outline.** The three
+   `explosion_lane{0-2}` segments are on grid 6, plates 9-11, and the video
    corroborates them: `video/player-hit-lane0.png` and `-lane2.png` catch the
    burst at two of the three lanes. The outline is still the one traced off
    `sprites/explosion-red-lit.png` - retracing it was not in this change's scope.
    **The ROM now drives it**, which it did not before.
-8. **`score_label` is an extra segment beyond this task's brief.**
+6. **`score_label` is an extra segment beyond the tracing task's brief.**
    `device-front-lit.jpg` clearly shows the word SCORE lit in cyan, so it is a
    phosphor segment and it is in the atlas as a single block. It sat on grid 9
    plate 0 while the atlas was addressed for ten grids; the TMS1370 has nine, so
-   it moved to **grid 8 plate 7**, sharing the units digit's cell. Its `path` is
+   it moved to **grid 8, plate 7**, sharing the units digit's cell. Its `path` is
    traced letterforms rather than the bounding rectangle it started as.
 
    The move is forced by the pin budget rather than derived from any per-segment
@@ -840,8 +812,8 @@ extraction window far enough left to clip the right-hand burst.
 Three things this revision leaves undone, recorded rather than dropped:
 
 1. ~~**The battleship's destruction burst is not in the atlas.**~~ It is -
-   `battleship_burst_lane{0,1,2}` on D0 plates 6-8, traced from the bare tube
-   when cell 0 was done. What is still missing is the *rule*: the ROM scores a
+   `battleship_burst_lane{0,1,2}` on grid 0, plates 6-8, traced from the bare
+   tube when cell 0 was done. What is still missing is the *rule*: the ROM scores a
    battleship kill (`bship_kill`, ten points) and has never drawn one, so the
    segment is on `tools/probe/rom-atlas-conformance.test.ts`'s enumerated
    exception list. That is a line someone deletes when they drive it, not a
@@ -912,7 +884,7 @@ yet:
    dark end rather than raising brightness, which blows out the lit segments:
    `magick <photo> -crop WxH+X+Y +repage -colorspace gray -level 8%,28% -resize 350% out.png`
 2. Express every measurement as a fraction of a printed feature that also exists
-   in `src/ui/geometry.ts` or `src/render/layout.ts`, never in raw pixels. For
+   in `src/ui/geometry.ts` or in the layout table above, never in raw pixels. For
    *positions* on the printed layout, measure only along the horizontal centre
    line unless the photo is square on. For *sprite sizes*, compare each axis
    against a printed feature on that same axis (column width horizontally, lane

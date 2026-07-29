@@ -17,11 +17,10 @@
 // index, and gives the core exactly the vocabulary designed and no wider one.
 // The board conjunct - plates 8-11 from R11-R14 - is the port layer's.
 //
-// The honest limit: `asm/jetfighter.asm` is still HMCS44 source until task 8
-// rewrites it, so "every mask the ROM drives" has no ROM to be quantified over.
-// Closure is therefore asserted over the *sweep plan* - the set of masks a ROM
-// written against this design is able to ask for - and `unreachablePlateMasks`
-// is exported so task 8's conformance suite runs the identical check over the
+// The scope this file keeps: closure is asserted over the *sweep plan* - the
+// set of masks a ROM written against this design is able to ask for - rather
+// than over one particular program. `unreachablePlateMasks` is exported so
+// `tools/probe/rom-atlas-conformance.test.ts` runs the identical check over the
 // masks its ROM actually drives, with no second implementation. The distinction
 // is stated rather than papered over: a green run here is not yet a green V4.
 //
