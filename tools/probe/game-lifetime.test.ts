@@ -357,12 +357,37 @@ describe('the unattended machine reaches an ending rather than wedging', () => {
       // to the silence itself this would sample the ending, and read a game
       // still playing as a picture that had not frozen.
       const horizon = seconds(UNATTENDED_SILENCE_S * 2);
-      const { samples } = sampleRun(machine, horizon);
+
+      // Marked at the two-thirds point, for the same reason the played run below
+      // marks there: `sweepCount` accumulates from power-on, so read off a
+      // finished machine it is satisfied by one that swept normally through the
+      // first half of the horizon and then wedged solid. That machine is
+      // precisely what this negative control has to *fail* to exclude, and an
+      // unwindowed count passes it. The mark makes the last third the thing
+      // being observed.
+      let sweepsAtTwoThirds = -1;
+      const twoThirds = machine.cycles + Math.floor((horizon * 2) / 3);
+      const { samples } = sampleRun(machine, horizon, (playing) => {
+        if (sweepsAtTwoThirds < 0 && playing.cycles >= twoThirds) {
+          sweepsAtTwoThirds = playing.sweepCount;
+        }
+      });
 
       expect(new Set(lastThird(machine, horizon, samples)).size, 'frozen picture').toBe(1);
       // And frozen while still sweeping, so the two properties are independent
-      // and the played machine has to satisfy both.
+      // and the played machine has to satisfy both. The whole-run figure is kept
+      // as well as the windowed one: it is the weaker claim, but dropping it
+      // would trade one assertion for another rather than adding the half that
+      // was missing.
+      expect(sweepsAtTwoThirds, 'a mark was taken at the two-thirds point').toBeGreaterThan(0);
       expect(machine.sweepCount).toBeGreaterThan((SWEEP_HZ * UNATTENDED_SILENCE_S) / 2);
+      // The last third of the horizon is `UNATTENDED_SILENCE_S * 2 / 3` seconds;
+      // half the sweeps that window should hold is the floor, the same shape of
+      // allowance the sibling windows use.
+      expect(
+        machine.sweepCount - sweepsAtTwoThirds,
+        'still completing sweeps after the two-thirds mark',
+      ).toBeGreaterThan((SWEEP_HZ * UNATTENDED_SILENCE_S) / 3);
     },
     LONG_RUN_TIMEOUT_MS,
   );

@@ -458,7 +458,13 @@ describe('the sweep rate the reference video admits (D4)', () => {
     // nowhere.
     //
     // Measured: a mean silent sweep of 884 cycles, which is 56.5-75.4 Hz across
-    // the spread and contains the interval with about 4 Hz to spare at each end.
+    // the spread and contains the interval, but not symmetrically. The slack is
+    // 14.1 Hz below SWEEP_HZ_MIN (56.5 against 70.6) and 2.9 Hz above
+    // SWEEP_HZ_MAX (75.4 against 72.5), so the fast end is the tight one and is
+    // where a longer sweep loop breaks this first: 920 cycles is all it takes
+    // for `fastest` to fall through 72.5. The earlier "about 4 Hz at each end"
+    // was wrong at both ends and would have had a re-measurement compared
+    // against a margin that does not exist.
     // src/machine/board/tms1370-cadence.test.ts asserts the same property of the
     // constant; this asserts it of the sweep the running ROM produces, which is
     // the figure a sweep-loop edit can move.
@@ -559,16 +565,28 @@ describe('the tube goes dark while a note plays (D1)', () => {
     // frequency-stable, the longest silent pass measures 1017 cycles against the
     // 889 SWEEP_INSTRUCTIONS names, and the window has to hold a whole pass
     // however it fell against the blank.
+    // The lookback is not clamped to the start of the trace. Clamping it kept
+    // every group in the assertion at the cost of asking some of them a question
+    // the window cannot answer: a blank whose first edge lands less than three
+    // sweeps after the trace began leaves a truncated window, which holds fewer
+    // than GRID_COUNT grids for a ROM that behaved perfectly. That is a test
+    // failing a correct build, so such a group is skipped rather than asserted
+    // over a short window - and the count of groups actually checked is asserted
+    // below, so skipping cannot empty the test out.
+    let checked = 0;
     for (const group of stretchesByBlank.values()) {
       const [firstEdge] = group[0] as readonly [number, number];
-      const from = Math.max(startCycle, firstEdge - 3 * SWEEP_INSTRUCTIONS);
+      const from = firstEdge - 3 * SWEEP_INSTRUCTIONS;
+      if (from < startCycle) continue;
       const driven = new Set(
         strobes
           .filter((strobe) => strobe.cycle >= from && strobe.cycle < firstEdge)
           .map((strobe) => strobe.grid),
       );
       expect(driven.size).toBe(GRID_COUNT);
+      checked += 1;
     }
+    expect(checked, 'blanks with a whole sweep of lookback behind them').toBeGreaterThan(0);
   });
 
   it('drives no grid at all for the whole of every sound', () => {
