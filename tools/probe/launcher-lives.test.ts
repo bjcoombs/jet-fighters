@@ -1,5 +1,7 @@
 // Three launchers, and the three ways the player finds out he has lost one.
 //
+// Paths in this file are relative to the repository root.
+//
 // ## The defect this exists to stop coming back
 //
 // The owner played the deployed build beside his own CGL unit and reported "you
@@ -25,6 +27,12 @@
 // than a choice. Standing still is now a strategy, and this file is the proof
 // of the property that suite depends on.
 //
+// It is also contract criterion V7's rocket-lane check: three runs, one per
+// lane, each of which must hear a launcher-hit warning. A build in which the
+// rocket's lane is drawn from the player's own last keypress - v2's defect, PRD
+// R5 forbids inheriting it - leaves two lanes permanently safe, and two of these
+// three runs then hear nothing at all.
+//
 // ## Why this reads the tube and the speaker rather than the RAM
 //
 // There is no lives display on this tube - owner-confirmed against his unit,
@@ -32,7 +40,7 @@
 // Damage is signalled by sound alone: two beeps on the first hit, three on the
 // second, the full loss sound on the third (audio-reference.md,
 // launcherHitWarning; all three owner-confirmed). The beeps *are* the lives
-// indicator, so counting them off D14 is not a proxy for the rule - it is the
+// indicator, so counting them off R15 is not a proxy for the rule - it is the
 // rule, observed where a player observes it. A test that read NIB_HITS would
 // prove the ROM incremented a nibble and say nothing about whether the player
 // is ever told.
@@ -41,97 +49,61 @@
 // no RAM either. Fire is never pressed in any run below, so no missile is ever
 // on the glass and a jet can leave the field only by reaching the G line. A jet
 // vanishing from the deepest jet cell is therefore a capture and can be nothing
-// else, and counting those against the warnings says which mechanism took each
-// launcher.
+// else, and counting those against the launcher losses says which mechanism took
+// each one.
 //
-// ## What makes a warning distinguishable from anything else the ROM plays
+// ## What a warning looks like on this machine, which is not what it looked like
+//
+// Two measured facts collide differently here than they did on the v2 board, and
+// the whole beep-counting method turns on it.
 //
 // Beeps inside one warning are separated by `warn_gap`, a measured 25-28 ms
-// (audio-reference.md, launcherHitWarning.gapMs). That gap is wider than the
-// 20 ms BURST_GAP_CYCLES that speaker-bands.test.ts uses to split sounds, so
-// each beep arrives here as its own sound and a warning has to be reassembled
-// by clustering. WARNING_CLUSTER_CYCLES is the reassembly window: well above
-// the gap between two beeps of one warning, and far below the gap between two
-// separate hits, which are whole game events apart.
+// (audio-reference.md, launcherHitWarning.gapMs); the ROM's WARN_GAP pair lands
+// at 27.3 ms. `BURST_GAP_CYCLES` is two sweeps, which on this machine is 1,778
+// instructions - **30.5 ms, wider than the gap it used to be narrower than**. So
+// a whole warning now arrives as a single sound rather than as two or three
+// separate ones, and counting sounds would count every warning as one beep.
+//
+// What is counted instead is *pitch runs* inside a sound: `pitchesIn` breaks an
+// edge stream into runs of like periods, and each 10 ms beep is one such run at
+// 467 Hz while the 27 ms silence between two beeps breaks the run. Measured over
+// the three runs below, the first warning yields a sound holding two 467 Hz runs
+// and the second a sound holding three - the owner-confirmed counts, read the
+// way the ROM produces them. The clustering by {@link WARNING_CLUSTER_CYCLES} is
+// kept because it is what makes the count independent of which side of the split
+// gap the ROM's beep spacing happens to fall on: beeps that arrive as separate
+// sounds are gathered, beeps that arrive as one sound are counted within it, and
+// both regimes give the same answer.
+//
+// ## Telling the loss sound from the battleship
 //
 // The loss sound opens on the same pitch as a warning beep - audio-reference.md
 // records them as the same note - so pitch alone cannot tell the third hit from
-// the first. What separates them is the collapse to 96 Hz that follows: nothing
-// else this ROM plays goes near that band, so a sound containing one is the
-// loss sound and no other sound is.
+// the first. What follows it is a collapse into 80-97 Hz, and *that* band is not
+// exclusive either: the battleship's buzz sits at 79-111 Hz and runs for the
+// whole four seconds of a crossing. So the loss sound is identified by the shape
+// the measurement gives it - a collapse **and** a decay floor at ~147 Hz - which
+// the buzz, being one sustained rate, does not have. See {@link DECAY_FLOOR_HZ}.
+//
+// That conjunction is also why this file no longer excises the buzz's edges
+// before splitting sounds, as the v2 file did. The excision worked by neighbour
+// gaps, and on this machine the buzz's half-period (median 288 instructions) is
+// *shorter* than the loss sound's own collapse note (318), so any threshold that
+// removed the buzz would remove the collapse with it if a game ever ended during
+// a crossing. Identifying the loss by shape removes the need for the threshold,
+// and removes a way for a real ending to be filtered out of the evidence.
 //
 // Node-side test: no DOM, no browser globals.
 
 import { describe, it, expect } from 'vitest';
-import { resolve } from 'node:path';
-import { readFileSync } from 'node:fs';
-import { assemble } from '../hmasm/assembler.js';
-import { romImage } from '../hmasm/output.js';
-import { Board } from '../../src/machine/board/board.js';
-import type { SpeakerEdge } from '../../src/machine/board/speaker.js';
-import { CYCLE_HZ } from '../../src/machine/cpu/cpu.js';
-
-const ASM_PATH = resolve(import.meta.dirname, '..', '..', 'asm', 'jetfighter-hmcs44.asm');
-
-/** Assemble the game ROM once and share it across the runs below. */
-const GAME_ASM = assemble(readFileSync(ASM_PATH, 'utf8'), ASM_PATH);
-const ROM = romImage(GAME_ASM);
-
-function gameSymbol(name: string): number {
-  const found = GAME_ASM.symbols.find((definition) => definition.name === name);
-  if (found === undefined) throw new Error(`asm/jetfighter.asm no longer defines ${name}`);
-  return found.value;
-}
-
-/** The battleship's lane nibble, and the value that means it is not crossing. */
-const BSLANE_ADDRESS = gameSymbol('FILE_STATE') * 16 + gameSymbol('NIB_BSLANE');
-const BS_NONE = gameSymbol('BS_NONE');
-
-/**
- * Silence that separates two sounds, in machine cycles - 20 ms.
- *
- * The same constant, for the same reasons, as speaker-bands.test.ts: above the
- * 5.2 ms half-period of the slowest note the ROM plays and below the ~27 ms gap
- * between two beeps of one warning.
- */
-const BURST_GAP_CYCLES = 8_000;
-
-/**
- * How far apart two beeps may be and still belong to the same warning, in
- * machine cycles - 200 ms.
- *
- * `warn_gap` is 26.7 ms, so this is seven times the gap it has to bridge. The
- * nearest thing it must *not* bridge is two separate launcher losses, which are
- * seconds apart in every run below.
- */
-const WARNING_CLUSTER_CYCLES = 80_000;
-
-/**
- * How long after a launcher is lost the tube may take to show the jet gone, in
- * machine cycles - 1.5 s.
- *
- * The two are simultaneous in the ROM: the same `tick` clears the captured jet
- * and starts the sound. They are not simultaneous to an observer, because
- * `note_loop` stops sweeping the tube while it plays, so the sweep that would
- * have shown the jet gone does not complete until the sound has finished. The
- * lag is therefore the length of the sound, and the worst case is the whole
- * five-stage loss envelope: measured at 0.74 s, against 0.08 s and 0.18 s for
- * the two warnings.
- *
- * 1.5 s is twice that worst case and still well inside the 3.4 s between the
- * two closest launcher losses, which is what stops a departure being matched to
- * the wrong one.
- */
-const CAPTURE_WINDOW_CYCLES = 600_000;
-
-/**
- * How far *before* a launcher loss a departure may be seen, in machine cycles.
- *
- * Essentially zero: the tube can only report the jet gone after the ROM has
- * removed it, so a departure that preceded the sound would mean the two were
- * not the same event. One sweep of slack, for the sampling boundary.
- */
-const CAPTURE_LEAD_CYCLES = 20_000;
+import {
+  BURST_GAP_CYCLES,
+  CAPTURE_WINDOW_CYCLES,
+  SWEEP_INSTRUCTIONS,
+  WARNING_CLUSTER_CYCLES,
+} from '../../src/machine/board/tms1370-cadence.js';
+import { CYCLE_HZ } from '../../src/machine/cpu/tms1370/timing.js';
+import { Tms1370Machine, type SegmentDuty, type SpeakerEdge } from './tms1370-probe.js';
 
 /** How far two consecutive periods may differ and still count as one note. */
 const RUN_TOLERANCE = 0.06;
@@ -142,34 +114,25 @@ const MIN_RUN_PERIODS = 3;
 /** launcherHitWarning.dominantHzRange, which the loss opening shares. */
 const WARNING_HZ = { min: 455, max: 545 } as const;
 
-/** gameOver's collapse stage - the band no other sound in this ROM enters. */
+/** gameOver's collapse stage - the band the loss sound falls into. */
 const COLLAPSE_HZ = { min: 80, max: 97 } as const;
 
 /**
  * The pitch the loss sound decays to - gameOver.decayFloorHz, ~147 Hz.
  *
- * Needed because the collapse band above **no longer identifies the loss sound
- * on its own**. The battleship buzz is 85-93 Hz, which is inside 80-97, so once
- * the boat started buzzing for the whole of its crossing every crossing read as
- * a loss sound: the game appeared to end twice, and the warning beeps inside the
- * crossing were discarded as part of it. The loss sound is now identified by the
- * *shape* the measurement gives it - a collapse and then a decay floor - which
- * the buzz, being one sustained pitch, does not have.
+ * Needed because the collapse band above **does not identify the loss sound on
+ * its own**. The battleship buzz is measured at 79-111 Hz, which contains 80-97
+ * whole, so a crossing that happened to hold a steady enough rate would read as
+ * a loss: the game would appear to end twice, and any warning beeps inside the
+ * crossing would be discarded as part of the ending. The loss sound is
+ * identified by the *shape* the measurement gives it - a collapse and then a
+ * decay floor - which the buzz, being one sustained rate, does not have.
+ *
+ * The band is audio-reference.md's `gameOver.decayFloorHz` of ~147 Hz opened to
+ * the 130-175 the v1 test bound used; the ROM's own SND_LOSS5 lands at 144 Hz
+ * and this machine sounds it at a measured 144.
  */
 const DECAY_FLOOR_HZ = { min: 130, max: 175 } as const;
-
-/**
- * Half-period, in machine cycles, above which an edge inside a crossing belongs
- * to the battleship buzz rather than to a note.
- *
- * The buzz is toggled once every four grid dwells, so its half-period is about
- * 2300 cycles. The notes that can sound during a crossing are the march (312),
- * the missile blip (128) and the warning beep (405) - the loss sound's 96 Hz
- * collapse is the only note anywhere near the buzz, and it cannot overlap one
- * because `game_lost` stops the buzz before `play_loss` starts. So anything
- * either side of 1000 is unambiguous.
- */
-const BUZZ_HALF_PERIOD_FLOOR = 1000;
 
 /**
  * The deepest cell a jet is ever drawn in: distance column 1, on grid 5.
@@ -197,26 +160,61 @@ const PLATE_JET = [0, 1, 2];
 const PLATE_DART = [6, 7, 8];
 
 /**
- * Emulated seconds to run for.
+ * The latest a parked-lever game ends, in seconds of emulated time.
  *
- * An unattended machine loses its third launcher at 20.2 s and stops sounding
- * at 20.5 s, so thirty covers a whole game with room for the cadence constants
- * to move without the runs quietly stopping short of the ending.
+ * **Measured on this machine**, by running each of the three lanes to silence:
+ * the last speaker edge falls at 24.6 s with the lever in lane 1, 36.3 s in lane
+ * 2 and 43.2 s in lane 0. The lanes differ because the squadron's entries and
+ * the rocket's lane rotation are not symmetric about the lever, not because one
+ * lane is played better - nobody is playing.
  *
- * INSTRUCTION-RATE PROVISIONAL: those wall-clock figures come from the HMCS44
- * core's oscillator (see `UNATTENDED_SILENCE_S` in game-lifetime.test.ts), not
- * the TMS1370's. See docs/research/mp2110-timing-measurement.md.
+ * It is named and measured for the reason CLAUDE.md gives: a literal horizon in
+ * a test about a machine that stops is a bet on when it stops, and the v2 figure
+ * this replaces moved three times in one day. Every run below is a multiple of
+ * this, so a cadence change moves one number.
  */
-const HORIZON_S = 30;
+const PARKED_GAME_END_S = 43.2;
 
-/** Wall-clock allowance: three thirty-second games is several real seconds. */
+/**
+ * Emulated seconds each run below is driven for.
+ *
+ * Half again as long as the latest of the three endings, so a run cannot quietly
+ * stop short of the ending it is meant to observe - which is exactly how the v2
+ * horizon failed - and short enough that three of them stay cheap.
+ */
+const HORIZON_S = PARKED_GAME_END_S * 1.4;
+
+/**
+ * The ceiling `runSweeps` is given when it waits for one sweep to complete.
+ *
+ * Not a measurement of anything: it is the "the sweep is not coming" escape. The
+ * ROM stops sweeping for the whole of every sound, so a caller waiting on a
+ * sweep during the 0.67 s loss envelope must not spin for ever, and the outer
+ * loop below is happy to be handed a partial slice - it samples the tube and the
+ * speaker either way. {@link CAPTURE_WINDOW_CYCLES} is the named horizon that
+ * already bounds a launcher-loss event, and every sound this ROM plays is an
+ * order of magnitude inside it.
+ */
+const SWEEP_CEILING_CYCLES = CAPTURE_WINDOW_CYCLES;
+
+/**
+ * How far *before* a launcher loss a departure may be seen, in cycles.
+ *
+ * Essentially zero: the tube can only report the jet gone after the ROM has
+ * removed it, so a departure that preceded the sound would mean the two were
+ * not the same event. One sweep of slack, for the sampling boundary, which is
+ * what {@link SWEEP_INSTRUCTIONS} is.
+ */
+const CAPTURE_LEAD_CYCLES = SWEEP_INSTRUCTIONS;
+
+/** Wall-clock allowance: three full games is several real seconds. */
 const LONG_RUN_TIMEOUT_MS = 60_000;
 
-/** Where the lever can be parked, and the lane each position selects. */
+/** The three lanes the lever's detents select, and what the case calls each. */
 const LEVERS = [
-  { position: 'up', lane: 0 },
-  { position: 'centre', lane: 1 },
-  { position: 'down', lane: 2 },
+  { detent: 'up', lane: 0 },
+  { detent: 'centre', lane: 1 },
+  { detent: 'down', lane: 2 },
 ] as const;
 
 /** One gap-separated stretch of speaker activity, and the pitches inside it. */
@@ -240,29 +238,29 @@ interface Game {
  *
  * Advanced a sweep at a time because the tube is the second observation surface
  * here and it only means anything on a completed sweep. The speaker is drained
- * every sweep for the usual reason: the buffer is finite and a run this long
- * would otherwise discard edges and make a sounding machine look silent.
+ * every sweep so that the edge stream this returns is the whole run in order.
+ *
+ * The frame read is `getFrame()` - the last sweep the tube *completed* - and not
+ * `getLitSegments()`, which applies the blanking rule. That matters: a sound
+ * parks the sweep, so an observed frame taken during one is legitimately empty,
+ * and an empty frame here would read as every jet on the glass departing at
+ * once. What is being asked is what the ROM last drew, not what a viewer would
+ * see at this instant.
  */
-function standStill(position: string): Game {
-  const board = new Board(ROM);
-  board.setControl('lever', position);
+function standStill(lane: number): Game {
+  const machine = new Tms1370Machine();
+  machine.setContacts({ skill: 1, lane });
   const edges: SpeakerEdge[] = [];
-  const crossings: Array<readonly [number, number]> = [];
-  let crossingFrom: number | null = null;
   const departures: number[] = [];
   let everFired = false;
   let wasDeep = false;
   const target = Math.round(HORIZON_S * CYCLE_HZ);
-  while (board.cycles < target) {
-    board.runFrames(1);
-    edges.push(...board.takeSpeakerEdges());
-    const crossing = board.cpu.memory.readRam(BSLANE_ADDRESS) !== BS_NONE;
-    if (crossing && crossingFrom === null) crossingFrom = board.cycles;
-    if (!crossing && crossingFrom !== null) {
-      crossings.push([crossingFrom, board.cycles]);
-      crossingFrom = null;
-    }
-    const lit = board.getFrame().segments.filter((segment) => segment.duty > 0);
+  while (machine.cycles < target) {
+    machine.runSweeps(1, SWEEP_CEILING_CYCLES);
+    edges.push(...machine.takeSpeakerEdges());
+    const lit: readonly SegmentDuty[] = machine
+      .getFrame()
+      .segments.filter((segment) => segment.duty > 0);
     const isDeep = lit.some(
       (segment) => segment.grid === GRID_DEEPEST_JET && PLATE_JET.includes(segment.plate),
     );
@@ -277,46 +275,11 @@ function standStill(position: string): Game {
       everFired = true;
     }
     if (wasDeep && !isDeep) {
-      departures.push(board.cycles);
+      departures.push(machine.cycles);
     }
     wasDeep = isDeep;
   }
-  if (crossingFrom !== null) crossings.push([crossingFrom, board.cycles]);
-  return { sounds: soundsIn(withoutBuzz(edges, crossings)), departures, everFired };
-}
-
-/**
- * Drop the battleship buzz's edges, leaving the notes.
- *
- * This file's model is one sound at a time, separated by silence, and the buzz
- * breaks it: it runs for the whole four seconds of a crossing, so the march
- * notes and the warning beeps that land inside one are never separated by
- * {@link BURST_GAP_CYCLES} of quiet and arrive as a single 4.7 s "sound" holding
- * every pitch at once. Measured, that one sound contained three march notes, a
- * two-beep warning and a three-beep warning - the exact events these tests are
- * about, all merged.
- *
- * They can be separated because the buzz and a note never actually interleave.
- * `note_loop` stops the sweep while it runs, and the buzz is clocked *by* the
- * sweep, so a note plays with the buzz suspended and the buzz resumes after -
- * they alternate. An edge is therefore a note's if either of its neighbouring
- * gaps is short; a buzz edge has {@link BUZZ_HALF_PERIOD_FLOOR} or more on both
- * sides. Only edges inside a crossing are considered, so nothing else moves.
- */
-function withoutBuzz(
-  edges: readonly SpeakerEdge[],
-  crossings: ReadonlyArray<readonly [number, number]>,
-): SpeakerEdge[] {
-  const inCrossing = (cycle: number): boolean =>
-    crossings.some(([from, to]) => cycle >= from && cycle <= to);
-  return edges.filter((edge, index) => {
-    if (!inCrossing(edge.cycle)) return true;
-    const before = edges[index - 1];
-    const after = edges[index + 1];
-    const gapBefore = before === undefined ? Infinity : edge.cycle - before.cycle;
-    const gapAfter = after === undefined ? Infinity : after.cycle - edge.cycle;
-    return gapBefore < BUZZ_HALF_PERIOD_FLOOR || gapAfter < BUZZ_HALF_PERIOD_FLOOR;
-  });
+  return { sounds: soundsIn(edges), departures, everFired };
 }
 
 /** Split an edge stream into sounds, each reduced to the pitches it holds. */
@@ -335,28 +298,36 @@ function soundsIn(edges: readonly SpeakerEdge[]): Sound[] {
     groups.push(group);
   }
   return groups.map((inSound) => ({
-    atCycle: inSound[0]!.cycle,
+    atCycle: (inSound[0] as SpeakerEdge).cycle,
     hz: pitchesIn(inSound.filter((edge) => edge.level === 1).map((edge) => edge.cycle)),
   }));
 }
 
 /**
- * The sustained pitches inside one sound.
+ * The sustained pitches inside one sound, in the order they were sounded.
  *
  * Rising edges are turned into periods, the periods broken into runs of like
  * periods, and each run long enough to be a note reported at its median - the
  * same method speaker-bands.test.ts uses, and for the same reason: one figure
  * for a whole sound averages a march step running into a battleship buzz and
  * reports a pitch belonging to neither.
+ *
+ * On this machine it does a second job the v2 file did not need it for. Because
+ * the split gap is now wider than the gap between two beeps of one warning, the
+ * runs this returns are how the beeps are counted at all - each 10 ms beep is
+ * one run, and the silence between two of them breaks it. The buzz's own edges
+ * are clocked off the display sweep and are not evenly spaced, so they form no
+ * run of {@link MIN_RUN_PERIODS} like periods and contribute no pitch, which is
+ * why a four-second crossing reports only the march steps inside it.
  */
 function pitchesIn(rising: readonly number[]): number[] {
-  const periods = rising.slice(1).map((cycle, index) => cycle - rising[index]!);
+  const periods = rising.slice(1).map((cycle, index) => cycle - (rising[index] as number));
   const pitches: number[] = [];
   let current: number[] = [];
   const close = (): void => {
     if (current.length >= MIN_RUN_PERIODS) {
       const sorted = [...current].sort((left, right) => left - right);
-      pitches.push(CYCLE_HZ / sorted[Math.floor(sorted.length / 2)]!);
+      pitches.push(CYCLE_HZ / (sorted[Math.floor(sorted.length / 2)] as number));
     }
     current = [];
   };
@@ -376,14 +347,23 @@ function holds(sound: Sound, band: { min: number; max: number }): boolean {
   return sound.hz.some((hz) => hz >= band.min && hz <= band.max);
 }
 
-/** The loss sound: it collapses to 96 Hz *and* decays to ~147. See DECAY_FLOOR_HZ. */
+/** The loss sound: it collapses into 80-97 Hz *and* decays to ~147. See DECAY_FLOOR_HZ. */
 function isLoss(sound: Sound): boolean {
   return holds(sound, COLLAPSE_HZ) && holds(sound, DECAY_FLOOR_HZ);
 }
 
-/** A single warning beep: warning-pitched, and not the loss sound opening. */
-function isBeep(sound: Sound): boolean {
-  return holds(sound, WARNING_HZ) && !isLoss(sound);
+/**
+ * Warning beeps inside one sound: its notes in the warning band.
+ *
+ * Zero for the loss sound, which opens on that same pitch and would otherwise
+ * be counted as a fourth beep somewhere. See the header for why a count of runs
+ * rather than a count of sounds.
+ */
+function beepsIn(sound: Sound): number {
+  if (isLoss(sound)) {
+    return 0;
+  }
+  return sound.hz.filter((hz) => hz >= WARNING_HZ.min && hz <= WARNING_HZ.max).length;
 }
 
 /**
@@ -395,12 +375,15 @@ function isBeep(sound: Sound): boolean {
 function warningsIn(game: Game): { beeps: number; atCycle: number }[] {
   const warnings: { beeps: number; atCycle: number }[] = [];
   let last = -Infinity;
-  for (const sound of game.sounds.filter(isBeep)) {
+  for (const sound of game.sounds.filter((candidate) => beepsIn(candidate) > 0)) {
     const previous = warnings[warnings.length - 1];
     if (previous !== undefined && sound.atCycle - last <= WARNING_CLUSTER_CYCLES) {
-      warnings[warnings.length - 1] = { ...previous, beeps: previous.beeps + 1 };
+      warnings[warnings.length - 1] = {
+        ...previous,
+        beeps: previous.beeps + beepsIn(sound),
+      };
     } else {
-      warnings.push({ beeps: 1, atCycle: sound.atCycle });
+      warnings.push({ beeps: beepsIn(sound), atCycle: sound.atCycle });
     }
     last = sound.atCycle;
   }
@@ -409,7 +392,10 @@ function warningsIn(game: Game): { beeps: number; atCycle: number }[] {
 
 /** Every moment a launcher was lost: the two warned ones, then the loss sound. */
 function launcherLosses(game: Game): number[] {
-  return [...warningsIn(game).map((warning) => warning.atCycle), ...lossesIn(game).map((s) => s.atCycle)];
+  return [
+    ...warningsIn(game).map((warning) => warning.atCycle),
+    ...lossesIn(game).map((sound) => sound.atCycle),
+  ];
 }
 
 /** The loss sounds in a game. There must be exactly one. */
@@ -417,12 +403,12 @@ function lossesIn(game: Game): Sound[] {
   return game.sounds.filter(isLoss);
 }
 
-const games = new Map(LEVERS.map(({ position }) => [position, standStill(position)]));
+const games = new Map(LEVERS.map(({ lane }) => [lane, standStill(lane)]));
 
 describe('standing still costs three launchers, and the third ends the game', () => {
-  for (const { position, lane } of LEVERS) {
-    describe(`lever parked in lane ${lane} (${position})`, () => {
-      const game = (): Game => games.get(position)!;
+  for (const { detent, lane } of LEVERS) {
+    describe(`lever parked in lane ${lane} (${detent})`, () => {
+      const game = (): Game => games.get(lane) as Game;
 
       it(
         'announces exactly two launchers before it ends, at two beeps then three',
@@ -440,7 +426,7 @@ describe('standing still costs three launchers, and the third ends the game', ()
         const losses = lossesIn(game());
         expect(losses).toHaveLength(1);
         for (const warning of warningsIn(game())) {
-          expect(warning.atCycle).toBeLessThan(losses[0]!.atCycle);
+          expect(warning.atCycle).toBeLessThan((losses[0] as Sound).atCycle);
         }
       });
 
@@ -463,7 +449,7 @@ describe('standing still costs three launchers, and the third ends the game', ()
         // The endings are terminal and the power switch is the only reset, so
         // anything after the loss sound would mean the game went on playing
         // past its own ending.
-        const loss = lossesIn(game())[0]!;
+        const loss = lossesIn(game())[0] as Sound;
         expect(game().sounds.filter((sound) => sound.atCycle > loss.atCycle)).toEqual([]);
       });
 
@@ -481,39 +467,62 @@ describe('which mechanism took each launcher, read off the tube', () => {
   // nibble of RAM.
 
   it(
-    'takes all three by capture when the lever stands in the centre or bottom lane',
+    'matches every jet that reached the G line to a launcher lost at that moment',
     () => {
-      for (const position of ['centre', 'down'] as const) {
-        const game = games.get(position)!;
-        expect(game.departures, `${position}: jets that reached the G line`).toHaveLength(3);
-        // And each launcher went at the moment one of them arrived - the
-        // arrival never *preceding* the sound, because the tube cannot report a
-        // jet gone before the ROM has removed it.
-        for (const loss of launcherLosses(game)) {
-          const cause = game.departures.find(
-            (departure) =>
+      // The v2 form of this asserted three captures in the centre and bottom
+      // lanes and none in the top one. That was never a rule - the comment on
+      // its companion said so - and on this machine the split is different: the
+      // lever in lane 0 takes all three by capture, lane 2 takes one, and lane 1
+      // takes none at all. What survives the move is the claim that was actually
+      // being made, stated the way round that holds for every lane: a jet
+      // reaching the G line always costs a launcher, so no departure may be
+      // unaccounted for.
+      //
+      // The arrival never *precedes* the sound, because the tube cannot report a
+      // jet gone before the ROM has removed it, and it lags by the length of the
+      // sound that blanked the sweep - measured at 0.10 s and 0.40 s behind a
+      // warning and 0.69 s behind the 0.67 s loss envelope.
+      let captures = 0;
+      for (const { detent, lane } of LEVERS) {
+        const game = games.get(lane) as Game;
+        captures += game.departures.length;
+        for (const departure of game.departures) {
+          const cause = launcherLosses(game).find(
+            (loss) =>
               departure - loss >= -CAPTURE_LEAD_CYCLES &&
               departure - loss <= CAPTURE_WINDOW_CYCLES,
           );
-          expect(cause, `${position}: a capture at the moment of the loss at ${loss}`).toBeDefined();
+          expect(
+            cause,
+            `${detent}: a launcher lost at the moment of the capture at ${departure}`,
+          ).toBeDefined();
         }
       }
+      // And not vacuously: at least one lane has to lose a launcher this way, or
+      // the capture path is not being exercised at all and the loop above is
+      // asserting over an empty list three times.
+      expect(captures, 'no jet reached the G line in any lane').toBeGreaterThan(0);
     },
     LONG_RUN_TIMEOUT_MS,
   );
 
-  it('takes all three by rocket when the lever stands in the top lane', () => {
+  it('takes all three by rocket in the lane no jet ever reaches the G line', () => {
     // Not a rule and not a target - it is what the current cadences and the
     // rocket's lane selection happen to produce, and it is asserted because it
     // is the negative control for the test above. The same three-launcher rule
-    // holds here with no jet ever reaching the G line at all, which is what
+    // holds in a lane with no jet ever reaching the G line at all, which is what
     // says that rule belongs to the launcher and not to the capture path.
     //
-    // If this starts failing because jets now get through in lane 0 too, the
-    // fix is to note that here, not to force it back.
-    const game = games.get('up')!;
-    expect(game.departures).toHaveLength(0);
-    expect(warningsIn(game).map((warning) => warning.beeps)).toEqual([2, 3]);
-    expect(lossesIn(game)).toHaveLength(1);
+    // Which lane that is is not asserted, because it is not a property of the
+    // rules: today it is lane 1, the centre detent, where the v2 machine's
+    // rocket-only lane was lane 0. If this starts failing because jets now get
+    // through in every lane, the fix is to note that here, not to force it back.
+    const rocketOnly = LEVERS.filter(({ lane }) => (games.get(lane) as Game).departures.length === 0);
+    expect(rocketOnly.length, 'every lane let a jet through, so nothing is rocket-only').toBeGreaterThan(0);
+    for (const { detent, lane } of rocketOnly) {
+      const game = games.get(lane) as Game;
+      expect(warningsIn(game).map((warning) => warning.beeps), detent).toEqual([2, 3]);
+      expect(lossesIn(game), detent).toHaveLength(1);
+    }
   });
 });

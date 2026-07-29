@@ -19,6 +19,9 @@
 // constants are keyed by the atlas's colour region and a field carries one set
 // per segment.
 
+import { STROBES_PER_SWEEP } from '../board/o-pla.js';
+import { STROBE_CYCLES, STROBE_DWELL_INSTRUCTIONS } from '../board/tms1370-cadence.js';
+import { ATLAS_TOPOLOGY } from '../topology.js';
 import type { ColorRegion } from './atlas-schema.js';
 
 /**
@@ -40,14 +43,15 @@ export interface PhosphorConstants {
   /**
    * Duty at which a segment reads as fully lit.
    *
-   * A 10-grid multiplexed display lights each grid for roughly a tenth of the
-   * frame, so a segment driven for the whole of its slot accumulates a duty near
-   * 0.1 - not 1.0. Perceived brightness is the fraction of *its own slot* the
-   * segment was driven for, so duty is normalised against this before the
+   * A multiplexed display lights each grid for a fraction of the refresh period,
+   * so a segment driven for the whole of the slot the sweep gives it accumulates
+   * a duty far below 1.0. Perceived brightness is the fraction of *its own slot*
+   * the segment was driven for, so duty is normalised against this before the
    * response curve. Nothing thresholds duty to on/off: a segment driven for half
    * its slot lands at half scale and shows it.
    *
-   * @see src/machine/board/display.ts `GRID_COUNT`
+   * @see {@link LIT_DUTY} for the figure and {@link REFERENCE_DUTY} for the grid
+   *   share it starts from.
    */
   readonly referenceDuty: number;
   /**
@@ -185,8 +189,54 @@ export function decayTimeForResidual(residual: number, offTimeMs: number): numbe
  */
 const RISE_TIME_MS = 4;
 
-/** Duty at which a segment reads as fully lit - see {@link PhosphorConstants.referenceDuty}. */
-const REFERENCE_DUTY = 0.1;
+/**
+ * One grid's share of a sweep: 1/9 on this tube.
+ *
+ * This is the *grid* duty, and on the TMS1370 it is the only one of the three
+ * factors below that the glass decides - nine grids, so a ninth of the refresh
+ * period each. `docs/contract/v3.contract.md` criterion V14 pins it at 1/9 and
+ * it is derived from the topology rather than written as a fraction, so a
+ * re-addressing moves it rather than leaving it asserting a tube we no longer
+ * have.
+ *
+ * It was 0.1 and documented as `1/GRID_COUNT` while that count was the v2 core's
+ * ten. See src/machine/topology.ts for why there are two answers to that.
+ */
+export const REFERENCE_DUTY = 1 / ATLAS_TOPOLOGY.gridCount;
+
+/**
+ * Strobes the sweep issues per grid: 24 across 9 grids, so 8/3.
+ *
+ * The **second, independent multiplier** on {@link REFERENCE_DUTY}, and the one
+ * `docs/research/pla-design.md` flags: a grid cannot be drawn in one `TDO`, so
+ * the sweep makes four passes and a segment is lit in only the pass its family
+ * belongs to. Its share of the sweep is therefore a 24th, not a ninth.
+ */
+export const STROBES_PER_GRID = STROBES_PER_SWEEP / ATLAS_TOPOLOGY.gridCount;
+
+/**
+ * The fraction of a strobe's slot the ROM actually holds the grid high.
+ *
+ * The **third** multiplier, and the one no plan on paper can supply: a strobe
+ * gets ~37 instructions of the sweep and spends seven of them with its grid up.
+ * Measured off the running machine - see
+ * `src/machine/board/tms1370-cadence.ts` `STROBE_DWELL_INSTRUCTIONS`, which
+ * `tools/probe/tms1370-timing.test.ts` holds to the ROM.
+ */
+export const STROBE_DUTY = STROBE_DWELL_INSTRUCTIONS / STROBE_CYCLES;
+
+/**
+ * Duty a segment reaches when the ROM is driving it as hard as it can.
+ *
+ * The product of the three factors above, which is what a segment lit in one
+ * pass measures out at over a sweep: about 1/127. Brightness is normalised
+ * against *this* rather than against {@link REFERENCE_DUTY}, and the difference
+ * is not cosmetic - normalising a 1/127 duty against 1/9 renders the tube at
+ * 18% of the brightness it should have, and against the sweep plan's 1/24 at
+ * 34%. Both are the same mistake at different depths: counting grids, or
+ * counting strobes, instead of counting the time a grid is up.
+ */
+export const LIT_DUTY = (REFERENCE_DUTY / STROBES_PER_GRID) * STROBE_DUTY;
 
 /** Duty response exponent - see {@link PhosphorConstants.gamma}. */
 const GAMMA = 0.65;
@@ -195,7 +245,7 @@ function phosphorFor(region: ColorRegion): PhosphorConstants {
   return {
     riseTimeMs: RISE_TIME_MS,
     decayTimeMs: decayTimeForResidual(MEASURED_RESIDUAL[region], REFRESH_OFF_TIME_MS),
-    referenceDuty: REFERENCE_DUTY,
+    referenceDuty: LIT_DUTY,
     gamma: GAMMA,
   };
 }
@@ -234,6 +284,27 @@ export function targetBrightness(duty: number, constants: PhosphorConstants): nu
   const normalised = Math.min(1, duty / constants.referenceDuty);
   return normalised ** constants.gamma;
 }
+
+/**
+ * Brightness at which a frame reads as a lit tube rather than a fading one.
+ *
+ * Re-derived from {@link REFERENCE_DUTY} through {@link LIT_DUTY}, which is what
+ * `docs/contract/v3.contract.md` criterion V14 asks for, rather than being the
+ * hand-set 0.8 the v2 probe suites carried. The anchor is half drive: a segment
+ * held for half the strobe the sweep gives it is the boundary
+ * {@link PhosphorConstants.referenceDuty} already draws - "a segment driven for
+ * half its slot lands at half scale and shows it" - and the gamma lifts that to
+ * about 0.64 of full emission.
+ *
+ * Above it, a tube is being refreshed. Below it, either the sweep has stopped
+ * and the phosphor is on its way down, or a frame period closed around a stall
+ * and every duty in it collapsed. Both are what the assertions using this exist
+ * to separate from a normally lit tube, and neither survives the threshold.
+ *
+ * `referenceDuty` and `gamma` are the same in both regions, so cyan's constants
+ * stand for the pair here.
+ */
+export const LIT_BRIGHTNESS = targetBrightness(LIT_DUTY / 2, PHOSPHOR.cyan);
 
 /**
  * Advance one segment's brightness toward `target` over `dtMs`.

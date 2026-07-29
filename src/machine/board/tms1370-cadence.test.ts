@@ -14,10 +14,12 @@ import {
   BUZZ_NOMINAL_HZ,
   BUZZ_STROBE_DIVIDER,
   CAPTURE_WINDOW_CYCLES,
+  LIT_SEGMENT_DUTY,
   PLAYER_SLICE_CYCLES,
   REFRESH_TIMEOUT_CYCLES,
   STEP_CYCLES,
   STROBE_CYCLES,
+  STROBE_DWELL_INSTRUCTIONS,
   SWEEP_HZ,
   SWEEP_INSTRUCTIONS,
 } from './tms1370-cadence.js';
@@ -50,22 +52,38 @@ describe('the sweep', () => {
 describe('the horizons PRD R5 names', () => {
   it('states each one as a multiple of the sweep or of the instruction rate', () => {
     expect(BURST_GAP_CYCLES).toBe(Math.round(2 * SWEEP_INSTRUCTIONS));
-    expect(REFRESH_TIMEOUT_CYCLES).toBe(Math.round(3 * SWEEP_INSTRUCTIONS));
+    expect(REFRESH_TIMEOUT_CYCLES).toBe(Math.round(SWEEP_INSTRUCTIONS));
     expect(PLAYER_SLICE_CYCLES).toBe(Math.round(SWEEP_INSTRUCTIONS / 5));
     expect(STEP_CYCLES).toBe(Math.round(STROBE_CYCLES));
     expect(CAPTURE_WINDOW_CYCLES).toBe(Math.round(10 * CYCLE_HZ));
   });
 
   it('orders them the way the events they bound are ordered', () => {
-    // A strobe is inside a sweep, a sweep inside the refresh timeout, and the
-    // capture window is seconds rather than sweeps. Getting one of these
-    // backwards is how a v2-era literal survived into a machine seven times
-    // slower without anything going red.
+    // A strobe is inside a sweep, and the capture window is seconds rather than
+    // sweeps. Getting one of these backwards is how a v2-era literal survived
+    // into a machine seven times slower without anything going red.
     expect(STEP_CYCLES).toBeLessThan(PLAYER_SLICE_CYCLES);
     expect(PLAYER_SLICE_CYCLES).toBeLessThan(SWEEP_INSTRUCTIONS);
     expect(SWEEP_INSTRUCTIONS).toBeLessThan(BURST_GAP_CYCLES);
-    expect(BURST_GAP_CYCLES).toBeLessThan(REFRESH_TIMEOUT_CYCLES);
-    expect(REFRESH_TIMEOUT_CYCLES).toBeLessThan(CAPTURE_WINDOW_CYCLES);
+    expect(BURST_GAP_CYCLES).toBeLessThan(CAPTURE_WINDOW_CYCLES);
+  });
+
+  it('blanks the tube before it splits two sounds apart', () => {
+    // These two used to be ordered the other way round, on the reading that a
+    // refresh timeout of three sweeps was "a sweep plus slack". They measure
+    // different things and the ordering follows from that rather than from
+    // taste: the refresh timeout times the gap between one grid line falling
+    // and the next rising, which is 11 cycles inside a pass and never more than
+    // 490 on a machine that is sweeping, while the burst gap times silence on
+    // the speaker between two sounds and has to clear the 25-28 ms the measured
+    // warning phrase leaves between its own beeps.
+    //
+    // So the refresh timeout is the smaller of the two, and it has to be: the
+    // shortest blank a sound produces measures 1,518 cycles, and a timeout above
+    // that leaves the tube reading as lit through every short sound - D1 of
+    // docs/evidence/vfd-appearance.md, and the bug the constant exists to stop.
+    expect(REFRESH_TIMEOUT_CYCLES).toBeLessThan(BURST_GAP_CYCLES);
+    expect(REFRESH_TIMEOUT_CYCLES).toBeLessThan(1_518);
   });
 
   it('carries no 400 kHz-era figure', () => {
@@ -82,6 +100,28 @@ describe('the horizons PRD R5 names', () => {
         REFRESH_TIMEOUT_CYCLES,
       ]).not.toContain(stale);
     }
+  });
+});
+
+describe('the duty a lit segment accumulates', () => {
+  it('holds the grid up for part of the strobe rather than all of it', () => {
+    // The whole reason a third factor exists. If a strobe held its grid up for
+    // its entire share of the sweep this would be one and the duty would be the
+    // 1/24 docs/research/pla-design.md works out from the sweep plan.
+    expect(STROBE_DWELL_INSTRUCTIONS).toBeGreaterThan(0);
+    expect(STROBE_DWELL_INSTRUCTIONS).toBeLessThan(STROBE_CYCLES);
+  });
+
+  it('measures the duty against the sweep, which is the refresh period', () => {
+    expect(LIT_SEGMENT_DUTY).toBeCloseTo(STROBE_DWELL_INSTRUCTIONS / SWEEP_INSTRUCTIONS, 12);
+  });
+
+  it('lands an order of magnitude below the grid share the tube has nine of', () => {
+    // 1/9 is the grid duty and 1/24 is the strobe share; neither is the time a
+    // segment is actually driven for. Normalising brightness against either
+    // renders the tube dim, which is what src/machine/tube/phosphor.ts's
+    // LIT_DUTY exists to stop.
+    expect(LIT_SEGMENT_DUTY).toBeLessThan(1 / 24 / 3);
   });
 });
 

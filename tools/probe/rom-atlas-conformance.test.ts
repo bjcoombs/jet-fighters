@@ -1,11 +1,14 @@
 // The ROM and the atlas describe the same tube, and this is what holds them to it.
 //
+// Paths in this file are relative to the repository root.
+//
 // The instruction set has an equality that keeps it honest - `encode(decode(op))
-// === op` for all 397 opcodes - and the display map has never had one. That
-// absence has produced two phantom-segment bugs already: a ground line on plate
-// 0 of every column, and a lives display on grid 9, both of them addresses the
-// ROM drove into glass that has no phosphor there. Both were found by eye,
-// months apart, and neither would have survived a check like this one.
+// === op` over the whole opcode space - and the display map has never had one.
+// That absence has produced two phantom-segment bugs already: a ground line on
+// plate 0 of every column, and a lives display on a grid the tube does not have,
+// both of them addresses the ROM drove into glass that has no phosphor there.
+// Both were found by eye, months apart, and neither would have survived a check
+// like this one.
 //
 // The check runs in both directions, because the two failures are different:
 //
@@ -18,40 +21,52 @@
 //                  missile's five flight columns were exactly this until the
 //                  ROM caught up with them.
 //
-// Both directions are read off the board's own observation surface over a set of
-// scenarios chosen to exercise every actor: shots fired and missed, jets walked
-// all the way to the capture line, the launcher destroyed, a battleship
-// crossing, and a score climbing through both digit columns. Nothing here reads
-// the ROM's RAM or its listing - a test that did would pass for a ROM that
-// computed the right addresses and drove none of them.
+// Both directions are read off the machine's own observation surface over a set
+// of scenarios chosen to exercise every actor: shots fired and missed, jets
+// walked all the way to the capture line, the launcher destroyed, a battleship
+// crossing shot down and a battleship crossing let past, and a score climbing
+// through all three digit columns. Nothing here reads the ROM's RAM or its
+// listing - a test that did would pass for a ROM that computed the right
+// addresses and drove none of them.
+//
+// ## What the address surface is, on this machine
+//
+// `Tms1370Machine.litCells` - the (grid, plate) pairs the ROM drove, recorded at
+// the instant a grid line rose against the plate mask standing at the time. That
+// is one layer below the duty accumulator the v2 suite read: a duty is what the
+// *tube* did with a drive, and this direction of the check is about what the
+// *program* addressed. The nine grids come out of the four sweep passes and the
+// twelve plates out of the O port's low eight plus R11-R14, so an address that
+// reaches the bus at all reaches this set, whatever the sweep made of it
+// afterwards.
 //
 // Node-side test: no DOM, no browser globals.
 
 import { describe, it, expect } from 'vitest';
-import { resolve } from 'node:path';
-import { readFileSync } from 'node:fs';
-import { assemble } from '../hmasm/assembler.js';
-import { romImage } from '../hmasm/output.js';
-import { Board } from '../../src/machine/board/board.js';
+import { CAPTURE_WINDOW_CYCLES } from '../../src/machine/board/tms1370-cadence.js';
+import { Tms1370Machine } from './tms1370-probe.js';
 import { loadAtlas, getSegmentByAddress } from '../../src/machine/tube/atlas.js';
 
-const LEVERS = ['up', 'centre', 'down'] as const;
+/** The three lever detents, as the lane nibble the K matrix returns. */
+const LANES = [0, 1, 2] as const;
+
+type Lane = (typeof LANES)[number];
 
 /**
  * The scenarios, as a space to search rather than a list to run.
  *
- * Coverage needs rare conjunctions - a colon fired down the bottom lane is one
- * value in sixteen of the sampled counter, the launcher's own burst is lit for
- * about a dozen sweeps in a run of thousands - and there is no way to ask the
- * ROM for them directly, because nothing here writes game state.
+ * Coverage needs rare conjunctions - the battleship shot down in its second lane
+ * is one crossing in several, the launcher's own burst is lit for fifteen sweeps
+ * in a run of thousands - and there is no way to ask the ROM for them directly,
+ * because nothing here writes game state.
  *
  * Hand-picked scenarios did work, and were the wrong shape. They were tuned
- * against one set of cadence constants, and `PAT_STEP` is explicitly
- * provisional: change how fast the squadron steps and the sweep a burst lands
- * on moves, so a fixture that stopped forty frames after the event it was
- * chosen for stops before it instead. That is a property of the fixture, not of
- * the ROM, and it made this file fail on a cadence change that was nothing to
- * do with the display map.
+ * against one set of cadence constants, and several of those are explicitly
+ * provisional: change how fast the squadron steps and the sweep a burst lands on
+ * moves, so a fixture that stopped forty sweeps after the event it was chosen
+ * for stops before it instead. That is a property of the fixture, not of the
+ * ROM, and it made this file fail on a cadence change that was nothing to do
+ * with the display map.
  *
  * So the scenarios are generated and searched in a fixed order, accumulating
  * coverage, and the search stops as soon as the atlas is covered. A cadence
@@ -61,119 +76,120 @@ const LEVERS = ['up', 'centre', 'down'] as const;
  */
 interface Scenario {
   readonly what: string;
-  readonly skill: string;
-  /**
-   * Where to put the lever this frame.
-   *
-   * `boatLane` is the lane the battleship was last seen lit in, or null when it
-   * is not on the tube. Read off `getLitSegments()` - the same observation
-   * surface everything else here uses, and not the ROM's RAM.
-   */
-  readonly lever: (frame: number, boatLane: number | null) => (typeof LEVERS)[number];
-  readonly fire: (frame: number) => boolean;
-  readonly frames: number;
+  /** Skill dial position, 1 to 3. */
+  readonly skill: 1 | 2 | 3;
+  /** Where to put the lever this sweep. */
+  readonly lever: (sweep: number) => Lane;
+  readonly fire: (sweep: number) => boolean;
+  /** Sweeps to play. A sweep is the tube's frame period on this machine. */
+  readonly sweeps: number;
 }
 
-const cycling = (dwell: number) => (frame: number) => LEVERS[Math.floor(frame / dwell) % 3]!;
-const every = (period: number) => (frame: number) => frame % period === 0;
+const cycling =
+  (dwell: number) =>
+  (sweep: number): Lane =>
+    LANES[Math.floor(sweep / dwell) % 3]!;
+const every = (period: number) => (sweep: number) => sweep % period === 0;
 
 /**
- * A lever that cycles, but steps out of the battleship's lane while it is lit.
+ * Sweeps the long game plays, for the hundreds column.
  *
- * The missile launches in whichever lane the lever is standing in, so a player
- * who fires steadily and cycles the lever shoots the battleship down - now
- * almost always in its first lane, because the boat holds a lane for ~2.5 s and
- * a missile crosses the field in a fifth of one. That is the game working as
- * intended and it is a coverage problem: `battleship_lane2` is a segment the
- * tube has and no steady-firing scenario ever reaches.
- *
- * Standing out of the boat's lane is what a player does when he decides not to
- * take the shot, and it lets the descent finish.
+ * **Measured**: the score first reaches three digits at sweep 5177 of the
+ * scenario below, which is the earliest any member of this space reaches it. A
+ * third again of that is the margin, and the search's own design is what makes
+ * the margin safe to keep small - if a scoring change moves the event past this,
+ * the space after the cache supplies it and the file gets slower rather than
+ * red.
  */
-const cyclingPastTheBoat =
-  (dwell: number) =>
-  (frame: number, boatLane: number | null): (typeof LEVERS)[number] =>
-    LEVERS[boatLane === null ? Math.floor(frame / dwell) % 3 : (boatLane + 1) % 3]!;
+const HUNDREDS_COLUMN_SWEEPS = Math.round(5177 * 1.35);
+
+/**
+ * Sweeps every other scenario plays.
+ *
+ * Long enough for the battleship's opening crossing - 528 sweeps to the onset
+ * and three 65-sweep lane steps of descent - and for the squadron to take all
+ * three launchers on any skill setting. Everything but the hundreds column is
+ * reached inside it.
+ */
+const SCENARIO_SWEEPS = 1500;
 
 /**
  * The scenarios known to cover the atlas, tried first because they are quick.
  *
  * Each earns its place: the search below reports which ones contributed, and
- * these are the five that did. They are a cache of a previous search, not a
+ * these are the six that did. They are a cache of a previous search, not a
  * specification - if a cadence change stops one working, the space after them
  * supplies the missing event and the file stays green while getting slower.
+ *
+ * The v2 cache had two members whose whole job was to keep the lever *out* of
+ * the battleship's lane, because a steadily-firing player shot the boat down in
+ * its first lane every time and `battleship_lane2` was a segment no scenario
+ * reached. That is no longer a coverage problem and the helper is gone with it:
+ * this ROM's crossing is a 3.9 s descent through three 65-sweep lane steps, so a
+ * scenario that lets one crossing past sees all three lanes. What is rare now is
+ * the *burst* - the boat killed in a given lane - and that comes of playing more
+ * crossings rather than of dodging one.
  */
 const KNOWN_GOOD: Scenario[] = [
   {
-    what: 'one shot and then nothing: the squadron walks in and the launcher is destroyed',
-    skill: '3',
-    lever: () => 'centre',
-    fire: (frame) => frame === 5,
-    frames: 600,
+    what: 'one shot and then nothing: the squadron walks in, the launcher is destroyed, and a whole battleship crossing goes by unshot',
+    skill: 3,
+    lever: () => 1,
+    fire: (sweep) => sweep === 5,
+    sweeps: 900,
   },
   {
     what: 'firing hard at the hardest setting, moving lanes every few sweeps',
-    skill: '3',
+    skill: 3,
     lever: cycling(7),
     fire: every(2),
-    frames: 1500,
+    sweeps: SCENARIO_SWEEPS,
   },
   {
     what: 'firing rarely, so jets survive deep into the field and die there',
-    skill: '2',
+    skill: 2,
     lever: cycling(7),
     fire: every(13),
-    frames: 1500,
+    sweeps: SCENARIO_SWEEPS,
   },
   {
     what: 'a long slow game that gets a colon fired down the bottom lane',
-    skill: '1',
+    skill: 1,
     lever: cycling(9),
     fire: every(13),
-    frames: 1500,
+    sweeps: SCENARIO_SWEEPS,
   },
   {
     what: 'the lever dwelling, so the launcher is still there when a colon arrives',
-    skill: '1',
+    skill: 1,
     lever: cycling(40),
     fire: every(13),
-    frames: 1500,
-  },
-  // The two below were added when the battleship's crossing went from 400 ms to
-  // ~8 s and its interval from 0.7 s to ~50 s. Both of the segments they reach
-  // used to come free: the boat crossed 51 times a minute, so lane 2 lit within
-  // a few hundred frames of any scenario, and ten points a kill at that rate
-  // carried the score into three digits without a jet being shot. Neither is
-  // reachable by accident now. `lane2@1132` and `hundreds@3021` are where they
-  // land, measured; the frame counts are those plus a margin.
-  {
-    what: 'letting the battleship past, so its descent finishes and lane 2 lights',
-    skill: '3',
-    lever: cyclingPastTheBoat(25),
-    fire: every(2),
-    frames: 1500,
+    sweeps: SCENARIO_SWEEPS,
   },
   {
     what: 'a long hard game, for a score that reaches the hundreds column',
-    skill: '3',
-    lever: cyclingPastTheBoat(9),
+    skill: 1,
+    lever: cycling(9),
     fire: every(2),
-    frames: 3400,
+    sweeps: HUNDREDS_COLUMN_SWEEPS,
   },
 ];
 
-/** The space searched when the five above stop being enough. */
+/** The space searched when the six above stop being enough. */
 function scenarioSpace(): Scenario[] {
   const fallback: Scenario[] = [];
   for (const dwell of [7, 9, 11, 25, 40, 60]) {
     for (const period of [2, 3, 13]) {
-      for (const skill of ['3', '2', '1']) {
+      for (const skill of [3, 2, 1] as const) {
         fallback.push({
           what: `dwell ${dwell}, fire every ${period}, skill ${skill}`,
           skill,
           lever: cycling(dwell),
           fire: every(period),
-          frames: 1500,
+          // The fallback plays the long game's length rather than the short
+          // one's: it is only reached once the cache has stopped delivering, and
+          // the events it is then being asked for are the late ones.
+          sweeps: HUNDREDS_COLUMN_SWEEPS,
         });
       }
     }
@@ -182,50 +198,33 @@ function scenarioSpace(): Scenario[] {
 }
 
 /**
- * Addresses the atlas defines that this ROM cannot reach. **There are none.**
+ * Addresses the atlas defines that this ROM cannot reach.
  *
- * There was one, and the seventh grid dissolved it rather than fixing it.
- * `NIB_RCOL` spends zero on "no rocket in flight", so the ROM cannot express a
- * colon standing in column 0 - and while the atlas gave the playfield six grids,
- * column 0 was the G-line cell and the atlas put a colon there, so the tube
- * carried a segment the program could not light. The teardown photographs show
- * no colon printed in the player's own cell at all: the attackers' shot is
- * drawn in the five jet cells and nowhere else. The sentinel and the glass
- * agree, and the exception that used to live here is gone.
+ * Two, both of them bugs in the game program with a line each here rather than
+ * gaps in the glass, and both commissioned separately. They are named one line
+ * at a time so that the day someone fixes one they delete a line rather than
+ * loosen an assertion.
  *
- * Kept as an empty pair rather than deleted so that the next real gap has an
- * obvious place to be written down, with its reason, instead of being tolerated
- * by loosening an assertion.
+ * The v2 machine had three whole *families* in this list - the printed sea, the
+ * battleship's burst and the capture burst - and this ROM draws all three, which
+ * is why the first map below is now empty. It is kept as an empty map rather
+ * than deleted so that the next real gap has an obvious place to be written
+ * down, with its reason, instead of being tolerated by loosening an assertion.
  */
 const ROM_CANNOT_REACH = {
   /**
    * Families the ROM cannot light at all, because it has no concept of them.
    *
-   * Segments the tube carries and the program has never been told about. They
-   * are in the atlas because leaving out phosphor we can see is how the atlas
-   * drifts from the glass again - and they are named here, one line each, so
-   * that the day someone drives one they delete a line rather than loosen an
-   * assertion.
+   * **There are none.** Every family in `src/machine/tube/atlas.json` is drawn
+   * by `asm/jetfighter.asm`: the printed sea is the far pass's grid-0 mask, the
+   * capture burst is the far pass's grid-6 mask, and the battleship's burst is
+   * the pair pass's grid-0 mask.
    */
-  families: new Map([
-    // Two rows of wave glyphs under the battleship's hull. Nothing had
-    // accounted for them before the bare tube was traced; whether they light
-    // with the ship or on their own is not known.
-    ['sea', 'the printed sea under the battleship, which no rule refers to'],
-    // The ROM scores a battleship kill already - bship_kill, ten points - and
-    // has never drawn one.
-    ['battleship_burst', 'the burst behind the battleship: scored, never drawn'],
-    // The player's cell prints two bursts for two different losses - a jet
-    // reaching the capture line, and being hit by the colon. The ROM draws the
-    // same segment for both, so the capture burst is never lit. Distinguishing
-    // them is a change to the launcher-destroyed path rather than to the
-    // display map, and it belongs with whoever owns that code.
-    ['capture', 'the capture burst: the ROM draws the rocket burst for both losses'],
-  ]),
+  families: new Map<string, string>(),
   /**
    * Addresses inside an otherwise driven family that the ROM cannot reach.
    *
-   * The jet-kill burst in the cell nearest the player. `tick_missile` advances
+   * The jet-kill burst in the cell nearest the player. `missile_step` advances
    * the shot and *then* tests what it reached, so the cell it is launched into
    * is never hit tested: fire at a jet standing directly in front of the
    * launcher and the shot appears in its cell, leaves, and misses. The tube
@@ -233,7 +232,28 @@ const ROM_CANNOT_REACH = {
    * gap in the glass, and it is commissioned separately.
    */
   grids: new Map([['burst', [5]]]),
-  plates: new Map<string, number[]>(),
+  /**
+   * The battleship's burst in the third lane, which is plate 8.
+   *
+   * Plate 8 is R11 and is outside the output PLA entirely, so a family's third
+   * lane is drawn by the R-plate walk rather than by an O mask. `rd_missile` and
+   * `rd_launcher` both branch on exactly that - `TBIT1 1`, then `rd_ms_plate8` /
+   * `rd_ln_plate8` naming `RPL_R11` - and `rd_burst` does not: on grid 0 it
+   * takes the pair-family arm unconditionally and asks `lane_bit` for a subset
+   * bit, which for lane 2 is 4. The pair group holds two plates, so subset 4 is
+   * off the end of its four-slot run and the index leaves the 32-slot table.
+   *
+   * The failure is benign rather than a phantom - the index resolves dark, so
+   * the boat's burst in its third lane draws nothing at all and the strict
+   * direction of this file stays green. Confirmed on the running machine: a
+   * drive that parks the lever in lane 2 and fires sparsely kills the boat in
+   * its third lane (`NIB_KLANE` = 2, `NIB_KCOL` = 1, the crossing ending early)
+   * and lights no grid-0 pair plate over the whole run.
+   *
+   * A bug in the render step rather than in the display map, and it belongs with
+   * whoever owns that page.
+   */
+  plates: new Map([['battleship_burst', [8]]]),
 } as const;
 
 /** The segment family an id belongs to, e.g. `jet_lane2_col4` -> `jet`. */
@@ -252,10 +272,30 @@ interface Coverage {
   readonly scenariosRun: number;
 }
 
+/**
+ * Play one scenario and hand back every (grid, plate) it drove.
+ *
+ * A sweep at a time, because a sweep is this machine's frame period and the
+ * lever cannot usefully move faster than the program reads it. The ceiling on
+ * `runSweeps` is not a nicety: the ROM stops sweeping for the whole of every
+ * sound, so a caller waiting on a sweep needs a bound - and if the bound is ever
+ * actually reached the machine has stopped drawing, which leaves nothing further
+ * to observe, so the drive ends there.
+ */
+function play(scenario: Scenario): ReadonlySet<string> {
+  const machine = new Tms1370Machine();
+  machine.setContacts({ skill: scenario.skill });
+  for (let sweep = 0; sweep < scenario.sweeps; sweep += 1) {
+    machine.setContacts({ lane: scenario.lever(sweep), fire: scenario.fire(sweep) });
+    if (machine.runSweeps(1, CAPTURE_WINDOW_CYCLES) >= CAPTURE_WINDOW_CYCLES) {
+      break;
+    }
+  }
+  return machine.litCells;
+}
+
 /** Play scenarios in order until the atlas is covered, or the space runs out. */
 function sweepScenarios(): Coverage {
-  const path = resolve(import.meta.dirname, '..', '..', 'asm', 'jetfighter-hmcs44.asm');
-  const image = romImage(assemble(readFileSync(path, 'utf8'), path));
   const unmapped = new Set<string>();
   const grids = new Map<string, Set<number>>();
   const plates = new Map<string, Set<number>>();
@@ -285,29 +325,18 @@ function sweepScenarios(): Coverage {
   for (const scenario of scenarioSpace()) {
     if (wanted.size === 0) break;
     scenariosRun += 1;
-    const board = new Board(image);
-    board.setControl('skill', scenario.skill);
-    let boatLane: number | null = null;
-    for (let frame = 0; frame < scenario.frames; frame += 1) {
-      board.setControl('lever', scenario.lever(frame, boatLane));
-      board.setFire(scenario.fire(frame));
-      board.runFrames(1);
-      boatLane = null;
-      for (const lit of board.getLitSegments()) {
-        if (lit.duty <= 0) continue;
-        const segment = getSegmentByAddress(lit.grid, lit.plate);
-        if (segment === undefined) {
-          unmapped.add(`${lit.grid}-${lit.plate}`);
-          continue;
-        }
-        const boat = /^battleship_lane([0-9])$/.exec(segment.id);
-        if (boat !== null) boatLane = Number(boat[1]);
-        const family = familyOf(segment.id);
-        record(grids, family, lit.grid);
-        record(plates, family, lit.plate);
-        wanted.delete(`${family}:grid:${lit.grid}`);
-        wanted.delete(`${family}:plate:${lit.plate}`);
+    for (const cell of play(scenario)) {
+      const [grid, plate] = cell.split(':').map(Number) as [number, number];
+      const segment = getSegmentByAddress(grid, plate);
+      if (segment === undefined) {
+        unmapped.add(`${grid}-${plate}`);
+        continue;
       }
+      const family = familyOf(segment.id);
+      record(grids, family, grid);
+      record(plates, family, plate);
+      wanted.delete(`${family}:grid:${grid}`);
+      wanted.delete(`${family}:plate:${plate}`);
     }
   }
   return { unmapped: [...unmapped].sort(), grids, plates, scenariosRun };
@@ -387,7 +416,9 @@ describe('the ROM lights every segment the tube has, except where it is named', 
 
   it('lights each family on every plate the atlas gives it, and no other', () => {
     // The lane direction, by the same argument: three lanes of a family means
-    // all three get drawn.
+    // all three get drawn. On this tube a family's third lane is plate 8, 10 or
+    // 11 - R11 to R14, outside the output PLA - so this is also the check that
+    // the R-plate walk draws what the O passes cannot express.
     for (const [family, expected] of ATLAS_PLATES) {
       expect(driven(coverage.plates, family), family).toEqual(expected);
     }
