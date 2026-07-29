@@ -50,12 +50,18 @@ function sweep(display: Display, plates: number, dwell: number, from = 0): numbe
 
 describe('Display - geometry', () => {
   it('addresses every segment the tube renderer can ask it for', () => {
-    // Equality here is a coincidence worth not depending on. The two counts
-    // answer different questions - one is grid pins the core bonds out, the
-    // other electrodes on the glass - and while the board was being rebuilt
-    // they were briefly different numbers. What has to hold either way is
-    // containment: a board with fewer grids than the tube cannot light the whole
-    // tube, and that is the failure worth catching.
+    // The two counts are now equal by construction, not by luck:
+    // `ATLAS_TOPOLOGY` and `DEFAULT_TOPOLOGY` are the same `TMS1370_TOPOLOGY`
+    // object, so the board scans exactly the matrix the atlas is addressed in.
+    // The `toBe` pair below is the load-bearing assertion, and it fails the
+    // moment anything points those two aliases at different objects.
+    //
+    // They were briefly different numbers - the board on the v2 part's ten
+    // bonded grid pins, the atlas on the nine electrodes the glass has - and for
+    // that period containment was the only honest invariant. That period is
+    // over. The containment checks are kept because they name the failure that
+    // actually matters if the two ever separate again: a board with fewer grids
+    // than the tube cannot light the whole tube.
     expect(GRID_COUNT).toBeGreaterThanOrEqual(ATLAS_GRID_COUNT);
     expect(PLATE_COUNT).toBeGreaterThanOrEqual(ATLAS_PLATE_COUNT);
     expect(GRID_COUNT).toBe(ATLAS_GRID_COUNT);

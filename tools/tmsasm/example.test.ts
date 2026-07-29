@@ -8,11 +8,16 @@
 // and reads the listing. This suite drives the same code path over
 // `tools/tmsasm/fixtures/demo.asm` and asserts every conjunct of V1 that does
 // not depend on the size of the real game program, so a fault in the listing,
-// the CLI or the page allocator is caught by a fixture that exercises every
-// directive rather than by whatever the game happens to contain. What it
-// deliberately does not assert is the >= 200 word floor: that is a claim about
-// the ROM, and a fixture padded to clear it would be a fixture lying on the
-// ROM's behalf.
+// the CLI or the page allocator is caught by a fixture whose contents are fixed
+// rather than by whatever the game happens to contain.
+//
+// The fixture exercises `.EQU`, `.PAGE`, `.INCLUDE`, `.DB`, `.DW`, `.END` and
+// `.OPLA`; it does not exercise `.ORG`, `.CHAPTER` or `.RES`, which the fixture
+// header explains and `../assembler.test.ts` covers.
+//
+// What this suite deliberately does not assert is the >= 200 word floor: that is
+// a claim about the ROM, and a fixture padded to clear it would be a fixture
+// lying on the ROM's behalf.
 
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -161,6 +166,15 @@ describe('the fixture exercises the directive set', () => {
     // "JET" - three words, at whatever physical offsets the LFSR gave them.
     const letters = result.words.filter((word) => [0x4a, 0x45, 0x54].includes(word.word));
     expect(letters).toHaveLength(3);
+  });
+
+  it('stops at .END, leaving what follows it out of the image', () => {
+    // The fixture keeps live assembly after its `.END` - a labelled `.DB $FF`.
+    // An `.END` that parsed but did nothing would define `after_end` and emit
+    // the byte, so this is what makes the directive's coverage real rather than
+    // decorative.
+    expect(result.symbols.find((symbol) => symbol.name === 'after_end')).toBeUndefined();
+    expect(result.words.some((word) => word.word === 0xff)).toBe(false);
   });
 
   it('resolves a forward branch to a label defined later in the file', () => {

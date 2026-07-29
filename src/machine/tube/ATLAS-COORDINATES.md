@@ -565,7 +565,7 @@ two phosphor regions a segment sits in.
 | Region | Segments |
 | --- | --- |
 | `red` (42) | jets (15), attacker colons (15), the battleship (3), the sea under it (3), the capture stipple (3), the player's destruction (3) - everything the machine attacks with, plus the burst it makes of the player |
-| `cyan` (52) | player missiles (15), jet-kill bursts (15), the battleship's burst (3), the launcher (3), score digits (15), the hundreds stroke (1), SCORE label (1) |
+| `cyan` (52) | player missiles (15), jet-kill bursts (15), the battleship's burst (3), the launcher (3), seven-segment digit strokes (14 - two digits of seven), the hundreds stroke (1), SCORE label (1) |
 
 94 segments in all. The two burst families sit on the same three plates under
 different grids and are opposite colours, which is only possible because colour
