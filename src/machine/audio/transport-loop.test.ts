@@ -25,7 +25,7 @@
 // ## The six-second cap is not arbitrary
 //
 // Every run here is six seconds because an unattended machine plays a whole
-// game and reaches an ending, after which the ROM never touches D14 again -
+// game and reaches an ending, after which the ROM never touches R15 again -
 // so past that point this file would be measuring silence, not the transport.
 // The exact moment moves whenever a game rule or a cadence constant does: it
 // was 5.66 s while a single capture ended the game and is around 10.9 s now
@@ -44,10 +44,11 @@
 // Node-side test: no DOM, no browser globals, no AudioContext.
 
 import { describe, it, expect } from 'vitest';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
-import { assemble } from '../../../tools/hmasm/assembler.js';
-import { romImage } from '../../../tools/hmasm/output.js';
+import { assemble } from '../../../tools/tmsasm/assembler.js';
+import { oplaImage, romImage } from '../../../tools/tmsasm/output.js';
+import { CYCLE_HZ } from '../cpu/tms1370/timing.js';
 import { Board } from '../board/board.js';
 import {
   SPEAKER_WORKLET_SOURCE,
@@ -74,6 +75,17 @@ const MAX_FRAME_MS = 100;
 
 /** Seconds per run. See "The six-second cap is not arbitrary" above. */
 const RUN_SECONDS = 6;
+
+/**
+ * Held level a run's realignments can cost, in milliseconds of output.
+ *
+ * The driver holds the last level for up to a buffer latency while it re-anchors
+ * on the machine's cycle stamps, so any ceiling on a flat stretch has to allow
+ * for those on top of whatever the ROM was going to be quiet for anyway. It is
+ * wall-clock slack on the *output* side and does not move with the machine's
+ * cycle rate, which is why it is a figure rather than a derivation.
+ */
+const REALIGN_SLACK_MS = 500;
 
 class FakeNode implements AudioNodeLike {
   connect(destination: AudioNodeLike): AudioNodeLike {
@@ -179,9 +191,14 @@ class FakeContext implements AudioContextLike {
 
 /** A board holding the real game ROM, powered off. */
 function romBoard(): Board {
-  const path = resolve(import.meta.dirname, '..', '..', '..', 'asm', 'jetfighter-hmcs44.asm');
-  const assembly = assemble(readFileSync(path, 'utf8'), path);
-  return new Board(romImage(assembly), { power: 'off' });
+  const path = resolve(import.meta.dirname, '..', '..', '..', 'asm', 'jetfighter.asm');
+  const assembly = assemble(readFileSync(path, 'utf8'), path, {
+    readInclude: (included, fromFile) => {
+      const resolved = resolve(dirname(fromFile), included);
+      return { file: resolved, source: readFileSync(resolved, 'utf8') };
+    },
+  });
+  return new Board({ rom: romImage(assembly), opla: oplaImage(assembly) }, { power: 'off' });
 }
 
 /** What a run of the page produced, at the far end of the transport. */
@@ -234,7 +251,7 @@ async function runPage(options: RunOptions): Promise<RunResult> {
   const fireAt = [...(options.fireAtMs ?? [])];
 
   const board = romBoard();
-  const cyclesPerSecond = board.cpu.getCyclesPerSecond();
+  const cyclesPerSecond = CYCLE_HZ;
   const context = new FakeContext();
 
   // The driver builds the node; this test has to hold it to pump quanta out.
@@ -378,13 +395,22 @@ describe('the speaker path under the page frame loop', () => {
   }, 30_000);
 
   it('keeps playing when the frame loop runs slower than real time', async () => {
+    const control = await runPage({ seconds: RUN_SECONDS });
     const result = await runPage({ seconds: RUN_SECONDS, frameRate: 0.75 });
 
     expect(result.peakToPeak).toBeGreaterThan(0.9);
     expect(result.crossings).toBeGreaterThan(result.stats.edgesConsumed * 0.8);
     // The realign path costs one latency of held level each time it runs. If it
     // re-armed faster than it drained, this is where that shows up.
-    expect(result.longestFlatMs).toBeLessThan(2000);
+    //
+    // Measured against the same run at full frame rate rather than against a
+    // figure. This used to be a flat 2000 ms, which was a bound on the v2 ROM's
+    // own quiet stretches with a realign's worth of slack on top - and the
+    // moment the game program changed it was measuring the ROM's cadence rather
+    // than the transport's behaviour. The control run is the ROM's silence; what
+    // this asserts is that running the frame loop slow adds no more than one
+    // realign to it.
+    expect(result.longestFlatMs).toBeLessThan(control.longestFlatMs + REALIGN_SLACK_MS);
   }, 30_000);
 
   it('comes back after the tab stops being drawn', async () => {
@@ -415,7 +441,7 @@ describe('the speaker path under the page frame loop', () => {
     // longest quiet stretch, measured on the same run without a blackout, plus
     // the blackout and one realign's worth of held level - so a cadence change
     // moves the control rather than this figure.
-    const ceilingMs = control.longestFlatMs + BLACKOUT_MS + 500;
+    const ceilingMs = control.longestFlatMs + BLACKOUT_MS + REALIGN_SLACK_MS;
     // And the ceiling only means anything while it stays under what never
     // resuming would look like: flat from the blackout to the end of the run.
     expect(ceilingMs).toBeLessThan(RUN_SECONDS * 1000 - 1000);

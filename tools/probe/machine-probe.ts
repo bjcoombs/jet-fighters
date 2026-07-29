@@ -7,21 +7,21 @@
 //
 // ## Why this exists
 //
-// The acceptance contract (docs/contract/v2.contract.md) drives criteria V3, V4
-// and V5 through this file. Those criteria have to be checkable by an agent with
-// no browser and no human, and the v2 machine layer - CPU, board, display,
+// The acceptance contract (docs/contract/v3.contract.md) drives criteria V5, V7
+// and V8 through this file. Those criteria have to be checkable by an agent with
+// no browser and no human, and the machine layer - core, board, display,
 // speaker - is pure TypeScript with no DOM dependency precisely so that is
 // possible. This is the drive surface that turns that property into something
 // runnable.
 //
 // It is not a test harness with a JSON coat on. Everything it reports is read
 // off the board's own observation surface: `getStrobedGrids()` for the sweep,
-// `getFrame()` for per-segment PWM duty over a completed sweep,
-// `takeSpeakerEdges()` for the D14 transition stream. There is no path from here into game state, and there is
-// deliberately none: inputs go in through `setControl`, which moves a case
-// control and lets the ROM find out on its next strobe, exactly as a player's
-// hand does. A probe that poked RAM to move the launcher would prove nothing
-// about the ROM.
+// `getFrame()` for per-segment PWM duty over a completed sweep, and
+// `takeSpeakerEdges()` for the R15 transition stream. There is no path from here
+// into game state, and there is deliberately none: inputs go in through
+// `setControl`, which moves a case control and lets the ROM find out on its next
+// K sample, exactly as a player's hand does. A probe that poked RAM to move the
+// launcher would prove nothing about the ROM.
 //
 // ## The report
 //
@@ -29,10 +29,10 @@
 //
 // | key            | what it is                                              |
 // |----------------|---------------------------------------------------------|
-// | `romWords`     | assembled words in the 2048-word program region          |
-// | `ramNibbles`   | the assembler's static RAM high-water mark               |
-// | `strobeCycles` | machine cycles actually executed                         |
-// | `gridsStrobed` | distinct D0-D9 grids the ROM drove, ascending            |
+// | `romWords`     | assembled eight-bit words in the 2048-word program region |
+// | `ramNibbles`   | the assembler's static RAM high-water mark                |
+// | `strobeCycles` | machine cycles executed - one per six oscillator pulses   |
+// | `gridsStrobed` | distinct R0-R8 display grids the ROM drove, ascending     |
 // | `snapshots`    | the baseline, then one per `--input`, in event order     |
 // | `speakerEdges` | `[cycle, level]` pairs; filled only with `--emit-edges`  |
 //
@@ -40,28 +40,41 @@
 // absent, so the object's shape does not change with the command line - a
 // consumer parses one schema, not two.
 //
+// `gridsStrobed` is display grids only. The R9/R10 input columns and the R15
+// speaker are bits of the same R latch, so a probe reporting "R lines driven"
+// honestly would return 9, 10 and 15 alongside the grids and turn a nine-grid
+// sweep into a twelve-line one. The board's `getStrobedGrids()` already answers
+// the narrower question, and this reports what it answers.
+//
 // Node-side tool: no DOM, no browser globals, no runtime dependencies.
 
 import { readFileSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
-// The whole `process` object, not `import { argv }` - see tools/hmasm/cli.ts for
-// why vite-node makes the named export the wrong one to hold.
+// The whole `process` object, not `import { argv }` - see tools/tmsasm/cli.ts
+// for why vite-node makes the named export the wrong one to hold.
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import { assemble, AsmError, type AssemblyResult } from '../hmasm/assembler.js';
-import { romImage } from '../hmasm/output.js';
+import { assemble, AsmError, type AssemblyResult } from '../tmsasm/assembler.js';
+import { oplaImage, romImage } from '../tmsasm/output.js';
 import { Board } from '../../src/machine/board/board.js';
-import { ROM_PROGRAM_SIZE } from '../../src/machine/cpu/memory.js';
+import { ROM_WORD_COUNT } from '../../src/machine/cpu/tms1370/registers.js';
+import { CYCLE_HZ } from '../../src/machine/cpu/tms1370/timing.js';
 
-/** Exit codes, matching hmasm's so a gate can treat the tools alike. */
+/** Exit codes, matching tmsasm's so a gate can treat the tools alike. */
 export const EXIT = Object.freeze({
   ok: 0,
   sourceRejected: 1,
   usage: 2,
 });
 
-/** Machine cycles the probe runs when `--cycles` is not given. */
-export const DEFAULT_CYCLES = 400_000;
+/**
+ * Machine cycles the probe runs when `--cycles` is not given: ten seconds.
+ *
+ * A duration, converted through the instruction rate, not a figure. Under v2
+ * this was the literal 400000, which was one second and was one second only at
+ * that core's 400 kHz - the first of PRD R5's six re-derivation classes.
+ */
+export const DEFAULT_CYCLES = Math.round(10 * CYCLE_HZ);
 
 /**
  * Display frames to complete before the baseline snapshot.
@@ -85,15 +98,8 @@ export const BASELINE_FRAMES = 2;
  */
 export const SETTLE_FRAMES = 3;
 
-/**
- * The ROM the probe runs unless `--rom` names another source.
- *
- * The HMCS44 source, because this harness drives the HMCS44 board. v3 task 8
- * made `asm/jetfighter.asm` the TMS1370 game program and moved the v2 source
- * here; task 13 re-derives this harness against the TMS1370 machine and this
- * default goes back to `asm/jetfighter.asm` with it.
- */
-export const DEFAULT_ROM_SOURCE = 'asm/jetfighter-hmcs44.asm';
+/** The ROM the probe runs unless `--rom` names another source. */
+export const DEFAULT_ROM_SOURCE = 'asm/jetfighter.asm';
 
 /** A wrong command line, or a file that could not be read. */
 export class UsageError extends Error {
@@ -132,7 +138,7 @@ export interface ProbeOptions {
 /** One segment the tube lit, as the report writes it. */
 export type SegmentTriple = readonly [grid: number, plate: number, duty: number];
 
-/** One D14 transition, as the report writes it. */
+/** One R15 transition, as the report writes it. */
 export type EdgePair = readonly [cycle: number, level: number];
 
 /** The tube over one completed frame period. */
@@ -168,9 +174,9 @@ Options:
   --cycles <n>       machine cycles to run (default ${DEFAULT_CYCLES})
   --input <spec>     inject a control, repeatable. spec is name=value@cycle,
                      e.g. lever=up@200000, skill=2@0, or fire@200000 for a
-                     bare press. Injected through the strobe matrix, never
+                     bare press. Injected through the K matrix, never
                      into game state
-  --emit-edges       include the D14 transition stream in the report
+  --emit-edges       include the R15 transition stream in the report
   --rom <path>       assembly source to run (default ${DEFAULT_ROM_SOURCE})
   --help, -h         print this text
 
@@ -300,7 +306,7 @@ export function parseArguments(args: readonly string[]): ProbeOptions {
 
 /** Assembled words that land in the program region - what the listing counts. */
 export function programWordCount(result: AssemblyResult): number {
-  return result.words.filter((word) => word.address < ROM_PROGRAM_SIZE).length;
+  return result.words.filter((word) => word.address < ROM_WORD_COUNT).length;
 }
 
 /** Assemble the ROM the probe is to run. */
@@ -324,7 +330,7 @@ export function assembleRom(path: string): AssemblyResult {
  * Read the tube's most recently completed frame as report triples.
  *
  * `getFrame()` rather than `getLitSegments()`: the report is about what the ROM
- * drove the tube with over a complete sweep, which is what criteria V3 and V4
+ * drove the tube with over a complete sweep, which is what criteria V5 and V7
  * are written against. `getLitSegments()` answers the viewer's question instead
  * - what is on the glass at this instant - and the answer is nothing while the
  * ROM has the sweep parked to bit-bang the speaker, which a snapshot can land
@@ -365,7 +371,7 @@ function advanceFrames(board: Board, frames: number): void {
  */
 export function runProbe(options: ProbeOptions): ProbeReport {
   const assembly = assembleRom(options.romSource);
-  const board = new Board(romImage(assembly));
+  const board = new Board({ rom: romImage(assembly), opla: oplaImage(assembly) });
 
   advanceFrames(board, BASELINE_FRAMES);
   const snapshots: Snapshot[] = [takeSnapshot(board)];
@@ -454,7 +460,7 @@ export function runCli(args: readonly string[], streams: ProbeStreams): number {
   return EXIT.ok;
 }
 
-/** True when this module is the program being run - see tools/hmasm/cli.ts. */
+/** True when this module is the program being run - see tools/tmsasm/cli.ts. */
 function isEntryPoint(): boolean {
   const entry = process.argv[1];
   if (entry === undefined) {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { CYCLE_HZ } from '../cpu/cpu.js';
-import { D_SPEAKER } from '../cpu/ports.js';
+import { R_SPEAKER } from '../cpu/tms1370/ports.js';
+import { CYCLE_HZ } from '../cpu/tms1370/timing.js';
 import { isFalling, isRising, Speaker, SPEAKER_PIN, SPEAKER_REST_LEVEL } from './speaker.js';
 
 /**
@@ -20,9 +20,9 @@ function square(speaker: Speaker, halfPeriod: number, toggles: number, from = 0)
 }
 
 describe('Speaker - pin identity', () => {
-  it('is D14, the sibling hardware speaker pin', () => {
-    expect(SPEAKER_PIN).toBe(D_SPEAKER);
-    expect(SPEAKER_PIN).toBe(14);
+  it('is R15, the speaker pin MAME reads off our own ROM mask', () => {
+    expect(SPEAKER_PIN).toBe(R_SPEAKER);
+    expect(SPEAKER_PIN).toBe(15);
   });
 
   it('rests low, as reset leaves the D pins', () => {
@@ -98,9 +98,10 @@ describe('Speaker - recording edges', () => {
 describe('Speaker - reconstruction fidelity', () => {
   it('preserves the toggle period exactly, so the pitch survives (contract V5)', () => {
     const speaker = new Speaker();
-    // 1560 Hz is the centre of the v1 measured missile-fire band (1480-1632 Hz,
-    // docs/contract/v2.contract.md V5). A half-period at the emulated cycle rate
-    // is the number of cycles the ROM's delay loop must burn between toggles.
+    // 1560 Hz is the centre of the measured missile-fire band (1480-1632 Hz,
+    // docs/evidence/audio-reference.md). A half-period at the emulated cycle
+    // rate is the number of cycles the ROM's delay loop must burn between
+    // toggles.
     const targetHz = 1560;
     const halfPeriod = Math.round(CYCLE_HZ / (2 * targetHz));
     square(speaker, halfPeriod, 40);
@@ -114,13 +115,20 @@ describe('Speaker - reconstruction fidelity', () => {
   });
 
   it('records a burst bounded in time, so its duration is measurable', () => {
+    // A hundred toggles of the missile-fire loop, starting a second into the
+    // run. Both figures are derived: the half period is what the loop costs on
+    // this machine, and the start is a second of emulated time rather than the
+    // 200000 cycles that meant a second only at the v2 core's 400 kHz.
     const speaker = new Speaker();
-    const end = square(speaker, 128, 100, 200_000);
+    const halfPeriod = Math.round(CYCLE_HZ / (2 * 1560));
+    const start = Math.round(CYCLE_HZ);
+    const end = square(speaker, halfPeriod, 100, start);
     const first = speaker.edges[0].cycle;
     const last = speaker.edges[speaker.edgeCount - 1].cycle;
 
-    expect(first).toBe(200_000);
-    expect(last).toBe(end - 128);
+    expect(first).toBe(start);
+    expect(last).toBe(end - halfPeriod);
+    // Under the 150 ms the acceptance summary's missileFire row gives.
     expect((last - first) / CYCLE_HZ).toBeLessThan(0.15);
   });
 

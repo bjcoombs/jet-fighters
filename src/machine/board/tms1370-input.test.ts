@@ -230,3 +230,46 @@ describe('KInputMatrix - a whole sweep', () => {
     expect(ports.readK(matrix)).toBe(K1);
   });
 });
+
+describe('KInputMatrix - setControl', () => {
+  it('presses fire with no value', () => {
+    const input = new KInputMatrix();
+    input.setControl('fire');
+    expect(input.fire).toBe(true);
+  });
+
+  it('releases fire on an explicit value', () => {
+    const input = new KInputMatrix();
+    input.setFire(true);
+    input.setControl('fire', 'off');
+    expect(input.fire).toBe(false);
+  });
+
+  it.each([
+    ['up', 0],
+    ['centre', 1],
+    ['down', 2],
+  ])('moves the lever for %s', (value, lane) => {
+    const input = new KInputMatrix();
+    input.setControl('lever', value);
+    expect(input.lever).toBe(lane);
+  });
+
+  it.each(['1', '2', '3'])('turns the dial to %s', (value) => {
+    const input = new KInputMatrix();
+    input.setControl('skill', value);
+    expect(input.skill).toBe(Number(value));
+  });
+
+  it('rejects an unknown control', () => {
+    const input = new KInputMatrix();
+    expect(() => input.setControl('turbo')).toThrow(RangeError);
+  });
+
+  it('rejects a value the case cannot express', () => {
+    const input = new KInputMatrix();
+    expect(() => input.setControl('lever', 'sideways')).toThrow(RangeError);
+    expect(() => input.setControl('skill', '4')).toThrow(RangeError);
+    expect(() => input.setControl('fire', 'maybe')).toThrow(RangeError);
+  });
+});

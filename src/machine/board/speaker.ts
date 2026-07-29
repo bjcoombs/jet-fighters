@@ -1,11 +1,11 @@
-// D14 pin edge capture - the entire sound system of the machine.
+// R15 pin edge capture - the entire sound system of the machine.
 //
-// Sources: the sibling device MAME emulates (Gakken Heiankyo Alien, HD38800)
-// wires a 1-bit speaker to pin D14, and Jet Fighter is modelled as its twin -
-// docs/prd/jet-fighters-v2.md (Technical Context, R4, R6). The ROM makes sound
-// by toggling that pin in timed delay loops; there is no tone generator, no
-// envelope hardware, and no sound chip. If the program does not toggle the pin,
-// the machine is silent.
+// Sources: MAME's `ginv` driver for our own ROM mask (TMS1370 MP2110) wires a
+// 1-bit speaker to R15, one bit of the same 16-bit latch the display grids and
+// the input strobe columns come from - docs/research/tms1370-io.md sections 1
+// and 2. The ROM makes sound by toggling that line in timed delay loops; there
+// is no tone generator, no envelope hardware, and no sound chip. If the program
+// does not toggle the line, the machine is silent.
 //
 // This module records transitions and nothing else. It does not synthesise, and
 // it deliberately has no dependency on Web Audio: the audio layer (R6) converts
@@ -15,16 +15,16 @@
 // Pure state only: no DOM, no timers, no Web APIs. Nothing here has its own
 // clock - every edge carries the exact machine cycle at which it happened.
 
-import { D_SPEAKER } from '../cpu/ports.js';
+import { R_SPEAKER } from '../cpu/tms1370/ports.js';
 
-/** The speaker pin: D14. */
-export const SPEAKER_PIN = D_SPEAKER;
+/** The speaker pin: R15. */
+export const SPEAKER_PIN = R_SPEAKER;
 
 /**
  * Level the speaker pin rests at.
  *
- * Reset leaves every D pin an output holding 0 (ports.ts), so a machine that has
- * just powered on is quiet and its first edge is a rising one.
+ * Reset clears every R latch (cpu/tms1370/ports.ts), so a machine that has just
+ * powered on is quiet and its first edge is a rising one.
  */
 export const SPEAKER_REST_LEVEL = 0;
 
@@ -36,7 +36,7 @@ export interface SpeakerEdge {
   readonly level: 0 | 1;
 }
 
-/** `[cycle, level]` pairs - the wire format the machine probe emits (V5). */
+/** `[cycle, level]` pairs - the wire format the machine probe emits (V8). */
 export type SpeakerEdgePair = readonly [number, number];
 
 /** True when this edge took the pin high. */

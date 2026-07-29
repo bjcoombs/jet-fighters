@@ -3,38 +3,54 @@
 // Sources: 4 x AA cells feed a DC-DC converter for the filament and the -24 to
 // -30 V grid/anode bias, and the switch cuts the battery outright. There is no
 // reset line and no reset button: RAM contents die with the supply, and that IS
-// the reset - docs/prd/jet-fighters-v2.md (Technical Context, R4).
+// the reset - docs/prd/jet-fighters-v2.md (Technical Context, R4), a fact about
+// the case rather than about the chip inside it, and unchanged by the v3
+// rebuild.
 //
-// Powering on therefore has two distinct steps, and this module keeps them
-// distinct because the ROM depends on the difference. The supply arriving leaves
-// PMOS RAM in an undefined state (memory.ts fills it with a deliberately
-// non-zero pattern rather than pretending it is zeroed), and the game program's
-// own power-on routine is what clears it. `powerOn()` performs both because the
-// board owns the whole transition, and `powerOnUncleared()` stops after the
-// first so a test - or a ROM being verified against real power-on behaviour -
-// can observe the undefined window.
+// The supply arriving leaves the 128x4 PMOS RAM in an undefined state, and the
+// game program's own power-on routine is what clears it. This module models that
+// literally: {@link PowerSwitch.on} installs the undefined pattern and does not
+// clear it. Clearing 128 nibbles costs real instruction time before the first
+// display sweep, and hiding that cost would hide a power-on garbage flash the
+// hardware actually has - which is what contract V2's paired RAM assertions
+// exist to catch.
+//
+// The core itself has no halt. There is no STOP instruction on this family and
+// no run/halt control on the case, so "the machine is stopped" is a fact about
+// the switch and lives here; `Board.step` reads it and executes nothing while
+// the switch is off.
 //
 // Pure state only: no DOM, no timers, no Web APIs. Nothing here has its own
 // clock - the switch is thrown by the caller, not by elapsed time.
 
-import type { HMCS44CPU } from '../cpu/cpu.js';
+import type { Tms1370Cpu } from '../cpu/tms1370/cpu.js';
 import type { Display } from './display.js';
 import type { Speaker } from './speaker.js';
+
+/**
+ * The nibble every RAM cell holds when the supply arrives.
+ *
+ * Deliberately not zero. Power-up contents are not established by any source
+ * read for this project (docs/research/tms1370-architecture.md section 3), so
+ * the honest model is arbitrary contents the program has to clear - and a fill
+ * of zero would let a ROM that forgot to clear RAM pass anyway.
+ */
+export const RAM_POWER_ON_FILL = 0x0a;
 
 /** Position of the power switch. */
 export type PowerState = 'on' | 'off';
 
 /** What the switch controls. Structural, so tests can pass fakes. */
 export interface PoweredMachine {
-  readonly cpu: HMCS44CPU;
+  readonly cpu: Tms1370Cpu;
   readonly display: Display;
   readonly speaker: Speaker;
   /**
    * Called after the switch has moved, before control returns to the caller.
    *
-   * The board uses it to re-drive the input matrix read line: a port reset
-   * releases every pin, so without this the ROM's first read of D15 after
-   * power-on would see a floating 1 and think a button was held.
+   * The board uses it to re-read the case contacts: a reset clears every R
+   * latch, so which strobe column is up changes under the input matrix and the
+   * board's cached view of the K lines has to move with it.
    */
   readonly onPowerChange?: (state: PowerState) => void;
 }
@@ -42,20 +58,21 @@ export interface PoweredMachine {
 /**
  * The case's power switch.
  *
- * Off: the CPU halts where it stands, RAM is invalidated, the tube goes dark and
- * the speaker falls silent. Nothing is preserved - there is no standby state and
- * no saved score, which is why the real unit's high score dies with the battery.
+ * Off: the core stops where it stands, RAM is invalidated, the tube goes dark
+ * and the speaker falls silent. Nothing is preserved - there is no retained
+ * state and no saved score, which is why the real unit's high score dies with
+ * the battery.
  *
- * On: the core resets, RAM comes up undefined and is then cleared, and the tube
- * and speaker start from blank. Cycle counting restarts at 0, which is why the
- * display and speaker are told to clear rather than merely to blank: their cycle
- * accounting has to rewind with the CPU's.
+ * On: the core resets, RAM comes up undefined, and the tube and speaker start
+ * from blank. Cycle counting restarts at 0, which is why the display and speaker
+ * are told to clear rather than merely to blank: their cycle accounting has to
+ * rewind with the core's.
  */
 export class PowerSwitch {
   private _state: PowerState;
 
   /**
-   * @param machine the CPU, display and speaker the switch feeds.
+   * @param machine the core, display and speaker the switch feeds.
    * @param initial the position the switch starts in. Defaults to `off`, so a
    *   board is dark until something throws it - the machine does not power
    *   itself on.
@@ -82,28 +99,21 @@ export class PowerSwitch {
   }
 
   /**
-   * Throw the switch on: core reset, RAM undefined then cleared, tube blank.
+   * Throw the switch on: core reset, RAM undefined, tube blank.
    *
    * Throwing it on while it is already on is a full restart, because that is
    * what the switch does - there is nothing else it could mean.
+   *
+   * RAM is left holding {@link RAM_POWER_ON_FILL}. The ROM's own clear routine
+   * is what zeroes it, and it runs on emulated instruction time like every other
+   * part of the program.
    */
   on(): void {
-    this.powerOnUncleared();
-    this.machine.cpu.memory.clearRam();
-  }
-
-  /**
-   * Power on and stop before the RAM clear.
-   *
-   * The state a real device is in for the few milliseconds between the supply
-   * settling and the ROM's clear loop finishing: RAM holds the undefined
-   * power-on pattern. Exposed so that window is observable rather than a
-   * side effect nothing can inspect.
-   */
-  powerOnUncleared(): void {
     const { cpu, display, speaker } = this.machine;
-    // `reset()` already leaves the core running - the supply arriving is what
-    // starts it, and there is no run/halt control on the case.
+    cpu.ram.powerOn(RAM_POWER_ON_FILL);
+    // `reset()` leaves the core ready to execute - the supply arriving is what
+    // starts it, and there is no run/halt control on the case. It does not touch
+    // RAM, which is the whole reason the fill above is applied first.
     cpu.reset();
     display.clear();
     speaker.reset();
@@ -124,8 +134,7 @@ export class PowerSwitch {
 
   private applyOff(): void {
     const { cpu, display, speaker } = this.machine;
-    cpu.stop();
-    cpu.memory.powerOff();
+    cpu.ram.powerOn(RAM_POWER_ON_FILL);
     display.clear();
     speaker.reset();
     this._state = 'off';

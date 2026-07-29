@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CYCLE_HZ } from '../cpu/cpu.js';
+import { CYCLE_HZ } from '../cpu/tms1370/timing.js';
 import { Speaker, type SpeakerEdgePair } from '../board/speaker.js';
 import { EdgeBuffer } from './edge-buffer.js';
 import {

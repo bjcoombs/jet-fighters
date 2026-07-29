@@ -8,7 +8,7 @@ import {
   TOTAL_SEGMENT_COUNT,
   type SegmentId,
 } from './atlas-schema.js';
-import { HMCS44_TOPOLOGY } from '../topology.js';
+import { ATLAS_TOPOLOGY } from '../topology.js';
 import {
   getSegmentByAddress,
   getSegmentById,
@@ -842,12 +842,13 @@ describe('validateAtlas rejects malformed data', () => {
   });
 
   it('validates the same data against a wider matrix, and rejects on a narrower one', () => {
-    // The bound is the topology's, not the module's. The HMCS44's 10 x 20
-    // contains the tube's 9 x 12, so the shipped atlas passes against it - which
-    // is what lets the live board go on driving this atlas until v3 task 11.3
-    // moves it over.
-    expect(validateAtlas(rawAtlas, HMCS44_TOPOLOGY)).toEqual({ valid: true, errors: [] });
-    const narrow = { ...HMCS44_TOPOLOGY, name: 'narrower than the tube', gridCount: 8 };
+    // The bound is the topology's, not the module's - which is the whole reason
+    // `validateAtlas` takes one. A matrix wider than the tube contains it, so the
+    // shipped atlas passes against it; one grid narrower and the tube has an
+    // electrode the board cannot reach, which is the failure worth catching.
+    const wide = { ...ATLAS_TOPOLOGY, name: 'wider than the tube', gridCount: 10 };
+    expect(validateAtlas(rawAtlas, wide)).toEqual({ valid: true, errors: [] });
+    const narrow = { ...ATLAS_TOPOLOGY, name: 'narrower than the tube', gridCount: 8 };
     expect(validateAtlas(rawAtlas, narrow).valid).toBe(false);
   });
 

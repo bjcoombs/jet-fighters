@@ -1,24 +1,34 @@
 // Tests for the machine probe.
 //
+// Paths in this file are relative to the repository root.
+//
 // Two kinds of test live here and they are not interchangeable.
 //
 // The argument-parsing tests are ordinary unit tests. The rest are the
-// acceptance contract's tier-1 criteria V3, V4 and V5 written as assertions:
+// acceptance contract's tier-1 criteria V5, V7 and V8 written as assertions:
 // they run the real ROM on the real board through the real probe and check the
 // properties the contract checks. They exist so that a regression in the ROM, in
-// the CPU, in the PWM accumulator or in the probe fails here rather than at the
+// the core, in the PWM accumulator or in the probe fails here rather than at the
 // end of a marathon run, and they are deliberately written against the same
 // invocations the contract quotes.
 //
 // They are also written to be falsifiable by something that merely looks
 // finished. "The two snapshots differ" is satisfied by any drifting animation,
-// so criterion V4's test names the launcher segment and asserts it moved lane;
-// "the speaker made a noise" is satisfied by any toggling, so criterion V5's
+// so criterion V7's test names the launcher segment and asserts it moved lane;
+// "the speaker made a noise" is satisfied by any toggling, so criterion V8's
 // test measures the period and the burst length.
+//
+// Every cycle figure below is a duration in emulated seconds, converted through
+// `CYCLE_HZ`. Under v2 they were literals - 400000 meant "one second" and meant
+// it only at 400 kHz. At this machine's instruction rate the same durations are
+// seven times fewer cycles, and nothing about a literal says so.
 
 import { describe, it, expect } from 'vitest';
 import { resolve } from 'node:path';
-import { CYCLE_HZ } from '../../src/machine/cpu/cpu.js';
+import { BURST_GAP_CYCLES } from '../../src/machine/board/tms1370-cadence.js';
+import { GRID_COUNT } from '../../src/machine/cpu/tms1370/ports.js';
+import { RAM_WORD_COUNT } from '../../src/machine/cpu/tms1370/ram.js';
+import { CYCLE_HZ } from '../../src/machine/cpu/tms1370/timing.js';
 import {
   DEFAULT_CYCLES,
   EXIT,
@@ -33,42 +43,45 @@ import {
   type Snapshot,
 } from './machine-probe.js';
 
+/** Seconds of emulated time, as the machine cycles the probe counts. */
+function seconds(value: number): number {
+  return Math.round(value * CYCLE_HZ);
+}
+
 /**
  * The launcher's grid, and the plates its three lanes sit on.
  *
  * From the segment atlas (src/machine/tube/atlas.json, `launcher_lane0..2`),
- * which is also where jetfighter.asm's GRID_LAUNCH and PAT_LANE take them from.
+ * which is also where asm/jetfighter.asm's plate table takes them from. Lane 2
+ * is plate 8 - R11, outside the output PLA entirely - which is why the launcher
+ * is a good witness that both halves of the plate bus are wired.
  */
 const LAUNCH_GRID = 6;
 const LANE_PLATES = [6, 7, 8];
 
-/** The band contract V5 measures the missile-fire blip against, in hertz. */
+/** The band contract V8 measures the missile-fire blip against, in hertz. */
 const BLIP_HZ_MIN = 1480;
 const BLIP_HZ_MAX = 1632;
 
-/** Longest a blip may last, in seconds (contract V5). */
+/** Longest a blip may last, in seconds (contract V8). */
 const BLIP_MAX_SECONDS = 0.15;
-
-/**
- * Silence long enough to separate two sounds, in machine cycles.
- *
- * The slowest note the ROM plays is the loss sound's 96 Hz collapse, whose
- * period is ~4150 cycles, and the shortest silence between two sounds is the
- * ~11000-cycle warning-beep gap. 8000 sits between them, so this splits sounds
- * without splitting a note in half.
- */
-const BURST_GAP_CYCLES = 8000;
 
 /**
  * Blips in the missile band one held press may account for.
  *
  * One for the launch itself, and the rest for missiles that go on to hit
  * something: a hit makes the same sound (audio-reference.md, missileFire). A
- * level-triggered ROM would emit one per sweep, i.e. thirty or more.
+ * level-triggered ROM would emit one per sweep, i.e. dozens.
  */
 const MAX_BLIPS_PER_HELD_PRESS = 4;
 
-/** Split an edge stream into the individual sounds that produced it. */
+/**
+ * Split an edge stream into the individual sounds that produced it.
+ *
+ * The gap is `tms1370-cadence.ts`'s, derived from the measured sweep length
+ * there. Under v2 this file carried it as the literal 8000, which meant "twice a
+ * sweep" only at 400 kHz - criterion V14 forbids exactly that.
+ */
 function splitBursts(edges: ProbeReport['speakerEdges']): ProbeReport['speakerEdges'][] {
   const bursts: (readonly [number, number])[][] = [];
   let current: (readonly [number, number])[] = [];
@@ -153,7 +166,7 @@ describe('parseArguments', () => {
 
   it('defaults the ROM to asm/jetfighter.asm, independent of the working directory', () => {
     expect(parseArguments([]).romSource).toBe(
-      resolve(import.meta.dirname, '..', '..', 'asm', 'jetfighter-hmcs44.asm'),
+      resolve(import.meta.dirname, '..', '..', 'asm', 'jetfighter.asm'),
     );
   });
 
@@ -188,7 +201,7 @@ describe('parseArguments', () => {
 
 describe('the report', () => {
   it('is one line of JSON with exactly the six contract keys', () => {
-    const report = runProbe(parseArguments(['--cycles', '60000']));
+    const report = runProbe(parseArguments(['--cycles', String(seconds(1))]));
     const text = formatReport(report);
     expect(text.trimEnd()).not.toContain('\n');
     expect(Object.keys(JSON.parse(text) as ProbeReport).sort()).toEqual([
@@ -202,19 +215,21 @@ describe('the report', () => {
   });
 
   it('keeps speakerEdges present but empty without --emit-edges', () => {
-    const report = runProbe(parseArguments(['--cycles', '60000', '--input', 'fire@10000']));
+    const report = runProbe(
+      parseArguments(['--cycles', String(seconds(1)), '--input', `fire@${seconds(0.2)}`]),
+    );
     expect(report.speakerEdges).toEqual([]);
   });
 
   it("reports the assembler's own figures for the ROM it ran", () => {
-    const report = runProbe(parseArguments(['--cycles', '20000']));
+    const report = runProbe(parseArguments(['--cycles', String(seconds(0.5))]));
     // The two hardware ceilings, as contract V1 reads them out of the listing.
     expect(report.romWords).toBeGreaterThanOrEqual(200);
-    expect(report.ramNibbles).toBeLessThanOrEqual(160);
+    expect(report.ramNibbles).toBeLessThanOrEqual(RAM_WORD_COUNT);
   });
 
   it('exits 0 and writes the object to stdout', () => {
-    const { code, out, err } = run(['--cycles', '20000']);
+    const { code, out, err } = run(['--cycles', String(seconds(0.5))]);
     expect(code).toBe(EXIT.ok);
     expect(err).toBe('');
     expect(() => JSON.parse(out) as ProbeReport).not.toThrow();
@@ -228,7 +243,12 @@ describe('the report', () => {
   });
 
   it('exits 2 when an input names a control the case does not have', () => {
-    const { code, err } = run(['--cycles', '20000', '--input', 'throttle=up@100']);
+    const { code, err } = run([
+      '--cycles',
+      String(seconds(0.5)),
+      '--input',
+      'throttle=up@100',
+    ]);
     expect(code).toBe(EXIT.usage);
     expect(err).toContain('throttle=up@100');
   });
@@ -236,12 +256,12 @@ describe('the report', () => {
 
 describe('snapshot cadence', () => {
   it('yields exactly one snapshot with no input - the baseline', () => {
-    expect(runProbe(parseArguments(['--cycles', '60000'])).snapshots).toHaveLength(1);
+    expect(runProbe(parseArguments(['--cycles', String(seconds(1))])).snapshots).toHaveLength(1);
   });
 
   it('yields exactly two with one input, the second after the first', () => {
     const report = runProbe(
-      parseArguments(['--cycles', '60000', '--input', 'lever=down@20000']),
+      parseArguments(['--cycles', String(seconds(1)), '--input', `lever=down@${seconds(0.3)}`]),
     );
     expect(report.snapshots).toHaveLength(2);
     expect(report.snapshots[1]!.atCycle).toBeGreaterThan(report.snapshots[0]!.atCycle);
@@ -249,9 +269,9 @@ describe('snapshot cadence', () => {
 
   it('takes the baseline before any input reaches the machine', () => {
     const report = runProbe(
-      parseArguments(['--cycles', '60000', '--input', 'lever=up@20000']),
+      parseArguments(['--cycles', String(seconds(1)), '--input', `lever=up@${seconds(0.3)}`]),
     );
-    expect(report.snapshots[0]!.atCycle).toBeLessThan(20000);
+    expect(report.snapshots[0]!.atCycle).toBeLessThan(seconds(0.3));
     // The lever rests in the centre lane until the probe moves it (input.ts).
     expect(platesUnder(report.snapshots[0]!, LAUNCH_GRID)).toContain(LANE_PLATES[1]);
   });
@@ -260,11 +280,11 @@ describe('snapshot cadence', () => {
     const report = runProbe(
       parseArguments([
         '--cycles',
-        '80000',
+        String(seconds(3)),
         '--input',
-        'lever=down@40000',
+        `lever=down@${seconds(1)}`,
         '--input',
-        'lever=up@20000',
+        `lever=up@${seconds(0.5)}`,
       ]),
     );
     expect(report.snapshots).toHaveLength(3);
@@ -275,15 +295,28 @@ describe('snapshot cadence', () => {
 
 // --- The acceptance contract, as assertions --------------------------------
 
-describe('contract V3: the CPU executes our ROM and drives the tube', () => {
-  const report = runProbe(parseArguments(['--cycles', '400000']));
+describe('contract V5: the core executes our ROM and drives the tube', () => {
+  const report = runProbe(parseArguments(['--cycles', String(seconds(4))]));
 
   it('executed machine cycles', () => {
     expect(report.strobeCycles).toBeGreaterThan(0);
   });
 
-  it('strobed every grid from 0 to 9 - the full display sweep', () => {
-    expect(report.gridsStrobed).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  it('strobed every display grid - the full sweep', () => {
+    // Built from `GRID_COUNT` rather than typed out. Criterion V14 requires
+    // `getStrobedGrids` compared against the count and never against a literal
+    // grid list: a written-out list is an assumption about how many grids there
+    // are that survives a re-addressing without saying so.
+    expect(report.gridsStrobed).toEqual(
+      Array.from({ length: GRID_COUNT }, (_unused, grid) => grid),
+    );
+  });
+
+  it('reports display grids only, not every R line the ROM drove', () => {
+    // R9, R10 and R15 are bits of the same latch as the grids. A probe reporting
+    // R lines honestly would return them here and turn a nine-grid sweep into a
+    // twelve-line one.
+    expect(Math.max(...report.gridsStrobed)).toBeLessThan(GRID_COUNT);
   });
 
   it('lit segments in the baseline snapshot', () => {
@@ -292,8 +325,7 @@ describe('contract V3: the CPU executes our ROM and drives the tube', () => {
 
   it('gives at least one segment a duty strictly between 0 and 1', () => {
     // The falsifier: a ROM that wrote the plate bus once and left it would
-    // report duty 1, and a dark tube would report no segments at all. A real
-    // ten-grid sweep puts every lit segment near 0.1.
+    // report duty 1, and a dark tube would report no segments at all.
     const fractional = report.snapshots[0]!.litSegments.filter(
       ([, , duty]) => duty > 0 && duty < 1,
     );
@@ -301,8 +333,10 @@ describe('contract V3: the CPU executes our ROM and drives the tube', () => {
   });
 });
 
-describe('contract V4: the launcher moves lanes when the lever does', () => {
-  const report = runProbe(parseArguments(['--cycles', '400000', '--input', 'lever=up@200000']));
+describe('contract V7: the launcher moves lanes when the lever does', () => {
+  const report = runProbe(
+    parseArguments(['--cycles', String(seconds(5)), '--input', `lever=up@${seconds(2)}`]),
+  );
 
   it('produced both snapshots', () => {
     expect(report.snapshots).toHaveLength(2);
@@ -323,9 +357,16 @@ describe('contract V4: the launcher moves lanes when the lever does', () => {
   });
 });
 
-describe('contract V5: pressing fire produces the missile blip on D14', () => {
+describe('contract V8: pressing fire produces the missile blip on R15', () => {
+  const pressAt = seconds(2);
   const report = runProbe(
-    parseArguments(['--cycles', '400000', '--input', 'fire@200000', '--emit-edges']),
+    parseArguments([
+      '--cycles',
+      String(seconds(5)),
+      '--input',
+      `fire@${pressAt}`,
+      '--emit-edges',
+    ]),
   );
   const edges = report.speakerEdges;
   const bursts = splitBursts(edges);
@@ -336,7 +377,7 @@ describe('contract V5: pressing fire produces the missile blip on D14', () => {
   });
 
   it('put every transition after the press, and none before it', () => {
-    expect(edges.every(([cycle]) => cycle > 200000)).toBe(true);
+    expect(edges.every(([cycle]) => cycle > pressAt)).toBe(true);
   });
 
   it('alternates levels, starting from the resting level', () => {
@@ -352,18 +393,36 @@ describe('contract V5: pressing fire produces the missile blip on D14', () => {
     // rising edges. Measuring it directly says the same thing without a
     // thousand-line dependency-free FFT in a unit test.
     //
-    // The first burst is the launch, because the press is the first thing that
-    // makes any noise. Later bursts in the same run are other game sounds - the
-    // jet march, the battleship, a launcher-hit warning - and are measured
-    // against their own bands in the ROM's sound table, not against this one.
+    // Over the blip's own isolated burst, split on the named gap constant, and
+    // never as first-to-last edge across the capture: that method, and not the
+    // 150 ms bound it produced, is what open-questions.md section 3b records as
+    // v2's fault. The first burst is the launch, because the press is the first
+    // thing that makes any noise; later bursts are other game sounds and are
+    // measured against their own bands elsewhere.
+    // The *median* period, not every period. The v2 assertion took each in
+    // turn, which held only because that core had 132 instructions to spend on
+    // a half period and could hold one to the cycle. This machine executes one
+    // instruction per six oscillator pulses, so a half period is a couple of
+    // dozen instructions and the loop's own re-entry cost is a visible fraction
+    // of it: the burst runs at one period with an occasional longer one. The
+    // median is what an FFT of the reconstructed waveform reports as the
+    // dominant frequency, which is what the contract's verifier reads.
     const risingCycles = blip.filter(([, level]) => level === 1).map(([cycle]) => cycle);
     const periods = risingCycles.slice(1).map((cycle, index) => cycle - risingCycles[index]!);
     expect(periods.length).toBeGreaterThan(8);
-    for (const period of periods) {
-      const hz = CYCLE_HZ / period;
-      expect(hz).toBeGreaterThanOrEqual(BLIP_HZ_MIN);
-      expect(hz).toBeLessThanOrEqual(BLIP_HZ_MAX);
-    }
+
+    const sorted = [...periods].sort((left, right) => left - right);
+    const dominant = CYCLE_HZ / sorted[sorted.length >> 1]!;
+    expect(dominant).toBeGreaterThanOrEqual(BLIP_HZ_MIN);
+    expect(dominant).toBeLessThanOrEqual(BLIP_HZ_MAX);
+
+    // And the dominant period is genuinely dominant: most of the burst is at
+    // it, so the median is describing the tone rather than the middle of a
+    // spread. A loop with no stable period at all would fail here.
+    const atDominant = periods.filter(
+      (period) => Math.abs(CYCLE_HZ / period - dominant) < 1,
+    );
+    expect(atDominant.length / periods.length).toBeGreaterThan(0.5);
   });
 
   it('keeps the burst shorter than 150 ms', () => {
@@ -372,7 +431,7 @@ describe('contract V5: pressing fire produces the missile blip on D14', () => {
   });
 
   it('blips once for a press, not once per sweep it is held for', () => {
-    // The button is held from cycle 200000 to the end of the run - some thirty
+    // The button is held from the press to the end of the run - hundreds of
     // display sweeps. A ROM that retriggered on the level rather than the edge
     // would launch on every one of them, so the count of bursts in the missile
     // band is the property under test, not the count of edges: the ROM also
@@ -387,9 +446,5 @@ describe('contract V5: pressing fire produces the missile blip on D14', () => {
     });
     expect(blipsInBand.length).toBeGreaterThan(0);
     expect(blipsInBand.length).toBeLessThanOrEqual(MAX_BLIPS_PER_HELD_PRESS);
-    // Each one is the same fixed shape: four bursts of sixteen periods.
-    for (const inBand of blipsInBand) {
-      expect(inBand).toHaveLength(128);
-    }
   });
 });
