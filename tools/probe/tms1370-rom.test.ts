@@ -215,6 +215,23 @@ describe('a rocket can reach the launcher in any of the three lanes', () => {
   // hear no warning at all.
   const cycles = seconds(50);
 
+  it('flies a rocket down every one of the three lanes', () => {
+    // The sharper half of the same criterion, and the one that actually
+    // falsifies the v2 defect. A warning burst alone does not: a jet crossing
+    // the G line in the lever's own lane costs a launcher and warns too, so a
+    // parked-lever run can hear all three warnings with the rocket never
+    // leaving one lane. What the defect *is* - a lane drawn from a nibble the
+    // player's own keypress sets - shows up here, because with it the attacker's
+    // colon is drawn in exactly one lane for a whole run however long it runs.
+    const cycles = seconds(50);
+    const run = runGame({ cycles, input: leverOnly(cycles, 1) });
+    // The attacker's colon is the far family on grids 1-5: lane L is plate 3+L.
+    const lanesFlown = [0, 1, 2].filter((lane) =>
+      [1, 2, 3, 4, 5].some((grid) => run.litCells.has(cellKey(grid, 3 + lane))),
+    );
+    expect(lanesFlown).toEqual([0, 1, 2]);
+  });
+
   for (const lane of [0, 1, 2]) {
     it(`warns in lane ${lane} with the lever parked there`, () => {
       const run = runGame({ cycles, input: leverOnly(cycles, lane) });

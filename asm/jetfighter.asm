@@ -46,12 +46,16 @@
 ; 4. **A branch is conditional only when the test is the instruction before it.**
 ;    Status is 1 at the start of every instruction and driven to 0 only by a
 ;    test, so anything between a test and its branch makes the branch
-;    unconditional - and it assembles cleanly on real silicon. Two idioms follow
-;    and both are used throughout. A two-armed test is written
+;    unconditional - and it assembles cleanly on real silicon. Three idioms
+;    follow and all three are used throughout. A two-armed test is written
 ;    `<test> / BR true / BR false`, the second branch being unconditional
-;    because the first ended the sequence. An unconditional jump that has to
-;    carry a page is written `LDP page / TCY 0 / YNEC 1 / BR target`, whose test
-;    is trivially true and whose `LDP` is safely before it rather than between.
+;    because the first ended the sequence and the scan stops there. A jump that
+;    has to carry a page is `LDP page / BR target`, unconditional provided the
+;    four instructions behind it do not test - which is why the `LDP` of a
+;    *conditional* cross-page branch goes above its test rather than between the
+;    test and the branch. Where that cannot be arranged, the jump is written
+;    `LDP page / TCY 0 / YNEC 1 / BR target`: a test whose answer is in its own
+;    two operands, so the branch is conditional in form and always taken in fact.
 ;
 ; 5. **The program counter is a shift register.** A label is an LFSR state and
 ;    not a position, and straight-line code walks a page in the LFSR's order.
@@ -572,7 +576,13 @@
 .EQU P_ROCKET,      11          ; the rocket: travel, launch, and which jet fires
 .EQU P_SPILL,       12          ; whatever did not fit on the page it belongs to
 .EQU P_BSHIP,       13          ; the battleship
-.EQU P_RENDER,      14          ; free - the render step outgrew it, see C1_REND1
+.EQU P_SPARE,       14          ; the one page this program does not use. The
+                                ; render step was here and outgrew it - see
+                                ; C1_REND1 - and it is left named rather than
+                                ; deleted because a page is the unit a routine
+                                ; has to fit in, so "one page free" is the
+                                ; headroom figure that matters and not the 588
+                                ; words the listing reports.
 .EQU P_RESET,       15          ; the reset routine
 
 ; Chapter 1. `BR` and `CALL` both copy the chapter buffer into the chapter
@@ -1077,7 +1087,7 @@ nt_next_burst:
 ;
 ; Reset calls it seven times. **RAM is not cleared by hardware reset on this
 ; part**, and clearing it costs 112 nibbles times five instructions - about
-; 9.6 ms at this rate - so it has to finish before the first strobe or the tube
+; 10 ms at this rate - so it has to finish before the first strobe or the tube
 ; shows one frame of whatever the RAM powered up holding.
 
 clear_file:
@@ -1843,10 +1853,12 @@ bs_out:
 ; **RAM is not cleared by hardware reset on this part.** Reset clears the R
 ; latches, writes O index 0, clears status and the call latch, and leaves the
 ; 128 nibbles holding whatever they powered up with. So the first thing the
-; program does is clear them, and it must finish before the first strobe: at
-; five instructions a nibble that is 560 cycles a file and 3920 for the seven,
-; about 67 ms, and every one of them is time the tube would otherwise be showing
-; garbage.
+; program does is clear them, and it must finish before the first strobe. At
+; five instructions a nibble that is 83 cycles a file and 581 for the seven -
+; about 10 ms, and 833 cycles from reset to the first grid rising once the state
+; below is written too. Every one of those cycles is time the tube would
+; otherwise be showing whatever the RAM powered up holding, and
+; tools/probe/tms1370-rom.test.ts asserts nothing lights before them.
 
 .PAGE P_RESET
 
