@@ -280,7 +280,20 @@
 .EQU ST_WIN,         2
 
 .EQU SCORE_JET,      1          ; points for a jet
-.EQU SCORE_BSHIP,    5          ; points for the battleship
+;
+; MEASURED. assets/reference/sprites/README.md reads the score off the gameplay
+; video across the cell-0 burst at frames 6134-6159: 28 at frame 6106 and 38 at
+; frame 6162, "exactly +10 across it", with the three jet-kill bursts that follow
+; accounting for a further +3 by frame 6234 - a jet at one point and the boat at
+; ten, in the same seven seconds of one recording. PRD v1 R4 says the same.
+;
+; Like JET_COUNT and HITS_LAST above, the name cannot appear in an operand. Ten
+; does not fit the units path: `add_score` sums the points into NIB_SC_U with a
+; four-bit `AMAAC`, and ten plus a units digit of nine is nineteen, which wraps
+; the nibble before the BCD correction ever runs. Ten points *is* one on the tens
+; digit, so `score_bship` spends this constant as an `IMAC` on NIB_SC_T and joins
+; `add_score` at its carry arm.
+.EQU SCORE_BSHIP,   10          ; points for the battleship
 
 ; ============================================================================
 ; Timing, and why every figure here is a division rather than a number
@@ -1422,11 +1435,18 @@ score_jet:
         TCY  SCORE_JET
         TYA
         BR   add_score
+; The boat is ten points, which is one on the tens digit and nothing at all on
+; the units, so it does not go through `add_score`'s units stage - it does that
+; stage's *carry* arm instead, which is the same four instructions `as_carry_u`
+; runs. Adding ten through the units would need a five-bit sum.
 score_bship:
-        CLA
-        TCY  SCORE_BSHIP
-        TYA
-        BR   add_score
+        LDX  FILE_TIME
+        TCY  NIB_SC_T
+        IMAC                    ; SCORE_BSHIP, spent as a tens increment
+        TAM
+        A6AAC                   ; carry iff the tens digit reached ten
+        BR   as_carry_t
+        BR   as_to_done
 
 add_score:
         LDX  FILE_TIME
@@ -2690,7 +2710,7 @@ rd_done:
 
 ; --- the win is 199 ----------------------------------------------------------
 ;
-; Two ways to reach it, and both are here because a score that steps by five can
+; Two ways to reach it, and both are here because a score that steps by ten can
 ; jump the exact value. Hundreds reaching two is a score above 199 and is capped
 ; back to it; otherwise 1-9-9 is tested digit by digit. `A7AAC` carries exactly
 ; when a BCD digit is nine, which is what makes the test two instructions
