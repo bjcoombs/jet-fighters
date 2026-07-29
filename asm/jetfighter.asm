@@ -2335,12 +2335,26 @@ render:
 ;
 ; Three lanes can stand in one column, which is why the near group holds all
 ; eight subsets and not four, and why this adds rather than overwrites.
+;
+; **Both scratch nibbles have to be set here, and the order below is the RAM
+; map's and not a preference.** `TCMIY` steps Y up, `NIB_RBIT` is 11 and
+; `NIB_RLNE` is 12, so the pair is written bit-then-lane. Written the other way
+; round the second store lands in nibble 13, which nothing reads, and `NIB_RBIT`
+; carries into the walk holding whatever the previous sweep's last `lane_bit`
+; caller left - `rd_bship`'s boat lane, `rd_launcher`'s lever lane, or
+; `rd_bk_plate`'s R-line code. The squadron is then drawn offset by that lane,
+; and once the doubling runs the offset past bit 2 the near nibble leaves the
+; NEAR group's 0-7 and indexes FAR instead (`opla.inc.asm`, index 8-15 with the
+; latch clear), so the near pass paints the attackers' rockets into cells no
+; rocket is in. It ran that way and every address it drove was a legal one, which
+; is why the atlas conformance suite went *greener* for it rather than red.
+; `tools/probe/render-fidelity.test.ts` is the assertion that catches it.
 
 rd_jets:
         LDX  FILE_D3
-        TCY  NIB_RLNE
-        TCMIY 0
-        TCMIY 1                 ; NIB_RBIT follows NIB_RLNE
+        TCY  NIB_RBIT
+        TCMIY 1                 ; NIB_RBIT is 11 and NIB_RLNE is 12, so the walk
+        TCMIY 0                 ; starts at the bit and steps *up* to the lane
 rd_jet_lane:
         LDX  FILE_D3
         TCY  NIB_RLNE

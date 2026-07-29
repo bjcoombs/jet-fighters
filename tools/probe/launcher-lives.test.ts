@@ -477,12 +477,17 @@ describe('which mechanism took each launcher, read off the tube', () => {
     () => {
       // The v2 form of this asserted three captures in the centre and bottom
       // lanes and none in the top one. That was never a rule - the comment on
-      // its companion said so - and on this machine the split is different: the
-      // lever in lane 0 takes all three by capture, lane 2 takes one, and lane 1
-      // takes none at all. What survives the move is the claim that was actually
-      // being made, stated the way round that holds for every lane: a jet
-      // reaching the G line always costs a launcher, so no departure may be
-      // unaccounted for.
+      // its companion said so. The split written here afterwards, "lane 0 takes
+      // all three by capture, lane 2 takes one, and lane 1 takes none at all",
+      // was not a rule either and was not even a fact: it was read off a tube
+      // that was drawing the squadron in the wrong lane, so arrivals in the
+      // lever's own lane went unseen. Read from `NIB_HITS` and the rocket's own
+      // nibble, the parked-lever split is three captures in lane 0 and two
+      // captures and one rocket in each of lanes 1 and 2.
+      //
+      // What survives all of that is the claim that was actually being made,
+      // stated the way round that holds for every lane: a jet reaching the G
+      // line always costs a launcher, so no departure may be unaccounted for.
       //
       // The arrival never *precedes* the sound, because the tube cannot report a
       // jet gone before the ROM has removed it, and it lags by the length of the
@@ -512,20 +517,48 @@ describe('which mechanism took each launcher, read off the tube', () => {
     LONG_RUN_TIMEOUT_MS,
   );
 
-  it('takes all three by rocket in the lane no jet ever reaches the G line', () => {
-    // Not a rule and not a target - it is what the current cadences and the
-    // rocket's lane selection happen to produce, and it is asserted because it
-    // is the negative control for the test above. The same three-launcher rule
-    // holds in a lane with no jet ever reaching the G line at all, which is what
-    // says that rule belongs to the launcher and not to the capture path.
+  it('takes launchers by rocket too, and the ladder does not care which took which', () => {
+    // The negative control for the test above: the three-launcher rule belongs
+    // to the launcher rather than to the capture path, so it has to hold over
+    // losses that no jet reaching the G line can explain.
     //
-    // Which lane that is is not asserted, because it is not a property of the
-    // rules: today it is lane 1, the centre detent, where the v2 machine's
-    // rocket-only lane was lane 0. If this starts failing because jets now get
-    // through in every lane, the fix is to note that here, not to force it back.
-    const rocketOnly = LEVERS.filter(({ lane }) => (games.get(lane) as Game).departures.length === 0);
-    expect(rocketOnly.length, 'every lane let a jet through, so nothing is rocket-only').toBeGreaterThan(0);
-    for (const { detent, lane } of rocketOnly) {
+    // ## What this used to look for, and why it was never there
+    //
+    // It used to require a whole *lever lane* in which no jet ever reached the G
+    // line, and it found one: lane 1, the centre detent. There was never such a
+    // lane. `departures` counts jets vanishing from the deepest jet cell as the
+    // tube shows it, and the ROM was drawing the squadron offset by the lever's
+    // own lane - `rd_jets` left `NIB_RBIT` uninitialised - so with the lever
+    // parked in lane 1 a jet arriving in lane 1 was drawn in lane 2 or, once the
+    // bitmap overflowed the near group, not drawn at all. No departure was
+    // visible, so the lane looked rocket-only. Read from `NIB_HITS` and the
+    // rocket's own nibble instead, the parked-lever split is three captures in
+    // lane 0 and *two captures and one rocket* in each of lanes 1 and 2.
+    //
+    // So the property is restated as the one that was actually being claimed and
+    // is true of this machine: some launcher, in some lane, is taken by
+    // something that is not a capture, and the warning ladder runs identically
+    // in every lane regardless of which mechanism took which launcher. That is
+    // strictly more than the old form asserted - the ladder is now checked in
+    // all three lanes rather than in the one that happened to be rocket-only.
+    const byRocket = LEVERS.flatMap(({ detent, lane }) => {
+      const game = games.get(lane) as Game;
+      return launcherLosses(game)
+        .filter(
+          (loss) =>
+            !game.departures.some(
+              (departure) =>
+                departure - loss >= -CAPTURE_LEAD_CYCLES &&
+                departure - loss <= CAPTURE_WINDOW_CYCLES,
+            ),
+        )
+        .map((atCycle) => `${detent} at ${atCycle}`);
+    });
+    expect(
+      byRocket.length,
+      'every launcher in every lane was taken by a capture, so the rocket path is untested',
+    ).toBeGreaterThan(0);
+    for (const { detent, lane } of LEVERS) {
       const game = games.get(lane) as Game;
       expect(warningsIn(game).map((warning) => warning.beeps), detent).toEqual([2, 3]);
       expect(lossesIn(game), detent).toHaveLength(1);

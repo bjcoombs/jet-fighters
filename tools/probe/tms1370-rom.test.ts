@@ -39,9 +39,15 @@ import {
   soundHz,
   splitSounds,
   sweepPeriods,
+  Tms1370Machine,
   type InputEvent,
   type RunResult,
 } from './tms1370-probe.js';
+
+/** `FILE_STATE` and its two rocket nibbles, from the RAM map in the ROM source. */
+const FILE_STATE = 4;
+const NIB_RCOL = 7;
+const NIB_RLANE = 8;
 
 /** Seconds of emulated time, as the cycle count the probe takes. */
 const seconds = (value: number): number => Math.round(value * CYCLE_HZ);
@@ -65,12 +71,52 @@ function playing(cycles: number, everyCycles = 70_000): InputEvent[] {
 }
 
 /** A drive that only works the lever, with the fire button never pressed. */
-function leverOnly(cycles: number, lane?: number): InputEvent[] {
-  const events: InputEvent[] = [{ cycle: 0, change: { skill: 1 } }];
+function leverOnly(cycles: number, lane?: number, skill = 1): InputEvent[] {
+  const events: InputEvent[] = [{ cycle: 0, change: { skill } }];
   for (let at = 0, walk = 0; at < cycles; at += 40_000, walk = (walk + 1) % 3) {
     events.push({ cycle: at, change: { lane: lane ?? walk } });
   }
   return events;
+}
+
+/** The three detents of the skill dial. */
+const SKILLS = [1, 2, 3] as const;
+
+/**
+ * Nine parked-lever games is about 26 million emulated cycles, which is past
+ * Vitest's 5 s default. Named rather than inlined for the reason every horizon
+ * in these suites is: it moves when the drive does, not when a rule does.
+ */
+const ROTOR_SWEEP_TIMEOUT_MS = 30_000;
+
+/**
+ * One parked-lever game: the lane of every rocket launched, and what it lit.
+ *
+ * `NIB_RCOL` going from zero to non-zero is a launch - the ROM holds one rocket,
+ * so there is no ambiguity about which one - and `NIB_RLANE` beside it is the
+ * lane it flies down. Sampled at 5 ms against a flight of about 100 ms a column,
+ * so no launch can fall between two samples. Both halves come off the same drive
+ * because running it twice is the whole cost of this test.
+ */
+function parkedGame(
+  skill: number,
+  lever: number,
+  forSeconds = 45,
+): { lanes: number[]; litCells: ReadonlySet<string> } {
+  const machine = new Tms1370Machine();
+  machine.setContacts({ skill, lane: lever, fire: false });
+  const lanes: number[] = [];
+  let flying = false;
+  while (machine.cycles < seconds(forSeconds)) {
+    machine.step(CYCLE_HZ / 200);
+    const ram = machine.ram;
+    const column = ram[FILE_STATE * 16 + NIB_RCOL] as number;
+    if (column !== 0 && !flying) {
+      lanes.push(ram[FILE_STATE * 16 + NIB_RLANE] as number);
+    }
+    flying = column !== 0;
+  }
+  return { lanes, litCells: machine.litCells };
 }
 
 describe('the machine comes up', () => {
@@ -230,22 +276,80 @@ describe('a rocket can reach the launcher in any of the three lanes', () => {
   // hear no warning at all.
   const cycles = seconds(50);
 
-  it('flies a rocket down every one of the three lanes', () => {
+  it(
+    'flies a rocket down every one of the three lanes',
+    () => {
     // The sharper half of the same criterion, and the one that actually
     // falsifies the v2 defect. A warning burst alone does not: a jet crossing
     // the G line in the lever's own lane costs a launcher and warns too, so a
     // parked-lever run can hear all three warnings with the rocket never
     // leaving one lane. What the defect *is* - a lane drawn from a nibble the
-    // player's own keypress sets - shows up here, because with it the attacker's
-    // colon is drawn in exactly one lane for a whole run however long it runs.
-    const cycles = seconds(50);
-    const run = runGame({ cycles, input: leverOnly(cycles, 1) });
-    // The attacker's colon is the far family on grids 1-5: lane L is plate 3+L.
-    const lanesFlown = [0, 1, 2].filter((lane) =>
-      [1, 2, 3, 4, 5].some((grid) => run.litCells.has(cellKey(grid, 3 + lane))),
-    );
-    expect(lanesFlown).toEqual([0, 1, 2]);
-  });
+    // player's own keypress sets - is what the lane *sequence* below rules out.
+    //
+    // ## Why this reads NIB_RLANE and not the lit cells
+    //
+    // It used to union `litCells` over one 50 s run and require all three of
+    // `rocket_lane{0,1,2}_col*`, and it passed for a ROM in which **exactly one
+    // rocket ever flew**. `rd_jets` left `NIB_RBIT` uninitialised, so the near
+    // pass's jet bitmap was offset by the lever's lane and overflowed the NEAR
+    // group into the FAR one, and the near pass emitted far masks - lighting the
+    // attackers' rocket segments in cells no rocket was in. The assertion was
+    // reading those phantoms as evidence of the behaviour it was asserting.
+    //
+    // A lit cell cannot tell a rocket from anything else that reaches the same
+    // plate, so the count comes from the one place that can: `NIB_RCOL` and
+    // `NIB_RLANE` are a nibble each, so a rocket is exactly one column and one
+    // lane, and a launch is that column going from zero to non-zero. The pins
+    // are still asserted, underneath, against the lanes actually flown.
+    //
+    // ## Why the lanes are pooled across the skill dial
+    //
+    // The rotor steps 1, 2, 0, and the first interval after power-on is the one
+    // `reset` writes rather than one the dial sets, so a parked-lever game ends
+    // after its second launch and no single run reaches the third rung. Skill
+    // shortens the *later* intervals and the march together, which samples the
+    // rotor at a different phase - which is why lane 0 shows up at skill 3. The
+    // union over the dial is the whole rotor, and nothing here depends on which
+    // run contributes which lane.
+      const games = SKILLS.flatMap((skill) =>
+        [0, 1, 2].map((lever) => ({ skill, lever, ...parkedGame(skill, lever) })),
+      );
+
+      const flown = [...new Set(games.flatMap((game) => game.lanes))].sort();
+      expect(flown, 'the rotor did not reach every lane').toEqual([0, 1, 2]);
+
+      // The falsifier proper. With the lane drawn from the player, parking the
+      // lever somewhere else would change the sequence; the rotor's does not.
+      for (const skill of SKILLS) {
+        const runs = games.filter((game) => game.skill === skill);
+        const shortest = Math.min(...runs.map((game) => game.lanes.length));
+        const prefixes = new Set(runs.map((game) => game.lanes.slice(0, shortest).join(',')));
+        expect(
+          [...prefixes],
+          `skill ${skill}: the rocket's lane sequence moved when only the lever did`,
+        ).toHaveLength(1);
+      }
+
+      // And not vacuously: a ROM that pinned the rocket to one lane would
+      // satisfy the sequence check trivially, so more than one lane has to be
+      // reached, and no run may be empty of launches at every skill.
+      expect(flown.length, 'every rocket flew in the same lane').toBeGreaterThan(1);
+
+      // Finally the pins, now that the lanes they should show are known
+      // independently: a lane that flew must have lit its own rocket segments,
+      // and this is the direction the old lit-cell union could not assert -
+      // it could only ever say a segment lit, never that a rocket lit it.
+      for (const { skill, lever, lanes, litCells } of games) {
+        for (const lane of new Set(lanes)) {
+          expect(
+            [1, 2, 3, 4, 5].some((grid) => litCells.has(cellKey(grid, 3 + lane))),
+            `skill ${skill}, lever ${lever}: a rocket flew in lane ${lane} and lit nothing`,
+          ).toBe(true);
+        }
+      }
+    },
+    ROTOR_SWEEP_TIMEOUT_MS,
+  );
 
   for (const lane of [0, 1, 2]) {
     it(`warns in lane ${lane} with the lever parked there`, () => {
