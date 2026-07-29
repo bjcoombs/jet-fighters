@@ -13,6 +13,20 @@ import {
 } from './display.js';
 import type { PwmFrame } from './pwm.js';
 
+/**
+ * Every grid of a matrix, ascending - what `getStrobedGrids` returns off a full
+ * sweep.
+ *
+ * Built from the topology's own count rather than typed out. `docs/contract/
+ * v3.contract.md` criterion V14 requires exactly this: `getStrobedGrids`
+ * compared against `GRID_COUNT`, never against a literal grid list. A `[0..9]`
+ * written out is a ten-grid assumption that survives a re-addressing without
+ * saying so, and there are now two real answers to how many grids there are.
+ */
+function everyGrid(gridCount: number): number[] {
+  return Array.from({ length: gridCount }, (_unused, grid) => grid);
+}
+
 /** Duty of one segment in a frame, or 0 when it never lit. */
 function dutyOf(frame: PwmFrame, grid: number, plate: number): number {
   return frame.segments.find((s) => s.grid === grid && s.plate === plate)?.duty ?? 0;
@@ -89,7 +103,7 @@ describe('Display - geometry', () => {
     expect(frame.segments).toHaveLength(
       TMS1370_TOPOLOGY.gridCount * TMS1370_TOPOLOGY.plateCount,
     );
-    expect(display.getStrobedGrids()).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(display.getStrobedGrids()).toEqual(everyGrid(TMS1370_TOPOLOGY.gridCount));
     for (const segment of frame.segments) {
       expect(segment.grid).toBeLessThan(TMS1370_TOPOLOGY.gridCount);
       expect(segment.plate).toBeLessThan(TMS1370_TOPOLOGY.plateCount);
@@ -170,7 +184,7 @@ describe('Display - driving grids and plates', () => {
   it('records which grids have been strobed (contract V3)', () => {
     const display = new Display();
     sweep(display, 1, 40);
-    expect(display.getStrobedGrids()).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(display.getStrobedGrids()).toEqual(everyGrid(GRID_COUNT));
   });
 });
 

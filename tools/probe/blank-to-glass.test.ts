@@ -1,18 +1,20 @@
 // The blank on the glass: the whole path from the ROM's parked sweep to what a
 // viewer sees, driven the way src/main.ts drives it.
 //
+// Paths in this file are relative to the repository root.
+//
 // sweep-timing.test.ts asserts the two ends of this separately - that the ROM
-// drives no grid for the whole of every sound (D1), and that
-// `Board.getLitSegments()` reports the tube dark while it does. Neither of them
-// draws anything, and a duty of zero that the renderer smooths back into
-// visibility is not a fix: `PhosphorField` integrates duty over time with a
-// decay constant, so a value can be right at the board's edge and still leave
-// the tube visibly lit on the canvas.
+// drives no grid for the whole of every sound (D1), and that the harness's
+// `getLitSegments()` reports the tube dark while it does. Neither of them draws
+// anything, and a duty of zero that the renderer smooths back into visibility is
+// not a fix: `PhosphorField` integrates duty over time with a decay constant, so
+// a value can be right at the machine's edge and still leave the tube visibly
+// lit on the canvas.
 //
 // So this test runs the real machine into a real renderer:
 //
-//   1. step the board by the cycles a 60 Hz frame is worth, as main.ts does;
-//   2. read `board.getLitSegments()`, as main.ts does;
+//   1. step the machine by the cycles a 60 Hz frame is worth, as main.ts does;
+//   2. read `getLitSegments()`, as main.ts does;
 //   3. `renderer.draw(segments, 16.67)`, as main.ts does;
 //   4. read what came out - the phosphor level of every segment in the atlas,
 //      and the fills the renderer actually issued.
@@ -20,116 +22,86 @@
 // The renderer gets a recording 2D context rather than a canvas, which is the
 // same way renderer.test.ts drives it; nothing here needs a DOM.
 //
+// The machine underneath is `Tms1370Machine`, and the frame period is the one it
+// owns: the sweep wrapping. `src/machine/board/display.ts` closes a frame when a
+// grid rises that has already risen, which was right for a machine that drew
+// each grid once per sweep; this one draws four passes and visits grid 0 in
+// three of them, so that rule would hand the renderer one family at a time.
+//
 // What each assertion would have caught:
 //
-//   - "dark for the whole of every march note" fails against the surface as it
-//     stood before this work, with the tube fully lit throughout the note.
+//   - "paints nothing for the whole of every march note" fails against a surface
+//     that reports the last completed sweep while the sweep is stopped, with the
+//     tube fully lit throughout the note.
 //   - "lit before" and "lit after" fail against a machine that has wedged with
 //     its grids low, which "dark while the speaker sounds" is otherwise
 //     trivially true of.
-//   - "at full level after" fails if the blank is left inside the frame period
-//     it fell in: the sweep after a note then reads at about a sixth of its
+//   - "at full brightness after" fails if the blank is left inside the frame
+//     period it fell in: the sweep after a note then reads at a fraction of its
 //     duty, which reaches the glass as a dim frame after every beep.
 //
-// The note measured is a march note, ~68 ms. It is the shortest of the common
-// sounds and the one that fires on nearly every sweep in which a jet stepped, so
-// a fix that only blanks the 637 ms loss sequence passes a test built on the
-// loss sequence and fails this one.
+// The note measured is a march note, 71 ms. It is the shortest of the common
+// sounds that blank and the one that fires on every squadron step, so a fix that
+// only blanks the loss sequence passes a test built on the loss sequence and
+// fails this one.
 //
 // Node-side test: no DOM, no browser globals.
 
 import { describe, it, expect } from 'vitest';
-import { resolve } from 'node:path';
-import { readFileSync } from 'node:fs';
-import { assemble } from '../hmasm/assembler.js';
-import { romImage } from '../hmasm/output.js';
-import { Board } from '../../src/machine/board/board.js';
-import { CYCLE_HZ } from '../../src/machine/cpu/cpu.js';
-import { REFRESH_TIMEOUT_CYCLES } from '../../src/machine/board/display.js';
+import { CYCLE_HZ } from '../../src/machine/cpu/tms1370/timing.js';
+import {
+  BURST_GAP_CYCLES,
+  REFRESH_TIMEOUT_CYCLES,
+  STEP_CYCLES,
+  SWEEP_INSTRUCTIONS,
+} from '../../src/machine/board/tms1370-cadence.js';
 import { loadAtlas } from '../../src/machine/tube/atlas.js';
 import type { SegmentId } from '../../src/machine/tube/atlas-schema.js';
 import { createFakeContext, type FakeCanvasContext } from '../../src/machine/tube/fake-canvas.js';
-import { BACKGROUND, MIN_VISIBLE_BRIGHTNESS, SILKSCREEN, ghostFill } from '../../src/machine/tube/palette.js';
+import {
+  BACKGROUND,
+  MIN_VISIBLE_BRIGHTNESS,
+  SILKSCREEN,
+  ghostFill,
+} from '../../src/machine/tube/palette.js';
+import { LIT_BRIGHTNESS } from '../../src/machine/tube/phosphor.js';
 import { createTubeRenderer, type TubeRenderer } from '../../src/machine/tube/renderer.js';
+import { Tms1370Machine, assembleGame, type InputEvent } from './tms1370-probe.js';
 
 /** How often main.ts reads the tube and draws it: one 60 Hz frame. */
-const FRAME_MS = 1000 / 60;
+const RENDER_HZ = 60;
+const FRAME_MS = 1000 / RENDER_HZ;
 
-/** The same interval in machine cycles, at the 400 kHz oscillator. */
-const FRAME_CYCLES = Math.round(CYCLE_HZ / 60);
+/** The same interval in machine cycles, at the TMS1370's instruction rate. */
+const FRAME_CYCLES = Math.round(CYCLE_HZ / RENDER_HZ);
 
 /**
  * Cycles the machine is advanced between checks of the read clock.
  *
- * main.ts hands the board a whole frame's budget in one call; stepping in small
- * slices instead lands each read within a few hundred cycles of its due time,
- * which is what lets a read be placed relative to a note's edges. The board sees
- * no difference - `step` is a budget, not a schedule.
+ * main.ts hands the machine a whole frame's budget in one call; stepping in
+ * strobe-sized slices instead lands each read within one grid's dwell of its due
+ * time, which is what lets a read be placed relative to a note's edges. The
+ * machine sees no difference - `step` is a budget, not a schedule - and
+ * `STEP_CYCLES` is the floor below which a caller is sampling inside a single
+ * strobe and learning about `strobe` rather than about the game.
  */
-const SLICE_CYCLES = 200;
+const SLICE_CYCLES = STEP_CYCLES;
 
-/**
- * The squadron's slowest march step, in ms of wall clock.
- *
- * `PAT_STEP` entry 0 is skill 1's entry point and the top of the cadence ladder,
- * so it is both the worst case and where a freshly powered machine starts. The
- * ladder's own comment in `asm/jetfighter.asm` measures it at 1995 ms.
- *
- * INSTRUCTION-RATE PROVISIONAL: converts sweeps to wall clock through the
- * HMCS44 core's oscillator (`CYCLE_HZ`), not the TMS1370's. See
- * docs/research/mp2110-timing-measurement.md.
- */
-const MARCH_STEP_MS = 1995;
-
-/**
- * Machine cycles to run, stated in march steps.
- *
- * It was a flat 2.3 s and it stopped carrying three march notes. The battleship
- * used to buzz for 68 ms fifty-one times a minute and those notes fell inside
- * the march band below, so any window at all held several; the buzz is now one
- * 383 ms note per crossing and the crossing is rare, so this window has to be
- * long enough to hold march steps of the ROM's own.
- *
- * Stated as a multiple of a measured cadence rather than as a wall-clock figure
- * for the reason CLAUDE.md records: a literal horizon in a test about a machine
- * whose cadence moves is a bet on the cadence, and it has turned main red here
- * before. A cadence change now moves `MARCH_STEP_MS` and nothing else.
- */
-const MARCH_STEPS_DRAWN = 5;
-const RUN_CYCLES = Math.round(((MARCH_STEPS_DRAWN * MARCH_STEP_MS) / 1000) * CYCLE_HZ);
-
-/** Sweeps run off before sampling: the reset and RAM-clear passes. */
+/** Sweeps run off before sampling: the reset and the ROM's clear of all 112 RAM nibbles. */
 const WARMUP_SWEEPS = 5;
 
-/** Silence that separates two sounds, in cycles - 20 ms. Same figure as sweep-timing.test.ts. */
-const BURST_GAP_CYCLES = 8000;
-
 /**
- * Bounds on a march note's tone, in ms. The ROM plays it in three bursts, ~68 ms.
+ * The ceiling on waiting for one sweep, in cycles.
  *
- * INSTRUCTION-RATE PROVISIONAL: the ~68 ms figure is cycles at the HMCS44
- * core's oscillator, not the TMS1370's. See docs/research/
- * mp2110-timing-measurement.md.
+ * `Tms1370Machine.runSweeps` requires one because the ROM stops sweeping for the
+ * whole of every sound and for good once the game ends. Sixty-four sweeps is
+ * about a second: past the ~660 ms loss sequence, which is the longest the ROM
+ * ever holds the speaker without drawing.
  */
-const MARCH_MS_MIN = 50;
-const MARCH_MS_MAX = 110;
+const SWEEP_WAIT_CYCLES = 64 * SWEEP_INSTRUCTIONS;
 
-/**
- * Brightness a segment reaches on a normally refreshed tube.
- *
- * A grid gets about a tenth of the sweep, which `PHOSPHOR.referenceDuty` calls
- * fully lit, so a segment driven for the whole of its slot settles near 1. The
- * floor is set below that rather than at it because the level oscillates by ~1%
- * with where the read lands in the sweep (palette.ts), and because the fixture
- * is a game in play whose segments come and go.
- */
-const LIT_BRIGHTNESS = 0.8;
-
-/** A board running the real game ROM, freshly powered on. */
-const GAME_ASM = (() => {
-  const path = resolve(import.meta.dirname, '..', '..', 'asm', 'jetfighter-hmcs44.asm');
-  return assemble(readFileSync(path, 'utf8'), path);
-})();
+/** The assembled game ROM, kept so symbol values are read rather than typed. */
+const GAME_ASM = assembleGame();
 
 function gameSymbol(name: string): number {
   const found = GAME_ASM.symbols.find((definition) => definition.name === name);
@@ -141,25 +113,92 @@ function gameSymbol(name: string): number {
  * Where the ROM records the battleship's lane, and the value meaning it is not
  * crossing.
  *
- * The battleship buzz is clocked out of `dwell` rather than played by
- * `note_loop`, so it is the one sound that leaves the tube being swept - that is
- * the whole point of it, since the player has to see the boat to shoot it. Every
+ * The battleship buzz is clocked out of `strobe` rather than played by the note
+ * loop, so it is the one sound that leaves the tube being swept - that is the
+ * whole point of it, since the player has to see the boat to shoot it. Every
  * assertion in this file is about a sound that *blanks*, so a sound overlapping
  * a crossing is excluded from them.
  */
 const BSLANE_ADDRESS = gameSymbol('FILE_STATE') * 16 + gameSymbol('NIB_BSLANE');
 const BS_NONE = gameSymbol('BS_NONE');
 
-function romBoard(): Board {
-  return new Board(romImage(GAME_ASM));
+/**
+ * The squadron's slowest march step, in sweeps.
+ *
+ * Re-derived from this ROM's own ladder rather than converted from the v2
+ * figure. `STEP_HI = STEP_HI_MAX - kills - STEP_SKILL * (skill - 1)` and a step
+ * is `STEP_HI * 16` sweeps, so `STEP_HI_MAX * 16` - 144 sweeps - is skill 1 with
+ * a full squadron: the top of the ladder, the worst case, and where a freshly
+ * powered machine starts. The ladder only walks down from there as the player
+ * scores, so a window of N of these holds at least N march notes.
+ */
+const MARCH_STEP_SWEEPS = gameSymbol('STEP_HI_MAX') * 16;
+
+/**
+ * Machine cycles to run, stated in march steps.
+ *
+ * The window has to be long enough to hold several march steps of the ROM's own,
+ * because the march note is what the assertions below are built on and the
+ * battleship - which used to fill any window at all with 68 ms notes - now
+ * blanks nothing.
+ *
+ * Stated as a multiple of a cadence read out of the assembly, which is itself a
+ * multiple of the measured sweep, rather than as a wall-clock figure - for the
+ * reason CLAUDE.md records: a literal horizon in a test about a machine whose
+ * cadence moves is a bet on the cadence, and it has turned main red here before.
+ * A cadence change now moves `MARCH_STEP_SWEEPS`, which is read rather than
+ * written, and nothing else.
+ *
+ * Seven steps is ~15.4 s of emulated time, 921 drawn frames and six march notes,
+ * against the three the assertions below need.
+ */
+const MARCH_STEPS_DRAWN = 7;
+const RUN_CYCLES = MARCH_STEPS_DRAWN * MARCH_STEP_SWEEPS * SWEEP_INSTRUCTIONS;
+
+/**
+ * Bounds on a march note's tone, in ms.
+ *
+ * The ROM plays it in three bursts of fifteen periods at 627 Hz, which
+ * `asm/jetfighter.asm` states as 45 periods = 71.8 ms and which measures 71.1 ms
+ * on the running machine. The band is wide either side so that it selects the
+ * march note against the 18.8 ms fire blip and the ~4 s battleship buzz without
+ * pinning the note's own length.
+ */
+const MARCH_MS_MIN = 50;
+const MARCH_MS_MAX = 110;
+
+/**
+ * A drive that plays the game: the lever walks the three lanes and the fire
+ * button is pressed once per lap.
+ *
+ * The same schedule tms1370-rom.test.ts uses, and for the same reason: the
+ * machine falls silent unattended, because a squadron that is never shot at
+ * takes all three launchers, and a fixture whose subject is a lit tube has to
+ * keep the game alive.
+ */
+function playing(cycles: number, everyCycles = 70_000): InputEvent[] {
+  const events: InputEvent[] = [{ cycle: 0, change: { skill: 1 } }];
+  for (let at = 0, lane = 0; at < cycles; at += everyCycles, lane = (lane + 1) % 3) {
+    events.push({ cycle: at, change: { lane, fire: true } });
+    events.push({ cycle: at + 3_000, change: { fire: false } });
+  }
+  return events;
 }
 
-/** Milliseconds for a cycle count at the 400 kHz oscillator. */
+/** A machine running the real game ROM, powered on and past its RAM clear. */
+function romMachine(): Tms1370Machine {
+  const machine = new Tms1370Machine();
+  machine.setContacts({ skill: 1 });
+  machine.runSweeps(WARMUP_SWEEPS, SWEEP_WAIT_CYCLES);
+  return machine;
+}
+
+/** Milliseconds for a cycle count, at the midpoint instruction rate. */
 function ms(cycles: number): number {
   return (cycles / CYCLE_HZ) * 1000;
 }
 
-/** One sound: a run of D14 edges with no 20 ms of silence inside it. */
+/** One sound: a run of R15 edges with no {@link BURST_GAP_CYCLES} of silence in it. */
 interface Sound {
   readonly firstEdge: number;
   readonly lastEdge: number;
@@ -167,18 +206,18 @@ interface Sound {
    * Stretches inside the sound where the pin was left alone for longer than
    * {@link REFRESH_TIMEOUT_CYCLES}, as `[from, to]` cycle pairs.
    *
-   * BURST_GAP_CYCLES groups two notes played back to back into one sound. The
-   * ROM runs a sweep between two such notes when there is time for one, and
-   * 15 ms is time for one: a march note running straight into a battleship buzz
-   * leaves a hole in the middle of what this function calls a single 152 ms
-   * sound, and the grids are driven in it. A lit tube there is the machine
-   * working, not the blank failing, so the assertions below step around these
-   * holes. Same threshold and same reasoning as sweep-timing.test.ts.
+   * `BURST_GAP_CYCLES` is two sweeps, which groups two notes played back to back
+   * into one sound. The ROM runs a sweep between two such notes when there is
+   * time for one, and two sweeps is time for one: a march note running straight
+   * into another sound leaves a hole in the middle of what this function calls a
+   * single 107 ms sound, and the grids are driven in it. A lit tube there is the
+   * machine working, not the blank failing, so the assertions below step around
+   * these holes. Same threshold and same reasoning as sweep-timing.test.ts.
    */
   readonly holes: readonly (readonly [number, number])[];
 }
 
-/** Split a D14 edge stream into sounds at gaps of {@link BURST_GAP_CYCLES}. */
+/** Split an R15 edge stream into sounds at gaps of {@link BURST_GAP_CYCLES}. */
 function splitSounds(edgeCycles: readonly number[]): Sound[] {
   const sounds: Sound[] = [];
   if (edgeCycles.length === 0) return sounds;
@@ -238,7 +277,7 @@ function emittingSegments(recorder: FakeCanvasContext): number {
 /** One frame as the viewer got it: what was handed to the renderer, and what came out. */
 interface Painted {
   readonly cycle: number;
-  /** Segments the board reported, each with a duty. */
+  /** Segments the machine reported, each with a duty. */
   readonly reported: number;
   /** Highest duty reported, 0 when the tube is dark. */
   readonly peakDuty: number;
@@ -251,10 +290,17 @@ interface Painted {
 /**
  * Run the machine into the renderer, sampling at the frame rate main.ts runs at.
  *
- * Order of operations is main.ts's: advance the machine, drain D14, read the
- * tube, draw it with the same elapsed time the phosphor is integrated over.
+ * Order of operations is main.ts's: advance the machine, drain R15, read the
+ * tube, draw it with the same elapsed time the phosphor is integrated over. The
+ * case contacts are worked from the schedule as the run passes it, which is the
+ * only way a control reaches the game - nothing here writes game state.
  */
-function play(board: Board, renderer: TubeRenderer, recorder: FakeCanvasContext, ids: readonly SegmentId[]): {
+function play(
+  machine: Tms1370Machine,
+  renderer: TubeRenderer,
+  recorder: FakeCanvasContext,
+  ids: readonly SegmentId[],
+): {
   frames: Painted[];
   sounds: Sound[];
 } {
@@ -262,21 +308,31 @@ function play(board: Board, renderer: TubeRenderer, recorder: FakeCanvasContext,
   const edgeCycles: number[] = [];
   const crossings: Array<readonly [number, number]> = [];
   let crossingFrom: number | null = null;
-  const until = board.cycles + RUN_CYCLES;
-  let nextRead = board.cycles + FRAME_CYCLES;
+  const startCycle = machine.cycles;
+  const until = startCycle + RUN_CYCLES;
+  let nextRead = startCycle + FRAME_CYCLES;
+  const events = playing(RUN_CYCLES);
+  let nextEvent = 0;
 
-  while (board.cycles < until) {
-    board.step(SLICE_CYCLES);
-    edgeCycles.push(...board.takeSpeakerEdges().map((edge) => edge.cycle));
-    const crossing = board.cpu.memory.readRam(BSLANE_ADDRESS) !== BS_NONE;
-    if (crossing && crossingFrom === null) crossingFrom = board.cycles;
+  while (machine.cycles < until) {
+    while (
+      nextEvent < events.length &&
+      (events[nextEvent] as InputEvent).cycle <= machine.cycles - startCycle
+    ) {
+      machine.setContacts((events[nextEvent] as InputEvent).change);
+      nextEvent += 1;
+    }
+    machine.step(SLICE_CYCLES);
+    edgeCycles.push(...machine.takeSpeakerEdges().map((edge) => edge.cycle));
+    const crossing = machine.ram[BSLANE_ADDRESS] !== BS_NONE;
+    if (crossing && crossingFrom === null) crossingFrom = machine.cycles;
     if (!crossing && crossingFrom !== null) {
-      crossings.push([crossingFrom, board.cycles]);
+      crossings.push([crossingFrom, machine.cycles]);
       crossingFrom = null;
     }
-    if (board.cycles < nextRead) continue;
+    if (machine.cycles < nextRead) continue;
 
-    const segments = board.getLitSegments();
+    const segments = machine.getLitSegments();
     recorder.calls.length = 0;
     renderer.draw(segments, FRAME_MS);
 
@@ -286,7 +342,7 @@ function play(board: Board, renderer: TubeRenderer, recorder: FakeCanvasContext,
       if (level > peakBrightness) peakBrightness = level;
     }
     frames.push({
-      cycle: board.cycles,
+      cycle: machine.cycles,
       reported: segments.length,
       peakDuty: segments.reduce((peak, segment) => Math.max(peak, segment.duty), 0),
       peakBrightness,
@@ -295,7 +351,7 @@ function play(board: Board, renderer: TubeRenderer, recorder: FakeCanvasContext,
     nextRead += FRAME_CYCLES;
   }
 
-  if (crossingFrom !== null) crossings.push([crossingFrom, board.cycles]);
+  if (crossingFrom !== null) crossings.push([crossingFrom, machine.cycles]);
   const overlapsCrossing = (cycle: number): boolean =>
     crossings.some(([from, to]) => cycle >= from && cycle <= to);
   return {
@@ -307,8 +363,7 @@ function play(board: Board, renderer: TubeRenderer, recorder: FakeCanvasContext,
 }
 
 describe('the blank the ROM makes reaches the glass (D1)', () => {
-  const board = romBoard();
-  board.runFrames(WARMUP_SWEEPS);
+  const machine = romMachine();
 
   const { ctx, recorder } = createFakeContext();
   // Glow off: the bloom is a second fill of the same colour per segment and
@@ -317,7 +372,7 @@ describe('the blank the ROM makes reaches the glass (D1)', () => {
   renderer.resize(726, 600, 1);
   const ids = loadAtlas().segments.map((segment) => segment.id);
 
-  const { frames, sounds } = play(board, renderer, recorder, ids);
+  const { frames, sounds } = play(machine, renderer, recorder, ids);
   const marchNotes = sounds.filter((sound) => {
     const toneMs = ms(sound.lastEdge - sound.firstEdge);
     return toneMs > MARCH_MS_MIN && toneMs < MARCH_MS_MAX;
@@ -325,7 +380,7 @@ describe('the blank the ROM makes reaches the glass (D1)', () => {
 
   /**
    * Frames drawn while `sound` was playing, once the refresh timeout has run
-   * out. The first 5 ms of a blank is the threshold's cost and is not what this
+   * out. The first sweep of a blank is the threshold's cost and is not what this
    * asserts about; everything after it is. Frames inside an internal hole are
    * excluded - see {@link Sound.holes}.
    */
@@ -339,6 +394,7 @@ describe('the blank the ROM makes reaches the glass (D1)', () => {
   }
 
   it('drew several march notes worth of frames, so there is something to assert about', () => {
+    // Measured: six march notes across 921 drawn frames.
     expect(marchNotes.length).toBeGreaterThanOrEqual(3);
     expect(frames.length).toBeGreaterThan(100);
   });
@@ -346,6 +402,14 @@ describe('the blank the ROM makes reaches the glass (D1)', () => {
   it('paints a lit tube while the sweep is running', () => {
     // The control, and the thing that stops every assertion below from being
     // satisfied by a machine that never lights up at all.
+    //
+    // LIT_BRIGHTNESS is imported rather than set here. It used to be a local
+    // 0.8, chosen against a ten-grid tube's ~0.1 reference duty; it is now
+    // derived in src/machine/tube/phosphor.ts from REFERENCE_DUTY through
+    // LIT_DUTY and the gamma - the level a segment held for half the strobe the
+    // sweep gives it reaches, about 0.637 - which is what contract criterion V14
+    // asks for. Measured, 96.5% of frames clear it and the median frame is at a
+    // flat 1.0.
     const lit = frames.filter((frame) => frame.peakBrightness >= LIT_BRIGHTNESS);
     expect(lit.length).toBeGreaterThan(frames.length * 0.5);
     for (const frame of lit) {
@@ -356,9 +420,9 @@ describe('the blank the ROM makes reaches the glass (D1)', () => {
   it('paints nothing at all for the whole of every march note', () => {
     for (const note of marchNotes) {
       const during = framesDuring(note);
-      // A ~68 ms note against a 16.7 ms frame leaves three frames or so inside
-      // it. Asserting there are any is what stops this passing on an empty
-      // window.
+      // A 71 ms note against a 16.7 ms frame and a 15.2 ms timeout leaves three
+      // frames or so inside it - measured, three to five. Asserting there are
+      // any is what stops this passing on an empty window.
       expect(during.length).toBeGreaterThanOrEqual(2);
       for (const frame of during) {
         expect(frame.reported).toBe(0);
@@ -395,9 +459,12 @@ describe('the blank the ROM makes reaches the glass (D1)', () => {
     // The counterpart of the anchor, and the assertion that catches the second
     // half of the fix. With the blank left inside the frame period it fell in,
     // the sweep after a note is measured against a period the note's length
-    // longer: duty ~0.0147 against a normal ~0.0890, which the phosphor's own
-    // curve turns into about 0.29 of full brightness - a visibly dim frame
-    // after every beep rather than a tube that comes straight back.
+    // longer, and every duty in it collapses by that factor - which the
+    // phosphor's own curve turns into a visibly dim frame after every beep
+    // rather than a tube that comes straight back.
+    //
+    // Measured on this machine, the first lit frame after a note comes back at
+    // duty 1.4e-2 against a normal 8.0e-3 and a brightness of a flat 1.0.
     for (const note of marchNotes) {
       const after = frames.filter((frame) => frame.cycle > note.lastEdge);
       const firstLit = after.find((frame) => frame.reported > 0) as Painted;
@@ -414,23 +481,23 @@ describe('the blank the ROM makes reaches the glass (D1)', () => {
     // and not this test's subject; what is asserted is that the blanking is a
     // substantial share of what reaches the glass rather than a transient.
     //
-    // **It was 0.1 and it is now 0.04, and that is worth reading before it is
-    // read as a loosened guardrail.** It used to clear 10% on the battleship
-    // alone: the boat crossed 51 times a minute and blanked the tube for 68 ms
-    // three times a crossing.
+    // **Re-measured on this ROM: 3.5% of the 921 frames drawn, so the floor is
+    // 0.02.** It was 0.04 against a measured 9.0% on the v2 machine. Both the
+    // sounds and the sweep are about seven times slower here in cycles, so that
+    // is not what moved the share - the difference is the beep cadence, and it
+    // is the same shortfall the v2 note ends on.
     //
-    // **The battleship now contributes no blanking at all.** Its buzz is clocked
-    // by the display sweep rather than played by `note_loop`, so the tube keeps
-    // scanning for the whole of a crossing - measured, the worst blank in the
-    // 600 ms after an arrival went from 383.5 ms to 1.5 ms. What is counted here
-    // is the march and the missile, and this window measures 9.0%.
+    // **The battleship contributes no blanking at all**, here as there. Its buzz
+    // is clocked by the display sweep rather than played by the note loop, so
+    // the tube keeps scanning for the whole of a crossing. What is counted here
+    // is the march, the fire blip and the loss sequence.
     //
-    // The shortfall against the 14-17% vfd-appearance.md measures is real and
-    // belongs to the beep cadence - `IMG_6113.mov` measures a march beep every
-    // 0.71 s against this ROM's slowest rung of 1995 ms - which is the open
-    // cadence question T2, and not something to fix by putting the battleship's
-    // note back. The same note is on the same assertion in sweep-timing.test.ts.
+    // The shortfall against 14-17% belongs to the beep cadence -
+    // `IMG_6113.mov` measures a march beep every 0.71 s against this ROM's
+    // slowest rung of 144 sweeps, about 2.2 s - which is the open cadence
+    // question T2, and not something to fix by putting the battleship's note
+    // back. The same note is on the same assertion in sweep-timing.test.ts.
     const dark = frames.filter((frame) => frame.emitting === 0);
-    expect(dark.length / frames.length).toBeGreaterThan(0.04);
+    expect(dark.length / frames.length).toBeGreaterThan(0.02);
   });
 });

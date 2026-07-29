@@ -153,7 +153,7 @@ describe('targetBrightness', () => {
     expect(targetBrightness(Number.NaN, PHOSPHOR.cyan)).toBe(0);
   });
 
-  it('reaches full scale at the reference duty of a 10-grid sweep', () => {
+  it('reaches full scale at the duty a whole strobe accumulates', () => {
     expect(targetBrightness(PHOSPHOR.cyan.referenceDuty, PHOSPHOR.cyan)).toBeCloseTo(1, 10);
     expect(targetBrightness(PHOSPHOR.red.referenceDuty, PHOSPHOR.red)).toBeCloseTo(1, 10);
   });
@@ -164,7 +164,12 @@ describe('targetBrightness', () => {
   });
 
   it('is monotonic in duty and never thresholds it to on/off', () => {
-    const duties = [0.01, 0.02, 0.03, 0.05, 0.07, 0.09];
+    // Fractions of the reference duty rather than absolute duties: what the
+    // sweep delivers to a fully driven segment has moved by more than a decade
+    // between the two machines, and a fixed ladder of duties was one that
+    // saturated on the second of them and stopped testing anything.
+    const shares = [0.1, 0.2, 0.3, 0.5, 0.7, 0.9];
+    const duties = shares.map((share) => share * PHOSPHOR.cyan.referenceDuty);
     const levels = duties.map((d) => targetBrightness(d, PHOSPHOR.cyan));
     for (let i = 1; i < levels.length; i += 1) {
       expect(levels[i]).toBeGreaterThan(levels[i - 1]);

@@ -1,69 +1,81 @@
 // How long the machine keeps running, and why it stops when it stops.
 //
+// Paths in this file are relative to the repository root.
+//
 // ## Why this file exists
 //
-// A long probe run of this ROM looks alarming. Drive 24,000,000 cycles - sixty
-// seconds - with no controls touched and the speaker falls silent partway
-// through and stays silent for the rest of the run. The lit-segment output is
-// byte-identical from there to 40 s, and a fire contact closed at any point
-// afterwards changes neither. Sampling the program counter after that point
-// lands on the inner arm of `dwell` almost every time.
+// A long probe run of this ROM looks alarming. Drive sixty seconds of emulated
+// time with no controls touched and the speaker falls silent partway through
+// and stays silent for the rest of the run. The lit-segment output is
+// byte-identical from there to the end, and a fire contact closed at any point
+// afterwards changes neither it nor the speaker.
 //
 // All of that is true and none of it is a fault. The reading it invites - that
-// the ROM has wedged in a delay loop that never terminates - is wrong, and this
-// file is here so the next person to run that probe does not spend a night
-// chasing it.
+// the ROM has wedged in a loop that never terminates - is wrong, and this file
+// is here so the next person to run that probe does not spend a night chasing
+// it.
 //
 // What is actually happening: the ROM plays a whole game and loses. Jets enter,
 // march one column at a time, and reach the G line; each arrival costs the
 // player a launcher, and the third one ends the game (PRD v1 rule 6, as
 // amended - see that rule for why a capture costs a launcher rather than the
-// game). `game_lost` writes ST_OVER into NIB_STATE and calls the loss sound.
-// From the next sweep on, `tick` reads NIB_STATE, fails its `ALEI ST_PLAY`, and
-// returns - so the sweep keeps running, the tube keeps being refreshed with a
-// picture that no longer changes, and nothing ever touches the speaker again.
-// That is the documented behaviour of the unit: the endings are terminal and
-// the power switch is the only reset. The program counter camps in `dwell`
-// afterwards for the same reason it does before - the sweep spends the great
-// majority of every frame holding a grid lit.
+// game). `game_lost` writes ST_OVER into NIB_STATE and plays the loss sound.
+// From the next sweep on, `tick` reads NIB_STATE, takes its `MNEZ` arm into
+// `tk_ended` and goes straight to `render` - so the sweep keeps running, the
+// tube keeps being refreshed with a picture that no longer changes, and nothing
+// ever touches the speaker again. That is the documented behaviour of the unit:
+// the endings are terminal and the power switch is the only reset.
 //
 // So the tests below pin the three claims that separate "ended" from "wedged":
 //
-//   1. after the sound stops the machine is still sweeping the tube, still
-//      executing, and has decoded no illegal opcode;
+//   1. after the sound stops the machine is still sweeping the tube and still
+//      executing;
 //   2. a machine whose controls are actually being worked keeps sounding and
 //      keeps redrawing far beyond the unattended machine's silence - the game
 //      is playable, and its length is a function of play, not of a timer
 //      running out;
-//   3. throwing the power switch on a finished game starts a new one.
+//   3. powering a finished machine on again starts a new game.
 //
 // (2) is the load-bearing one. It fails for a ROM that has genuinely stopped
 // executing, and passes for one that merely reached an ending, which is the
 // distinction the probe run on its own cannot make.
 //
-// Everything is read off the board's observation surface - `takeSpeakerEdges()`,
-// `getLitSegments()`, `display.frameCount` - and every control movement goes
-// through `setControl`, as a player's hand does. Nothing here reads the ROM's
-// RAM; a test that asserted on NIB_STATE would prove the ROM computed the right
-// number and say nothing about whether the machine was alive.
+// ## Two v2-era assertions that have no TMS1370 counterpart
+//
+// The v2 form of this file asked its core two questions alongside the
+// liveness checks, and neither can be asked of this one. Neither was dropped
+// quietly:
+//
+// - **The low-power state the v2 core's `SBY` instruction enters.** It is a Hitachi
+//   concept with no TMS1000-family counterpart: this core has no such state, so
+//   there is nothing to read and nothing that would be true or false about it.
+//   What that assertion *meant* - the core is still fetching rather than parked
+//   - is what `sweepCount` and the cycle count carry here, and both are asserted
+//   over a window that begins after the machine went quiet.
+// - **Illegal opcodes.** The TMS1370 decoder is total: all 256 eight-bit
+//   patterns are assigned by the fixed instruction PLA, so there is no
+//   unassigned encoding to land on and no counter to read
+//   (`src/machine/cpu/tms1370/decoder.ts`). A corrupted return address is still
+//   possible and is still caught, but by its consequence rather than by a decode
+//   fault: a sweep loop that stopped issuing its twenty-four strobes fails the
+//   windowed grid and sweep assertions below.
+//
+// Everything is read off the probe's observation surface -
+// `takeSpeakerEdges()`, `getFrame()`, `sweepCount`, `strobes` - and every
+// control movement goes through `setContacts`, closing a case contact as a
+// player's hand does. Nothing here reads the ROM's RAM; a test that asserted on
+// NIB_STATE would prove the ROM computed the right number and say nothing about
+// whether the machine was alive.
 //
 // Node-side test: no DOM, no browser globals.
 
-import { describe, it, expect } from "vitest";
-import { resolve } from "node:path";
-import { readFileSync } from "node:fs";
-import { assemble } from "../hmasm/assembler.js";
-import { romImage } from "../hmasm/output.js";
-import { Board } from "../../src/machine/board/board.js";
-import type { SpeakerEdge } from "../../src/machine/board/speaker.js";
-import { CYCLE_HZ } from "../../src/machine/cpu/cpu.js";
+import { describe, it, expect } from 'vitest';
+import { PLAYER_SLICE_CYCLES, SWEEP_HZ } from '../../src/machine/board/tms1370-cadence.js';
+import { GRID_COUNT } from '../../src/machine/cpu/tms1370/ports.js';
+import { CYCLE_HZ } from '../../src/machine/cpu/tms1370/timing.js';
+import { Tms1370Machine, type SpeakerEdge } from './tms1370-probe.js';
 
-const ASM_PATH = resolve(__dirname, "../../asm/jetfighter-hmcs44.asm");
-
-/** Assemble the game ROM once and share the image across the runs below. */
-const ROM = romImage(assemble(readFileSync(ASM_PATH, "utf8"), ASM_PATH));
-
-/** Seconds of emulated time, in machine cycles. */
+/** Seconds of emulated time, in instruction cycles. */
 function seconds(count: number): number {
   return Math.round(count * CYCLE_HZ);
 }
@@ -71,80 +83,96 @@ function seconds(count: number): number {
 /**
  * The moment the unattended machine falls silent, in seconds.
  *
- * Not a target: it is where the capture rule and the provisional cadence
- * constants happen to land today, and it moves whenever those constants do.
- * It is named because it is the figure that started the misdiagnosis, and the
- * horizons below are stated as multiples of it.
+ * Not a target: it is where the capture rule and this machine's cadence
+ * constants happen to land today, and it moves whenever those constants do. It
+ * is named because it is the figure that started the misdiagnosis, and every
+ * horizon below is stated as a multiple of it.
  *
- * It was 5.66 s while a single capture ended the game. Three captures are now
- * survivable (see launcher-lives.test.ts), so an unattended machine has to lose
- * three launchers before it stops.
+ * **24.6 s is measured on the TMS1370**, by driving a machine with no contact
+ * closed at all for ninety seconds of emulated time and timing two things: the
+ * last speaker edge lands at **24.556 s** and the last change of picture at
+ * **24.579 s**. Nothing happens on either surface over the remaining sixty-five
+ * seconds. Both landing together is the point - a machine that had wedged would
+ * show the picture freezing without the sound having finished a phrase.
  *
- * 20.6 s is **measured**, by driving the ROM and timing the last speaker edge
- * and the last change of picture - both land there. An earlier revision of this
- * constant estimated 10.92 s as "roughly twice" the old 5.66 s, which was wrong
- * in two ways: the cadence ladder also doubled (#71), and the three lives are
- * not three equal spans. The estimate left the horizons below just short of the
- * ending they were meant to contain, which is what turned main red.
- *
- * INSTRUCTION-RATE PROVISIONAL: this figure is measured off the emulated
- * machine via `seconds()` below, which converts through `CYCLE_HZ` imported
- * from the HMCS44 core (`src/machine/cpu/cpu.ts`), not the TMS1370 this
- * project is rebuilding onto. It is a real measurement of *this* emulator, but
- * it inherits the TMS1370 instruction rate's provisional status the moment the
- * ROM moves to that core - see docs/research/mp2110-timing-measurement.md.
+ * The v2 figure was 20.6 s and it reached that only after two wrong answers:
+ * 5.66 s while a single capture ended the game, then an *estimated* 10.92 s
+ * offered as "roughly twice" it, which was short of the ending the horizons were
+ * meant to contain and turned main red. This one is measured for that reason,
+ * and it is not the v2 figure rescaled - the instruction rate, the sweep length
+ * and the cadence ladder all moved with the core, so the only honest way to get
+ * it was to run this machine and look.
  */
-const UNATTENDED_SILENCE_S = 20.6;
-
-/** Every control this ROM reads, in the order a blind player works them. */
-const LEVER_POSITIONS = ["up", "centre", "down"] as const;
+const UNATTENDED_SILENCE_S = 24.6;
 
 /**
- * Machine cycles between control movements for the blind player below.
+ * Margin past the ending, in seconds: a fifth of the silence horizon.
  *
- * The lever advances one lane and the fire contact changes state every slice, so
- * a full sweep of the three lanes takes six. At 3,000 cycles - about a fifth of
- * a sweep - the player works the case faster than a human but slower than the
- * ROM's own input scan, which samples each strobe line once per sweep. Nothing
- * about the argument below depends on the exact figure; it decides how well the
- * blind player plays, and therefore how long the game it is playing lasts.
+ * Used wherever a run has to be *certainly* over rather than about to be, and
+ * wherever a short window is needed to show that a machine is or is not
+ * sounding. Derived rather than chosen so that it moves with the ending it is
+ * margin around.
  */
-const PLAYER_SLICE_CYCLES = 3_000;
+const ENDED_MARGIN_S = UNATTENDED_SILENCE_S * 0.2;
+
+/**
+ * The window a liveness question is asked over, in seconds.
+ *
+ * Same reason as {@link ENDED_MARGIN_S}: it is a fraction of the horizon rather
+ * than a figure of its own, so a cadence change moves one number. At today's
+ * value it is a little under five seconds, which is around three hundred sweeps.
+ */
+const LIVENESS_WINDOW_S = UNATTENDED_SILENCE_S / 5;
+
+/** The three lanes the lever's detents select, in the order a hand walks them. */
+const LEVER_LANES = [0, 1, 2] as const;
 
 /**
  * Wall-clock allowance for the runs below.
  *
- * Sixty seconds of emulated time is around twenty million instructions, which
- * takes several wall-clock seconds - comfortably over Vitest's five-second
- * default. The horizon is the point of these tests, so the timeout moves rather
- * than the horizon.
+ * The horizon is the point of these tests, so the timeout moves rather than the
+ * horizon. Each run here is a few million instructions and completes in a couple
+ * of wall-clock seconds, but the allowance is stated rather than inherited so
+ * that a slower machine or a longer horizon does not turn a liveness result into
+ * a timeout.
  */
 const LONG_RUN_TIMEOUT_MS = 60_000;
 
 /**
  * Run the machine, draining the speaker as it goes.
  *
- * The speaker buffer is finite, so a long run has to be drained periodically or
- * it discards edges - which would make a live machine look silent, the exact
- * misreading this file exists to rule out.
+ * The speaker buffer is drained periodically for the same reason the v2 board
+ * had to be: a run that let it grow for a minute of emulated time is holding
+ * tens of thousands of edges nothing will read, and the drained stream is what
+ * every assertion below is phrased over.
  *
- * @param board the machine to advance.
- * @param cycles emulated cycles to run for.
+ * The slice is `PLAYER_SLICE_CYCLES`, a fifth of a sweep, imported rather than
+ * restated: under v2 it was the literal 3,000 in this file and three others, and
+ * every one of them silently meant "at 400 kHz". The blind player below advances
+ * the lever one lane and changes the fire contact every slice, so a full walk of
+ * the three lanes takes six of them - faster than a human works a case, slower
+ * than the ROM's own input scan, which samples each strobe column once per
+ * sweep. Nothing about the argument below depends on the exact figure; it
+ * decides how well the blind player plays, and therefore how long the game it is
+ * playing lasts.
+ *
+ * @param machine the machine to advance.
+ * @param cycles emulated instruction cycles to run for.
  * @param onSlice called before each slice; where a player moves the controls.
  * @returns every speaker edge produced during the run.
  */
 function run(
-  board: Board,
+  machine: Tms1370Machine,
   cycles: number,
-  onSlice?: (board: Board, slice: number) => void,
+  onSlice?: (machine: Tms1370Machine, slice: number) => void,
 ): SpeakerEdge[] {
   const edges: SpeakerEdge[] = [];
-  const target = board.cycles + cycles;
+  const target = machine.cycles + cycles;
   let slice = 0;
-  while (board.cycles < target) {
-    onSlice?.(board, slice);
-    board.step(PLAYER_SLICE_CYCLES);
-    edges.push(...board.takeSpeakerEdges());
+  while (machine.cycles < target) {
+    onSlice?.(machine, slice);
+    machine.step(PLAYER_SLICE_CYCLES);
+    edges.push(...machine.takeSpeakerEdges());
     slice += 1;
   }
   return edges;
@@ -157,16 +185,19 @@ function run(
  * is enough to shoot down jets: the missile launches in whichever lane the lever
  * is standing in, so cycling the lever while pressing fire eventually puts a
  * shot under every jet. It plays badly - it aims at nothing - and it still keeps
- * the game alive well past the unattended machine's own silence, which is
- * the whole point. A player that read the tube would prove less, because its
- * skill rather than the ROM's liveness would be carrying the result.
+ * the game alive well past the unattended machine's own silence, which is the
+ * whole point. A player that read the tube would prove less, because its skill
+ * rather than the ROM's liveness would be carrying the result.
+ *
+ * The skill dial is deliberately left open, exactly as the unattended runs leave
+ * it, so that the only difference between the two populations is the hand on the
+ * lever and the button.
  */
-function blindPlayer(board: Board, slice: number): void {
-  board.setControl(
-    "lever",
-    LEVER_POSITIONS[Math.floor(slice / 2) % LEVER_POSITIONS.length],
-  );
-  board.setControl("fire", slice % 2 === 0 ? "up" : "down");
+function blindPlayer(machine: Tms1370Machine, slice: number): void {
+  machine.setContacts({
+    lane: LEVER_LANES[Math.floor(slice / 2) % LEVER_LANES.length],
+    fire: slice % 2 === 0,
+  });
 }
 
 /**
@@ -189,16 +220,15 @@ const PLATES_LAUNCHER = [6, 7, 8];
  *
  * ## Why the launcher is left out, which is load bearing
  *
- * `tick` returns at its first test once the game is over, but `render_field`
- * does not - the sweep goes on redrawing, and the launcher is drawn in whatever
- * lane the lever is standing in. So on a machine whose game ended, moving the
- * lever still changes the picture, for ever.
+ * `tick` returns to `render` at its first test once the game is over, and the
+ * launcher is drawn in whatever lane the lever is standing in. So on a machine
+ * whose game ended, moving the lever still changes the picture, for ever.
  *
- * That made the liveness assertion below pass on a corpse. Measured: let a
- * machine end unattended, confirm it is silent, then waggle the lever at it for
- * thirty seconds. It produces no speaker edge at all and three distinct
- * pictures - comfortably over the "more than one" the assertion asks for. Take
- * the launcher out of the signature and the same run collapses to one.
+ * That made the liveness assertion below pass on a corpse. Measured on the v2
+ * machine: let one end unattended, confirm it is silent, then waggle the lever
+ * at it for thirty seconds. It produces no speaker edge at all and three
+ * distinct pictures - comfortably over the "more than one" the assertion asks
+ * for. Take the launcher out of the signature and the same run collapses to one.
  *
  * The frozen-picture control could not catch this, because the two runs differ
  * in whether the lever is worked as well as in whether the game is alive: the
@@ -211,18 +241,20 @@ const PLATES_LAUNCHER = [6, 7, 8];
  * ST_PLAY. The missile is the player's too, but a shot can only exist while the
  * game is running, so it is a fair liveness signal and stays in.
  */
-function tubeSignature(board: Board): string {
-  return board
+function tubeSignature(machine: Tms1370Machine): string {
+  return machine
     .getFrame()
-    .segments
-    .filter(
+    .segments.filter(
       (segment) =>
         !(segment.grid === GRID_LAUNCHER && PLATES_LAUNCHER.includes(segment.plate)),
     )
     .map((segment) => `${segment.grid}.${segment.plate}`)
     .sort()
-    .join(" ");
+    .join(' ');
 }
+
+/** How many buckets the sound of a played run is scored over. */
+const SOUND_BUCKETS = 10;
 
 /** Split edges into `count` equal buckets spanning `cycles`, by edge cycle. */
 function bucketByCycle(
@@ -241,58 +273,75 @@ function bucketByCycle(
   return buckets;
 }
 
-describe("the unattended machine reaches an ending rather than wedging", () => {
+describe('the unattended machine reaches an ending rather than wedging', () => {
   it(
-    "keeps sweeping the tube and executing long after the speaker falls silent",
+    'keeps sweeping the tube and executing long after the speaker falls silent',
     () => {
-      const board = new Board(ROM);
+      // `keepStrobes` because the windowed grid assertion below needs to know
+      // *which* grids were driven after the machine went quiet, and the probe's
+      // `getStrobedGrids()` accumulates from power-on with nothing to clear it.
+      const machine = new Tms1370Machine({ keepStrobes: true });
+      const horizon = seconds(UNATTENDED_SILENCE_S * 2.5);
 
-      const edges = run(board, seconds(60));
+      const edges = run(machine, horizon);
 
       // The symptom, reproduced: the speaker stops early and stays stopped.
       expect(edges.length).toBeGreaterThan(0);
-      const lastEdgeSeconds = edges[edges.length - 1].cycle / CYCLE_HZ;
-      expect(lastEdgeSeconds).toBeLessThan(UNATTENDED_SILENCE_S * 2);
+      const lastEdge = edges[edges.length - 1] as SpeakerEdge;
+      expect(lastEdge.cycle / CYCLE_HZ).toBeLessThan(UNATTENDED_SILENCE_S * 2);
 
-      // And the diagnosis it does *not* support. The core is still fetching, it
-      // has not fallen into standby, and it has not decoded a word it could not
-      // execute - which a corrupted return address would eventually produce.
-      expect(board.running).toBe(true);
-      expect(board.cpu.standby).toBe(false);
-      expect(board.cpu.illegalOpcodes).toBe(0);
-      expect(board.cycles).toBeGreaterThanOrEqual(seconds(60));
+      // And the diagnosis it does *not* support. The core is still fetching -
+      // `step` returns only when the budget is spent, so a machine that had
+      // stopped executing could not reach the horizon at all.
+      expect(machine.cycles).toBeGreaterThanOrEqual(horizon);
 
       // The clinching one: whole display sweeps are still being run, measured
       // over a window that begins *after* the machine went quiet.
       //
-      // Both `getStrobedGrids()` and `frameCount` count from the display's last
-      // `clear()`, which nothing but the power switch calls - so read straight
-      // off a sixty-second board they answer "at some point since power-on",
-      // and a ROM that wedged mid-game in a loop touching one grid would still
-      // report all ten from the gameplay that preceded it. Clearing here is
-      // what makes the next five seconds the thing being observed. It resets
-      // the display's own bookkeeping and blanks its grid and plate masks;
-      // it does not touch the CPU, and the next grid the ROM raises restores
-      // the masks.
-      board.display.clear(board.cycles);
-      expect(board.display.frameCount).toBe(0);
-      expect(board.getStrobedGrids()).toEqual([]);
+      // Both the strobe log and `sweepCount` count from power-on, so read
+      // straight off a finished machine they answer "at some point since power
+      // came up", and a ROM that wedged mid-game in a loop touching one grid
+      // would still report every grid from the gameplay that preceded it.
+      // Taking marks here is what makes the next window the thing being
+      // observed. Nothing is reset - there is no reset but the power switch -
+      // so the marks are indices into what has already been recorded.
+      //
+      // The whole-run figure is asserted too, and against `GRID_COUNT` rather
+      // than against a list of grid numbers: this machine scans nine grids where
+      // the v2 board it replaces scanned ten, and a suite carrying its own
+      // copy of that number is how a ten-grid assumption survives a rebuild.
+      expect(machine.getStrobedGrids()).toEqual(
+        Array.from({ length: GRID_COUNT }, (_unused, grid) => grid),
+      );
+      const strobesBefore = machine.strobes.length;
+      const sweepsBefore = machine.sweepCount;
 
-      run(board, seconds(5));
+      run(machine, seconds(LIVENESS_WINDOW_S));
 
-      // All ten grids inside that window, so it is the whole sweep running and
-      // not a fragment of it - and enough completed PWM frames to be sweeps
-      // rather than one stalled grid. Five seconds is around 320 frames at the
-      // sweep period the ROM's header derives; a hundred is a floor with room
-      // for the cadence constants to move.
-      expect(board.getStrobedGrids()).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
-      expect(board.display.frameCount).toBeGreaterThan(100);
+      // And the same claim again, this time bounded to the window: every grid
+      // the part defines, driven *after* the machine went quiet, so it is the
+      // whole sweep still running and not a fragment of it. This is the half the
+      // assertion above cannot make, because that one is satisfied by the
+      // gameplay that preceded the ending.
+      const gridsInWindow = [
+        ...new Set(machine.strobes.slice(strobesBefore).map((strobe) => strobe.grid)),
+      ].sort((left, right) => left - right);
+      expect(gridsInWindow).toEqual(
+        Array.from({ length: GRID_COUNT }, (_unused, grid) => grid),
+      );
+
+      // And enough completed sweeps in the window to be sweeps rather than one
+      // stalled grid. The expected count is the window at `SWEEP_HZ`; half of it
+      // is the floor, which leaves room for the sweep to slow under whatever is
+      // on the glass without leaving room for it to have stopped.
+      const sweepsInWindow = machine.sweepCount - sweepsBefore;
+      expect(sweepsInWindow).toBeGreaterThan((SWEEP_HZ * LIVENESS_WINDOW_S) / 2);
     },
     LONG_RUN_TIMEOUT_MS,
   );
 
   it(
-    "freezes its picture, which is what the played machine is measured against",
+    'freezes its picture, which is what the played machine is measured against',
     () => {
       // The negative control for the liveness assertion in the next block, and
       // the reason that assertion is not vacuous: the same measurement, on the
@@ -302,24 +351,49 @@ describe("the unattended machine reaches an ending rather than wedging", () => {
       // still running whole sweeps - so what distinguishes it is that its
       // picture stops changing. A liveness check that this machine also passes
       // is measuring nothing.
-      const board = new Board(ROM);
+      const machine = new Tms1370Machine();
       // Twice the measured silence, so the ending falls well inside the first
-      // two thirds and the window below is entirely after it. At a 20 s horizon
-      // this sampled the ending itself - the machine falls silent at 20.6 s -
-      // and read the game still playing as a picture that had not frozen.
+      // two thirds and the window below is entirely after it. At a horizon equal
+      // to the silence itself this would sample the ending, and read a game
+      // still playing as a picture that had not frozen.
       const horizon = seconds(UNATTENDED_SILENCE_S * 2);
-      const { samples } = sampleRun(board, horizon);
 
-      expect(new Set(lastThird(board, horizon, samples)).size, "frozen picture").toBe(1);
+      // Marked at the two-thirds point, for the same reason the played run below
+      // marks there: `sweepCount` accumulates from power-on, so read off a
+      // finished machine it is satisfied by one that swept normally through the
+      // first half of the horizon and then wedged solid. That machine is
+      // precisely what this negative control has to *fail* to exclude, and an
+      // unwindowed count passes it. The mark makes the last third the thing
+      // being observed.
+      let sweepsAtTwoThirds = -1;
+      const twoThirds = machine.cycles + Math.floor((horizon * 2) / 3);
+      const { samples } = sampleRun(machine, horizon, (playing) => {
+        if (sweepsAtTwoThirds < 0 && playing.cycles >= twoThirds) {
+          sweepsAtTwoThirds = playing.sweepCount;
+        }
+      });
+
+      expect(new Set(lastThird(machine, horizon, samples)).size, 'frozen picture').toBe(1);
       // And frozen while still sweeping, so the two properties are independent
-      // and the played machine has to satisfy both.
-      expect(board.display.frameCount).toBeGreaterThan(100);
+      // and the played machine has to satisfy both. The whole-run figure is kept
+      // as well as the windowed one: it is the weaker claim, but dropping it
+      // would trade one assertion for another rather than adding the half that
+      // was missing.
+      expect(sweepsAtTwoThirds, 'a mark was taken at the two-thirds point').toBeGreaterThan(0);
+      expect(machine.sweepCount).toBeGreaterThan((SWEEP_HZ * UNATTENDED_SILENCE_S) / 2);
+      // The last third of the horizon is `UNATTENDED_SILENCE_S * 2 / 3` seconds;
+      // half the sweeps that window should hold is the floor, the same shape of
+      // allowance the sibling windows use.
+      expect(
+        machine.sweepCount - sweepsAtTwoThirds,
+        'still completing sweeps after the two-thirds mark',
+      ).toBeGreaterThan((SWEEP_HZ * UNATTENDED_SILENCE_S) / 3);
     },
     LONG_RUN_TIMEOUT_MS,
   );
 
   it(
-    "is not brought back to life by working the lever at it",
+    'is not brought back to life by working the lever at it',
     () => {
       // The second negative control, and the one the first cannot supply.
       //
@@ -329,45 +403,51 @@ describe("the unattended machine reaches an ending rather than wedging", () => {
       // actually reading. This run holds the first fixed and varies the second:
       // a machine that has definitely ended, with a hand working the controls.
       //
-      // It matters because the answer used to be the wrong one. `render_field`
-      // keeps drawing the launcher in whatever lane the lever selects long
-      // after `tick` has stopped doing anything, so a dead machine with a moved
-      // lever produced a changing picture and passed the liveness assertion.
-      // See `tubeSignature` for the measurement and the fix.
-      const board = new Board(ROM);
-      run(board, seconds(UNATTENDED_SILENCE_S + 3));
+      // It matters because the answer used to be the wrong one. The render step
+      // keeps drawing the launcher in whatever lane the lever selects long after
+      // `tick` has stopped doing anything, so a dead machine with a moved lever
+      // produced a changing picture and passed the liveness assertion. See
+      // `tubeSignature` for the measurement and the fix.
+      const machine = new Tms1370Machine();
+      run(machine, seconds(UNATTENDED_SILENCE_S + ENDED_MARGIN_S));
+      const sweepsBefore = machine.sweepCount;
 
       // Definitely finished: nothing more from the speaker, whatever is done to
       // it from here.
-      const { edges, samples } = sampleRun(board, seconds(UNATTENDED_SILENCE_S), blindPlayer);
-      expect(edges, "a finished game makes no sound however the case is worked").toEqual([]);
+      const { edges, samples } = sampleRun(
+        machine,
+        seconds(UNATTENDED_SILENCE_S),
+        blindPlayer,
+      );
+      expect(edges, 'a finished game makes no sound however the case is worked').toEqual([]);
 
       // And definitely still sweeping, so this is a picture that could have
       // changed and did not, rather than a display that stopped being driven.
-      expect(new Set(samples.map((sample) => sample.picture)).size, "frozen picture").toBe(1);
-      expect(board.display.frameCount).toBeGreaterThan(100);
+      expect(new Set(samples.map((sample) => sample.picture)).size, 'frozen picture').toBe(1);
+      expect(machine.sweepCount - sweepsBefore).toBeGreaterThan(
+        (SWEEP_HZ * UNATTENDED_SILENCE_S) / 2,
+      );
     },
     LONG_RUN_TIMEOUT_MS,
   );
 });
 
 /**
- * Run a board and sample what the tube shows, with the samples timestamped.
+ * Run a machine and sample what the tube shows, with the samples timestamped.
  *
  * Timestamps are the point: a liveness question about the *end* of a run has to
- * be asked of a window that begins near the end of it. Both `getStrobedGrids()`
- * and `frameCount` answer "at some point since the display was last cleared",
- * so read straight off a finished board they are satisfied by a machine that
- * worked for six seconds and then wedged - which is the machine these tests
- * exist to exclude.
+ * be asked of a window that begins near the end of it. Both the strobe log and
+ * `sweepCount` answer "at some point since power-on", so read straight off a
+ * finished machine they are satisfied by one that worked for six seconds and
+ * then wedged - which is the machine these tests exist to exclude.
  */
 function sampleRun(
-  board: Board,
+  machine: Tms1370Machine,
   horizon: number,
-  onSlice?: (board: Board, slice: number) => void,
+  onSlice?: (machine: Tms1370Machine, slice: number) => void,
 ): { edges: SpeakerEdge[]; samples: { cycle: number; picture: string }[] } {
   const samples: { cycle: number; picture: string }[] = [];
-  const edges = run(board, horizon, (playing, slice) => {
+  const edges = run(machine, horizon, (playing, slice) => {
     onSlice?.(playing, slice);
     if (slice % 100 === 0) {
       samples.push({ cycle: playing.cycles, picture: tubeSignature(playing) });
@@ -378,100 +458,110 @@ function sampleRun(
 
 /** The samples taken in the last third of a run of `horizon` cycles. */
 function lastThird(
-  board: Board,
+  machine: Tms1370Machine,
   horizon: number,
   samples: readonly { cycle: number; picture: string }[],
 ): string[] {
-  const from = board.cycles - Math.floor(horizon / 3);
+  const from = machine.cycles - Math.floor(horizon / 3);
   return samples.filter((sample) => sample.cycle >= from).map((sample) => sample.picture);
 }
 
-describe("a machine whose controls are worked keeps playing", () => {
+describe('a machine whose controls are worked keeps playing', () => {
   it(
-    "sounds and redraws throughout a run far longer than the unattended machine",
+    'sounds and redraws throughout a run far longer than the unattended machine',
     () => {
-      const board = new Board(ROM);
-      const horizon = seconds(20);
+      const machine = new Tms1370Machine();
+      // Half again as long as the unattended machine's whole life, so "far
+      // longer than the unattended machine" is a property of the horizon rather
+      // than of the reader's goodwill.
+      const horizon = seconds(UNATTENDED_SILENCE_S * 1.5);
 
-      let framesAtTwoThirds = -1;
-      const twoThirds = board.cycles + Math.floor((horizon * 2) / 3);
-      const { edges, samples } = sampleRun(board, horizon, (playing, slice) => {
+      let sweepsAtTwoThirds = -1;
+      const twoThirds = machine.cycles + Math.floor((horizon * 2) / 3);
+      const { edges, samples } = sampleRun(machine, horizon, (playing, slice) => {
         blindPlayer(playing, slice);
-        if (framesAtTwoThirds < 0 && playing.cycles >= twoThirds) {
-          framesAtTwoThirds = playing.display.frameCount;
+        if (sweepsAtTwoThirds < 0 && playing.cycles >= twoThirds) {
+          sweepsAtTwoThirds = playing.sweepCount;
         }
       });
 
-      // Sound across the run, not just its first six seconds. Ten buckets of
-      // two seconds each.
+      // Sound across the run, not just its first few seconds. Ten buckets.
       //
       // The bug this guards is a machine that stops *dead* partway in - the
-      // unattended one, whose picture is byte-identical from six seconds on. A
-      // blind player being destroyed is not that: the game ends, correctly, and
-      // the tube goes on being swept and redrawn. This used to require all ten
-      // buckets, which also required the blind player to survive the whole
-      // twenty seconds, and that is not a property of the machine - it depends
-      // on the sampled counter the game takes its randomness from, so any change
-      // that moves the cycle stream by a few cycles a sweep moves it.
+      // unattended one, whose picture is byte-identical from 24.6 s on. A blind
+      // player being destroyed is not that: the game ends, correctly, and the
+      // tube goes on being swept and redrawn. This used to require all ten
+      // buckets, which also required the blind player to survive the whole run,
+      // and that is not a property of the machine - it depends on the sampled
+      // counter the game takes its randomness from, so any change that moves the
+      // cycle stream by a few cycles a sweep moves it.
       //
       // So the assertion is on the shape of the sound, not on its last bucket:
       // no silent gap anywhere inside the sounding part of the run, and the
       // sound reaching well past the point the bug stopped at.
-      const buckets = bucketByCycle(edges, horizon, 10);
-      const lastHeard = buckets.reduce((last, count, i) => (count > 0 ? i : last), -1);
-      expect(lastHeard, "sound reached past 16 s").toBeGreaterThanOrEqual(7);
+      const buckets = bucketByCycle(edges, horizon, SOUND_BUCKETS);
+      const lastHeard = buckets.reduce((last, count, at) => (count > 0 ? at : last), -1);
+      expect(lastHeard, 'sound reached the last third of the run').toBeGreaterThanOrEqual(
+        Math.floor(SOUND_BUCKETS * 0.7),
+      );
       expect(
         buckets.slice(0, lastHeard + 1).filter((count) => count > 0),
-        "no silent stretch before the game ends",
+        'no silent stretch before the game ends',
       ).toHaveLength(lastHeard + 1);
 
       // And a tube still being swept and still changing *at the end of the
       // run*, which is the half of this the bucket count no longer carries.
       //
       // Every assertion here is anchored on the horizon rather than on
-      // power-on, and that is the whole point. `getStrobedGrids()` and the
-      // signature-against-signatures[0] comparisons both count from the
-      // display's last clear, so a machine that swept normally for six seconds
-      // and then wedged solid satisfies all of them - they are true of exactly
-      // the machine this test exists to exclude. That hole was fixed once
-      // before on this project, in #54, and it came back the same way.
-      const late = lastThird(board, horizon, samples);
-      expect(late.length, "enough late samples to mean anything").toBeGreaterThan(3);
+      // power-on, and that is the whole point. A strobe log and a sweep count
+      // both accumulate from power-on, so a machine that swept normally for six
+      // seconds and then wedged solid satisfies any assertion phrased over the
+      // whole run - they are true of exactly the machine this test exists to
+      // exclude. That hole was fixed once before on this project, in #54, and it
+      // came back the same way.
+      const late = lastThird(machine, horizon, samples);
+      expect(late.length, 'enough late samples to mean anything').toBeGreaterThan(3);
       expect(
         new Set(late).size,
-        "the picture was still changing in the last third of the run",
+        'the picture was still changing in the last third of the run',
       ).toBeGreaterThan(1);
-      // And frames were still being completed after the two-thirds mark: a
-      // wedged sweep stops closing PWM frames, however many it closed earlier.
-      expect(framesAtTwoThirds).toBeGreaterThan(0);
+      // And sweeps were still being completed after the two-thirds mark: a
+      // wedged sweep loop stops closing them, however many it closed earlier.
+      expect(sweepsAtTwoThirds).toBeGreaterThan(0);
       expect(
-        board.display.frameCount,
-        "the sweep was still completing frames at the horizon",
-      ).toBeGreaterThan(framesAtTwoThirds);
+        machine.sweepCount,
+        'the sweep was still completing periods at the horizon',
+      ).toBeGreaterThan(sweepsAtTwoThirds);
     },
     LONG_RUN_TIMEOUT_MS,
   );
 });
 
-describe("the power switch is the way back", () => {
+describe('the power switch is the way back', () => {
   it(
-    "starts a new game on a machine that has already ended one",
+    'starts a new game on a machine that has already ended one',
     () => {
-      const board = new Board(ROM);
+      // There is no power switch on this harness, and there must not be a
+      // restart path anywhere else either - CLAUDE.md's rule, and the reason the
+      // v2 board's `powerOff()`/`powerOn()` pair has no counterpart here.
+      // Constructing a `Tms1370Machine` *is* power-on: the core resets with RAM
+      // undefined and the ROM clears all 112 nibbles itself before it draws
+      // anything. So the second machine below is the same act the switch
+      // performs, expressed the only way this machine offers it.
+      const ended = new Tms1370Machine();
 
-      // Past the measured 20.6 s at which an unattended game runs out of
+      // Past the measured 24.6 s at which an unattended game runs out of
       // launchers, with margin - not a round number chosen by eye.
-      run(board, seconds(UNATTENDED_SILENCE_S + 3));
-      expect(run(board, seconds(3))).toHaveLength(0); // ended, and silent
+      run(ended, seconds(UNATTENDED_SILENCE_S + ENDED_MARGIN_S));
+      expect(run(ended, seconds(ENDED_MARGIN_S))).toHaveLength(0); // ended, and silent
 
-      board.powerOff();
-      board.powerOn();
+      const fresh = new Tms1370Machine();
 
       // A fresh game: the sound comes back and the tube starts moving again.
-      const signature = tubeSignature(board);
-      const edges = run(board, seconds(3));
+      const signature = tubeSignature(fresh);
+      const edges = run(fresh, seconds(ENDED_MARGIN_S));
       expect(edges.length).toBeGreaterThan(0);
-      expect(tubeSignature(board)).not.toEqual(signature);
+      expect(tubeSignature(fresh)).not.toEqual(signature);
     },
     LONG_RUN_TIMEOUT_MS,
   );

@@ -2,17 +2,22 @@
 //
 // Paths in this file are relative to the repository root.
 //
-// This is the harness the v3 game program is measured with while the board and
-// the renderer are still HMCS44's - `tools/probe/machine-probe.ts` drives that
-// machine and v3 task 13 re-derives it. What this one needs is smaller and
-// lives one layer down: the core, the ROM, the output PLA, and the R and O pins
-// as they actually move. No DOM, no timers, no clock of its own.
+// This is the harness the v3 game program is measured with. `machine-probe.ts`
+// beside it still drives the HMCS44 board and is task 11's to repoint; what this
+// one needs is smaller and lives one layer down: the core, the ROM, the output
+// PLA, and the R and O pins as they actually move. No DOM, no timers, no clock
+// of its own.
 //
 // It is a module rather than a CLI because everything that reads it is a test.
 // A sweep here is a *measured* quantity - the cycles between two successive
 // strobes of the same grid in the same pass - and `src/machine/board/`'s
 // cadence constants are derived from the figure this harness reports rather
 // than from an estimate of it.
+//
+// Two shapes, one machine. {@link runGame} runs a whole drive from an input
+// schedule and hands back what happened; {@link Tms1370Machine} is the same
+// machine stepped a slice at a time, for the suites that decide what to do next
+// from what the tube is showing. The pin wiring is written once, in the class.
 
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -21,6 +26,8 @@ import { oplaImage, romImage } from '../tmsasm/output.js';
 import { Tms1370Cpu } from '../../src/machine/cpu/tms1370/cpu.js';
 import { Tms1370OutputPla } from '../../src/machine/cpu/tms1370/opla.js';
 import { Tms1370Rom } from '../../src/machine/cpu/tms1370/memory.js';
+import { PwmAccumulator, type PwmFrame, type SegmentDuty } from '../../src/machine/board/pwm.js';
+import { REFRESH_TIMEOUT_CYCLES } from '../../src/machine/board/tms1370-cadence.js';
 import {
   GRID_COUNT,
   K1,
@@ -30,11 +37,15 @@ import {
   O_PLATE_COUNT,
   PLATE_COUNT,
   R_GRID_LAST,
+  R_GRID_MASK,
   R_PLATE_FIRST,
+  R_PLATE_LAST,
   R_SPEAKER,
   R_STROBE_FIRST,
   R_STROBE_LAST,
 } from '../../src/machine/cpu/tms1370/ports.js';
+
+export type { PwmFrame, SegmentDuty };
 
 /** The game program, relative to the repository root. */
 export const ROM_SOURCE = 'asm/jetfighter.asm';
@@ -119,121 +130,366 @@ export function cellKey(grid: number, plate: number): string {
 }
 
 /**
- * Run the game program and record what the pins did.
+ * The TMS1370 machine as a probe suite observes it: pins, tube and speaker.
  *
- * The R latch is tracked here rather than through `Tms1370Ports` because this
- * harness wants the *history* - when a grid rose and fell, in cycles - and the
- * port file is a state object. Both read the same pin numbering out of
- * `ports.ts`, so there is no second answer about which R line is a grid.
+ * `runGame` below runs a whole drive and hands back what happened. This is the
+ * same machine driven a slice at a time, for the suites that have to *decide*
+ * what to do next from what the tube is showing - park the lever out of the
+ * boat's lane, read the glass at 60 Hz and draw it, stop when the game ends.
+ *
+ * Three things it owns that the core does not:
+ *
+ * 1. **The R latch's history.** `Tms1370Ports` is a state object; this wants to
+ *    know when a grid rose and when it fell, in cycles, because that interval is
+ *    the whole of a segment's duty.
+ * 2. **The frame period.** `src/machine/board/display.ts` closes a frame when a
+ *    grid rises that has already risen, which was right for a machine that drew
+ *    each grid once per sweep. This one draws four passes and visits grid 0 in
+ *    three of them, so that rule would call every *pass* a frame and hand the
+ *    renderer one family at a time. The boundary here is the sweep wrapping -
+ *    grid 0 rising after the last grid has been strobed - which is the same
+ *    marker `sweepPeriods` uses and the period the tube is actually refreshed
+ *    over.
+ * 3. **The blanking rule.** A tube nothing has driven for longer than
+ *    `REFRESH_TIMEOUT_CYCLES` is dark, and the stalled interval comes out of the
+ *    frame period it fell in rather than dimming the sweeps either side of it.
+ *    Both are `Display`'s rules, applied here to this machine's frame boundary.
+ *
+ * No DOM, no timers, no clock of its own: nothing advances unless `step` is
+ * called.
  */
-export function runGame(options: RunOptions): RunResult {
-  const assembled = assembleGame();
-  const outputPla = new Tms1370OutputPla(oplaImage(assembled));
-  const contacts: Contacts = {};
-  const events = [...(options.input ?? [])].sort((left, right) => left.cycle - right.cycle);
-  let nextEvent = 0;
+export class Tms1370Machine {
+  private readonly cpu: Tms1370Cpu;
+  private readonly outputPla: Tms1370OutputPla;
+  private readonly pwm = new PwmAccumulator(GRID_COUNT, PLATE_COUNT);
+  private readonly contacts: Contacts = {};
+  private readonly keepStrobes: boolean;
 
-  let r = 0;
-  let o = 0;
-  const gridsStrobed = new Set<number>();
-  const speakerEdges: SpeakerEdge[] = [];
-  const strobes: Strobe[] = [];
-  const litCells = new Set<string>();
-  const oMasks = new Set<number>();
-  const superimposedStrobes: number[] = [];
-  const gridRoseAt = new Map<number, number>();
-  let firstLitCycle: number | undefined;
+  private r = 0;
+  private o = 0;
 
-  const plateMask = (): number =>
-    (o & 0xff) | (((r >>> R_PLATE_FIRST) & 0xf) << O_PLATE_COUNT);
+  private readonly _speakerEdges: SpeakerEdge[] = [];
+  private readonly _strobes: Strobe[] = [];
+  private readonly _litCells = new Set<string>();
+  private readonly _oMasks = new Set<number>();
+  private readonly _superimposedStrobes: number[] = [];
+  private readonly _gridsStrobed = new Set<number>();
+  private readonly gridRoseAt = new Map<number, number>();
+  private _firstLitCycle: number | undefined;
 
-  const readK = (): number => {
-    let value = contacts.fire ? K8 : 0;
-    const column = (r >>> R_STROBE_FIRST) & 0b11;
-    if (column & 0b01 && contacts.skill !== undefined) {
-      value |= [K1, K2, K4][contacts.skill - 1] ?? 0;
+  private sawLastGrid = false;
+  private lastDriveCycle = 0;
+  private lastFrame: PwmFrame | undefined;
+  private _sweepCount = 0;
+
+  constructor(options: { readonly keepStrobes?: boolean } = {}) {
+    this.keepStrobes = options.keepStrobes ?? false;
+    const assembled = assembleGame();
+    this.outputPla = new Tms1370OutputPla(oplaImage(assembled));
+    this.cpu = new Tms1370Cpu({
+      rom: new Tms1370Rom(romImage(assembled)),
+      outputPla: this.outputPla,
+      pins: {
+        readK: () => this.readK(),
+        writeOIndex: (index) => this.writeOIndex(index),
+        writeR: (index, on) => this.writeR(index, on),
+      },
+    });
+    this.cpu.reset();
+  }
+
+  /** Instruction cycles executed since power-on. */
+  get cycles(): number {
+    return this.cpu.cycles;
+  }
+
+  /** Sweeps the tube has completed - frame periods, on this machine. */
+  get sweepCount(): number {
+    return this._sweepCount;
+  }
+
+  /** Display-grid R lines driven at any point: R0-R8 only. */
+  get gridsStrobed(): readonly number[] {
+    return [...this._gridsStrobed].sort((left, right) => left - right);
+  }
+
+  /** Every grid strobe so far, when the machine was built with `keepStrobes`. */
+  get strobes(): readonly Strobe[] {
+    return this._strobes;
+  }
+
+  /** (grid, plate) pairs the ROM has lit at any point. */
+  get litCells(): ReadonlySet<string> {
+    return this._litCells;
+  }
+
+  /** Plate masks the O port has emitted, which closure is asserted over. */
+  get oMasks(): ReadonlySet<number> {
+    return this._oMasks;
+  }
+
+  /** Cycles at which more than one of R9/R10 was high. Must stay empty. */
+  get superimposedStrobes(): readonly number[] {
+    return this._superimposedStrobes;
+  }
+
+  /** The cycle of the first strobe of any grid - power-on to first light. */
+  get firstLitCycle(): number | undefined {
+    return this._firstLitCycle;
+  }
+
+  /** Every speaker edge so far, without consuming any. */
+  get speakerEdges(): readonly SpeakerEdge[] {
+    return this._speakerEdges;
+  }
+
+  /** RAM as it stands, as a flat 128-nibble image addressed `file * 16 + nibble`. */
+  get ram(): Uint8Array {
+    return Uint8Array.from({ length: 128 }, (_unused, address) =>
+      this.cpu.ram.read(address >> 4, address & 0xf),
+    );
+  }
+
+  /** Close one or more case contacts, leaving the rest as they are. */
+  setContacts(change: Contacts): void {
+    Object.assign(this.contacts, change);
+  }
+
+  /**
+   * Advance the machine by a cycle budget.
+   *
+   * A budget, not a schedule: the last instruction may carry the count past the
+   * budget, and the caller gets the cycles actually executed. Same contract as
+   * `Board.step`, which is what makes a drive written against one readable
+   * against the other.
+   */
+  step(budget: number): number {
+    const from = this.cpu.cycles;
+    const until = from + Math.max(0, budget);
+    while (this.cpu.cycles < until) {
+      this.cpu.step();
     }
-    if (column & 0b10 && contacts.lane !== undefined) {
-      value |= [K1, K2, K4][contacts.lane] ?? 0;
+    return this.cpu.cycles - from;
+  }
+
+  /**
+   * Run until `count` further sweeps have completed, or `maxCycles` are spent.
+   *
+   * The ceiling is not optional and not a nicety: the ROM stops sweeping for the
+   * whole of every sound and for good once the game ends, so a caller waiting on
+   * a sweep that will not come needs the loop to end rather than the suite to
+   * time out sixty seconds later.
+   */
+  runSweeps(count: number, maxCycles: number): number {
+    const from = this.cpu.cycles;
+    const target = this._sweepCount + count;
+    while (this._sweepCount < target && this.cpu.cycles - from < maxCycles) {
+      this.cpu.step();
+    }
+    return this.cpu.cycles - from;
+  }
+
+  /** Take every speaker edge buffered since the last call. */
+  takeSpeakerEdges(): readonly SpeakerEdge[] {
+    return this._speakerEdges.splice(0, this._speakerEdges.length);
+  }
+
+  /** Instruction cycles since a grid was last driven. Zero while one is up. */
+  refreshGap(cycle = this.cpu.cycles): number {
+    if ((this.r & R_GRID_MASK) !== 0) {
+      return 0;
+    }
+    return Math.max(0, cycle - this.lastDriveCycle);
+  }
+
+  /** True while the sweep is still refreshing the tube. */
+  isRefreshing(cycle = this.cpu.cycles): boolean {
+    return this.refreshGap(cycle) <= REFRESH_TIMEOUT_CYCLES;
+  }
+
+  /** The last sweep the tube completed, or an empty frame before the first. */
+  getFrame(): PwmFrame {
+    return (
+      this.lastFrame ?? {
+        startCycle: this.pwm.frameStart,
+        endCycle: this.pwm.frameStart,
+        cycles: 0,
+        segments: [],
+      }
+    );
+  }
+
+  /**
+   * What is on the tube at `cycle` - the frame a renderer should draw.
+   *
+   * `Display.getObservedFrame`'s rule, and for its reason: a stalled sweep
+   * completes no period, so the last completed one would go on being reported as
+   * lit for as long as the ROM held the speaker. Past the refresh timeout this
+   * reports what is true instead - no grid driven, so nothing lit.
+   */
+  getObservedFrame(cycle = this.cpu.cycles): PwmFrame {
+    if (this.isRefreshing(cycle)) {
+      return this.getFrame();
+    }
+    return {
+      startCycle: this.lastDriveCycle,
+      endCycle: cycle,
+      cycles: cycle - this.lastDriveCycle,
+      segments: [],
+    };
+  }
+
+  /** Segments lit over the last completed sweep, with their duty. */
+  getLitSegments(cycle = this.cpu.cycles): readonly SegmentDuty[] {
+    return this.getObservedFrame(cycle).segments;
+  }
+
+  /** Distinct display grids driven since power-on, ascending. */
+  getStrobedGrids(): readonly number[] {
+    return this.gridsStrobed;
+  }
+
+  private readK(): number {
+    let value = this.contacts.fire ? K8 : 0;
+    const column = (this.r >>> R_STROBE_FIRST) & 0b11;
+    if (column & 0b01 && this.contacts.skill !== undefined) {
+      value |= [K1, K2, K4][this.contacts.skill - 1] ?? 0;
+    }
+    if (column & 0b10 && this.contacts.lane !== undefined) {
+      value |= [K1, K2, K4][this.contacts.lane] ?? 0;
     }
     return value;
-  };
+  }
 
-  const writeOIndex = (index: number): void => {
-    o = outputPla.decode(index) & 0xff;
-    oMasks.add(o);
-  };
+  private plateMask(): number {
+    return (this.o & 0xff) | (((this.r >>> R_PLATE_FIRST) & 0xf) << O_PLATE_COUNT);
+  }
 
-  const writeR = (index: number, on: boolean): void => {
-    const before = r;
-    r = on ? r | (1 << index) : r & ~(1 << index);
-    if (r === before) {
+  private writeOIndex(index: number): void {
+    const next = this.outputPla.decode(index) & 0xff;
+    this._oMasks.add(next);
+    if (next === this.o) {
       return;
     }
-    const cycle = cpu.cycles;
+    this.o = next;
+    this.pwm.recordState(this.r & R_GRID_MASK, this.plateMask(), this.cpu.cycles);
+  }
+
+  private writeR(index: number, on: boolean): void {
+    const before = this.r;
+    this.r = on ? this.r | (1 << index) : this.r & ~(1 << index);
+    if (this.r === before) {
+      return;
+    }
+    const cycle = this.cpu.cycles;
     if (index === R_SPEAKER) {
-      speakerEdges.push({ cycle, level: on ? 1 : 0 });
+      this._speakerEdges.push({ cycle, level: on ? 1 : 0 });
       return;
     }
     if (index >= R_STROBE_FIRST && index <= R_STROBE_LAST) {
-      const driven = ((r >>> R_STROBE_FIRST) & 0b01) + ((r >>> (R_STROBE_FIRST + 1)) & 0b01);
+      const driven =
+        ((this.r >>> R_STROBE_FIRST) & 0b01) + ((this.r >>> (R_STROBE_FIRST + 1)) & 0b01);
       if (driven > 1) {
-        superimposedStrobes.push(cycle);
+        this._superimposedStrobes.push(cycle);
       }
+      return;
+    }
+    if (index >= R_PLATE_FIRST && index <= R_PLATE_LAST) {
+      this.pwm.recordState(this.r & R_GRID_MASK, this.plateMask(), cycle);
       return;
     }
     if (index > R_GRID_LAST) {
       return;
     }
     if (on) {
-      gridsStrobed.add(index);
-      gridRoseAt.set(index, cycle);
-      firstLitCycle ??= cycle;
-      const plates = plateMask();
-      for (let plate = 0; plate < PLATE_COUNT; plate += 1) {
-        if ((plates >>> plate) & 1) {
-          litCells.add(cellKey(index, plate));
-        }
-      }
-      return;
+      this.gridRose(index, cycle);
+    } else {
+      this.gridFell(index, cycle);
     }
-    const rose = gridRoseAt.get(index);
+    this.pwm.recordState(this.r & R_GRID_MASK, this.plateMask(), cycle);
+  }
+
+  private gridRose(grid: number, cycle: number): void {
+    // Drive resuming after the sweep stopped. The stall comes out of the frame
+    // period it happened in: the tube was not being scanned then, so it is not
+    // refresh time, and leaving it in would make the sweeps either side of a
+    // sound read as dim ones. `PwmAccumulator.exclude`, and `Display`'s rule.
+    if ((this.r & R_GRID_MASK & ~(1 << grid)) === 0) {
+      const gap = cycle - this.lastDriveCycle;
+      if (gap > REFRESH_TIMEOUT_CYCLES) {
+        this.pwm.exclude(gap);
+      }
+    }
+
+    // The sweep wrapping, which is this machine's frame boundary. The last grid
+    // is only reached in the two high-bank passes, so seeing it and then grid 0
+    // is the boundary without the harness having to know the pass order - the
+    // same marker `sweepPeriods` takes its periods between.
+    if (grid === GRID_COUNT - 1) {
+      this.sawLastGrid = true;
+    } else if (grid === 0 && this.sawLastGrid) {
+      this.lastFrame = this.pwm.endFrame(cycle);
+      this._sweepCount += 1;
+      this.sawLastGrid = false;
+    }
+
+    this._gridsStrobed.add(grid);
+    this.gridRoseAt.set(grid, cycle);
+    this._firstLitCycle ??= cycle;
+    const plates = this.plateMask();
+    for (let plate = 0; plate < PLATE_COUNT; plate += 1) {
+      if ((plates >>> plate) & 1) {
+        this._litCells.add(cellKey(grid, plate));
+      }
+    }
+  }
+
+  private gridFell(grid: number, cycle: number): void {
+    if ((this.r & R_GRID_MASK) === 0) {
+      this.lastDriveCycle = cycle;
+    }
+    const rose = this.gridRoseAt.get(grid);
     if (rose === undefined) {
       return;
     }
-    gridRoseAt.delete(index);
-    if (options.keepStrobes) {
-      strobes.push({ cycle: rose, grid: index, plates: plateMask(), cycles: cycle - rose });
+    this.gridRoseAt.delete(grid);
+    if (this.keepStrobes) {
+      this._strobes.push({ cycle: rose, grid, plates: this.plateMask(), cycles: cycle - rose });
     }
-  };
+  }
+}
 
-  const cpu = new Tms1370Cpu({
-    rom: new Tms1370Rom(romImage(assembled)),
-    outputPla,
-    pins: { readK, writeOIndex, writeR },
-  });
-  cpu.reset();
-  while (cpu.cycles < options.cycles) {
-    while (nextEvent < events.length && (events[nextEvent] as InputEvent).cycle <= cpu.cycles) {
-      Object.assign(contacts, (events[nextEvent] as InputEvent).change);
+/**
+ * Run the game program and record what the pins did.
+ *
+ * The whole-drive form of {@link Tms1370Machine}: apply the input schedule as
+ * the run passes it, and hand back what happened. A suite that has to decide
+ * what to do next from what the tube is showing drives the machine directly
+ * instead.
+ */
+export function runGame(options: RunOptions): RunResult {
+  const machine = new Tms1370Machine({ keepStrobes: options.keepStrobes ?? false });
+  const events = [...(options.input ?? [])].sort((left, right) => left.cycle - right.cycle);
+  let nextEvent = 0;
+
+  while (machine.cycles < options.cycles) {
+    while (nextEvent < events.length && (events[nextEvent] as InputEvent).cycle <= machine.cycles) {
+      machine.setContacts((events[nextEvent] as InputEvent).change);
       nextEvent += 1;
     }
-    cpu.step();
+    machine.step(1);
   }
 
   return {
-    cycles: cpu.cycles,
-    gridsStrobed: [...gridsStrobed].sort((left, right) => left - right),
-    speakerEdges,
-    strobes,
-    litCells,
-    oMasks,
-    superimposedStrobes,
-    firstLitCycle,
-    ram: Uint8Array.from(
-      { length: 128 },
-      (_unused, address) => cpu.ram.read(address >> 4, address & 0xf),
-    ),
+    cycles: machine.cycles,
+    gridsStrobed: machine.gridsStrobed,
+    speakerEdges: machine.speakerEdges,
+    strobes: machine.strobes,
+    litCells: machine.litCells,
+    oMasks: machine.oMasks,
+    superimposedStrobes: machine.superimposedStrobes,
+    firstLitCycle: machine.firstLitCycle,
+    ram: machine.ram,
   };
 }
 

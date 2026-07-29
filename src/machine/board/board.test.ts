@@ -115,10 +115,17 @@ describe('Board - the CPU drives the tube', () => {
     }
   });
 
-  it('sweeps every grid, D0 through D9 (contract V3)', () => {
+  it('sweeps every grid the board scans (contract V3)', () => {
+    // Built from `GRID_COUNT` rather than typed out as `[0..9]`. Criterion V14
+    // requires `getStrobedGrids` to be compared against the count and never
+    // against a literal list: a written-out ten-grid list is an assumption that
+    // survives a re-addressing without saying so, and how many grids this board
+    // scans is exactly the thing v3 task 11.3 changes.
     const board = new Board(sweepRom());
     board.step(SWEEP_CYCLES * 2);
-    expect(board.getStrobedGrids()).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(board.getStrobedGrids()).toEqual(
+      Array.from({ length: GRID_COUNT }, (_unused, grid) => grid),
+    );
   });
 
   it('accumulates a duty strictly between 0 and 1 (contract V3)', () => {

@@ -16,6 +16,7 @@
 
 import { DEFAULT_TOPOLOGY, type DisplayTopology } from '../topology.js';
 import { PwmAccumulator, type PwmFrame, type SegmentDuty } from './pwm.js';
+import { REFRESH_TIMEOUT_CYCLES } from './tms1370-cadence.js';
 
 /**
  * Display grids the board scans by default: ten, driven by D0-D9.
@@ -70,23 +71,28 @@ export const PLATE_MASK = DEFAULT_TOPOLOGY.plateMask;
  * | the loss sequence                            | 254,754 (636.9 ms)  |
  *
  * **No interval at all falls between 707 and 16,990** - confirmed separately in
- * both runs. 2000 therefore sits 2.8x above the longest gap a running sweep
- * produces and 8.5x below the shortest a sound produces, so neither ordinary
- * sweep jitter nor a longer-than-average pass through the game logic can reach
- * it. 5 ms at the 400 kHz oscillator.
+ * both runs. The 2000 this module carried therefore sat 2.8x above the longest
+ * gap a running sweep produced and 8.5x below the shortest a sound produced, so
+ * neither ordinary sweep jitter nor a longer-than-average pass through the game
+ * logic could reach it. 5 ms at the 400 kHz oscillator.
  *
- * An earlier revision of this table gave 13-660 and "shortest note ~4045". The
- * 4045 was not observed in either run - the shortest blank is the *whole*
- * two-beep warning at 16,990, because the sweep does not resume between its two
- * beeps. The constant was well chosen either way; the numbers justifying it
- * understated the margin fourfold, which would have made a future reader think
- * 2000 was closer to the edge than it is.
+ * **That figure was a literal, and every part of the table above is the HMCS44's
+ * 400 kHz.** At the TMS1370's instruction rate the same wall-clock intervals are
+ * seven times fewer cycles and 2000 lands the wrong side of them, which is the
+ * first of PRD R5's six re-derivation classes and what
+ * `docs/contract/v3.contract.md` criterion V14 forbids: no listed cycle constant
+ * may be a numeric literal unless the same file also defines the sweep length it
+ * derives from. This module defines no sweep length, so it does not define this
+ * constant either - it re-exports the one
+ * {@link ../board/tms1370-cadence.js `tms1370-cadence.ts`} derives from the
+ * measured sweep, where the reasoning for three sweeps' worth lives beside the
+ * sweep it is three of.
  *
  * It is not a frame period and does not impose one: nothing here schedules a
  * refresh, this only decides how long a tube left undriven goes on being
  * reported as lit. See {@link Display.getObservedFrame}.
  */
-export const REFRESH_TIMEOUT_CYCLES = 2000;
+export { REFRESH_TIMEOUT_CYCLES };
 
 /** Immutable view of the tube at an instant. */
 export interface DisplaySnapshot {
