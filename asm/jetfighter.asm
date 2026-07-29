@@ -125,7 +125,10 @@
 
 .EQU R_STROBE_SKILL, 9          ; drive R9 to read the skill dial on K1/K2/K4
 .EQU R_STROBE_LEVER, 10         ; drive R10 to read the lever on K1/K2/K4
-.EQU R_PLATE_FIRST,  11         ; R11 is plate 8; R11-R14 are plates 8-11
+.EQU R_PLATE_FIRST,  11         ; R11 is plate 8; R11-R14 are plates 8-11. Spent
+                                ; as the `A10AAC` in sweep_rplate, for the
+                                ; reason the thresholds below are: an addend is
+                                ; part of its mnemonic and cannot be a name
 .EQU R_SPEAKER,      15
 
 .EQU K_BIT_FIRE,     3          ; K8, the fire contact, live on every K read
@@ -253,7 +256,6 @@
 .EQU NIB_J_SENT,     3          ; jets of this wave released so far, 0..6
 .EQU NIB_J_ROTOR,    4          ; the lane the next entry tries first
 .EQU NIB_J_WORK,     5          ; the lane a loop is working on
-.EQU NIB_J_BIT,      6          ; that lane as a bitmap, 1/2/4
 .EQU NIB_J_MOVED,    7          ; set when a jet stepped this sweep
 .EQU NIB_J_TMP,      8          ; arithmetic scratch
 .EQU NIB_J_SCR,      9          ; arithmetic scratch
@@ -262,9 +264,15 @@
 ; Values
 ; ============================================================================
 
-.EQU LANE_LAST,      2          ; three lanes, 0..2
-.EQU LANE_COUNT,     3
+.EQU LANE_COUNT,     3          ; three lanes, 0..2
 .EQU BS_NONE,       15          ; NIB_BSLANE when no crossing is in progress
+;
+; The next two are thresholds rather than operands, and they read as unused
+; because of how a threshold is tested here. There is no compare-against-a-
+; constant instruction: "A >= n" is `A(16-n)AAC` and a read of the carry, so
+; JET_COUNT is spent as the `A10AAC` in jet_release and HITS_LAST as the
+; `A13AAC` in launcher_down. The addend is part of the mnemonic, so the name
+; cannot appear in the operand and has to appear in the comment beside it.
 .EQU JET_COUNT,      6          ; a squadron: six jets, released a few at a time
 .EQU HITS_LAST,      3          ; three launchers; the third loss ends the game
 .EQU ST_PLAY,        0
