@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
+    "compare": "vite-node tools/compare/cli.ts",
     "lint": "eslint .",
     "preview": "vite preview"
   },

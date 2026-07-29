@@ -135,7 +135,7 @@ export const nodeFs: RomsetFs = {
  * eventually let it escape as a non-zero exit.
  */
 export function inspectRomset(directory: string, fs: RomsetFs = nodeFs): RomsetInspection {
-  const names = Object.values(ARTIFACTS);
+  const names: readonly string[] = Object.values(ARTIFACTS);
   const present = names.filter((name) => fs.exists(join(directory, name)));
   const absent = names.filter((name) => !present.includes(name));
   return {
