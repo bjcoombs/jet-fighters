@@ -279,13 +279,106 @@
 .EQU ST_OVER,        1
 .EQU ST_WIN,         2
 
-.EQU SCORE_JET,      1          ; points for a jet
+; --- what a jet is worth, and where the three numbers come from --------------
 ;
-; MEASURED. assets/reference/sprites/README.md reads the score off the gameplay
-; video across the cell-0 burst at frames 6134-6159: 28 at frame 6106 and 38 at
-; frame 6162, "exactly +10 across it", with the three jet-kill bursts that follow
-; accounting for a further +3 by frame 6234 - a jet at one point and the boat at
-; ten, in the same seven seconds of one recording. PRD v1 R4 says the same.
+; The overlay silkscreens a scoring ruler - `10 / 3 / 2 / 1 / G` - and these are
+; it. A jet scores by the column it stood in when the missile reached it, which
+; `score_jet` reads out of NIB_KCOL.
+;
+; **The derivation, from the ink rather than from taste.**
+; src/machine/tube/layout.ts registered the ruler photographically against both
+; lit close-ups, correcting the keystone by locating the printed frame rails at
+; two rows apiece and interpolating to the ruler's own row. Three things come out
+; of that registration and none of them was assumed:
+;
+;   - The field is seven cells (COLUMN_COUNT), counted off the unlit-tube
+;     teardown photo: cell 0 the battleship over printed sea, cells 1-5 the jet
+;     columns, cell 6 the player's end at the G line. Those are grids 0-5 here.
+;   - The ruler runs on its *own* pitch, not the cell pitch: seven ticks across
+;     seven and a half tick-pitches of field width. So tick k sits k * 0.9333
+;     cells right of the left crosshair, and floor(0.9333k) = k-1 for k = 1..7 -
+;     every tick lands in its own cell, one cell per tick, in order.
+;   - Each numeral's bracket drops on a tick: 10 on tick 1, 3 on tick 2, 2 on
+;     tick 3, 1 on tick 4, G on tick 6. Ticks 5 and 7 carry no label.
+;
+; A raw pixel scan of assets/reference/screen-overlay-closeup.jpg agrees: left
+; crosshair at x=507, separator ticks at 596 / 684 / 769 / 856 / 944, right
+; crosshair at 1156 - even spacing near 88 px across a 648 px span - with the
+; bracket verticals of 3, 2 and 1 at 684 / 770 / 856 and G's at 1030.
+;
+; The cross-check that the registration is the right one: cell centres computed
+; from layout.ts land at 111.4 / 142.5 / 173.6 / 204.7 / 235.9 / 267.0 / 298.1
+; atlas units, against measured atlas sprite centres of 113.0 for the battleship,
+; 139.8 / 170.7 / 201.2 / 232.3 / 263.1 for jets 1-5 and 307.3 for the launcher.
+; One unit of agreement in a 31-unit cell.
+;
+; So the labelled band [tick k-1, tick k] is 79-100% covered by cell k-1:
+;
+;   ruler `10` -> cell 0, the battleship's own cell, which carries no jet column
+;   ruler `3`  -> cell 1 = grid 1, the far end beside the horizon
+;   ruler `2`  -> cell 2 = grid 2
+;   ruler `1`  -> cell 3 = grid 3
+;   ruler `G`  -> cell 6, the launcher's cell - the capture line, not a score
+;
+; **`10` is the boat's tick, not a jet value.** It drops wholly inside cell 0,
+; where no jet ever stands, and the battleship-kill burst is the only thing seen
+; there (sprites/README.md: it occurs only at u 0.27, the boat's own position).
+;
+; **`G` is the capture line.** Its bracket is *mirrored* - the vertical drops on
+; tick 6 and the horizontal runs right to the letter, where 10/3/2/1 all put the
+; numeral to the left of their drop - so G labels the band to the *right* of tick
+; 6, which is cell 6, the launcher's. Measured launcher u = 6.190, sd 0.059.
+;
+; **Grids 4 and 5 are a clamp, and are written here as a clamp rather than
+; dressed up as a reading.** The ruler names no value past `1`; grids 4 and 5
+; carry bare ticks. They cannot be worth more than grid 3 - the ink is monotone,
+; farther is more - and a kill worth nothing is not a reading anyone has
+; proposed, so the last named band extends to G. That is an inference from two
+; constraints, not a fourth numeral on the overlay.
+.EQU SCORE_JET,      1          ; the near bands: grids 3, 4 and 5
+.EQU SCORE_JET_MID,  2          ; ruler `2`: grid 2
+.EQU SCORE_JET_FAR,  3          ; ruler `3`: grid 1, the far end
+;
+; **This overturns a committed prohibition, by testimony and not by measurement.
+; Say so plainly, because the next reader needs to see which kind of evidence
+; moved it.**
+;
+; Until now this was a flat `SCORE_JET, 1`, and that was a reasonable conclusion
+; from the evidence then available rather than an oversight. The superseded note
+; read, and it is kept here because a deleted rule gets reinvented:
+;
+;   > MEASURED. assets/reference/sprites/README.md reads the score off the
+;   > gameplay video across the cell-0 burst at frames 6134-6159: 28 at frame
+;   > 6106 and 38 at frame 6162, "exactly +10 across it", with the three jet-kill
+;   > bursts that follow accounting for a further +3 by frame 6234 - a jet at one
+;   > point and the boat at ten, in the same seven seconds of one recording. PRD
+;   > v1 R4 says the same.
+;
+; That section of sprites/README.md went further and forbade this change: "Until
+; then, no distance-dependent jet score should be built into the ROM." Three
+; things lifted it, in descending order of weight:
+;
+;   1. **The owner, playing the physical unit, confirms that farther kills score
+;      more.** Asked directly, with the prohibition and the re-reading below both
+;      put in front of him. He has the machine; this ROM is a reconstruction.
+;      This is testimony, and it is what actually settles it.
+;   2. One of the three burst episodes the +1-per-kill count rests on is a
+;      probable double-detection - four frames against a 19-frame median, at the
+;      same cell and lane as an episode that ended seven frames earlier, starting
+;      on the same frame as the cell-3 burst. On the two-kill reading the window
+;      holds kills at cell 2 and cell 3, and 2 + 1 = 3 is exactly the digits that
+;      were read. See sprites/README.md, which now records this.
+;   3. The one unambiguously isolated kill in the recording - cell 3, score 41 at
+;      frame 6290 to 42 at frame 6400 - pays +1, which is what the table above
+;      says cell 3 pays. It does not discriminate between the two readings, but
+;      it corroborates one row of the table directly.
+;
+; Point 2 is a re-reading of someone else's detection output, not a fresh
+; measurement, and the video is not in the tree to re-derive it from. If the
+; score is ever decoded on every frame, that is the measurement that would
+; settle this properly, and it should be run against the table above.
+;
+; tools/probe/scoring-ruler.test.ts asserts the table from the outside.
 ;
 ; Like JET_COUNT and HITS_LAST above, the name cannot appear in an operand. Ten
 ; does not fit the units path: `add_score` sums the points into NIB_SC_U with a
@@ -1445,9 +1538,38 @@ missile_kill:
 
 .PAGE P_SCORE
 
+; A jet is worth what the ruler prints over the column it died in - 3 at the far
+; end, 2 in the middle band, 1 from there to G. See the derivation beside
+; SCORE_JET.
+;
+; The column at the moment of impact is already in hand: `missile_kill` writes
+; NIB_KCOL as the grid *plus one* (so that zero can mean "no burst") before it
+; branches here, and that is the grid the missile actually reached the jet on,
+; not the grid the jet was released into. So this needs no new state and reaches
+; into nothing on P_HIT.
+;
+; Three points is safe through the units stage, which ten is not: `add_score`
+; sums into NIB_SC_U with a four-bit AMAAC, and 3 + 9 = 12 stays inside the
+; nibble for the add-six correction to work on. That is the whole reason
+; `score_bship` has its own path, and the reason this one does not need one.
 score_jet:
-        CLA
-        TCY  SCORE_JET
+        LDX  FILE_STATE
+        TCY  NIB_KCOL
+        TMA                     ; A <- the burst's grid, plus one
+        TAY
+        YNEC 2                  ; grid 1, under the ruler's `3`
+        BR   sj_not_far
+        TCY  SCORE_JET_FAR
+        TYA
+        BR   add_score
+sj_not_far:
+        YNEC 3                  ; grid 2, under the ruler's `2`
+        BR   sj_near
+        TCY  SCORE_JET_MID
+        TYA
+        BR   add_score
+sj_near:
+        TCY  SCORE_JET          ; grids 3, 4 and 5 - the clamp to the last band
         TYA
         BR   add_score
 ; The boat is ten points, which is one on the tens digit and nothing at all on
