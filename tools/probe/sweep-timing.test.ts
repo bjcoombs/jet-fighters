@@ -653,12 +653,31 @@ describe('the tube goes dark while a note plays (D1)', () => {
     }
   });
 
-  it.fails('blanks for a visible fraction of the run, not a flicker', () => {
-    // ## Expected to fail, and the failure is the finding
+  it('blanks for a visible fraction of the run, not a flicker', () => {
+    // ## This was `it.fails()` and now passes - on 0.19 of a percentage point
     //
-    // **Measured now: 2.83% of the window, against this floor of 3% and against
-    // `vfd-appearance.md`'s 14-17% of frames fully dark during active play.**
-    // The ROM does not reach its own guardrail, let alone the evidence.
+    // **Measured at `STEP_HI_MAX` 8: 3.19% of the window, against this floor of
+    // 3%.** At rung 9 it was **2.83%** and this was an expected failure.
+    //
+    // **The gap closed from the march cadence, not from missiles.** Speeding the
+    // top rung up makes the squadron beep more often, every beep stops the sweep,
+    // and the blanked fraction rises. Nothing about the missile changed.
+    //
+    // **So this is no longer multi-missile's acceptance gate, and it should not
+    // be treated as one.** That role belongs to
+    // `render-fidelity.test.ts`'s `it.fails('draws shots in two lanes at the same
+    // instant')`, which tests the feature directly rather than one of its
+    // side effects. Reading a green here as "the rank landed" would be reading a
+    // cadence change as a missile change.
+    //
+    // **The margin is 6% of the floor and the quantity is cadence-dependent**, so
+    // a future tuning change can push it back under. If that happens the honest
+    // move is to record the new figure, not to lower the floor: 3% is already an
+    // order of magnitude under `vfd-appearance.md`'s measured 14-17% of frames
+    // fully dark during active play, and the shortfall against *that* is the
+    // finding this test has always carried.
+    //
+    // What the original placeholder said, kept because it is still the argument:
     //
     // It used to pass, and it passed for a reason unrelated to the ROM's sound
     // budget. A lead-in silence had been added to `launcher_down` so the
@@ -681,11 +700,11 @@ describe('the tube goes dark while a note plays (D1)', () => {
     // fire blips and with them the blank fraction.** The 14-17% figure is
     // measured off a machine that has them; this ROM has one.
     //
-    // So it is left failing rather than widened. Lowering the floor to 0.02
-    // would hide a gap against measured evidence to make a branch green, and the
-    // gap is a live argument about the machine. When multi-missile lands, this
-    // should be re-measured and the `.fails` removed - a red here after that is a
-    // regression, not this placeholder.
+    // Lowering the floor to 0.02 would hide a gap against measured evidence to
+    // make a branch green, and the gap is a live argument about the machine.
+    // When multi-missile lands this should be re-measured again - the rank is
+    // still expected to roughly triple the fire blips, and 3.19% against a
+    // measured 14-17% says most of the shortfall is still there.
     // vfd-appearance.md measures 14-17% of frames fully dark during active play,
     // against 0% in the quiet control window. This is the same statement made
     // over cycles instead of camera frames: the floor is deliberately well under

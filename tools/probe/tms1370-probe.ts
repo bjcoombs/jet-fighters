@@ -98,6 +98,21 @@ export interface RunOptions {
   readonly cycles: number;
   /** Contact changes to apply as the run passes them. */
   readonly input?: readonly InputEvent[];
+  /**
+   * A closed-loop player, consulted every step, returning contacts to close.
+   *
+   * `input` is a fixed schedule and cannot defend: since a capture costs a
+   * launcher in any lane (`open-questions.md` section 6) a game ends in 19-37 s
+   * against an open-loop drive, so a run needing a battleship crossing, a rocket
+   * in every lane, or a three-digit score never reaches it. A longer `cycles`
+   * does not help - the *game* ends rather than the clock.
+   *
+   * Reading state to decide where to aim is the same latitude every drive in
+   * this directory takes; the lever still reaches the game only by closing a
+   * contact on the K matrix. It costs no reproducibility, because this ROM has
+   * no randomness: `NIB_RAND` does not exist and both rotors are round robins.
+   */
+  readonly policy?: (machine: Tms1370Machine) => Contacts | undefined;
   /** Keep every strobe rather than only the counts. Off by default: a second
    *  of emulated time is about 40000 of them. */
   readonly keepStrobes?: boolean;
@@ -273,7 +288,31 @@ export class Tms1370Machine {
     this.cpu.ram.write(file, nibble, value);
   }
 
-  /** Close one or more case contacts, leaving the rest as they are. */
+  /**
+   * Close one or more case contacts, leaving the rest as they are.
+   *
+   * ## Aim a sweep before you fire, or the shot goes down the wrong lane
+   *
+   * **A property of this machine's input path, not of any one drive.** The ROM
+   * samples the lever and the fire button in the same sweep, and `tick_fire` is
+   * edge triggered on the button: it acts on the press using whatever
+   * `NIB_LANE` held when that sweep read it. So a drive that moves the lever and
+   * presses fire in one `setContacts` call fires down **whichever lane the lever
+   * held last**, not the one it just asked for.
+   *
+   * Set the lane, let at least one sweep pass, then press. `SWEEP_INSTRUCTIONS`
+   * is the interval; 5 ms is what the drives in this directory use.
+   *
+   * **The symptom is a low score, not an error**, which is why it has been found
+   * three separate times rather than once:
+   *
+   * - `scoring-ruler.test.ts` - per-column aiming missed its column
+   * - `tms1370-rom.test.ts` - a defending policy scored **1 point in 45 seconds**
+   * - the battleship census - shots arrived where the boat had been
+   *
+   * Nothing throws, nothing is out of range, and the drive looks like it is
+   * playing. It is firing into empty lanes.
+   */
   setContacts(change: Contacts): void {
     Object.assign(this.contacts, change);
   }
@@ -499,6 +538,10 @@ export function runGame(options: RunOptions): RunResult {
     while (nextEvent < events.length && (events[nextEvent] as InputEvent).cycle <= machine.cycles) {
       machine.setContacts((events[nextEvent] as InputEvent).change);
       nextEvent += 1;
+    }
+    if (options.policy !== undefined) {
+      const change = options.policy(machine);
+      if (change !== undefined) machine.setContacts(change);
     }
     machine.step(1);
   }

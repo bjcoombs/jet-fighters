@@ -1,5 +1,26 @@
 # Timing analysis
 
+> **This is a v2 / HMCS44 document. Read it with that in front of you.**
+>
+> **Its measurements of the physical unit remain valid** - the frame-stepped
+> intervals in the tables below, the score-indexed cadence, the crossing figures.
+> Those measure Gakken's machine, and no rewrite of ours touches them.
+>
+> **Its implementation claims describe a program that no longer exists.** The
+> HMCS44 assembly, `PAT_STEP`, `SPEED_LAST`, `WAVE_LAST` and `NIB_WAVE` were
+> replaced wholesale by the TMS1370 program in #112, and the HMCS44 toolchain was
+> removed in #115. Where this file says a change "was made", it was made *to v2*.
+> The v3 ladder is `STEP_HI_MAX` / `STEP_HI_MIN` / `STEP_SKILL` in
+> `asm/jetfighter.asm`, computed in `step_reload`, and it carries no permanent
+> whole-game term at all.
+>
+> The marker exists because its absence misled two readers in one afternoon: once
+> into reporting `WAVE_LAST` as a documented change that never landed - it landed
+> in #67, was refined in #71, and went with the rewrite - and once into treating
+> "the reference descends monotonically across a whole game" as settled, when the
+> T3 row below lists that very quantity as unmeasured. Neither half of this
+> document is wrong. The file was, for want of two lines.
+
 How the v2 ROM's cadence constants will be derived from the reference video, and
 what is currently blocked.
 

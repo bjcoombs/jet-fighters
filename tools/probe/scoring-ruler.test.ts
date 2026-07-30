@@ -79,6 +79,18 @@ const NIB_SC_H = 12;
 /** `NIB_BSLANE` when no crossing is in progress. */
 const BS_NONE = 15;
 
+/** The squadron's march countdown, and the far end of the field. */
+const NIB_STEP_LO = 13;
+const NIB_STEP_HI = 14;
+const GRID_COL_LAST = 5;
+
+/**
+ * Sweeps a shot spends crossing one column: `MISSILE_HI * 16 + MISSILE_LO + 1`.
+ * The low nibble reloads to 15 and is spent first, so it is 32 and not 16 - the
+ * same correction the march and the battleship pairs carry.
+ */
+const MISSILE_COLUMN_SWEEPS = 32;
+
 /** Seconds of emulated time, as the cycle count the probe takes. */
 const seconds = (value: number): number => Math.round(value * CYCLE_HZ);
 
@@ -222,6 +234,44 @@ function boatHunt(): { attempts: number; kills: Kill[] } {
         const boat = ram[FILE_STATE * 16 + NIB_BSLANE] as number;
         if (boat !== BOAT_TOP_LANE) {
           firedThisCrossing = false;
+          // ## Between crossings the hunt has to defend, or it never sees a
+          // ## second one
+          //
+          // This drive used to do nothing at all while no boat was in the top
+          // lane, which was survivable while `jm_capture` let a jet crossing the
+          // G line outside the lever's lane through for nothing. With the
+          // settled rule - a capture costs a launcher in any lane - a player who
+          // only ever shoots at boats loses all three launchers in twenty to
+          // thirty seconds and sees one or two crossings in a whole game.
+          //
+          // So between crossings it kills the deepest jet, aiming a sweep ahead
+          // of the fire because the ROM samples lever and button together and
+          // `tick_fire` is edge triggered.
+          //
+          // **It holds fire for the whole of a crossing rather than only at the
+          // top lane.** A shot takes 3.0 s to reach the horizon and the top lane
+          // is held for 1.29 s of a 3.9 s crossing, so a missile launched at a
+          // jet mid-crossing is still in flight when the lead window opens and
+          // `NIB_MCOL` blocks the shot that matters. Defending only while
+          // `BS_NONE` keeps the barrel free for the boat.
+          if (boat === BS_NONE) {
+            let deepest = -1;
+            let target = 0;
+            for (const candidate of [0, 1, 2]) {
+              const grid = ram[FILE_JETS * 16 + candidate] as number;
+              if (grid > deepest) {
+                deepest = grid;
+                target = candidate;
+              }
+            }
+            if (deepest > 0 && (ram[FILE_STATE * 16 + NIB_MCOL] as number) === 0) {
+              machine.setContacts({ lane: target });
+              machine.step(SAMPLE_CYCLES);
+              machine.setContacts({ fire: true });
+              machine.step(FIRE_HOLD_CYCLES);
+              machine.setContacts({ fire: false });
+            }
+          }
           continue;
         }
         if (
@@ -280,6 +330,8 @@ function aimedDrive(forSeconds: number, aim: Aim, skill = 1): Drive {
       ended = state === ST_WIN ? "won" : state === ST_OVER ? "lost" : "clock";
       break;
     }
+
+    const jetsNow = [0, 1, 2].map((lane) => ram[FILE_JETS * 16 + lane] as number);
 
     const seen = scoreOf(ram);
     if (score < 0) {
@@ -340,10 +392,30 @@ function aimedDrive(forSeconds: number, aim: Aim, skill = 1): Drive {
       continue;
     }
 
-    const jets = [0, 1, 2].map((lane) => ram[FILE_JETS * 16 + lane] as number);
+    const jets = jetsNow;
     let lane: number;
     if (aim.kind === "only") {
-      lane = jets.indexOf(aim.column);
+      // **Only fire when the shot can still arrive before the jet steps away.**
+      //
+      // A shot advances a column every `MISSILE_HI * 16 + MISSILE_LO + 1` = 32
+      // sweeps, so reaching grid `C` from the launcher costs `(5 - C) * 32`.
+      // The squadron's own countdown says how long that jet will stay put. A
+      // drive that fires whenever it *sees* a jet on the column spends shots
+      // that arrive after it has moved, and the kill then lands one column in
+      // and is filtered out - so the column reads as unreachable when it is
+      // merely badly aimed.
+      //
+      // This is the same lead the boat needs below, for the same reason.
+      //
+      // It did not matter at `STEP_HI_MAX` 9, where the march period was 2438 ms
+      // against a 1951 ms flight to grid 1 - firing on sight left 487 ms of
+      // slack. At 8 the slack is 244 ms, and the drive has to aim.
+      const marchLeft =
+        (ram[FILE_TIME * 16 + NIB_STEP_HI] as number) * 16 +
+        (ram[FILE_TIME * 16 + NIB_STEP_LO] as number) +
+        1;
+      const flight = (GRID_COL_LAST - aim.column) * MISSILE_COLUMN_SWEEPS;
+      lane = marchLeft > flight ? jets.indexOf(aim.column) : -1;
     } else {
       // Preferred column first so the drive covers the field, then the boat
       // when it is crossing - it has to be shot at deliberately or the census

@@ -873,6 +873,41 @@ this run alone changed the missile speed eighteen-fold, added a wave retreat, co
 march ladder's arithmetic and tripled the scoring rate, and that the next cadence change
 will do it again to drives nobody has looked at.
 
+### 11b. Work outside a timeout's reach, and the sweep that closes it
+
+A second general form, and the reason it deserves its own entry is that **its symptom
+appears in innocent code**. A slow test does not fail. It starves whatever the runner has
+in parallel, so unrelated files time out and look broken while the slow one stays green.
+
+Three instances, all one shape:
+
+| Where the work ran | How it surfaced |
+| --- | --- |
+| Inside an `it`, with no explicit timeout | A 5.4 s drive against Vitest's 5 s default. Green locally, red on a slower runner |
+| In a `describe` body, and at module scope | Drives evaluated during collection, outside every per-test timeout. Found in review |
+| At module scope | A coverage search no per-test timeout could reach. A badly-playing lever took it from 49 s to 246 s and timed out `render-fidelity`, `launcher-lives` and `tms1370-rom` - none of which had anything wrong |
+
+The third is the instructive one: **four failures were reported in three files whose code
+was correct**, and they were nearly filed as real defects.
+
+**The sweep this defines, and it is a checklist rather than an investigation.** Find every
+drive, search or loop that runs outside a bounded context - module scope, a `describe`
+body, anything not inside an `it` or a `beforeAll` carrying an explicit budget - and bound
+it. Mechanical and greppable.
+
+**It does not need a measured constant, and that is what unblocks it.** The fix is *that a
+bound exists*, not that the bound is the right size: a generous ceiling that makes a file
+name itself is the whole benefit, and a wrong-but-generous number costs nothing. The 60 s
+figure previously attached to this follow-up was correctly flagged as a guess; it did not
+need to be anything else.
+
+Bounds in place so far: `SEARCH_BUDGET_MS = 240_000` in
+`tools/probe/rom-atlas-conformance.test.ts` and `DRIVE_TIMEOUT_MS = 60_000` in
+`tools/probe/scoring-ruler.test.ts`. Moving the conformance search into a hook took that
+file's **import time from 48.8 s to 107 ms** - which is the figure to watch for, because a
+file costing tens of seconds merely to import is a starvation risk whether or not it ever
+fails.
+
 ## 12. The gate that could not tell clean from never-ran
 
 Every pull request in this run merged with a green CodeRabbit check. Sixteen of the

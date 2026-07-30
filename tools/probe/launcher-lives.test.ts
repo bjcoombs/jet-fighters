@@ -121,6 +121,17 @@ const HITS_ADDRESS = (() => {
   return value('FILE_STATE') * 16 + value('NIB_HITS');
 })();
 
+/** Where the jets' rocket records the column it is on. Zero means none in flight. */
+const ROCKET_COLUMN_ADDRESS = (() => {
+  const asm = assembleGame();
+  const value = (name: string): number => {
+    const found = asm.symbols.find((definition) => definition.name === name);
+    if (found === undefined) throw new Error(`asm/jetfighter.asm no longer defines ${name}`);
+    return found.value;
+  };
+  return value('FILE_STATE') * 16 + value('NIB_RCOL');
+})();
+
 /** Where `NIB_BSLANE` lives, and the value meaning no crossing is in progress. */
 const BSLANE_ADDRESS = (() => {
   const asm = assembleGame();
@@ -207,11 +218,32 @@ const PLATE_DART = [6, 7, 8];
 /**
  * The latest a parked-lever game ends, in seconds of emulated time.
  *
- * **Measured on this machine**, by running each of the three lanes to silence:
- * the last speaker edge falls at 27.1 s with the lever in lane 1, 36.6 s in lane
- * 2 and 40.2 s in lane 0. The lanes differ because the squadron's entries and
- * the rocket's lane rotation are not symmetric about the lever, not because one
- * lane is played better - nobody is playing.
+ * **Re-measured on this machine** after the capture rule was settled, by running
+ * each of the three lanes to silence: the last speaker edge falls at **24.5 s**
+ * with the lever in lane 1, **36.4 s** in lane 0 and **36.9 s** in lane 2. The
+ * lanes differ because the squadron's entries and the rocket's lane rotation are
+ * not symmetric about the lever, not because one lane is played better - nobody
+ * is playing.
+ *
+ * The figure this replaces was **45.4 s**, taken while `jm_capture` still let a
+ * jet crossing any lane but the lever's through for nothing. Removing that
+ * condition - `open-questions.md` section 6, the rule the owner settled - makes
+ * every lane lethal, so all three endings came in. Lane 1 is shortest because it
+ * loses a launcher to a rocket as well as to two captures; lanes 0 and 2 lose all
+ * three to captures.
+ *
+ * Loss spacing with the settled rule: **11.6 and 12.4 s** in lane 0, **11.7 and
+ * 12.7 s** in lane 2, **5.7 and 6.4 s** in lane 1. The spacing is what the wave
+ * retreat was changed for and it is intact.
+ *
+ * **Unchased observation, recorded because the middle lane is where a player
+ * naturally sits.** Lane 1 ends a third sooner than either neighbour and at
+ * roughly half the spacing, because it is the only lane in these runs reached by
+ * both threats: lanes 0 and 2 lose all three launchers to captures, lane 1 loses
+ * two and one to a rocket. Whether the centre is *systematically* more lethal or
+ * these three runs simply caught a rotor that served lane 1 is not established -
+ * `rocket_fire`'s rotor does reach all three lanes, so a longer sample would
+ * settle it. Nobody has taken that sample.
  *
  * It is named and measured for the reason CLAUDE.md gives: a literal horizon in
  * a test about a machine that stops is a bet on when it stops, and the v2 figure
@@ -227,7 +259,7 @@ const PLATE_DART = [6, 7, 8];
  * sign that nothing happened: what the rules were changed for is the *spacing*
  * between the three losses, and that went from 2.7 s to 12.7-13.4 s.
  */
-const PARKED_GAME_END_S = 45.4;
+const PARKED_GAME_END_S = 36.9;
 
 /**
  * Emulated seconds each run below is driven for.
@@ -303,6 +335,18 @@ interface Game {
   readonly sounds: readonly Sound[];
   /** The cycle of each sweep on which a jet left the deepest jet cell. */
   readonly departures: readonly number[];
+  /**
+   * The cycle of each sweep on which the jets' rocket was spent.
+   *
+   * Recorded so a launcher loss can be attributed to a rocket **positively**,
+   * by the rocket's own nibble, rather than inferred from the absence of a
+   * capture near it. Inference by absence was safe while a capture only cost a
+   * launcher in the lever's own lane; once a capture costs one in any lane -
+   * `open-questions.md` section 6 - departures became frequent enough that a
+   * genuine rocket loss almost always has one nearby by coincidence, and the
+   * rocket path read as untested when it was merely misattributed.
+   */
+  readonly rocketArrivals: readonly number[];
   /** Whether a missile dart was ever lit anywhere on the playfield. */
   readonly everFired: boolean;
   /**
@@ -356,6 +400,8 @@ function standStill(lane: number): Game {
   machine.setContacts({ skill: 1, lane });
   const edges: SpeakerEdge[] = [];
   const departures: number[] = [];
+  const rocketArrivals: number[] = [];
+  let previousRocketColumn = 0;
   const hits: number[] = [];
   let seenHits = 0;
   let endedAt = 0;
@@ -384,6 +430,13 @@ function standStill(lane: number): Game {
     if (wasDeep && !isDeep) {
       departures.push(machine.cycles);
     }
+    // The rocket's own nibble going back to zero is the shot being spent, which
+    // is the only moment it can take a launcher.
+    const rocketColumn = machine.ram[ROCKET_COLUMN_ADDRESS] as number;
+    if (previousRocketColumn !== 0 && rocketColumn === 0) {
+      rocketArrivals.push(machine.cycles);
+    }
+    previousRocketColumn = rocketColumn;
     wasDeep = isDeep;
     const nowHits = machine.ram[HITS_ADDRESS] as number;
     if (nowHits > seenHits) {
@@ -397,6 +450,7 @@ function standStill(lane: number): Game {
   return {
     sounds: soundsIn(edges),
     departures,
+    rocketArrivals,
     everFired,
     hits,
     endedAt,
@@ -407,20 +461,63 @@ function standStill(lane: number): Game {
 /**
  * The latest a game ends when the fire button is actually being worked.
  *
- * **Measured on this machine**, the same way and on the same drive the test
- * below uses: lane 1 ends at 161.4 s and lane 2 at 166.6 s, both by losing the
- * third launcher, and **lane 0 ends at 247.0 s by winning**.
+ * **Measured on this machine**, all three lanes now losing all three launchers.
+ * Two independent measurements were taken and they do not agree exactly:
  *
- * It is now *longer* than the parked figure, where it used to be shorter, and the
- * reversal is the point of the change that caused it. On the 28 ms missile a
- * tapping player bought almost nothing - the shot crossed the field faster than
- * the squadron could enter it, so all it did was cost the sweeps each fire blip
- * blanked, and the played game ended sooner than the idle one. At the measured
- * 500 ms a column the shot is a real defence: it clears one lane at a time and
- * takes 2.5 s to do it, so tapping fire keeps the player alive noticeably longer
- * than standing still without keeping him alive indefinitely.
+ *   via a standalone loop     : lane 0 29.7 s, lane 1 28.1 s, lane 2 28.4 s
+ *   via this file's own drive : lane 0 35.7 s, lane 1 28.5 s, lane 2 29.0 s
+ *
+ * They agree on the outcome, on lanes 1 and 2, and on the scores being 15-26 of
+ * 199. They differed on lane 0 by 6 s, and **that difference is now explained:
+ * it is the fire cadence, not the detection method.** `playingOn` taps on a
+ * 16-sweep duty cycle - eight sweeps down, eight up - and the standalone loop
+ * held fire for 3000 cycles at a time. Re-measured with this file's own cadence:
+ *
+ *   lane 0 **35.4 s** score 23, lane 1 **28.3 s** score 15, lane 2 **28.7 s** score 25
+ *
+ * all three losing all three launchers, which matches the figures below to within
+ * 0.3 s. So the two measurements were of two different drives rather than of one
+ * event seen two ways, and the larger figure is the right one for this file
+ * because this file taps that way.
+ *
+ * This constant is a *horizon* - "the latest a game ends" - so the larger figure
+ * is right twice over: it is the one native to this file's drive, and a horizon
+ * set from the smaller of two disagreeing measurements is a bet that the smaller
+ * one is right.
+ *
+ * **The reversal above is worth keeping.** This comment first recorded the two
+ * figures the other way round, attributing 29.7 s to this file's drive and
+ * 35.7 s to the loop, and called the gap unexplained - taking the larger value
+ * for the weak reason that a generous bound is safe, rather than the strong one
+ * that it is the only figure measured on the drive the constant serves. Same
+ * number, and an argument that would not have survived the next person asking
+ * why. Two disagreeing measurements are worth attributing correctly even when
+ * the disagreement does not change the answer.
+ *
+ * ## Two superseded revisions, kept because each was measured and each was wrong
+ *
+ * This constant read **119.7 s** from a script that had drifted - it waited
+ * 125 ms for a flight that takes 2.5 s - and then **247.0 s**, re-derived
+ * honestly against a build that still carried the lane guard in `jm_capture`.
+ * That revision recorded lane 1 ending at 161.4 s, lane 2 at 166.6 s, and
+ * **lane 0 ending at 247.0 s by winning**, and reasoned that tapping fire was
+ * now "a real defence" which "keeps the player alive noticeably longer than
+ * standing still".
+ *
+ * **It was measuring the guard.** A jet reaching the G line outside the lever's
+ * own lane cost nothing, so a tapping player who emptied his own lane closed
+ * both loss paths at once - which is exactly what `open-questions.md` section 6
+ * records as the condition that made the v3 build unplayable. The second
+ * revision was arrived at correctly, from a real measurement, on a machine
+ * carrying an undocumented rule. That is why both are kept: the figure was not
+ * sloppy either time, and neither reading survived contact with the settled rule.
+ *
+ * With a capture costing a launcher in any lane, the played figure is once again
+ * *shorter* than the parked one - 35.7 s against `PARKED_GAME_END_S` at 36.9 s.
+ * Tapping fire clears one lane of three and the other two still kill you, so it
+ * buys no measurable survival at all. That is the reversal section 6 predicted.
  */
-const PLAYED_GAME_END_S = 247.0;
+const PLAYED_GAME_END_S = 35.7;
 
 /**
  * Park the lever, tap fire, and watch - the drive {@link standStill} refuses.
@@ -468,6 +565,7 @@ function playingOn(lane: number): Game {
   return {
     sounds: soundsIn(edges),
     departures: [],
+    rocketArrivals: [],
     everFired,
     hits,
     endedAt,
@@ -727,17 +825,35 @@ describe('the game is losable while it is being played', () => {
   }
 
   it(
-    'is won from the top lane by tapping fire alone, which is a rule and not a bug here',
+    'is no longer won from the top lane by tapping fire alone',
     () => {
-      // Pinned deliberately. A blind tapping player who never moves the lever
-      // reaches 199 from lane 0 - one launcher lost on the way. It is asserted
-      // because it is surprising, because the owner's original report was that
-      // he could not die, and because a test that merely stayed silent about it
-      // would let the balance drift back without anyone noticing.
+      // **This assertion has been inverted, and the inversion is the record.**
+      //
+      // It used to pin that a blind tapping player reaches 199 from lane 0
+      // having lost one launcher, and it was asserted *because* it was
+      // surprising and because the owner's report was that he could not die.
+      //
+      // With the capture rule the owner settled - a capture costs a launcher in
+      // any lane, `open-questions.md` section 6 - tapping alone loses in every
+      // lane. Measured at skill 1, all three levers:
+      //
+      //   lane 0: lost at 29.7 s, score  19 of 199, three launchers
+      //   lane 1: lost at 28.1 s, score  16 of 199, three launchers
+      //   lane 2: lost at 28.4 s, score  26 of 199, three launchers
+      //
+      // **The margin is not marginal**, which is the thing worth knowing: the
+      // tapper does not fall just short of 199, it reaches under 14% of it and
+      // loses every launcher. So this is a record of the machine rather than a
+      // tripwire that the next tuning change will flip back.
+      //
+      // Whether a blind tapping player *should* be able to win from one lane
+      // remains a rules question with the owner and is untouched by this. The
+      // file's job is to say what the machine does, and what it does has
+      // changed.
       const game = playingOn(0);
       expect(game.everFired, 'the drive never actually fired').toBe(true);
-      expect(game.won, 'lane 0 no longer wins by tapping alone').toBe(true);
-      expect(game.hits.length, 'lane 0 lost a different number of launchers').toBe(1);
+      expect(game.won, 'lane 0 wins by tapping alone again').toBe(false);
+      expect(game.hits.length, 'lane 0 lost a different number of launchers').toBe(3);
     },
     LONG_RUN_TIMEOUT_MS,
   );
@@ -818,16 +934,27 @@ describe('which mechanism took each launcher, read off the tube', () => {
     // in every lane regardless of which mechanism took which launcher. That is
     // strictly more than the old form asserted - the ladder is now checked in
     // all three lanes rather than in the one that happened to be rocket-only.
+    // **Attributed positively, by the rocket's own nibble.**
+    //
+    // This used to read "a loss with no departure near it", which was safe only
+    // while a capture cost a launcher in the lever's own lane alone. Once a
+    // capture costs one in *any* lane - `open-questions.md` section 6, the rule
+    // the owner settled - departures became frequent enough that a genuine
+    // rocket loss almost always has one within the window by coincidence, and
+    // every lane read as capture-only. The rocket path was being exercised the
+    // whole time and this assertion could not see it.
+    //
+    // `rocketArrivals` records the sweep on which `NIB_RCOL` returned to zero,
+    // which is the shot being spent and the only moment it can take a launcher.
+    // Measured with the settled rule: lanes 0 and 2 lose three launchers to
+    // captures, lane 1 loses two and one to a rocket, at every skill.
     const byRocket = LEVERS.flatMap(({ detent, lane }) => {
       const game = gameFor(lane);
       return launcherLosses(game)
-        .filter(
-          (loss) =>
-            !game.departures.some(
-              (departure) =>
-                departure - loss >= -CAPTURE_LEAD_CYCLES &&
-                departure - loss <= CAPTURE_WINDOW_CYCLES,
-            ),
+        .filter((loss) =>
+          game.rocketArrivals.some(
+            (arrival) => loss - arrival >= 0 && loss - arrival <= CAPTURE_WINDOW_CYCLES,
+          ),
         )
         .map((atCycle) => `${detent} at ${atCycle}`);
     });
@@ -865,12 +992,24 @@ describe('an ending during a battleship crossing stops the buzz', () => {
   //
   // ## Why this drive and not a parked lane
   //
-  // The defect needs the ending to land inside a crossing, and none of the three
-  // parked-lever games does - they end at 27.1, 36.6 and 45.4 s, all between
-  // crossings. An assertion over those would be armed and never fire, which is
-  // the failure this suite has already shipped once. Skill 3 in lane 0 ends at
-  // 30.8 s with `NIB_BSLANE` still naming a lane, and the guard below fails
-  // loudly if that ever stops being true rather than passing quietly.
+  // The defect needs the ending to land inside a crossing, and most games do not
+  // - they end between crossings, and an assertion over those would be armed and
+  // never fire, which is the failure this suite has already shipped once.
+  //
+  // The drive was skill 3 in lane 0, parked, which ended at 30.8 s inside a
+  // crossing. **Removing the lane guard from `jm_capture` shortened every game
+  // and moved that ending out of one.** Re-searched all eighteen combinations of
+  // three skills, three lanes, and parked against tapping: **exactly one lands
+  // inside a crossing** - skill 2, lane 0, tapping, ending at 32.5 s with
+  // `NIB_BSLANE` naming lane 0.
+  //
+  // One in eighteen is worth stating plainly rather than presenting as a choice.
+  // The boat is present for roughly four seconds of every twenty, so a game whose
+  // end time is not deliberately placed has about a one-in-five chance of landing
+  // in a crossing, and eighteen samples finding one is consistent with that. The
+  // guard below is what makes this safe: if the ending stops landing in a
+  // crossing again, the assertion fails loudly and names the reason instead of
+  // the real test passing over an absent event.
   // Driven on first use, not at collection time - see `gameFor` above for why a
   // drive in a `describe` body escapes every timeout in the file.
   let driven: { endedAt: number; bshipLaneAtEnd: number; lastEdgeAt: number } | undefined;
@@ -879,12 +1018,13 @@ describe('an ending during a battleship crossing stops the buzz', () => {
       return driven;
     }
     const machine = new Tms1370Machine();
-    machine.setContacts({ skill: 3, lane: 0 });
+    machine.setContacts({ skill: 2, lane: 0 });
     const edges: SpeakerEdge[] = [];
     let endedAt = 0;
     let bshipLaneAtEnd = 0;
-    const target = Math.round(PARKED_GAME_END_S * 1.4 * CYCLE_HZ);
-    while (machine.cycles < target) {
+    const target = Math.round(PLAYED_GAME_END_S * 1.4 * CYCLE_HZ);
+    for (let sweep = 0; machine.cycles < target; sweep += 1) {
+      machine.setContacts({ fire: sweep % 16 < 8 });
       machine.runSweeps(1, SWEEP_CEILING_CYCLES);
       edges.push(...machine.takeSpeakerEdges());
       if (endedAt === 0 && (machine.ram[STATE_ADDRESS] as number) !== 0) {

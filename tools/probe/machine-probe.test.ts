@@ -28,6 +28,7 @@ import { resolve } from 'node:path';
 import { BURST_GAP_CYCLES } from '../../src/machine/board/tms1370-cadence.js';
 import { GRID_COUNT } from '../../src/machine/cpu/tms1370/ports.js';
 import { RAM_WORD_COUNT } from '../../src/machine/cpu/tms1370/ram.js';
+import { SWEEP_INSTRUCTIONS } from '../../src/machine/board/tms1370-cadence.js';
 import { CYCLE_HZ } from '../../src/machine/cpu/tms1370/timing.js';
 import {
   DEFAULT_CYCLES,
@@ -42,11 +43,31 @@ import {
   type ProbeStreams,
   type Snapshot,
 } from './machine-probe.js';
+import { assembleGame } from './tms1370-probe.js';
 
 /** Seconds of emulated time, as the machine cycles the probe counts. */
 function seconds(value: number): number {
   return Math.round(value * CYCLE_HZ);
 }
+
+/** The assembled game ROM, so cadence-dependent horizons read symbols not seconds. */
+const GAME_ASM = assembleGame();
+
+function gameSymbol(name: string): number {
+  const found = GAME_ASM.symbols.find((definition) => definition.name === name);
+  if (found === undefined) throw new Error(`asm/jetfighter.asm no longer defines ${name}`);
+  return found.value;
+}
+
+/**
+ * Cycles until the squadron's first march step.
+ *
+ * `NIB_STEP_LO` reloads to 15 and is spent first, and the step falls on the
+ * sweep *after* the pair reaches zero, so the interval is `(STEP_HI + 1) * 16`
+ * sweeps - the same correction `blank-to-glass.test.ts` carries.
+ */
+const FIRST_MARCH_STEP_CYCLES =
+  (gameSymbol('STEP_HI_MAX') + 1) * 16 * SWEEP_INSTRUCTIONS;
 
 /**
  * The launcher's grid, and the plates its three lanes sit on.
@@ -358,7 +379,19 @@ describe('contract V7: the launcher moves lanes when the lever does', () => {
 });
 
 describe('contract V8: pressing fire produces the missile blip on R15', () => {
-  const pressAt = seconds(2);
+  // Halfway to the first march step, not a literal two seconds.
+  //
+  // This test asserts that *nothing* sounds before the press, so the press has
+  // to happen before the first march beep - and when that beep falls is a
+  // function of `STEP_HI_MAX`, a tuning constant. At `STEP_HI_MAX` 9 the first
+  // step lands at 2.44 s and a literal `seconds(2)` sat safely before it; at 7
+  // it lands at 1.95 s and the same literal sat *after* it, so `bursts[0]`
+  // became the 627 Hz march note and this suite failed on the band assertion
+  // for the fire blip it was never given.
+  //
+  // Derived, the press is before the first beep at any rung, which is what the
+  // contract actually requires.
+  const pressAt = Math.round(FIRST_MARCH_STEP_CYCLES / 2);
   const report = runProbe(
     parseArguments([
       '--cycles',

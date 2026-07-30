@@ -41,6 +41,7 @@ import {
   sweepPeriods,
   Tms1370Machine,
   type InputEvent,
+  type Contacts,
   type RunResult,
 } from './tms1370-probe.js';
 
@@ -56,21 +57,61 @@ const FILE_JETS = 6;
 const seconds = (value: number): number => Math.round(value * CYCLE_HZ);
 
 /**
- * A drive that plays the game: the lever walks the three lanes and the fire
- * button is pressed once per lap.
+ * A drive that plays the game *and defends it*: the lever stands in the lane of
+ * whichever jet is deepest, steps out of a live rocket's lane, and taps fire.
  *
  * The machine falls silent unattended - a squadron that is never shot at takes
  * all three launchers - so a run that needs the game *alive* has to play it.
- * That is the same property `UNATTENDED_SILENCE_S` records for the v2 machine
- * and the reason contract criterion V8b states its own input schedule.
+ *
+ * **It now has to play it well.** This was a fixed schedule walking the three
+ * lanes, and that was survivable only while a capture cost a launcher in the
+ * lever's own lane alone: the player kept that lane clear by firing and the
+ * other two were free. With the rule the owner settled - a capture costs a
+ * launcher in any lane, `open-questions.md` section 6 - an open-loop lever loses
+ * all three in 19-37 s, and every run below that needs a battleship crossing, a
+ * rocket down all three lanes or a three-digit score stopped reaching it.
+ *
+ * A longer `cycles` cannot rescue those: the *game* ends rather than the clock.
+ * Defending is the least this drive can do and still observe what it asserts on.
  */
-function playing(cycles: number, everyCycles = 70_000): InputEvent[] {
-  const events: InputEvent[] = [{ cycle: 0, change: { skill: 1 } }];
-  for (let at = 0, lane = 0; at < cycles; at += everyCycles, lane = (lane + 1) % 3) {
-    events.push({ cycle: at, change: { lane, fire: true } });
-    events.push({ cycle: at + 3_000, change: { fire: false } });
-  }
-  return events;
+function defending(skill = 1): (machine: Tms1370Machine) => Contacts | undefined {
+  let releaseAt = -1;
+  let fireAt = -1;
+  return (machine) => {
+    if (releaseAt > 0 && machine.cycles >= releaseAt) {
+      releaseAt = -1;
+      return { fire: false };
+    }
+    if (releaseAt > 0) return undefined;
+    // **The lever has to be read before the fire edge.** The ROM samples both in
+    // one sweep and `tick_fire` is edge triggered, so moving and firing in the
+    // same instant launches the shot down whichever lane the lever held last.
+    // Aiming and firing are staged a sweep apart for that reason; doing both at
+    // once scored one point in forty-five seconds.
+    if (fireAt > 0 && machine.cycles >= fireAt) {
+      fireAt = -1;
+      releaseAt = machine.cycles + 3_000;
+      return { fire: true };
+    }
+    if (fireAt > 0) return undefined;
+    const ram = machine.ram;
+    const rocketColumn = ram[FILE_STATE * 16 + NIB_RCOL] as number;
+    const rocketLane = ram[FILE_STATE * 16 + NIB_RLANE] as number;
+    let best = -1;
+    let lane = 0;
+    for (let candidate = 0; candidate < 3; candidate += 1) {
+      // A rocket takes the launcher only where it arrives, so standing out of
+      // its lane is the whole defence - `rm_arrived` compares the two lanes.
+      if (rocketColumn !== 0 && candidate === rocketLane) continue;
+      const grid = ram[FILE_JETS * 16 + candidate] as number;
+      if (grid > best) {
+        best = grid;
+        lane = candidate;
+      }
+    }
+    fireAt = machine.cycles + SWEEP_INSTRUCTIONS;
+    return { skill, lane };
+  };
 }
 
 /** A drive that only works the lever, with the fire button never pressed. */
@@ -93,29 +134,42 @@ function warningRunsIn(
   edges: readonly { cycle: number; level: 0 | 1 }[],
   from: number,
   to: number,
-): number[] {
+): { hz: number; from: number; to: number }[] {
   // Rising edges only: a period is rise to rise, and counting both levels would
   // report every half-period and put a 467 Hz beep at 934.
   const rising = edges
     .filter((edge) => edge.level === 1 && edge.cycle >= from && edge.cycle <= to)
     .map((edge) => edge.cycle);
   const periods = rising.slice(1).map((cycle, index) => cycle - (rising[index] as number));
-  const found: number[] = [];
+  // Each run carries the cycles it spans as well as its pitch, so a caller can
+  // measure the *warning* rather than the analyser group that contains it.
+  const found: { hz: number; from: number; to: number }[] = [];
   let current: number[] = [];
-  const close = (): void => {
+  let startIndex = 0;
+  const close = (endIndex: number): void => {
     if (current.length >= 3) {
       const sorted = [...current].sort((left, right) => left - right);
       const hz = CYCLE_HZ / (sorted[sorted.length >> 1] as number);
-      if (hz >= 455 && hz <= 545) found.push(hz);
+      if (hz >= 455 && hz <= 545) {
+        found.push({
+          hz,
+          from: rising[startIndex] as number,
+          to: rising[Math.min(endIndex + 1, rising.length - 1)] as number,
+        });
+      }
     }
     current = [];
   };
-  for (const period of periods) {
+  for (const [index, period] of periods.entries()) {
     const previous = current[current.length - 1];
-    if (previous !== undefined && Math.abs(period - previous) / previous >= 0.06) close();
+    if (previous !== undefined && Math.abs(period - previous) / previous >= 0.06) {
+      close(index);
+      startIndex = index;
+    }
+    if (current.length === 0) startIndex = index;
     current.push(period);
   }
-  close();
+  close(periods.length - 1);
   return found;
 }
 
@@ -205,15 +259,26 @@ function parkedGame(
   lever: number,
   forSeconds = 45,
   dodge = false,
+  defend = false,
 ): { launches: Launch[]; lanes: number[]; litCells: ReadonlySet<string> } {
   const machine = new Tms1370Machine();
   machine.setContacts({ skill, lane: lever, fire: false });
   const launches: Launch[] = [];
+  const policy = defend ? defending(skill) : undefined;
   let flying = false;
   let lane = lever;
   while (machine.cycles < seconds(forSeconds)) {
     machine.step(CYCLE_HZ / 200);
     const ram = machine.ram;
+    // `defend` supersedes `dodge` where the game is now long enough to need it:
+    // dodging avoids rockets, and since the settled capture rule a jet reaching
+    // the G line costs a launcher in *any* lane, so avoidance alone no longer
+    // keeps a game alive. Killing the deepest jet does. The policy is the same
+    // one `runGame` uses, so aim-before-fire is honoured in one place.
+    if (policy !== undefined) {
+      const change = policy(machine);
+      if (change !== undefined) machine.setContacts(change);
+    }
     // Dodging keeps the game alive without ever pressing fire, which is what
     // the rotor needs to be sampled past its second rung - see the union below.
     if (dodge) {
@@ -245,7 +310,7 @@ function parkedGame(
 
 describe('the machine comes up', () => {
   const cycles = seconds(3);
-  const run = runGame({ cycles, input: playing(cycles), keepStrobes: true });
+  const run = runGame({ cycles, policy: defending(), keepStrobes: true });
 
   it('strobes every one of the nine display grids', () => {
     expect(run.gridsStrobed).toEqual(
@@ -297,7 +362,7 @@ describe('the source and the cadence module agree on the sweep length', () => {
 
 describe('the display', () => {
   const cycles = seconds(40);
-  const run = runGame({ cycles, input: playing(cycles) });
+  const run = runGame({ cycles, policy: defending() });
 
   it('drives only plate masks the output PLA holds', () => {
     // The left-hand side of contract V4's closure, run over the masks the ROM
@@ -453,22 +518,52 @@ describe('a rocket can reach the launcher in any of the three lanes', () => {
       // it. The rotor had not changed at all: it is four sites in `rocket_fire`
       // and nothing on the input path touches it.
       //
-      // A drive that dodges but still never fires survives long enough to reach
-      // every rung, and reaches [1, 2, 0] in all nine runs at every skill and
-      // every starting lane rather than in one lucky one. It falsifies the v2
-      // defect exactly as well, because what v2 sampled was the *fire* press:
-      // a lever that moves without firing never moved `NIB_RAND`.
+      // ## The dodging drive stopped surviving too, and for the same reason
       //
-      // This is section 11a of docs/evidence/open-questions.md in its purest
-      // form. The assertion did not break; its drive stopped reaching the case.
-      // One dodging run per skill rather than one per lever: all three levers
-      // produce the identical lane sequence at a given skill, because dodging
-      // makes the starting lane irrelevant within a second. Nine of these cost
-      // more than the 30 s budget allows on CI and buy nothing.
+      // The revision above replaced the parked union with a drive that dodges
+      // but never fires. **Removing the lane guard from `jm_capture` took that
+      // away in turn**: dodging avoids a *rocket*, because `rm_arrived` compares
+      // lanes, but a capture now costs a launcher wherever the lever stands. A
+      // drive that only avoids things therefore dies to the jets it is avoiding.
+      // Measured: dodging at 45 s and at 90 s reaches lane [1] alone, with one
+      // or two launches in the whole game, because the game ends at 21-36 s.
+      //
+      // **Killing the deepest jet is what survives now.** The defending policy
+      // above - aim at the deepest jet, stay out of an inbound rocket's lane,
+      // stage the aim a sweep ahead of the fire - lives past 120 s at skill 1.
+      // Measured launches, one run per skill:
+      //
+      //   skill 1: alive past 120 s, lanes [1, 2, 1, 2, 1, 2]
+      //   skill 2: ends 43.5 s,      lanes [2, 0]
+      //   skill 3: ends 35.2 s,      lanes [0]
+      //
+      // **No single skill sees all three lanes**, which is why the union is
+      // pooled across the dial exactly as the section above describes. Skill 1
+      // survives longest and alternates 1 and 2 without ever launching into 0,
+      // because the rotor only stops on a lane holding a jet and a defending
+      // player keeps clearing the one it would otherwise pick.
+      //
+      // ## Why firing does not weaken what this criterion falsifies
+      //
+      // The earlier revisions kept the drive fire-free deliberately: v2 drew the
+      // rocket's lane from `NIB_RAND`, which `ti_press` wrote on the *fire*
+      // press, so a lever that moved without firing never moved it. That premise
+      // is gone twice over. **`NIB_RAND` does not exist in this ROM** - the only
+      // occurrence of the name is a historical comment - and both rotors are
+      // plain round robins nothing on the input path touches. And a single press
+      // pattern, even the empty one, was never a good test of press-dependence:
+      // it shows what happens under one pattern. That claim is established
+      // properly elsewhere, across four different press rhythms, all three lanes
+      // appearing in every one.
+      //
+      // What falsifies the v2 defect here is the occupancy check below - every
+      // rocket flew down a lane that had a jet in it - and that does not depend
+      // on whether the player fires. So the drive is free to play well enough to
+      // reach the case, which is section 11a's whole point.
       const dodged = SKILLS.map((skill) => ({
         skill,
         lever: 0,
-        ...parkedGame(skill, 0, 45, true),
+        ...parkedGame(skill, 0, 120, false, true),
       }));
 
       const flown = [...new Set(dodged.flatMap((game) => game.lanes))].sort();
@@ -579,8 +674,19 @@ describe('a rocket can reach the launcher in any of the three lanes', () => {
       ).toBeGreaterThan(0);
       // The beeps of one hit fall inside one cluster, which is what the
       // 25-28 ms measured gap makes them.
-      const first = warnings[0] as { from: number; to: number };
-      expect(first.to - first.from).toBeLessThan(WARNING_CLUSTER_CYCLES);
+      //
+      // **Measured over the warning's own runs, not over the `splitSounds`
+      // group that contains them.** A group is an analyser construct bounded by
+      // `BURST_GAP_CYCLES`, so how far it extends depends on how densely the ROM
+      // happens to be sounding - and the comment above already records that a
+      // march note lands inside the same group as the warning. Speeding the
+      // march up put more march notes in that group and the span grew to 214590
+      // cycles against this 29167 limit, while the warning itself was unchanged:
+      // two beeps, 455-545 Hz, 25-28 ms apart. The group was never the thing
+      // this assertion is about.
+      const runs = warningRunsIn(run.speakerEdges, warnings[0]!.from, warnings[0]!.to);
+      const span = (runs[runs.length - 1]?.to ?? 0) - (runs[0]?.from ?? 0);
+      expect(span).toBeLessThan(WARNING_CLUSTER_CYCLES);
     });
   }
 });
@@ -631,8 +737,20 @@ describe('the sounds', () => {
     // period, because the buzz is clocked off the display sweep and its edges
     // are not evenly spaced - which is the evidence for that mechanism rather
     // than noise on top of it.
+    // ## Why this drive does not fire, where the rest of the file now does
+    //
+    // Every sound this machine makes parks the sweep, and the buzz is clocked
+    // off the sweep - so a fire blip stops the buzz for as long as it lasts. A
+    // defending drive fires often enough to chop a four-second buzz into pieces
+    // shorter than the three-second floor below, and this assertion is about the
+    // buzz being *continuous*. Driving it with a player who shoots would be
+    // measuring the shooting.
+    //
+    // A lever-only game still reaches a crossing comfortably: measured at skill
+    // 1, crossings run 8.5-12.6 s and 28.5-32.4 s while the game itself ends at
+    // 35.8 s. The window covers the first with room either side.
     const cycles = seconds(20);
-    const run = runGame({ cycles, input: playing(cycles) });
+    const run = runGame({ cycles, input: leverOnly(cycles) });
     const arrivals = splitSounds(run.speakerEdges, BURST_GAP_CYCLES).filter(
       (sound) => (sound.to - sound.from) / CYCLE_HZ > 3,
     );
@@ -651,7 +769,7 @@ describe('the sounds', () => {
     // an R-latch write, so a non-empty edge stream is itself the assertion -
     // what this pins is that the stream is not empty for the wrong reason.
     const cycles = seconds(8);
-    const run = runGame({ cycles, input: playing(cycles) });
+    const run = runGame({ cycles, policy: defending() });
     expect(run.speakerEdges.length).toBeGreaterThan(0);
     for (const edge of run.speakerEdges) {
       expect(edge.level === 0 || edge.level === 1).toBe(true);
@@ -661,7 +779,7 @@ describe('the sounds', () => {
 
 describe('the game', () => {
   const cycles = seconds(45);
-  const run: RunResult = runGame({ cycles, input: playing(cycles) });
+  const run: RunResult = runGame({ cycles, policy: defending() });
 
   it('keeps playing while the player plays', () => {
     const last = run.speakerEdges.at(-1);
