@@ -506,42 +506,52 @@ disagreements between the two say where the reconstruction is wrong.
 than reverted. Only the `.asm` is family-specific - the recordings,
 `docs/evidence/audio-reference.md` and the probe tests all carry across.
 
-## 8. Three owner observations, measured and confirmed faithful
+## 8. Three owner observations, measured. Two faithful, one a real defect.
 
-The owner reported three things while playing the deployed build. All three were
-measured against the running machine rather than reasoned about, and **none of them is a
-defect**. Recorded here so the next report of any of them can be answered from the tree
-instead of costing another diagnosis.
+The owner reported three things while playing the deployed build. All were measured
+against the running machine rather than reasoned about. Two were faithful. **The first
+was a defect, and this section recorded it as faithful for two revisions.** Recorded so
+the next report of any of them can be answered from the tree instead of costing another
+diagnosis.
 
-### 8a. "The last note of the game win is a high note, not a low note"
+### 8a. "The last note of the game win is a high note, not a low note" - **a defect, now fixed**
 
-**The ROM ends low, and so does the audio path.** Driven to a win and measured off R15,
-the jingle is:
+**The owner was describing his machine, and this section read it as a question about
+ours.** The sentence is a statement of fact about the unit: the last note is a high
+note. It was taken as "the last note sounds high to me, is that right?", answered by
+measuring the emulator against `audio-reference.md`, and closed as faithful because the
+two agreed. They agreed because the document was wrong.
 
-| note | pitch | length |
-| ---- | ----- | ------ |
-| arpeggio, three times | 758 -> 956 -> 1190 Hz | 180 / 144 / 143 ms |
-| the resolution | **956 Hz** | 256 ms, 240 periods |
+Re-analysed off `assets/reference/gameplay-audio.m4a`, the unit's resolution is
+**1868 Hz** - an octave above the arpeggio's middle note and a fifth above its peak.
+The jingle climbs and then leaps past its own top note. The ROM was playing the middle
+note a fourth time, at 956 Hz, which is exactly the "low note" the owner said it is not.
 
-Peak 1190 Hz, final note 956 Hz, and the speaker is silent afterwards - `tk_ended`
-branches straight to `render` in a finished game. That is `win.arpeggio` and
-`win.resolutionHz` as `audio-reference.md` measures them.
+`audio-reference.md` recorded the resolution as 940 Hz, and that figure was never a
+reading of that note: `win.partialsObserved` records 940 / 1880 / 2820, which are the
+arpeggio's middle note's partials. The tail's own partials - 1868 / 3735 / 5601, with
+no energy at 934 at all - were never taken. See that document's "The resolution was
+never measured" for the method that settles it.
 
-The same edge stream pushed through the real synth in `src/machine/audio/` renders the
-last 300 ms at 972 Hz zero-crossing with an RMS of 0.4905, against 0.4926 at the start of
-the jingle. **Nothing is truncated, attenuated or dropped**, and the 100 ms window at
-t = 1.50 s and t = 1.60 s both read 950 Hz against a 1150 Hz peak window.
+**What was measured correctly and still misled.** The measurements in the superseded
+version of this section were all accurate: the ROM did end at 956 Hz against a 1190 Hz
+peak, the synth did render the last 300 ms at 972 Hz with an RMS of 0.4905 against
+0.4926 at the start, and nothing was truncated or attenuated. Every one of those
+readings was of the emulator, and the question was whether the emulator matches the
+unit. **A measurement of the thing under test cannot answer that** - only the recording
+can, and the recording was not consulted because a document said it had been.
 
-So the resolution is played, rendered and audible. What is true is that **it is only about
-3.8 semitones below the peak, and 956 Hz is a high note in absolute terms** - A#5, and the
-same pitch the arpeggio already passes through on its way up. A listener expecting the
-jingle to settle onto something obviously low will not hear that. **This is a question for
-the owner about what the unit sounds like, not a defect to fix**, and changing the
-resolution's pitch would move the ROM away from the measurement.
+**The lesson, which is the same one as 8b's.** The prior conclusion here was that
+"changing the resolution's pitch would move the ROM away from the measurement". That
+was true and it was the wrong thing to protect: it treated a transcribed figure as
+more reliable than the owner's ear, when the owner is the only source with access to
+the actual machine. Where a documented measurement and the owner disagree about what
+his unit sounds like, **re-derive the measurement from the recording before concluding
+the owner is describing something else**.
 
-`tools/probe/win-jingle.test.ts` now asserts the shape, so a future change that really did
-end the jingle on its peak would fail. Verified by mutation: pointing `gw_last` at
-`SND_WIN3` instead of `SND_WIN2` fails both the shape and the pitch assertion.
+`tools/probe/win-jingle.test.ts` asserted the shape in the wrong direction - "ends
+below its own highest note" - and so locked the defect in. Both the bound and its
+reasoning are corrected there, and the file now asserts the leap and its interval.
 
 ### 8b and 8c. Both endings freeze the controls
 
@@ -572,10 +582,12 @@ crossing buzzes for as long as the machine is left switched on. The capture-rule
 this independently and fixes it by clearing `NIB_BUZZ` and `NIB_BPHASE` at the top of
 `game_win` and `game_lost`; the numbers above were measured before that change.
 
-**The lesson is the same one section 8a's assertion exists for.** "Zero edges" was measured
-from one drive and stated as a property of the machine. It took two more drives out of nine
-to contradict it. A property claimed about an ending has to be measured across the states
-the machine can be in when it ends, not the state it happened to be in once.
+**The lesson is a sibling of 8a's.** "Zero edges" was measured from one drive and stated
+as a property of the machine. It took two more drives out of nine to contradict it. A
+property claimed about an ending has to be measured across the states the machine can be
+in when it ends, not the state it happened to be in once. Where 8a measured the right
+quantity against the wrong reference, this measured the right quantity over too narrow a
+sample; both produced a confident claim that the machine did not support.
 
 ### 8d. "The screen flashes" - one blank, not a flicker
 

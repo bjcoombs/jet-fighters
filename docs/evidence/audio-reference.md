@@ -43,8 +43,11 @@ that has no connection to what the piezo actually emitted - the unit was never t
 to concert pitch. Where a note name and a measurement disagree, the measurement wins
 and both are written down. Never let a note name overwrite a reading: the
 substitution is invisible once made, and it is the exact failure mode this document
-exists to prevent. The v1 codebase made that substitution once, for D#6 - see the
-[win](#win) section for the arithmetic that exposed it.
+exists to prevent. The v1 codebase made that substitution twice - for D#6, where the
+[win](#win) section records the arithmetic that exposed it, and for the win jingle's
+**resolution**, where "the long A#5" stood in for a note nobody measured and put that
+note an octave wrong for three revisions of the ROM. The second one was caught by the
+owner playing the build, not by this document.
 
 ## Method
 
@@ -54,10 +57,15 @@ Two techniques were used, per sound:
   taking the dominant bin. Used for the single-pitch sounds (missile blip, march
   step, warning beeps) and for the noise rolloff of the loss sound.
 - **Harmonic product spectrum** - multiplying downsampled copies of the magnitude
-  spectrum to collapse harmonics onto the fundamental. Needed for the win jingle,
-  because the piezo's fundamental is weak relative to its partials: the fundamentals
-  were recovered from the partial series (partials 1500 and 2250 imply a 750 Hz
-  fundamental; 940 / 1880 / 2820 imply 940; 1240 and 2480 imply 1240).
+  spectrum to collapse harmonics onto the fundamental. Used for the win jingle,
+  because the piezo's fundamental is weak relative to its partials.
+
+  **Collapsing the harmonics throws away the one thing that identifies a
+  fundamental**, which is the spacing between adjacent partials. HPS was not what
+  produced the win jingle's error - re-run, it reads the resolution correctly -
+  but it cannot expose one either, so the win section now records each note's
+  partial series uncollapsed and reads the spacing off it. Where a note matters,
+  list the partials.
 
 A third technique, **harmonic-comb periodicity**, was added for the battleship
 buzz, whose energy sits at the transducer's resonance rather than at its own
@@ -291,94 +299,191 @@ nonetheless tuned a note length to it. The sound is 4.0 s.
 
 The melodic jingle played at 199 points, at the tail of the gameplay recording.
 
+**This section was rewritten when the owner reported that the last note is wrong.**
+The three arpeggio notes survived re-measurement within 0.6%. The resolution did
+not: it was recorded as 940 Hz and it is **1868 Hz**, an octave above. The
+superseded reading and the mechanism that produced it are kept below, under
+[the resolution was never measured](#the-resolution-was-never-measured).
+
 | Field | Value | Source |
 | --- | --- | --- |
-| `win.fundamentalsHz` | 750 (F#5), 940 (A#5), 1240 (D#6) | Measured via HPS |
-| `win.partialsObserved` | 1500 & 2250 -> 750; 940 / 1880 / 2820 -> 940; 1240 & 2480 -> 1240 | Measured |
-| `win.thirdNoteSynthesizedHz` | 1244 | Synthesized (v1) |
-| `win.arpeggio` | [F#5, A#5, D#6] | Measured (note order) |
+| `win.fundamentalsHz` | **750, 937, 1248** | Measured (partial spacing, n = 3 passes each) |
+| `win.partialsObserved` | 751 / 1502 / 2252 / 3003 / 3754 / 4504 / 5254 -> 750; 938 / 1875 / 2813 / 3751 / 4688 / 5626 -> 937; 1249 / 2497 / 3745 / 4994 / 6242 -> 1248 | Measured |
+| `win.arpeggio` | ascending, three notes | Measured (note order) |
 | `win.repeats` | 3 | Measured |
-| `win.resolutionHz` | 940 (long A#5) | Measured |
-| `win.totalDurationSec` | ~1.83 | Measured |
+| `win.resolutionHz` | **1868** | Measured (see below) |
+| `win.resolutionPartialsHz` | 1868 / 3735 / 5601 / 7472 - **no energy at 934** | Measured |
+| `win.noteDurationsMs` | 222 / 160 / 129 per arpeggio note, 349 resolution | Measured |
+| `win.totalDurationSec` | ~1.88 | Measured |
 | `win.recording` | `gameplay-audio.m4a` | - |
-| `win.timestampRangeSec` | 120.5 - 122.4 | - |
-| `win.method` | Harmonic product spectrum (fundamentals weak; recovered from partials) | - |
+| `win.timestampRangeSec` | 120.569 - 122.449 | - |
+| `win.method` | Adjacent-partial spacing, corroborated by autocorrelation, cepstrum, HPS, a zero-crossing period fit and a harmonic-series refinement | - |
 
-### Which of these three numbers are measurements
+Intervals, which is what a listener hears and what the note quantisation is
+chosen against: note 1 to note 2 is +385 cents, note 1 to note 3 is +881, **note
+3 to the resolution is +699 - a perfect fifth** - and the resolution sits +1195
+cents above note 2, an octave within five cents.
 
-Each fundamental was checked against its own observed partials. A genuine fundamental
-divides its partials as exact integer multiples; a note-snapped value does not.
+### The resolution was never measured
 
-| Note | Partials observed | Implied fundamental | Equal-tempered pitch | Verdict |
+The v1 pass recorded `win.partialsObserved` as "940 / 1880 / 2820 -> 940". Those
+are the **arpeggio's middle note**, and they are correct: it measures 938 / 1875 /
+2813 here. The sustained tail's own partials were never taken. It was written
+down as "the long A#5" - the note that came before it - and that is a note name
+standing in for a reading.
+
+This document's own preamble names the failure:
+
+> Never let a note name overwrite a reading: the substitution is invisible once
+> made, and it is the exact failure mode this document exists to prevent.
+
+It happened a second time, in the section that quotes it, and survived because
+nobody re-derived that note. It was not an octave error in the harmonic product
+spectrum - **HPS itself returns 1868 for the tail**. The method was never run on
+it.
+
+**What settles it.** The tail's partials are consecutive integer multiples of
+1868 with nothing at 934. A tone carrying every even multiple of 933 and no odd
+ones is a tone of 1867 Hz; no square or pulse drive suppresses odd harmonics.
+The control is in the same recording 1.3 s earlier:
+
+| Level above local background | 934 Hz | 1868 Hz | 2802 Hz | 3736 Hz | 4670 Hz |
+| --- | --- | --- | --- | --- | --- |
+| The arpeggio's genuine 937 Hz note | **+31.0 dB** | +23.5 | **+37.6** | +42.0 | **+34.5** |
+| The resolution | **+5.3 dB** | +33.2 | +19.2 | +45.4 | +22.1 |
+
+The chain passes a 937 Hz fundamental at +31 dB when there is one. In the tail it
+reads +5.3 dB, and 1868 Hz reads +2.2 to +3.5 dB in silence elsewhere in the
+file, so +5.3 is the floor. The residual at the odd multiples of 934 is the
+note's own amplitude-modulation comb, spaced f0/16 = 116.7 Hz: 934 above the
+carrier is exactly eight teeth up, and teeth seven and nine are comparable in
+level, which a real harmonic's neighbours are not.
+
+Independently, a zero-crossing period fit over the sustain - the least ambiguous
+measurement available for a held note - gives 1871.7 Hz from 1122 crossings with
+a 3.2-sample residual, while the 700-1200 Hz band is 28 dB weaker and its fit
+residual is 29.4 samples, which is noise. Confirmed on a second decode at 48 kHz.
+
+**Superseded reading**, kept per the v1 style:
+
+| Field | Value | Source |
+| --- | --- | --- |
+| `win.fundamentalsHz` | 750 (F#5), 940 (A#5), 1240 (D#6) | **Superseded.** 940 and 1240 refined to 937 and 1248. |
+| `win.resolutionHz` | 940 (long A#5) | **Superseded.** Never measured; the arpeggio's middle note applied as a label. |
+| `win.thirdNoteSynthesizedHz` | 1244 | Synthesized (v1) |
+| `win.arpeggio` | [F#5, A#5, D#6] | Superseded - note names, see below |
+| `win.totalDurationSec` | ~1.83 | Superseded by 1.88 |
+| `win.timestampRangeSec` | 120.5 - 122.4 | Superseded by 120.569 - 122.449 |
+
+The note names are dropped rather than renamed. They were nearest-note labels for
+a piezo never tuned to concert pitch, they are what carried the error, and the
+ROM targets the measured fundamentals.
+
+### How each fundamental was established
+
+Every note was checked against its own observed partials. **A fundamental is the
+spacing between adjacent partials**, and that is the test a collapsed method
+cannot fail safely: a series of 940 / 1880 / 2820 and one of 1868 / 3735 / 5601
+both reduce to "940 or a multiple of it" under harmonic product spectrum alone,
+and only the spacing tells them apart.
+
+| Note | Partials observed | Spacing | Fundamental | Verdict |
 | --- | --- | --- | --- | --- |
-| F#5 | 1500, 2250 | 750 (1500 = 2x750, 2250 = 3x750) | 739.99 Hz | **Measured.** Tempering would put the partials at 1480 / 2220, which is not what was seen. |
-| A#5 | 940, 1880, 2820 | 940 (1x, 2x, 3x) | 932.33 Hz | **Measured.** Tempering would put the partials at 1864.7 / 2797. |
-| D#6 | 1240, 2480 | 1240 (2480 = 2x1240) | 1244.5 Hz | **Note-snapped.** 2 x 1244 = 2488, not the observed 2480. |
+| 1 | 751, 1502, 2252, 3003, 3754, 4504, 5254, 6005 | 750.6 | 750.0 | **Measured.** Consecutive multiples 1x-8x, no subharmonic energy. |
+| 2 | 938, 1875, 2813, 3751, 4688, 5626, 6563 | 937.5 | 936.9 | **Measured.** Consecutive multiples 1x-7x. |
+| 3 | 1249, 2497, 3745, 4994, 6242 | 1248.4 | 1247.8 | **Measured.** Consecutive multiples 1x-5x. |
+| Resolution | 1868, 3735, 5601, 7472 | 1867 | 1868.0 | **Measured.** Consecutive multiples 1x-4x, and nothing at 934. |
 
-So two of the three are real readings and only D#6 was substituted. That asymmetry is
-itself the evidence: had the v1 author measured 1244 Hz, the second partial would have
-read 2488 Hz. It read 2480.
+Each arpeggio figure is the mean of the three passes; the standard deviation
+across passes is 0.1 Hz or less, so the notes are stable and the passes identical.
 
-The 4 Hz difference is 0.3%, likely inside the FFT bin resolution, so v1's audio was
-not audibly wrong - but it is an adjustment rather than a reading, and the two are
-listed separately above. **The note names are nearest-note labels for a piezo that
-was never tuned to concert pitch** - 750 Hz is 23 cents sharp of F#5 and 940 Hz is 14
-cents sharp of A#5. The ROM targets the measured fundamentals, not the tempered ones.
+Six methods, for the resolution, which is the figure that moved:
 
-Note sequence as transcribed, legato throughout (the piezo glides between notes, no
-inter-note gaps were observed):
+| Method | Reads |
+| --- | --- |
+| Adjacent-partial spacing | 1867 |
+| Autocorrelation | 1879 |
+| Cepstrum | 1917 (quefrency-limited) |
+| Harmonic product spectrum | 1868 |
+| Zero-crossing period fit | 1872 |
+| Harmonic-series refinement | 1868 |
 
-| # | Note | Measured Hz | v1 synthesized Hz | Duration (ms) |
-| --- | --- | --- | --- | --- |
-| 1 | F#5 | 750 | 750 | 200 |
-| 2 | A#5 | 940 | 940 | 150 |
-| 3 | D#6 | 1240 | 1244 | 150 |
-| 4 | F#5 | 750 | 750 | 200 |
-| 5 | A#5 | 940 | 940 | 150 |
-| 6 | D#6 | 1240 | 1244 | 150 |
-| 7 | F#5 | 750 | 750 | 200 |
-| 8 | A#5 | 940 | 940 | 150 |
-| 9 | D#6 | 1240 | 1244 | 150 |
-| 10 | A#5 | 940 | 940 | 330 |
+Note sequence, legato throughout (the piezo glides between notes, no inter-note
+gaps were observed):
 
-Total 1830 ms, matching the measured ~1.83 s.
+| # | Measured Hz | Duration (ms) |
+| --- | --- | --- |
+| 1 | 750 | 222 |
+| 2 | 937 | 160 |
+| 3 | 1248 | 129 |
+| 4 | 750 | 222 |
+| 5 | 937 | 160 |
+| 6 | 1248 | 129 |
+| 7 | 750 | 222 |
+| 8 | 937 | 160 |
+| 9 | 1248 | 129 |
+| 10 | **1868** | 349 |
 
-### What the TMS1370 can actually play, and why the top note is 1190 Hz
+Total 1880 ms, matching the measured ~1.88 s.
 
-The measurements above stand. **The machine cannot play one of them**, and that is a
+One structural detail, recorded because it corroborates that the tail comes from
+the same generator as the arpeggio: every note is amplitude-modulated at an exact
+submultiple of its own pitch - f0/8 for notes 1 and 2, f0/16 for note 3 and the
+resolution - which is a burst structure, and the same shape the ROM's `NIB_PER`
+produces.
+
+### What the TMS1370 can actually play
+
+The measurements above stand. **The machine cannot play two of them**, and that is a
 property of the note generator rather than a defect in the ROM or an error in the
 reading.
 
 `note` builds a half-period from a nested loop - outer count `NIB_HALF_O`, inner count
-`NIB_HALF_I`. With the outer count zero, which all three win notes use, the full period
-is `4 * I + 25` instructions. That reproduces every figure the ROM states beside these
-constants:
+`NIB_HALF_I`. The full period is `4 * (O + 1) * (I + 3) + 13` instructions, which
+reproduces all nine sound constants the ROM states exactly. With the outer count zero,
+which all four win notes use, that is `4 * I + 25`:
 
 | I | period (instructions) | pitch | against the measurement |
 | --- | --- | --- | --- |
-| 13 | 77 | 758 Hz | 750 measured, 1.1% high |
-| 9 | 61 | 956 Hz | 940 measured, 1.7% high |
-| 6 | 49 | **1190 Hz** | **1240 measured, 4.0% low** |
-| 5 | 45 | 1296 Hz | 1240 measured, 4.5% high |
+| 13 | 77 | 758 Hz | 750 measured, 1.0% high |
+| 9 | 61 | 956 Hz | 937 measured, 2.1% high |
+| 6 | 49 | **1190 Hz** | **1248 measured, 4.6% low** |
+| 5 | 45 | 1296 Hz | 1248 measured, 3.9% high |
+| 2 | 33 | **1768 Hz** | **1868 measured, 5.4% low** |
+| 1 | 29 | 2012 Hz | 1868 measured, 7.7% high |
 
-So the two pitches reachable either side of the measured 1240 Hz are 1190 and 1296.
-**1190 is the closest this machine can play**, and the gap between neighbouring pitches
-at that end of the range is 8.5% - the inner count is an integer, and the steps get
-coarser as it falls. The first two notes land inside 2% because `I` is larger there and
-the quantisation is correspondingly finer.
+The inner count is an integer and the steps coarsen as it falls: 8.5% between
+neighbours at the top of the arpeggio, 13.8% at the resolution. The first two notes
+land inside 2.1% because `I` is larger there and the quantisation is correspondingly
+finer. **Exact octaves are unreachable at any `O`** - the period is always odd, so
+half of it is never an integer.
 
-This is why `tools/probe/speaker-bands.test.ts` bounds the third note at +/-5% where the
-other two use +/-3%: a +/-3% band on 1240 Hz is 1203-1277, which this note generator
-cannot enter from either side. **The band follows the hardware; the measurement it is
-derived from is unchanged.**
+**1768 is the closest this machine can play to the resolution**, and there is a second
+constraint on that note: `periods = (P + 1) * (B + 1)` caps one `note` call at 256,
+which at 1768 Hz is 145 ms against a measured 349. That would make the resolution
+shorter than an arpeggio note and stop it reading as a resolution at all, so the ROM
+calls `note` twice - 512 periods, 290 ms.
+
+**The top of the arpeggio stays at 1190 although 1296 is now nearer.** Against the old
+1240 figure, 1190 was the closer of the two and this section said so; against 1248 the
+ordering flips. It is kept for the interval rather than the pitch: the leap from the
+top of the arpeggio to the resolution measures +699 cents, 1190 gives +684 and 1296
+would give +537. Fifteen cents is inaudible, 162 is over a semitone and a half, and a
+wrong interval in the final leap is the class of error the owner heard - a 0.7% shift
+in absolute pitch is not. `tools/probe/win-jingle.test.ts` asserts that interval,
+because no symmetric band can separate the two candidates.
+
+This is why `tools/probe/speaker-bands.test.ts` bounds the third note at +/-5% and the
+resolution at +/-6% where the first two use +/-3%. **The bands follow the hardware; the
+measurements they are derived from are independent of them.**
 
 Recorded because that band was written at +/-3% and never reached - the jingle needs 199
 points and no scenario in that suite got there - so nothing ever failed on a bound the
 machine could not meet. `tools/probe/win-jingle.test.ts` now reaches it.
 
-**Correction recorded during v1**: an earlier transcription included an E6 pass-tone
-before the resolution. Re-analysis of the recording found no E6 - the final
-arpeggio's D#6 resolves straight to the sustained A#5. Do not reintroduce it.
+**Correction recorded during v1**: an earlier transcription included a pass-tone between
+the final arpeggio and the resolution. Re-analysis found none - the last arpeggio note
+leaps straight to the sustained resolution. Do not reintroduce it.
 
 v1 envelope: peak gain 0.32, 4 ms attack, 90 ms release.
 
@@ -459,7 +564,7 @@ The bands the v2 machine's reconstructed speaker output must land inside:
 | `missileFire` | 1480-1632 Hz | < 150 ms (measured ~20 ms) |
 | `jetMarch` | 600-650 Hz | ~70 ms per step |
 | `battleshipBuzz` | 79-111 Hz repetition rate, and below `jetMarch` | ~4.0 s, continuous |
-| `win` | 750 / 940 / 1240 Hz (v1 played the third note at 1244) | ~1.83 s |
+| `win` | 750 / 937 / 1248 Hz arpeggio, resolving up to 1868 | ~1.88 s |
 | `gameOver` | 455-545 -> 80-97 -> 200-280 -> ~147 Hz | ~1.13 s |
 | `launcherHitWarning` | 455-545 Hz | ~10 ms per beep, 25-28 ms gaps |
 
