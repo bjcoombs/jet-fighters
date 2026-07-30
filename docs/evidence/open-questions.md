@@ -765,6 +765,19 @@ correct. It is invisible to coverage, because the addresses are all legal. It is
 to CI, because nothing goes red. Reverting the fix is the only move that asks the question
 directly.
 
+**And one way these survive is worth naming separately, because it is not a property of
+the drives at all.** A correct diagnosis closes an investigation as effectively as a wrong
+one. Twice on this run a test in these suites was observed taking 80 to 94 seconds; both
+times it was diagnosed as another suite starving it, which was true, and the matter was
+dropped. The question that went unasked was the adjacent one - *whether the default
+timeout was survivable at all* - and the answer was no: 1.4 s idle against a five-second
+default and a 67x worst case. Nothing was wrong with the diagnosis. It answered the
+question in front of it and stopped, and stopping is what a correct answer licenses.
+
+So when a measurement surprises you and the explanation is satisfying, that is the moment
+to ask what *else* follows from it. The other routes below are drives whose premise
+stopped being true; this one is an explanation that was true and incomplete.
+
 ---
 
 The blanking pair above is one instance of something worth naming, because this run
