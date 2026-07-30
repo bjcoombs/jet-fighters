@@ -624,26 +624,38 @@
 .EQU SND_WARN_P,     4          ; 5 periods = 10.7 ms
 .EQU SND_WARN_B,     0
 
-; win - 750 / 940 / 1240 Hz measured by harmonic product spectrum, ~1.83 s:
-; three arpeggios and a sustained resolution. The note names in that document
-; are labels applied afterwards and two of the three were re-derived from their
-; own partials, so these target the measured fundamentals and not the tempered
+; win - 750 / 937 / 1248 Hz and a resolution of 1868, ~1.88 s: three arpeggios
+; and a sustain. Every figure is the spacing of its own partial series, taken
+; from gameplay-audio.m4a; the note names in that document are labels applied
+; afterwards, so these target the measured fundamentals and not the tempered
 ; pitches.
+;
+; **The resolution is an octave above the middle note, not equal to it.** It read
+; as 940 until the tail was analysed in its own right - see audio-reference.md,
+; "The resolution was never measured" - and playing the middle note again is what
+; the owner heard and reported as wrong.
 .EQU SND_WIN1_O,     0          ; D = 34, f = 58333/77  = 758 Hz  (750 measured)
 .EQU SND_WIN1_I,    13
 .EQU SND_WIN1_P,    15          ; 16 x 9 = 144 periods = 190 ms
 .EQU SND_WIN1_B,     8
-.EQU SND_WIN2_O,     0          ; D = 26, f = 58333/61  = 956 Hz  (940 measured)
+.EQU SND_WIN2_O,     0          ; D = 26, f = 58333/61  = 956 Hz  (937 measured)
 .EQU SND_WIN2_I,     9
 .EQU SND_WIN2_P,    15          ; 16 x 9 = 144 periods = 151 ms
 .EQU SND_WIN2_B,     8
-.EQU SND_WIN3_O,     0          ; D = 20, f = 58333/49  = 1190 Hz (1240 measured)
-.EQU SND_WIN3_I,     6
+.EQU SND_WIN3_O,     0          ; D = 20, f = 58333/49  = 1190 Hz (1248 measured)
+.EQU SND_WIN3_I,     6          ; 1296 is nearer on pitch and wrong on interval -
 .EQU SND_WIN3_P,    15          ; 16 x 11 = 176 periods = 148 ms
-.EQU SND_WIN3_B,    10
-.EQU SND_WINE_B,    15          ; the resolution: SND_WIN2's pitch for 256
-                                ; periods, 268 ms. Three arpeggios and it is
-                                ; 1735 ms against the measured 1830.
+.EQU SND_WIN3_B,    10          ; see win-jingle.test.ts ARPEGGIO_TOLERANCE.
+; The resolution. 1768 is the closest this note generator reaches to the measured
+; 1868 - the neighbours are 1768 (5.4% low) and 2012 (7.7% high), a 13.8% step -
+; and at that pitch one `note` call is 256 periods of 0.57 ms, or 145 ms, which
+; would make the resolution *shorter* than an arpeggio note. So it is called
+; twice: 512 periods, 290 ms, against the measured 349. Three arpeggios and the
+; jingle is 1757 ms against the measured 1880.
+.EQU SND_WINE_O,     0          ; D = 12, f = 58333/33  = 1768 Hz (1868 measured)
+.EQU SND_WINE_I,     2
+.EQU SND_WINE_P,    15          ; 16 x 16 = 256 periods a call, called twice
+.EQU SND_WINE_B,    15
 
 ; gameOver - a brief 455-545 Hz transient collapsing to an 80-97 Hz buzz, then a
 ; 200-280 Hz rasp decaying to a ~147 Hz floor; five notes, 660 ms of tone. The
@@ -2303,14 +2315,18 @@ gw_again:
 gw_last:
         LDX  FILE_D0
         TCY  NIB_HALF_O
-        TCMIY SND_WIN2_O
-        TCMIY SND_WIN2_I
-        TCMIY SND_WIN2_P
+        TCMIY SND_WINE_O
+        TCMIY SND_WINE_I
+        TCMIY SND_WINE_P
         TCMIY SND_WINE_B
         COMC
         LDP  P_LEAF
         CALL note
         COMC
+        COMC                    ; a second burst at the same pitch: `note` leaves
+        LDP  P_LEAF             ; NIB_HALF_O/I and NIB_PER/NIB_BURSTS as it found
+        CALL note               ; them, so the nibbles above still stand and only
+        COMC                    ; the call repeats. 512 periods, 290 ms.
         LDP  C1_REND1
         BR   render
 

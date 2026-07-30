@@ -152,29 +152,30 @@ const BANDS: readonly Band[] = [
   // this row: the row is what {@link buzzHzOf}'s comb reading is checked
   // against, because a median period cannot read this sound at all.
   { name: BATTLESHIP_BUZZ, minHz: 79, maxHz: 111, minMs: 20, maxMs: 5000 },
-  // win.fundamentalsHz. The jingle needs 199 points and is not reached by the
-  // scenarios below; the rows are here so the table is the whole contract.
-  // Durations from win's own transcription: 200 / 150 / 150 ms per arpeggio note
-  // and 330 ms for the resolution.
+  // win.fundamentalsHz and win.resolutionHz. The jingle needs 199 points and is
+  // not reached by the scenarios below; the rows are here so the table is the
+  // whole contract. Durations measured off the recording: 222 / 160 / 129 ms per
+  // arpeggio note and 349 ms for the resolution.
   //
   // `tools/probe/win-jingle.test.ts` does reach the jingle, and reaching it
-  // showed the D#6 row was a bound this machine cannot meet. `note` builds a
+  // showed the top row was a bound this machine cannot meet. `note` builds a
   // half-period from a nested loop, and with the outer count zero - which all
-  // three win notes use - the period is `4 * I + 25` instructions, reproducing
+  // four win notes use - the period is `4 * I + 25` instructions, reproducing
   // every figure the ROM states beside these constants: I = 13 gives 758 Hz,
-  // I = 9 gives 956, I = 6 gives 1190. The two pitches reachable either side of
-  // the measured 1240 are 1190 (4.0% low) and 1296 (4.5% high), so 1190 is the
-  // closest this note generator can play and the step between neighbours there
-  // is 8.5% - wider than the +/-3% this row used to assert. Nothing had ever
-  // failed on it because nothing reached it.
+  // I = 9 gives 956, I = 6 gives 1190, I = 2 gives 1768. So the pitches are
+  // quantised and the step widens as the note rises: 8.5% at the top of the
+  // arpeggio, 13.8% at the resolution. Each band clears its own step.
   //
-  // So D#6 is +/-5% and the other two stay at +/-3%, where the ROM lands inside
-  // 2%. The measurement is unchanged and still 1240; it is the bound that
-  // follows the hardware. See audio-reference.md, "What the TMS1370 can actually
-  // play, and why the top note is 1190 Hz".
-  { name: 'win F#5 (750 Hz)', minHz: 727, maxHz: 772, minMs: 100, maxMs: 400 },
-  { name: 'win A#5 (940 Hz)', minHz: 912, maxHz: 968, minMs: 100, maxMs: 400 },
-  { name: 'win D#6 (1240 Hz)', minHz: 1178, maxHz: 1302, minMs: 100, maxMs: 400 },
+  // Three figures moved when the jingle was re-analysed off gameplay-audio.m4a,
+  // and one of them is not a refinement. 940 -> 937 and 1240 -> 1248 are; the
+  // **resolution was 940 and is 1868**, an octave up, because that note was never
+  // separately measured - the 940 was the arpeggio's middle note, applied to the
+  // tail as a note name. See audio-reference.md, "The resolution was never
+  // measured", and "What the TMS1370 can actually play" for the quantisation.
+  { name: 'win note 1 (750 Hz)', minHz: 727, maxHz: 772, minMs: 100, maxMs: 400 },
+  { name: 'win note 2 (937 Hz)', minHz: 909, maxHz: 965, minMs: 100, maxMs: 400 },
+  { name: 'win note 3 (1248 Hz)', minHz: 1186, maxHz: 1310, minMs: 100, maxMs: 400 },
+  { name: 'win resolution (1868 Hz)', minHz: 1756, maxHz: 1980, minMs: 100, maxMs: 500 },
   // launcherHitWarning.dominantHzRange, which is also gameOver.openingHzRange -
   // audio-reference.md records them as the same pitch. The beep is a measured
   // ~10 ms, so this is the one band whose floor is below the click threshold;

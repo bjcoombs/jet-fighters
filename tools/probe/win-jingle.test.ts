@@ -16,11 +16,27 @@
 // {@link ARPEGGIO_TOLERANCE}.
 //
 // So the one sound with a documented resolution had no assertion behind it, in
-// the suite that exists to police sounds. The owner reported the jingle "ends on
-// a high note not a low note" and there was nothing in the tree that could have
-// caught it either way. Measured, the ROM is correct - three arpeggios of
-// 758 / 956 / 1190 Hz and then a sustained 956 - but "measured once by hand" is
-// what this file replaces.
+// the suite that exists to police sounds. The owner reported "the last note of
+// the game win is a high note, not a low note" and there was nothing in the tree
+// that could have caught it either way.
+//
+// ## That report was a description, and it was read as a question
+//
+// The first pass on it measured the ROM ending at 956 Hz against a 1190 Hz peak,
+// found `audio-reference.md` recording the resolution as 940, and concluded that
+// the machine was faithful and the owner was describing 956 Hz being "high in
+// absolute terms". This file was then written to hold that shape in place.
+//
+// Re-analysed off `assets/reference/gameplay-audio.m4a`, the owner was being
+// literal. **The unit's resolution is 1868 Hz - an octave above the arpeggio's
+// middle note and a fifth above its peak.** The jingle climbs and then leaps
+// past its own top note; it does not fall back at all. The sentence said so.
+//
+// `audio-reference.md`'s 940 was never a reading of that note: `win.partialsObserved`
+// records 940 / 1880 / 2820, which are the *arpeggio* mid note's partials, and the
+// tail's own partials (1868 / 3735 / 5601, with no 934 present at all) were never
+// taken. See that document's "win" section for the correction, the method that
+// settles it, and the superseded reading.
 //
 // ## Why the score is written, which is the only poke in these suites
 //
@@ -37,12 +53,18 @@
 // ## Why the assertion is relative, not three absolute bands
 //
 // Three bands in a set are satisfied by any ordering, so they cannot express the
-// defect that was reported: a jingle ending on its own peak passes all three.
-// What a player hears is the *shape* - the arpeggio climbs and the last note
-// falls back - so the assertion that falsifies the report is that **the final
-// note is lower than the highest note the jingle reached**. The absolute bands
-// are kept underneath it, because a jingle that fell back to the wrong pitch
-// would satisfy the shape and still be wrong.
+// defect that was reported: a jingle whose notes are each in band still passes if
+// it ends on the wrong one of them. What a player hears is the *shape* - the
+// arpeggio climbs and the last note leaps above it - so the assertion that
+// falsifies the report is that **the final note is higher than the highest note
+// the arpeggio reached**. The absolute bands are kept underneath it, because a
+// jingle that leapt to the wrong pitch would satisfy the shape and still be wrong.
+//
+// The direction of that comparison was wrong when this file was written, and the
+// inversion is not a patch to a bound. The previous wording reasoned from "the
+// arpeggio climbs, and the last note falls back", which was never measured - it
+// was inferred from a resolution figure that was itself an unmeasured note name.
+// The premise and the evidence error are the same assumption, so both move here.
 //
 // Node-side test: no DOM, no browser globals.
 
@@ -79,12 +101,20 @@ const MIN_RUN_PERIODS = 3;
 /** Two runs within this of each other are the same sustained note, refragmented. */
 const SAME_PITCH_TOLERANCE = 0.04;
 
-/** audio-reference.md `win.fundamentalsHz`, the tolerance speaker-bands.test.ts uses. */
-const BAND_TOLERANCE = 0.03;
-const WIN_FUNDAMENTALS = [750, 940, 1240] as const;
+/**
+ * audio-reference.md `win.fundamentalsHz`, as re-measured off the recording.
+ *
+ * 750 / 937 / 1248, each the spacing of its own partial series and each steady
+ * across the three arpeggio passes to a standard deviation of 0.1 Hz. The middle
+ * figure was 940 and the top 1240; the changes are 0.3% and 0.6%, well inside
+ * every band here, and they are carried because the top one moves the
+ * quantisation arithmetic in {@link ARPEGGIO_TOLERANCE}.
+ */
+const WIN_FUNDAMENTALS = [750, 937, 1248] as const;
 
 /**
- * The tolerance the arpeggio is held to, and why it is not {@link BAND_TOLERANCE}.
+ * The tolerance the arpeggio is held to, and why it is not the +/-3% that
+ * `tools/probe/speaker-bands.test.ts` uses for a sound the ROM can place exactly.
  *
  * `note` builds a half-period from a nested loop, outer count `NIB_HALF_O` and
  * inner count `NIB_HALF_I`. With the outer count zero - which all three win notes
@@ -93,12 +123,21 @@ const WIN_FUNDAMENTALS = [750, 940, 1240] as const;
  * gives 61 (956 Hz), I = 6 gives 49 (1190 Hz).
  *
  * So the pitches are quantised, and near the top of the arpeggio the steps are
- * coarse. The two the ROM can reach either side of the measured 1240 Hz are
- * I = 6 at 1190 (4.0% low) and I = 5 at 1296 (4.5% high). **1190 is the closest
- * this machine can play**, and the gap between neighbouring pitches there is
- * 8.5% - wider than a +/-3% band. The other two notes are comfortably inside 3%
- * (758 against 750 is 1.1%, 956 against 940 is 1.7%); it is only the top note
- * that the encoding cannot place.
+ * coarse. The two the ROM can reach either side of the re-measured 1248 Hz are
+ * I = 6 at 1190 (4.6% low) and I = 5 at 1296 (3.9% high), and the gap between
+ * neighbouring pitches there is 8.5% - wider than a +/-3% band. The other two
+ * notes are comfortably inside 3% (758 against 750 is 1.0%, 956 against 937 is
+ * 2.1%); it is only the top note that the encoding cannot place.
+ *
+ * **The ROM stays at I = 6, and on the refined measurement that is no longer the
+ * closer of the two.** At 1240 it was - 1190 was 4.0% low against 1296's 4.5%
+ * high - and the earlier wording here said so. At 1248 the ordering flips. It is
+ * kept at 1190 deliberately, for the interval rather than the pitch: the leap
+ * from the top of the arpeggio to the resolution measures +699 cents on the
+ * recording, I = 6 gives +684, and I = 5 would give +537. Fifteen cents is
+ * inaudible and 162 is over a semitone and a half, and a wrong interval in the
+ * final leap is the class of error the owner heard. The 0.7% of measurement that
+ * separates the two candidates on absolute pitch does not.
  *
  * `tools/probe/speaker-bands.test.ts` declared 1203-1277 for that note - a bound
  * this ROM cannot satisfy from either side, and one no scenario there reached,
@@ -107,13 +146,53 @@ const WIN_FUNDAMENTALS = [750, 940, 1240] as const;
  * bound now follows.
  *
  * Widening the tolerance rather than restating the ROM's own 1190 keeps the
- * assertion pointed at the measurement: a note that drifted to 1296 would still
- * fail, and so would one that vanished.
+ * assertion pointed at the measurement: a note that vanished would still fail.
+ *
+ * **What it does not do is separate the two reachable neighbours**, and the
+ * earlier wording here claimed it did - "a note that drifted to 1296 would still
+ * fail". That was untrue when written, not merely untrue after the re-measurement:
+ * against 1240, 1296 is 4.5% out and the band was already +/-5%. Both neighbours
+ * are inside it against 1248 too, and no symmetric band can exclude 1296 while
+ * admitting 1190, because 1296 is the nearer of the two. What holds the top note
+ * where it is, is {@link RESOLUTION_INTERVAL_CENTS} below.
  */
 const ARPEGGIO_TOLERANCE = 0.05;
 
-/** The resolution's measured pitch - `win.resolutionHz`, the long A#5. */
-const RESOLUTION_HZ = 940;
+/**
+ * The resolution's measured pitch - `win.resolutionHz`.
+ *
+ * 1868 Hz, from the sustained tail of `gameplay-audio.m4a`. Six methods agree
+ * within 3% (adjacent-partial spacing, autocorrelation, cepstrum, harmonic
+ * product spectrum, a zero-crossing period fit and a harmonic-series refinement);
+ * the tail's partials are 1868 / 3735 / 5601 / 7472 and it has no energy at 934
+ * beyond the noise floor, where the arpeggio's genuine 937 Hz note carries its
+ * own fundamental 31 dB above background in the same recording.
+ *
+ * Was 940 - the arpeggio's middle note, written down for this one as a note name
+ * rather than measured. See audio-reference.md, "win".
+ */
+const RESOLUTION_HZ = 1868;
+
+/**
+ * The resolution's tolerance, and why it is wider than {@link ARPEGGIO_TOLERANCE}.
+ *
+ * Same quantisation, one step coarser again. With the outer count zero the
+ * reachable pitches around 1868 are I = 2 at 1768 (5.4% low) and I = 1 at 2012
+ * (7.7% high), a 13.8% step. **1768 is the closest this machine can play**, so
+ * the band has to clear 5.4% for the ROM to sit inside its own measurement.
+ */
+const RESOLUTION_TOLERANCE = 0.06;
+
+/**
+ * The leap from the top of the arpeggio to the resolution, in cents.
+ *
+ * Measured +699 - a perfect fifth - and this is the assertion that pins the top
+ * note, because the absolute band cannot. Moving the arpeggio's top note to
+ * I = 5 (1296 Hz) would satisfy every band in this file and take the leap to
+ * +537, over a semitone and a half flat. The tolerance is a semitone.
+ */
+const RESOLUTION_INTERVAL_CENTS = 699;
+const INTERVAL_TOLERANCE_CENTS = 100;
 
 /**
  * Emulated seconds the jingle is captured over.
@@ -261,35 +340,51 @@ describe('the win jingle', () => {
     expect(jingle.silentAfter, 'the speaker went quiet after the jingle').toBe(true);
   });
 
-  it('ends below its own highest note', () => {
-    // The assertion the owner's report is about, and the reason it is stated
-    // relatively: three absolute bands in a set are satisfied by any ordering,
-    // so a jingle ending on its 1240 Hz peak would pass them all. This is what a
-    // player actually hears - the arpeggio climbs, and the last note falls back.
-    const peak = Math.max(...jingle.notes.map((note) => note.hz));
+  it('ends above every note the arpeggio reached', () => {
+    // The assertion the owner's report is about, stated relatively because three
+    // absolute bands in a set are satisfied by any ordering. This is what a player
+    // actually hears - the arpeggio climbs, and the last note leaps past its top.
+    //
+    // This comparison ran the other way when the file was written, on a resolution
+    // figure that had never been measured. See the header.
+    const arpeggio = jingle.notes.slice(0, -1);
+    const peak = Math.max(...arpeggio.map((note) => note.hz));
     const last = jingle.notes[jingle.notes.length - 1] as Note;
     expect(
       last.hz,
-      `the jingle peaks at ${peak.toFixed(0)} Hz and must resolve below it, not end on it`,
-    ).toBeLessThan(peak);
+      `the arpeggio peaks at ${peak.toFixed(0)} Hz and the jingle must leap above it, not fall back`,
+    ).toBeGreaterThan(peak);
   });
 
   it('resolves onto the measured resolution pitch, and holds it', () => {
-    // The absolute half, under the shape: falling back to the *wrong* pitch would
-    // satisfy the test above. win.resolutionHz is the long A#5, and it is a
-    // sustain rather than a fourth arpeggio note - so it must also outlast the
-    // notes that came before it.
+    // The absolute half, under the shape: leaping to the *wrong* pitch would
+    // satisfy the test above. It is a sustain rather than a fourth arpeggio note,
+    // so it must also outlast the notes that came before it.
     const last = jingle.notes[jingle.notes.length - 1] as Note;
-    expect(Math.abs(last.hz - RESOLUTION_HZ) / RESOLUTION_HZ).toBeLessThan(BAND_TOLERANCE);
+    expect(Math.abs(last.hz - RESOLUTION_HZ) / RESOLUTION_HZ).toBeLessThan(RESOLUTION_TOLERANCE);
     const longestBefore = Math.max(...jingle.notes.slice(0, -1).map((note) => note.ms));
     expect(last.ms, 'the resolution is sustained, not another arpeggio note').toBeGreaterThan(
       longestBefore,
     );
   });
 
+  it('leaps a fifth from the top of the arpeggio, which the bands cannot check', () => {
+    // What holds the arpeggio's top note at I = 6. Both of the pitches this note
+    // generator can reach around the measured 1248 Hz sit inside ARPEGGIO_TOLERANCE,
+    // so the band admits either; the interval to the resolution does not.
+    const arpeggio = jingle.notes.slice(0, -1);
+    const peak = Math.max(...arpeggio.map((note) => note.hz));
+    const last = jingle.notes[jingle.notes.length - 1] as Note;
+    const cents = 1200 * Math.log2(last.hz / peak);
+    expect(
+      Math.abs(cents - RESOLUTION_INTERVAL_CENTS),
+      `the leap is ${cents.toFixed(0)} cents, measured ${RESOLUTION_INTERVAL_CENTS}`,
+    ).toBeLessThan(INTERVAL_TOLERANCE_CENTS);
+  });
+
   it('climbs through the three measured fundamentals before it resolves', () => {
-    // win.arpeggio, and the reason the resolution reads as a resolution: it is
-    // the note the jingle already passed through on the way up.
+    // win.arpeggio. Each of the three has to be there, and the resolution is not
+    // one of them.
     for (const fundamental of WIN_FUNDAMENTALS) {
       expect(
         jingle.notes.some(
@@ -298,8 +393,19 @@ describe('the win jingle', () => {
         `no note within ${ARPEGGIO_TOLERANCE * 100}% of ${fundamental} Hz`,
       ).toBe(true);
     }
-    const peak = Math.max(...jingle.notes.map((note) => note.hz));
-    const peakAt = jingle.notes.findIndex((note) => note.hz === peak);
-    expect(peakAt, 'the highest note is not the last one').toBeLessThan(jingle.notes.length - 1);
+
+    // **The resolution is a pitch the arpeggio never played.** This clause used to
+    // assert the opposite - that the highest note is not the last one, on the
+    // reasoning that the resolution "is the note the jingle already passed through
+    // on the way up". That is exactly the defect: playing the middle note a fourth
+    // time is what the ROM did and what the owner reported. A resolution that is
+    // one of its own arpeggio notes is the failure, not the contract.
+    const last = jingle.notes[jingle.notes.length - 1] as Note;
+    for (const fundamental of WIN_FUNDAMENTALS) {
+      expect(
+        Math.abs(last.hz - fundamental) / fundamental,
+        `the resolution is ${last.hz.toFixed(0)} Hz, which is the arpeggio's ${fundamental} Hz again`,
+      ).toBeGreaterThan(ARPEGGIO_TOLERANCE);
+    }
   });
 });
