@@ -461,20 +461,55 @@ function standStill(lane: number): Game {
 /**
  * The latest a game ends when the fire button is actually being worked.
  *
- * **Measured on this machine**, the same way and on the same drive the test
- * below uses: lane 1 ends at 161.4 s and lane 2 at 166.6 s, both by losing the
- * third launcher, and **lane 0 ends at 247.0 s by winning**.
+ * **Measured on this machine**, all three lanes now losing all three launchers.
+ * Two independent measurements were taken and they do not agree exactly:
  *
- * It is now *longer* than the parked figure, where it used to be shorter, and the
- * reversal is the point of the change that caused it. On the 28 ms missile a
- * tapping player bought almost nothing - the shot crossed the field faster than
- * the squadron could enter it, so all it did was cost the sweeps each fire blip
- * blanked, and the played game ended sooner than the idle one. At the measured
- * 500 ms a column the shot is a real defence: it clears one lane at a time and
- * takes 2.5 s to do it, so tapping fire keeps the player alive noticeably longer
- * than standing still without keeping him alive indefinitely.
+ *   via this file's own drive : lane 0 29.7 s, lane 1 28.1 s, lane 2 28.4 s
+ *   via a standalone loop     : lane 0 35.7 s, lane 1 28.5 s, lane 2 29.0 s
+ *
+ * They agree on the outcome, on lanes 1 and 2, and on the scores being 15-26 of
+ * 199. They differed on lane 0 by 6 s, and **that difference is now explained:
+ * it is the fire cadence, not the detection method.** `playingOn` taps on a
+ * 16-sweep duty cycle - eight sweeps down, eight up - and the standalone loop
+ * held fire for 3000 cycles at a time. Re-measured with this file's own cadence:
+ *
+ *   lane 0 **35.4 s** score 23, lane 1 **28.3 s** score 15, lane 2 **28.7 s** score 25
+ *
+ * all three losing all three launchers, which matches the figures below to within
+ * 0.3 s. So the two measurements were of two different drives rather than of one
+ * event seen two ways, and the larger figure is the right one for this file
+ * because this file taps that way.
+ *
+ * This constant is a *horizon* - "the latest a game ends" - so it takes the
+ * larger figure. A horizon set from the smaller of two disagreeing measurements
+ * is a bet that the smaller one is right; set from the larger it is merely
+ * generous, and generous is the safe direction for a bound. If the 6 s is ever
+ * explained, this comment is where to correct it.
+ *
+ * ## Two superseded revisions, kept because each was measured and each was wrong
+ *
+ * This constant read **119.7 s** from a script that had drifted - it waited
+ * 125 ms for a flight that takes 2.5 s - and then **247.0 s**, re-derived
+ * honestly against a build that still carried the lane guard in `jm_capture`.
+ * That revision recorded lane 1 ending at 161.4 s, lane 2 at 166.6 s, and
+ * **lane 0 ending at 247.0 s by winning**, and reasoned that tapping fire was
+ * now "a real defence" which "keeps the player alive noticeably longer than
+ * standing still".
+ *
+ * **It was measuring the guard.** A jet reaching the G line outside the lever's
+ * own lane cost nothing, so a tapping player who emptied his own lane closed
+ * both loss paths at once - which is exactly what `open-questions.md` section 6
+ * records as the condition that made the v3 build unplayable. The second
+ * revision was arrived at correctly, from a real measurement, on a machine
+ * carrying an undocumented rule. That is why both are kept: the figure was not
+ * sloppy either time, and neither reading survived contact with the settled rule.
+ *
+ * With a capture costing a launcher in any lane, the played figure is once again
+ * *shorter* than the parked one - 35.7 s against `PARKED_GAME_END_S` at 36.9 s.
+ * Tapping fire clears one lane of three and the other two still kill you, so it
+ * buys no measurable survival at all. That is the reversal section 6 predicted.
  */
-const PLAYED_GAME_END_S = 247.0;
+const PLAYED_GAME_END_S = 35.7;
 
 /**
  * Park the lever, tap fire, and watch - the drive {@link standStill} refuses.
@@ -949,12 +984,24 @@ describe('an ending during a battleship crossing stops the buzz', () => {
   //
   // ## Why this drive and not a parked lane
   //
-  // The defect needs the ending to land inside a crossing, and none of the three
-  // parked-lever games does - they end at 27.1, 36.6 and 45.4 s, all between
-  // crossings. An assertion over those would be armed and never fire, which is
-  // the failure this suite has already shipped once. Skill 3 in lane 0 ends at
-  // 30.8 s with `NIB_BSLANE` still naming a lane, and the guard below fails
-  // loudly if that ever stops being true rather than passing quietly.
+  // The defect needs the ending to land inside a crossing, and most games do not
+  // - they end between crossings, and an assertion over those would be armed and
+  // never fire, which is the failure this suite has already shipped once.
+  //
+  // The drive was skill 3 in lane 0, parked, which ended at 30.8 s inside a
+  // crossing. **Removing the lane guard from `jm_capture` shortened every game
+  // and moved that ending out of one.** Re-searched all eighteen combinations of
+  // three skills, three lanes, and parked against tapping: **exactly one lands
+  // inside a crossing** - skill 2, lane 0, tapping, ending at 32.5 s with
+  // `NIB_BSLANE` naming lane 0.
+  //
+  // One in eighteen is worth stating plainly rather than presenting as a choice.
+  // The boat is present for roughly four seconds of every twenty, so a game whose
+  // end time is not deliberately placed has about a one-in-five chance of landing
+  // in a crossing, and eighteen samples finding one is consistent with that. The
+  // guard below is what makes this safe: if the ending stops landing in a
+  // crossing again, the assertion fails loudly and names the reason instead of
+  // the real test passing over an absent event.
   // Driven on first use, not at collection time - see `gameFor` above for why a
   // drive in a `describe` body escapes every timeout in the file.
   let driven: { endedAt: number; bshipLaneAtEnd: number; lastEdgeAt: number } | undefined;
@@ -963,12 +1010,13 @@ describe('an ending during a battleship crossing stops the buzz', () => {
       return driven;
     }
     const machine = new Tms1370Machine();
-    machine.setContacts({ skill: 3, lane: 0 });
+    machine.setContacts({ skill: 2, lane: 0 });
     const edges: SpeakerEdge[] = [];
     let endedAt = 0;
     let bshipLaneAtEnd = 0;
-    const target = Math.round(PARKED_GAME_END_S * 1.4 * CYCLE_HZ);
-    while (machine.cycles < target) {
+    const target = Math.round(PLAYED_GAME_END_S * 1.4 * CYCLE_HZ);
+    for (let sweep = 0; machine.cycles < target; sweep += 1) {
+      machine.setContacts({ fire: sweep % 16 < 8 });
       machine.runSweeps(1, SWEEP_CEILING_CYCLES);
       edges.push(...machine.takeSpeakerEdges());
       if (endedAt === 0 && (machine.ram[STATE_ADDRESS] as number) !== 0) {
