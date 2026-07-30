@@ -82,9 +82,29 @@
 // jet there, so widening the window in time does not make an offset in lane
 // legal.
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { CYCLE_HZ } from '../../src/machine/cpu/tms1370/timing.js';
 import { Tms1370Machine } from './tms1370-probe.js';
+
+/**
+ * Wall-clock allowance for every drive in this file.
+ *
+ * **Not a measurement of anything, and deliberately generous.** Every bound the
+ * drives themselves use is in emulated cycles and is deterministic - the same
+ * ROM produces the same run every time. What varies is how long a shared runner
+ * takes to execute it, and Vitest's per-test default is five seconds. The
+ * slowest test here measures 1.4 s on an idle machine and has been observed at
+ * 94 s on a contended one, with three suites competing; a timeout tuned to the
+ * idle figure would turn a busy CI runner red for a reason that has nothing to
+ * do with the ROM.
+ *
+ * So this is an escape hatch against starvation rather than a horizon: if a
+ * drive ever genuinely hangs it still ends, and if the machine is merely loaded
+ * it does not. The figures that mean something are all in cycles.
+ */
+const DRIVE_TIMEOUT_MS = 60_000;
+
+vi.setConfig({ testTimeout: DRIVE_TIMEOUT_MS });
 
 /** RAM files, from the map at the head of `asm/jetfighter.asm`. */
 const FILE_D0 = 0;

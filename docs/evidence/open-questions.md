@@ -715,6 +715,15 @@ that does not say so. That is a question about the unit, not about the emulation
 until this is answered. A lockout would be a rule with no evidence behind it, added to
 make a test read cleanly.
 
+**The technique that made this tractable generalised on first contact with another
+suite.** Stating a precondition as its own named test - so it fails loudly instead of the
+real assertion passing quietly - was adopted by the distance-scoring branch, and within
+hours it caught a problem in that agent's own drive: a run that took 5.4 s against
+Vitest's five-second per-test default, so the win it was waiting for never arrived. Its
+guard reported *"the drive never reached the win - the cap is untested"* rather than
+passing over an absent event. A technique that works in the suite it was invented for is a
+habit; one that works in somebody else's on first contact is a method.
+
 ## 11. Two blanking assertions pass because their input became rare, not because they were fixed
 
 `blank-to-glass.test.ts` and `sweep-timing.test.ts` each assert that the renderer paints
@@ -743,14 +752,14 @@ the "every sound, march or not" pair that remains exposed.
 ### 11a. The general form: a timing change can invalidate a drive's premise silently
 
 The blanking pair above is one instance of something worth naming, because this run
-produced three of them in a day and none announced itself.
+produced four of them in a day and none announced itself.
 
 **Every drive in these suites rests on a premise about the machine's timing**, and the
 premise is almost never written down. Change a cadence anywhere and the premise can stop
 holding while the drive goes on running, goes on passing, and quietly measures something
 else. It is not a failure - nothing goes red - which is exactly what makes it dangerous.
 
-Three instances, in the order they were found:
+Four instances, in the order they were found:
 
 - **The input became rare.** The two assertions above pass because a fire blip landing
   beside a march note stopped being common once the missile slowed. The mechanism is
@@ -770,8 +779,17 @@ Three instances, in the order they were found:
   branch, whose census drive now ends on the third launcher at 198 where it used to reach
   the win.
 
-The second and third are the same shape seen from either end: **the drive's premise about
-why the run ends, or about what it will encounter before it does, stopped being true.**
+- **The outcome the drive waits for is not the drive's to guarantee.** The scoring branch
+  tried to bound its census by running until the win, and measured 240, 300, 360, 480 and
+  600 s all stopping at the same 58 events and the same 198 points. Whether a game *wins*
+  is a pacing property, and pacing is exactly what this run has been changing from three
+  branches at once. **An outcome-dependent drive is hostage to every other branch's pacing
+  changes** - and unlike a drive that runs out of clock, waiting longer does not fix it.
+
+The last three are the same shape seen from different ends: **the drive's premise about why
+the run ends, or about what it will encounter before it does, stopped being true.** The
+fourth is the sharpest form of it, because it cannot be fixed by widening a window: the
+premise is about an outcome rather than about a duration.
 
 **What to do about it is not settled, and this section is not a solution.** The one
 technique that has worked is the precondition assertion - if a test needs a precondition
