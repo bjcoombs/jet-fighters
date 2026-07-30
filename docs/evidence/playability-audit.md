@@ -527,3 +527,80 @@ indistinguishable in a summary.
   repository.
 - **Idle drives were run at skills 1 and 3 only**; the greedy, dodge, defensive and
   dodgeOnly policies were run at all three.
+
+---
+
+## 10. Handover: what is left on the capture-rule branch, and what to try
+
+Written at the point the branch was handed over, so the next person does not have to
+reconstruct it from a conversation. **State at handover: 3 failing tests**, `ea3a663`.
+
+### The V7 decision, which settles three of the three
+
+`tools/probe/tms1370-rom.test.ts`'s *"flies a rocket down every one of the three lanes"*
+is contract criterion V7. Its drive deliberately **never fires**, and it can no longer
+survive: measured, it reaches lane `[1]` only, at every skill.
+
+**The test conflates two claims, and separating them is the fix.**
+
+- **Claim A - rockets reach all three lanes.** Needs a drive that survives, which since
+  the settled capture rule means a drive that *shoots*.
+- **Claim B - the rocket's lane does not depend on the player's press pattern.** This is
+  what V7 exists for, and **a single no-fire run was never a good test of it**: one press
+  pattern, even the empty one, cannot falsify dependence on press patterns.
+
+**Claim B is already tested properly elsewhere.** Four press patterns - never fires, every
+1.0 s, every 2.7 s, every 5.3 s - all reach all three lanes, and the sequences differ by
+*which lanes hold jets* rather than by press phase, because `rf_look` only stops on an
+occupied lane. That is a real falsification; see section 7.
+
+**So: let a surviving, firing drive carry Claim A, and assert Claim B from the
+multi-pattern evidence** - by moving that check in, or by citing it. Neither claim is
+weakened. They stop being asserted by one drive that could only ever support one of them.
+
+**Why the old premise looked sound, which is the instructive part.** The drive's own
+comment explains that dodging worked because *"an arrival in the lever's own lane is a
+capture while an arrival elsewhere flies past"* - so a never-firing lever survived
+precisely because two lanes cost it nothing. **The drive was built on the undocumented
+lane guard.** Someone measured the guard's effect in the other direction and tuned to it:
+*"charging a launcher for the crossings that used to go uncharged shortened that run by
+9 s."* They saw it, quantified it, and took it for the machine.
+
+That is the sixth consequence of those three instructions, after a free capture, a rocket
+path that read as untested, an assertion passing by timing luck, an invulnerability
+finding that overstated its case, and a measured constant 23% too long.
+
+### The three failing tests
+
+| Test | Diagnosis | What to try |
+| --- | --- | --- |
+| `tms1370-rom` - flies a rocket down every one of the three lanes | Never-firing drive cannot survive the settled rule; reaches lane `[1]` only | Split Claim A from Claim B as above |
+| `tms1370-rom` - sounds the battleship as a continuous buzz | No crossing completes before the game ends | Give the drive the defending policy already in that file |
+| `scoring-ruler` - still pays the battleship its ten | Census dies before it can shoot a boat | Same policy; the boat also has to be **led**, which that file's round-robin arm already documents |
+
+**All three want the same thing: a drive that survives long enough to see a battleship
+crossing.** They are one problem, and letting a drive fire is what buys the survival - so
+the V7 ruling settles the approach for all of them.
+
+### Two things already tried, so nobody repeats them
+
+- **Skill 3 for the rocket rotor does not help, it hurts.** Rockets come three times as
+  often at skill 3, but the game ends 40% sooner, so the rotor gets *less* far: measured
+  `[1, 1]` at skill 1 in 36.2 s, `[1]` at skill 2 in 28.5 s, `[1]` at skill 3 in 21.8 s.
+- **Caching the conformance guard's decision for eight sweeps is worse than reading every
+  sweep.** It played badly enough that the search fell through most of the scenario space:
+  49 s became 246 s and timed out three unrelated files.
+
+### Already done, despite appearing on earlier lists
+
+`playability-audit.md` section 1 is superseded in place, the tap-to-win margin is
+re-derived and recorded at the assertion, and the PR body is written. The explicit
+timeouts it quotes are **`SEARCH_BUDGET_MS = 240_000`** in
+`tools/probe/rom-atlas-conformance.test.ts` and **`DRIVE_TIMEOUT_MS = 60_000`** in
+`tools/probe/scoring-ruler.test.ts`.
+
+### One thing to re-derive when the missile rank lands
+
+`STEP_HI_MAX`'s comment carries a played-to-nominal ratio of **1.18**, measured on this
+ROM. It is a function of how much sound a game makes, and a rank of three shots in flight
+raises that. **The ratio must be re-derived then**, and the constant's own comment says so.
