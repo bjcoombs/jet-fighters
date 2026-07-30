@@ -8,28 +8,6 @@ what would settle it.
 Nothing here is a bug report - the bugs are in the issue history. These are the
 decisions and the evidence gaps.
 
-## A convention for anything recorded here as faithful
-
-**A claim that some behaviour is faithful must name the states it was measured across,
-not just the numbers it produced.** A test has to say what it quantifies over or it can
-pass over an empty set; prose has the same failure mode and no way to go red.
-
-Section 8b is the worked example. It first recorded that an ending "produces zero speaker
-edges", measured from one drive with the lever parked in lane 0 at skill 1. That was true
-of the run it came from and false of the machine: driving all nine combinations of skill
-and lane, **seven give zero edges and two buzz forever**, because those two end while a
-battleship is still crossing. The claim would have told the next reader that a real defect
-was correct behaviour, and nothing in the repository could have caught it - there was no
-assertion to fail, only a paragraph.
-
-So when recording something here as faithful, say what was varied and what was held: "all
-nine skill and lane combinations", "both endings", "with and without a crossing in
-progress". If a state was not covered, say that instead of leaving the scope implied. The
-equivalent discipline in the suites is a precondition assertion - `tools/probe/` carries
-the form "ends the game while the boat is still crossing, or this proves nothing" - and
-the reason is identical: a measurement that could not have contained the failing case is
-not evidence that the case does not exist.
-
 ## 1. Criterion V7 - the perceptual judgement
 
 **Status: failed once, not yet re-judged.**
@@ -374,9 +352,37 @@ fit the new atlas. The entire registration error found here was a frame that was
 self-consistent - every existing test passed from inside it, because they compared the
 atlas against `layout.ts` and both had inherited the same wrong phase. The only assertion
 that could see out of it was one anchored on something the atlas does not control.
-## 6. The capture rule is unsettled, and #74 may need reverting
+## 6. The capture rule, settled: a capture costs a launcher, in any lane
 
-**This is the largest open gameplay question and it is the owner's to settle.**
+**SETTLED by the owner.** He was asked directly, after playing the v3 build, and chose: **a
+jet reaching the G line costs one launcher wherever the lever is standing**, and the game
+ends on the third. That is `docs/prd/jet-fighters-v1.md` rule 6 and
+`docs/prd/jet-fighters-v3.md` line 280, so the rule the ROM implements is the one this
+section proposed keeping. What has been **removed** is a lane condition that was never in
+either PRD: `jm_capture` used to let a jet crossing any lane but the lever's through for
+nothing.
+
+That condition is what made the v3 build unplayable rather than merely inaccurate. The
+player's missile sweeps his own lane end to end in about 150 ms with unlimited ammo, so
+tapping fire kept that lane permanently empty - and the only jets that could capture him
+were exactly the ones he was killing, while `rf_look` will not launch a rocket from an
+empty lane either. Both loss paths closed at once. Measured: 0 to 1 launchers lost in 90 s
+of tapped-fire play, against game over in 24-43 s for the same machine left alone.
+
+Removing the condition needed one further change, recorded here because it does not follow
+from the rule. The loss is claimed at the end of the squadron's lane walk rather than from
+inside it: branching to `launcher_down` from the walk skipped the `step_reload` that sits
+at the end of it, so the march countdown was never reloaded and the march collapsed to the
+ladder's floor. On the ungated rule the three launchers went at sweeps 799, 815 and 831,
+sixteen apart, where a skill-1 step is 144. `NIB_J_LOST` is a flag and not a count, so a
+step costs one launcher however many jets arrive on it.
+
+**Still open from the same description:** the player's ship flashing when a bullet hits it,
+which is unimplemented and is noted at the end of this section.
+
+---
+
+### The question as it stood, and why it was the owner's to settle
 
 `launcher_down` currently makes a jet reaching the G line **cost one launcher**, so a game
 survives two captures and ends on the third. That landed in #74 on the strength of the
@@ -624,3 +630,112 @@ running, because the tube is still being drawn, so it goes on ticking the buzz. 
 that blanked the sweep could not have survived an ending unnoticed; this one could, and did,
 **while the tube kept drawing normally**. The mechanism that keeps the boat visible is the
 mechanism that let it buzz forever.
+
+## 9. FIXED in #117: a capture in the lever's lane collapsed the squadron's march
+
+**Fixed on `main` by #117, which reached it independently.** Kept because the mechanism
+and the measurement are worth having, and because the fix and the guard in this branch
+resolve it in different shapes - see the note at the end of this section.
+
+**This is a bug in the shipped ROM, not a question, and it is written here rather than
+only in the pull request that found it because it is independent of whether the capture
+rule in section 6 ever changes.** It needs no rule change to fire. It needs a jet to reach
+the G line in the lane the lever is standing in, which is the one case the current
+`jm_capture` charges for.
+
+**Mechanism.** `jm_capture` is reached from inside the squadron's lane walk, by
+`jm_move` when a jet steps past grid 5. On the arm that costs a launcher it branches
+straight out to `launcher_down`, and **the walk never finishes**. `step_reload` is at the
+end of that walk - `jm_lane_done` to `jm_beep` or `jm_reload`, and both to `step_reload` -
+so the squadron's step countdown, `NIB_STEP_LO` and `NIB_STEP_HI`, is never reloaded. It
+is already expired, having just fired this step. On the next sweep `jet_march` decrements
+an expired countdown and marches again, and it goes on marching once every sixteen sweeps
+- the ladder's floor, `STEP_HI_MIN` - until some step happens to complete without a
+capture.
+
+**Measured**, on a build with the lane condition removed so the path is easy to reach: the
+three launchers went at sweeps **799, 815 and 831**, sixteen apart, where a skill-1 step
+with a full squadron is **144 sweeps**. A factor of nine, and the game ends in a burst the
+player cannot react to.
+
+**Why it has been invisible.** On `main` the costly arm needs the jet to cross in the
+lever's own lane, and a player who taps fire keeps that lane empty - which is the
+immortality the same pull request diagnoses. So the path is rarely taken, and when it is
+taken the game is usually one launcher from over anyway. Nothing in the suite covers it:
+the death-path tests drive a machine that never fires (`launcher-lives.test.ts` asserts
+`everFired === false`), and no test asserts the march *rate* after a capture.
+
+**Two fixes, and they are not the same shape.** #117 made `step_reload` a `CALL`/`RETN`
+subroutine and had `jm_capture` call it on its way out of the walk, so the path that leaves
+reloads the countdown before it goes. The branch that found this claims the loss at the
+*end* of the walk instead - `jm_capture` sets a flag and rejoins `jm_lane_next`, and
+`sr_after` spends the flag after `step_reload` has run - so the capture path never leaves
+the walk at all, and the whole squadron finishes marching.
+
+The second is the stronger invariant: the countdown is reloaded on the one exit every
+completed walk takes, rather than on every exit somebody remembered to patch, and that
+distinction is what the original defect was. It also gives a guard the first does not - one
+march step costs one launcher however many jets arrive on it. Both are kept in the
+resolution: the subroutine is #117's, the claim point is the branch's, and #117's
+`jm_capture` call becomes unnecessary rather than being dropped silently.
+
+**A caution the rebase taught.** `launcher_hit`'s tail is instruction-identical to
+`jm_capture`'s, and a rebase spliced #117's continuation onto it - so a *rocket* landing on
+the launcher reloaded the squadron's countdown. No conflict marker, no lint error, a clean
+assemble. Measured: march intervals of 160, 160, 160, 160, 160, **112**, 160 sweeps, the
+112 landing on the sweep the rocket arrived. `tools/probe/march-cadence.test.ts`, written
+for the original defect, is what caught it.
+
+## 10. Can the real unit lose two launchers within half a second, and what does it sound like?
+
+**An owner question, raised by a fix rather than by a failure.**
+
+`tools/probe/launcher-lives.test.ts` counts the damage ladder off the speaker - two beeps
+after the first launcher, three after the second - because on this machine the beeps *are*
+the lives indicator: there is no lives display, and the three marks outside the playfield
+border are paint. It used to separate one warning from the next by the silence between
+them. That stopped working once the missile ran at its measured speed and games lasted
+long enough for a capture and a rocket to land in the same half-second: the two warnings
+then arrive as one run of five beeps rather than as a two and a three.
+
+The ROM is right in that case. It sounded 2 and then 3, which are the correct per-loss
+signals; the observer was merging them. The test now attributes each beep to the launcher
+it announces by reading `NIB_HITS`, which is the one place that file reads RAM and it
+reads it to *segment* the evidence rather than to supply it.
+
+**What is not settled is whether the machine's signal survives the collision.** If two
+launchers genuinely go within half a second, a human listener cannot separate five beeps
+into a two and a three either, so the player is told he has lost two launchers by a sound
+that does not say so. That is a question about the unit, not about the emulation:
+
+- Can the physical machine lose two launchers that close together at all?
+- If it can, does it sound both warnings back to back, or does one of them get suppressed?
+
+**No minimum-spacing rule has been invented to make the audio tidy**, and none should be
+until this is answered. A lockout would be a rule with no evidence behind it, added to
+make a test read cleanly.
+
+## 11. Two blanking assertions pass because their input became rare, not because they were fixed
+
+`blank-to-glass.test.ts` and `sweep-timing.test.ts` each assert that the renderer paints
+nothing for the whole of every sound. Both failed while the player's missile was 28 ms a
+column, and the mechanism was understood: `BURST_GAP_CYCLES` is two sweeps, so a 71 ms
+march note and a 19 ms fire blip played close together are grouped as **one** sound, the
+ROM legitimately runs a sweep between them, and when that gap is shorter than
+`REFRESH_TIMEOUT_CYCLES` it is not recorded as a hole either - so the lit frames inside it
+counted against an assertion about a dark tube.
+
+**They now pass, and the mechanism has not been addressed.** At the measured 500 ms a
+column the player fires about one shot every two and a half seconds, so a fire blip landing
+adjacent to a march note has become rare enough that the fused pair does not occur in these
+windows. The assertions are green because their input got rarer.
+
+That will not hold. Anything that raises the fire rate, shortens the march step, or adds a
+sound to the loop can bring the pairing back - and distance-based scoring, which changes
+how fast the ladder walks down, is exactly such a change. When one of these goes red, the
+history is here: it is not a regression in the blank, it is the sound splitter calling two
+notes one sound.
+
+The march-note assertions in both files no longer have this problem - they select by pitch
+as well as by duration and reject a sound carrying anything faster than a march note. It is
+the "every sound, march or not" pair that remains exposed.
