@@ -354,6 +354,19 @@ interface Sound {
   readonly firstEdge: number;
   readonly lastEdge: number;
   /**
+   * Periods faster than a march note's, which a march note has none of.
+   *
+   * `BURST_GAP_CYCLES` groups two notes played back to back into one sound, so
+   * duration alone does not say which note a sound is: a 71 ms march note fused
+   * with the 19 ms fire blip is ~107 ms, inside the march window below, and its
+   * *median* pitch is still 627 Hz because a median is robust to a minority tone.
+   * Counting the periods above the march band is what separates them - the blip
+   * runs at 1577 Hz with 1326 at its burst boundaries, while a march note is 627
+   * with a few at 583 and nothing faster. See blank-to-glass.test.ts, which
+   * carries the same discriminator and the measurement behind it.
+   */
+  readonly fasterPeriods: number;
+  /**
    * Stretches inside the sound where the pin was left alone for longer than
    * {@link REFRESH_TIMEOUT_CYCLES}, as `[from, to]` cycle pairs.
    *
@@ -375,23 +388,45 @@ interface Sound {
 }
 
 /** Split an R15 edge stream into sounds at gaps of {@link BURST_GAP_CYCLES}. */
+function fasterPeriodsThanMarch(edgeCycles: readonly number[]): number {
+  let count = 0;
+  for (let at = 2; at < edgeCycles.length; at += 2) {
+    const period = (edgeCycles[at] as number) - (edgeCycles[at - 2] as number);
+    if (period > 0 && CYCLE_HZ / period > MARCH_HZ_MAX) count += 1;
+  }
+  return count;
+}
+
 function splitSounds(edgeCycles: readonly number[]): Sound[] {
   const sounds: Sound[] = [];
   if (edgeCycles.length === 0) return sounds;
   let first = edgeCycles[0] as number;
   let last = first;
   let holes: (readonly [number, number])[] = [];
+  let members: number[] = [first];
   for (const cycle of edgeCycles.slice(1)) {
     if (cycle - last > BURST_GAP_CYCLES) {
-      sounds.push({ firstEdge: first, lastEdge: last, holes });
+      sounds.push({
+        firstEdge: first,
+        lastEdge: last,
+        holes,
+        fasterPeriods: fasterPeriodsThanMarch(members),
+      });
       holes = [];
+      members = [];
       first = cycle;
     } else if (cycle - last > REFRESH_TIMEOUT_CYCLES) {
       holes.push([last, cycle]);
     }
+    members.push(cycle);
     last = cycle;
   }
-  sounds.push({ firstEdge: first, lastEdge: last, holes });
+  sounds.push({
+    firstEdge: first,
+    lastEdge: last,
+    holes,
+    fasterPeriods: fasterPeriodsThanMarch(members),
+  });
   return sounds;
 }
 
@@ -695,6 +730,15 @@ const RENDER_RUN_CYCLES = BLANKING_CYCLES;
 const MARCH_MS_MIN = 50;
 const MARCH_MS_MAX = 110;
 
+/**
+ * The top of the march note's measured band, in Hz.
+ *
+ * `docs/evidence/audio-reference.md` measures jetMarch at 600-650 Hz and the ROM
+ * lands at 627. Used to reject a sound carrying anything faster - see
+ * {@link Sound.fasterPeriods}.
+ */
+const MARCH_HZ_MAX = 650;
+
 /** One read of the tube by the frame driver. */
 interface RenderSample {
   readonly cycle: number;
@@ -746,7 +790,8 @@ describe('the blank reaches the renderer (D1)', () => {
   const marchNotes = sounds.filter(
     (sound) =>
       ms(sound.lastEdge - sound.firstEdge) > MARCH_MS_MIN &&
-      ms(sound.lastEdge - sound.firstEdge) < MARCH_MS_MAX,
+      ms(sound.lastEdge - sound.firstEdge) < MARCH_MS_MAX &&
+      sound.fasterPeriods === 0,
   );
 
   /**
