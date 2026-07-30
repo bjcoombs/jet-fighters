@@ -95,20 +95,30 @@ const ROTOR_SWEEP_TIMEOUT_MS = 30_000;
 /**
  * Fail loudly when a comparison has nothing left to compare.
  *
- * A guard rather than an assertion about the machine. Three suites on this ROM
- * have now been found green on the very defect they policed, and all three were
- * the same shape: **a test that derived its expectation from observed behaviour
- * and then certified that behaviour.** The other two were a rocket-lane
- * assertion satisfied by phantom pixels a render bug overflowed into the far
- * group, and a capture control built on a lane whose captures were being drawn
- * in the wrong lane. This one is the arithmetic version - a prefix comparison
- * whose window came from `Math.min` over the runs themselves, so a run that
- * produced nothing shrank the window to zero and the check compared three empty
- * strings and passed.
+ * A guard rather than an assertion about the machine, and **house style already**
+ * - `tools/probe/tms1370-timing.test.ts:144` asserts `blanks.length > 0` with the
+ * message "no sound stopped the sweep in this window" before taking
+ * `Math.min(...blanks)`, precisely because `Math.min(...[])` is `Infinity` and
+ * would satisfy any lower bound. Its sibling at :135 does the same for
+ * `sweeping.length`. This is that discipline, named so it can be reused.
  *
- * Anywhere a window, a threshold or a sample count is computed *from the data it
- * is about to judge*, it can collapse to a size that judges nothing. Put this
- * under it.
+ * Three suites on this ROM have now been found green on the very defect they
+ * policed. Two were **wrong assertions**: one satisfied by phantom pixels a
+ * render bug overflowed into the far group, one built on a lane whose captures
+ * were being drawn elsewhere. This one was different and is the reason the
+ * helper exists rather than an inline check - **a correct assertion applied to
+ * an empty list.** The prefix comparison it guards was sound; its window came
+ * from `Math.min` over the runs themselves, so a run that produced nothing
+ * shrank the window to zero and three empty strings compared equal.
+ *
+ * That difference matters to whoever reads this next. The first two are visible
+ * by reading the assertion. **The third is not** - the assertion is right, and
+ * you have to know the data can be empty to see it. Reading harder does not find
+ * it; only counting the subject does.
+ *
+ * So: anywhere a window, a threshold or a sample count is computed *from the
+ * data it is about to judge*, it can collapse to a size that judges nothing.
+ * Put this under it.
  */
 function requireNonVacuous(count: number, what: string): void {
   expect(count, `nothing to compare: ${what}`).toBeGreaterThan(0);
