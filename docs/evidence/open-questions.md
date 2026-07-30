@@ -8,6 +8,28 @@ what would settle it.
 Nothing here is a bug report - the bugs are in the issue history. These are the
 decisions and the evidence gaps.
 
+## A convention for anything recorded here as faithful
+
+**A claim that some behaviour is faithful must name the states it was measured across,
+not just the numbers it produced.** A test has to say what it quantifies over or it can
+pass over an empty set; prose has the same failure mode and no way to go red.
+
+Section 8b is the worked example. It first recorded that an ending "produces zero speaker
+edges", measured from one drive with the lever parked in lane 0 at skill 1. That was true
+of the run it came from and false of the machine: driving all nine combinations of skill
+and lane, **seven give zero edges and two buzz forever**, because those two end while a
+battleship is still crossing. The claim would have told the next reader that a real defect
+was correct behaviour, and nothing in the repository could have caught it - there was no
+assertion to fail, only a paragraph.
+
+So when recording something here as faithful, say what was varied and what was held: "all
+nine skill and lane combinations", "both endings", "with and without a crossing in
+progress". If a state was not covered, say that instead of leaving the scope implied. The
+equivalent discipline in the suites is a precondition assertion - `tools/probe/` carries
+the form "ends the game while the boat is still crossing, or this proves nothing" - and
+the reason is identical: a measurement that could not have contained the failing case is
+not evidence that the case does not exist.
+
 ## 1. Criterion V7 - the perceptual judgement
 
 **Status: failed once, not yet re-judged.**
