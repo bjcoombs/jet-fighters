@@ -567,7 +567,26 @@ The cause is the ROM stopping the sweep while it drives the speaker, which
 loss envelope is simply the longest sound the ROM plays, so it is the only one long enough
 to read as a blackout rather than a blink.
 
-**Stated generally, because it will be reported again about some other sound: every sound
-on this machine is a visible blink, and the longer the sound the more it looks like a
-fault.** Criterion V12 names that as something an operator should recognise as authentic.
-A build in which the tube kept drawing through a sound would be the wrong one.
+**Stated generally, because it will be reported again about some other sound: every
+*note-driven* sound on this machine is a visible blink, and the longer it plays the more it
+looks like a fault.** Criterion V12 names that as something an operator should recognise as
+authentic, and a build whose tube kept drawing through a note would be the wrong one.
+
+**The battleship buzz is the exception, and saying why makes the rule sharper rather than
+weaker.** The blink is not a property of sound; it is a property of `note`, which parks the
+sweep for the whole of what it plays. The buzz is not played that way - it is ticked from
+`strobe`, at `st_buzz`, one O strobe at a time, precisely so that a four-second crossing
+does not blank the display the player has to see it on. Section 7 records the change and
+what it bought: the worst blank in the 600 ms after an arrival fell from 383.5 ms to 1.5 ms,
+and the battleship stopped blanking the tube entirely.
+
+So the test is *how* a sound is produced, not how long it lasts: **`note` blanks, `strobe`
+does not.**
+
+That same distinction is what makes the stranded buzz in 8b possible, which is worth
+noticing because the two findings corroborate each other. Once `tick` takes its `tk_ended`
+arm it never reaches `tick_bship` again to run a crossing down - but `strobe` is still
+running, because the tube is still being drawn, so it goes on ticking the buzz. A sound
+that blanked the sweep could not have survived an ending unnoticed; this one could, and did,
+**while the tube kept drawing normally**. The mechanism that keeps the boat visible is the
+mechanism that let it buzz forever.
