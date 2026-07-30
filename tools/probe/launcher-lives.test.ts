@@ -103,7 +103,52 @@ import {
   WARNING_CLUSTER_CYCLES,
 } from '../../src/machine/board/tms1370-cadence.js';
 import { CYCLE_HZ } from '../../src/machine/cpu/tms1370/timing.js';
-import { Tms1370Machine, type SegmentDuty, type SpeakerEdge } from './tms1370-probe.js';
+import { Tms1370Machine, assembleGame, type SegmentDuty, type SpeakerEdge } from './tms1370-probe.js';
+
+/**
+ * Where `NIB_HITS` lives, read from the assembly rather than written here.
+ *
+ * Used only to segment the beeps by which launcher they announce - see
+ * {@link Game.hits}.
+ */
+const HITS_ADDRESS = (() => {
+  const asm = assembleGame();
+  const value = (name: string): number => {
+    const found = asm.symbols.find((definition) => definition.name === name);
+    if (found === undefined) throw new Error(`asm/jetfighter.asm no longer defines ${name}`);
+    return found.value;
+  };
+  return value('FILE_STATE') * 16 + value('NIB_HITS');
+})();
+
+/** Where `NIB_BSLANE` lives, and the value meaning no crossing is in progress. */
+const BSLANE_ADDRESS = (() => {
+  const asm = assembleGame();
+  const value = (name: string): number => {
+    const found = asm.symbols.find((definition) => definition.name === name);
+    if (found === undefined) throw new Error(`asm/jetfighter.asm no longer defines ${name}`);
+    return found.value;
+  };
+  return value('FILE_STATE') * 16 + value('NIB_BSLANE');
+})();
+
+const BS_NONE = (() => {
+  const asm = assembleGame();
+  const found = asm.symbols.find((definition) => definition.name === 'BS_NONE');
+  if (found === undefined) throw new Error('asm/jetfighter.asm no longer defines BS_NONE');
+  return found.value;
+})();
+
+/** Where `NIB_STATE` lives: ST_PLAY until the game ends, then ST_OVER or ST_WIN. */
+const STATE_ADDRESS = (() => {
+  const asm = assembleGame();
+  const value = (name: string): number => {
+    const found = asm.symbols.find((definition) => definition.name === name);
+    if (found === undefined) throw new Error(`asm/jetfighter.asm no longer defines ${name}`);
+    return found.value;
+  };
+  return value('FILE_STATE') * 16 + value('NIB_STATE');
+})();
 
 /** How far two consecutive periods may differ and still count as one note. */
 const RUN_TOLERANCE = 0.06;
@@ -163,8 +208,8 @@ const PLATE_DART = [6, 7, 8];
  * The latest a parked-lever game ends, in seconds of emulated time.
  *
  * **Measured on this machine**, by running each of the three lanes to silence:
- * the last speaker edge falls at 24.6 s with the lever in lane 1, 36.3 s in lane
- * 2 and 43.2 s in lane 0. The lanes differ because the squadron's entries and
+ * the last speaker edge falls at 27.1 s with the lever in lane 1, 36.6 s in lane
+ * 2 and 40.2 s in lane 0. The lanes differ because the squadron's entries and
  * the rocket's lane rotation are not symmetric about the lever, not because one
  * lane is played better - nobody is playing.
  *
@@ -172,8 +217,17 @@ const PLATE_DART = [6, 7, 8];
  * a test about a machine that stops is a bet on when it stops, and the v2 figure
  * this replaces moved three times in one day. Every run below is a multiple of
  * this, so a cadence change moves one number.
+ *
+ * It has moved twice more since, both times because a rule changed and not
+ * because it was fitted. Restoring the capture rule shortened every lane, since
+ * the two that used to let most of the squadron past for nothing stopped doing
+ * so. The wave retreating on a capture then lengthened them again, because the
+ * next capture has to cross the whole field rather than arrive on the next march
+ * step. The two land it near where it began, which is arithmetic rather than a
+ * sign that nothing happened: what the rules were changed for is the *spacing*
+ * between the three losses, and that went from 2.7 s to 12.7-13.4 s.
  */
-const PARKED_GAME_END_S = 43.2;
+const PARKED_GAME_END_S = 45.4;
 
 /**
  * Emulated seconds each run below is driven for.
@@ -224,9 +278,23 @@ const LEVERS = [
 ] as const;
 
 /** One gap-separated stretch of speaker activity, and the pitches inside it. */
+/** One sustained pitch inside a sound, and where it started. */
+interface PitchRun {
+  readonly hz: number;
+  readonly atCycle: number;
+}
+
 interface Sound {
   readonly atCycle: number;
-  readonly hz: readonly number[];
+  readonly runs: readonly PitchRun[];
+}
+
+/** The warning-band runs in a sound - one per beep, each with its own cycle. */
+function warningRunsIn(sound: Sound): PitchRun[] {
+  if (isLoss(sound)) {
+    return [];
+  }
+  return sound.runs.filter((run) => run.hz >= WARNING_HZ.min && run.hz <= WARNING_HZ.max);
 }
 
 /** What one game, played by standing still, produced. */
@@ -237,7 +305,37 @@ interface Game {
   readonly departures: readonly number[];
   /** Whether a missile dart was ever lit anywhere on the playfield. */
   readonly everFired: boolean;
+  /**
+   * The cycle of each launcher loss, read from `NIB_HITS` incrementing.
+   *
+   * The one place this file reads RAM, and it reads it to *segment* the evidence
+   * rather than to supply it: the beeps are still counted off R15, because the
+   * beeps are the lives indicator and a test that counted `NIB_HITS` would prove
+   * the ROM incremented a nibble and say nothing about whether the player is ever
+   * told. What the nibble supplies is which beeps announce which launcher.
+   *
+   * Clustering by silence used to do that job and cannot any more. Two launchers
+   * can be lost inside half a second - a jet crossing the G line and a rocket
+   * arriving in the same window - and the two warnings then arrive as one run of
+   * five beeps rather than as a two and a three. The ROM is right in that case
+   * and sounded both signals; the observer was merging them.
+   */
+  readonly hits: readonly number[];
+  /** Cycle the ending first became visible in `NIB_STATE`, or 0 if it did not. */
+  readonly endedAt: number;
+  /** Cycle of the last R15 edge in the whole run. */
+  readonly lastEdgeAt: number;
+  /** Whether the run ended in `ST_WIN` rather than by losing three launchers. */
+  readonly won?: boolean;
 }
+
+/** `ST_WIN`, from the ROM rather than written here. */
+const ST_WIN = (() => {
+  const asm = assembleGame();
+  const found = asm.symbols.find((definition) => definition.name === 'ST_WIN');
+  if (found === undefined) throw new Error('asm/jetfighter.asm no longer defines ST_WIN');
+  return found.value;
+})();
 
 /**
  * Park the lever in one lane, never touch fire, and watch.
@@ -258,6 +356,9 @@ function standStill(lane: number): Game {
   machine.setContacts({ skill: 1, lane });
   const edges: SpeakerEdge[] = [];
   const departures: number[] = [];
+  const hits: number[] = [];
+  let seenHits = 0;
+  let endedAt = 0;
   let everFired = false;
   let wasDeep = false;
   const target = Math.round(HORIZON_S * CYCLE_HZ);
@@ -284,8 +385,95 @@ function standStill(lane: number): Game {
       departures.push(machine.cycles);
     }
     wasDeep = isDeep;
+    const nowHits = machine.ram[HITS_ADDRESS] as number;
+    if (nowHits > seenHits) {
+      hits.push(machine.cycles);
+      seenHits = nowHits;
+    }
+    if (endedAt === 0 && (machine.ram[STATE_ADDRESS] as number) !== 0) {
+      endedAt = machine.cycles;
+    }
   }
-  return { sounds: soundsIn(edges), departures, everFired };
+  return {
+    sounds: soundsIn(edges),
+    departures,
+    everFired,
+    hits,
+    endedAt,
+    lastEdgeAt: edges[edges.length - 1]?.cycle ?? 0,
+  };
+}
+
+/**
+ * The latest a game ends when the fire button is actually being worked.
+ *
+ * **Measured on this machine**, the same way and on the same drive the test
+ * below uses: lane 1 ends at 161.4 s and lane 2 at 166.6 s, both by losing the
+ * third launcher, and **lane 0 ends at 247.0 s by winning**.
+ *
+ * It is now *longer* than the parked figure, where it used to be shorter, and the
+ * reversal is the point of the change that caused it. On the 28 ms missile a
+ * tapping player bought almost nothing - the shot crossed the field faster than
+ * the squadron could enter it, so all it did was cost the sweeps each fire blip
+ * blanked, and the played game ended sooner than the idle one. At the measured
+ * 500 ms a column the shot is a real defence: it clears one lane at a time and
+ * takes 2.5 s to do it, so tapping fire keeps the player alive noticeably longer
+ * than standing still without keeping him alive indefinitely.
+ */
+const PLAYED_GAME_END_S = 247.0;
+
+/**
+ * Park the lever, tap fire, and watch - the drive {@link standStill} refuses.
+ *
+ * The fire cadence is a tap every eight sweeps rather than a held button,
+ * because firing is edge triggered: `tick_fire` reads `NIB_FIREP` first, so a
+ * button left down launches one missile and no more, and a drive that held it
+ * would be testing the same passive machine under another name.
+ */
+function playingOn(lane: number): Game {
+  const machine = new Tms1370Machine();
+  machine.setContacts({ skill: 1, lane });
+  const edges: SpeakerEdge[] = [];
+  const hits: number[] = [];
+  let seenHits = 0;
+  let endedAt = 0;
+  let everFired = false;
+  const target = Math.round(PLAYED_GAME_END_S * 1.4 * CYCLE_HZ);
+  for (let sweep = 0; machine.cycles < target; sweep += 1) {
+    machine.setContacts({ fire: sweep % 16 < 8 });
+    machine.runSweeps(1, SWEEP_CEILING_CYCLES);
+    edges.push(...machine.takeSpeakerEdges());
+    if (
+      machine
+        .getFrame()
+        .segments.some(
+          (segment) =>
+            segment.duty > 0 &&
+            segment.grid >= GRID_NEAREST_PLAYFIELD &&
+            segment.grid <= GRID_DEEPEST_JET &&
+            PLATE_DART.includes(segment.plate),
+        )
+    ) {
+      everFired = true;
+    }
+    const nowHits = machine.ram[HITS_ADDRESS] as number;
+    if (nowHits > seenHits) {
+      hits.push(machine.cycles);
+      seenHits = nowHits;
+    }
+    if (endedAt === 0 && (machine.ram[STATE_ADDRESS] as number) !== 0) {
+      endedAt = machine.cycles;
+    }
+  }
+  return {
+    sounds: soundsIn(edges),
+    departures: [],
+    everFired,
+    hits,
+    endedAt,
+    lastEdgeAt: edges[edges.length - 1]?.cycle ?? 0,
+    won: (machine.ram[STATE_ADDRESS] as number) === ST_WIN,
+  };
 }
 
 /** Split an edge stream into sounds, each reduced to the pitches it holds. */
@@ -305,7 +493,7 @@ function soundsIn(edges: readonly SpeakerEdge[]): Sound[] {
   }
   return groups.map((inSound) => ({
     atCycle: (inSound[0] as SpeakerEdge).cycle,
-    hz: pitchesIn(inSound.filter((edge) => edge.level === 1).map((edge) => edge.cycle)),
+    runs: pitchesIn(inSound.filter((edge) => edge.level === 1).map((edge) => edge.cycle)),
   }));
 }
 
@@ -326,50 +514,41 @@ function soundsIn(edges: readonly SpeakerEdge[]): Sound[] {
  * run of {@link MIN_RUN_PERIODS} like periods and contribute no pitch, which is
  * why a four-second crossing reports only the march steps inside it.
  */
-function pitchesIn(rising: readonly number[]): number[] {
+function pitchesIn(rising: readonly number[]): PitchRun[] {
   const periods = rising.slice(1).map((cycle, index) => cycle - (rising[index] as number));
-  const pitches: number[] = [];
+  const runs: PitchRun[] = [];
   let current: number[] = [];
-  const close = (): void => {
+  let startedAt = rising[0] ?? 0;
+  const close = (endIndex: number): void => {
     if (current.length >= MIN_RUN_PERIODS) {
       const sorted = [...current].sort((left, right) => left - right);
-      pitches.push(CYCLE_HZ / (sorted[Math.floor(sorted.length / 2)] as number));
+      runs.push({
+        hz: CYCLE_HZ / (sorted[Math.floor(sorted.length / 2)] as number),
+        atCycle: startedAt,
+      });
     }
     current = [];
+    startedAt = rising[endIndex] ?? startedAt;
   };
-  for (const period of periods) {
+  periods.forEach((period, index) => {
     const previous = current[current.length - 1];
     if (previous !== undefined && Math.abs(period - previous) / previous >= RUN_TOLERANCE) {
-      close();
+      close(index);
     }
     current.push(period);
-  }
-  close();
-  return pitches;
+  });
+  close(periods.length);
+  return runs;
 }
 
 /** Does this sound hold a note in the given band? */
 function holds(sound: Sound, band: { min: number; max: number }): boolean {
-  return sound.hz.some((hz) => hz >= band.min && hz <= band.max);
+  return sound.runs.some((run) => run.hz >= band.min && run.hz <= band.max);
 }
 
 /** The loss sound: it collapses into 80-97 Hz *and* decays to ~147. See DECAY_FLOOR_HZ. */
 function isLoss(sound: Sound): boolean {
   return holds(sound, COLLAPSE_HZ) && holds(sound, DECAY_FLOOR_HZ);
-}
-
-/**
- * Warning beeps inside one sound: its notes in the warning band.
- *
- * Zero for the loss sound, which opens on that same pitch and would otherwise
- * be counted as a fourth beep somewhere. See the header for why a count of runs
- * rather than a count of sounds.
- */
-function beepsIn(sound: Sound): number {
-  if (isLoss(sound)) {
-    return 0;
-  }
-  return sound.hz.filter((hz) => hz >= WARNING_HZ.min && hz <= WARNING_HZ.max).length;
 }
 
 /**
@@ -379,21 +558,21 @@ function beepsIn(sound: Sound): number {
  *   announced it and when it happened.
  */
 function warningsIn(game: Game): { beeps: number; atCycle: number }[] {
-  const warnings: { beeps: number; atCycle: number }[] = [];
-  let last = -Infinity;
-  for (const sound of game.sounds.filter((candidate) => beepsIn(candidate) > 0)) {
-    const previous = warnings[warnings.length - 1];
-    if (previous !== undefined && sound.atCycle - last <= WARNING_CLUSTER_CYCLES) {
-      warnings[warnings.length - 1] = {
-        ...previous,
-        beeps: previous.beeps + beepsIn(sound),
-      };
-    } else {
-      warnings.push({ beeps: beepsIn(sound), atCycle: sound.atCycle });
-    }
-    last = sound.atCycle;
+  const counts = game.hits.map((atCycle) => ({ beeps: 0, atCycle }));
+  const beeps = game.sounds.flatMap((sound) => warningRunsIn(sound));
+  for (const beep of beeps) {
+    // Each beep belongs to the first launcher lost at or after it, and the
+    // direction is the ROM's rather than a convention: `launcher_down`
+    // increments NIB_HITS and *then* sounds, and `note` parks the sweep for the
+    // whole of what it plays - so the sweep on which the increment is first
+    // visible is the one that ends after the beeps it announced. The recorded
+    // cycle therefore trails its own warning, and attributing backwards drops
+    // the first warning of every game.
+    const owner = game.hits.findIndex((atCycle) => atCycle >= beep.atCycle);
+    const index = owner >= 0 ? owner : game.hits.length - 1;
+    if (index >= 0) (counts[index] as { beeps: number }).beeps += 1;
   }
-  return warnings;
+  return counts.filter((hit) => hit.beeps > 0);
 }
 
 /** Every moment a launcher was lost: the two warned ones, then the loss sound. */
@@ -409,12 +588,36 @@ function lossesIn(game: Game): Sound[] {
   return game.sounds.filter(isLoss);
 }
 
-const games = new Map(LEVERS.map(({ lane }) => [lane, standStill(lane)]));
+/**
+ * The three parked-lever games, driven on first use rather than at import.
+ *
+ * **Not a style preference.** This was `new Map(LEVERS.map(...))` at module
+ * scope, which runs three full games - up to 63 s of emulated time each - while
+ * Vitest is still collecting the file, where no `it` timeout reaches them and
+ * only the default hook budget applies. CodeRabbit found the same shape in
+ * `scoring-ruler.test.ts` after #121 merged, and it had already turned that
+ * suite red once: a 5.4 s drive against a five-second default.
+ *
+ * Driving on first access moves the cost inside whichever test asks for it, and
+ * every test that does carries {@link LONG_RUN_TIMEOUT_MS}. Memoised, so the
+ * three games are still driven once between them rather than once per assertion.
+ */
+const driven = new Map<number, Game>();
+
+function gameFor(lane: number): Game {
+  const already = driven.get(lane);
+  if (already !== undefined) {
+    return already;
+  }
+  const fresh = standStill(lane);
+  driven.set(lane, fresh);
+  return fresh;
+}
 
 describe('standing still costs three launchers, and the third ends the game', () => {
   for (const { detent, lane } of LEVERS) {
     describe(`lever parked in lane ${lane} (${detent})`, () => {
-      const game = (): Game => games.get(lane) as Game;
+      const game = (): Game => gameFor(lane);
 
       it(
         'announces exactly two launchers before it ends, at two beeps then three',
@@ -466,6 +669,80 @@ describe('standing still costs three launchers, and the third ends the game', ()
   }
 });
 
+describe('the game is losable while it is being played', () => {
+  // ## The assertion this file did not have
+  //
+  // Everything above drives a machine nobody is touching, and one of them says
+  // so in as many words: `everFired` is asserted false, so that no loss can be
+  // mistaken for the player defending himself. That is right for those tests and
+  // it left the whole death path specified over a passive machine - which is
+  // exactly how a build shipped in which **a player who taps fire cannot lose a
+  // launcher at all**.
+  //
+  // The mechanism was not in the loss rules. `jm_capture` used to charge a
+  // capture only when the jet crossed in the lever's own lane; the player's
+  // missile sweeps that lane end to end in about 150 ms with unlimited ammo; and
+  // `rf_look` will not launch a rocket from a lane with no jet in it. So tapping
+  // fire emptied the one lane that could hurt him and closed both loss paths at
+  // once. Measured on that ROM: 0 to 1 launchers lost in 90 s of play, against
+  // game over in 24-43 s for the same machine left alone. Every suite was green.
+  //
+  // The rule is now PRD v1 R6 and v3 PRD line 280 - a capture costs a launcher
+  // in any lane - and this is the assertion that holds it there. It is
+  // deliberately not a claim about *how long* a played game lasts, which is a
+  // difficulty question and not a rules one. It claims only that playing does
+  // not make the machine immortal.
+  // ## The premise changed under this, and the change is asserted rather than
+  // ## scoped away
+  //
+  // This was three identical assertions: with fire worked, every lever position
+  // loses all three launchers. That was true when it was written. It is not now.
+  // Testing both the cell the shot leaves and the cell it arrives in made a
+  // tapping player enough more lethal that **lane 0 wins** - one launcher lost
+  // at 160.7 s, then 199 points at 247.0 s - while lanes 1 and 2 still lose all
+  // three, at 161.4 s and 166.6 s.
+  //
+  // **The assertion stopped terminating for the reason it was built around**,
+  // which is the hazard `open-questions.md` §11a describes, arriving here by way
+  // of a fix in this same branch. The wrong response is to narrow the claim to
+  // the two lanes that still lose, because that buries the most interesting
+  // behaviour in the file as an absence. Lane 0's win is pinned below as its own
+  // fact, so that if the balance ever moves back a test says so.
+  //
+  // Whether a blind tapping player *should* be able to win from one lane is a
+  // rules question and is with the owner. This file's job is to say what the
+  // machine does.
+  for (const { detent, lane } of LEVERS.filter((lever) => lever.lane !== 0)) {
+    it(
+      `still loses all three launchers with the fire button worked, lever ${detent}`,
+      () => {
+        const game = playingOn(lane);
+        expect(game.everFired, `${detent}: the drive never actually fired`).toBe(true);
+        expect(game.won, `${detent}: the game was won, not lost`).toBe(false);
+        expect(warningsIn(game).map((warning) => warning.beeps), detent).toEqual([2, 3]);
+        expect(lossesIn(game), detent).toHaveLength(1);
+      },
+      LONG_RUN_TIMEOUT_MS,
+    );
+  }
+
+  it(
+    'is won from the top lane by tapping fire alone, which is a rule and not a bug here',
+    () => {
+      // Pinned deliberately. A blind tapping player who never moves the lever
+      // reaches 199 from lane 0 - one launcher lost on the way. It is asserted
+      // because it is surprising, because the owner's original report was that
+      // he could not die, and because a test that merely stayed silent about it
+      // would let the balance drift back without anyone noticing.
+      const game = playingOn(0);
+      expect(game.everFired, 'the drive never actually fired').toBe(true);
+      expect(game.won, 'lane 0 no longer wins by tapping alone').toBe(true);
+      expect(game.hits.length, 'lane 0 lost a different number of launchers').toBe(1);
+    },
+    LONG_RUN_TIMEOUT_MS,
+  );
+});
+
 describe('which mechanism took each launcher, read off the tube', () => {
   // Fire is never pressed, so no missile exists and a jet can leave the field
   // only by reaching the G line. Counting jets that vanish from the deepest jet
@@ -495,7 +772,7 @@ describe('which mechanism took each launcher, read off the tube', () => {
       // warning and 0.69 s behind the 0.67 s loss envelope.
       let captures = 0;
       for (const { detent, lane } of LEVERS) {
-        const game = games.get(lane) as Game;
+        const game = gameFor(lane);
         captures += game.departures.length;
         for (const departure of game.departures) {
           const cause = launcherLosses(game).find(
@@ -542,7 +819,7 @@ describe('which mechanism took each launcher, read off the tube', () => {
     // strictly more than the old form asserted - the ladder is now checked in
     // all three lanes rather than in the one that happened to be rocket-only.
     const byRocket = LEVERS.flatMap(({ detent, lane }) => {
-      const game = games.get(lane) as Game;
+      const game = gameFor(lane);
       return launcherLosses(game)
         .filter(
           (loss) =>
@@ -559,9 +836,89 @@ describe('which mechanism took each launcher, read off the tube', () => {
       'every launcher in every lane was taken by a capture, so the rocket path is untested',
     ).toBeGreaterThan(0);
     for (const { detent, lane } of LEVERS) {
-      const game = games.get(lane) as Game;
+      const game = gameFor(lane);
       expect(warningsIn(game).map((warning) => warning.beeps), detent).toEqual([2, 3]);
       expect(lossesIn(game), detent).toHaveLength(1);
     }
   });
+});
+
+describe('an ending during a battleship crossing stops the buzz', () => {
+  // ## The defect, and why every existing assertion was blind to it
+  //
+  // The battleship's buzz is the one sound not played by `note`: `strobe` ticks
+  // `NIB_BUZZ` on every O strobe and toggles R15 off it, which is what lets the
+  // tube keep scanning through a four-second crossing. It is stopped by
+  // `bs_leave` when the crossing runs down. But from the sweep an ending is
+  // written, `tick` takes its `tk_ended` arm straight to `render` and **never
+  // reaches `tick_bship` again** - so a crossing in progress never runs down,
+  // and the buzz ticks for as long as the machine is left switched on.
+  // Measured before the fix: **9032 speaker edges after the game was over.**
+  //
+  // `ends the game on the third, and sounds nothing afterwards` reads
+  // gap-separated *sounds* and passed throughout. The stranded buzz begins
+  // inside the loss envelope and ticks about every 10 ms, well inside
+  // `BURST_GAP_CYCLES`, so the grouper never starts a new sound: the buzz *is*
+  // the loss sound as far as it can tell, and "no sound after the loss" is true
+  // of a machine that never stops making the loss sound. This one reads raw
+  // edges instead and is deliberately independent of the grouping.
+  //
+  // ## Why this drive and not a parked lane
+  //
+  // The defect needs the ending to land inside a crossing, and none of the three
+  // parked-lever games does - they end at 27.1, 36.6 and 45.4 s, all between
+  // crossings. An assertion over those would be armed and never fire, which is
+  // the failure this suite has already shipped once. Skill 3 in lane 0 ends at
+  // 30.8 s with `NIB_BSLANE` still naming a lane, and the guard below fails
+  // loudly if that ever stops being true rather than passing quietly.
+  // Driven on first use, not at collection time - see `gameFor` above for why a
+  // drive in a `describe` body escapes every timeout in the file.
+  let driven: { endedAt: number; bshipLaneAtEnd: number; lastEdgeAt: number } | undefined;
+  const game = (): { endedAt: number; bshipLaneAtEnd: number; lastEdgeAt: number } => {
+    if (driven !== undefined) {
+      return driven;
+    }
+    const machine = new Tms1370Machine();
+    machine.setContacts({ skill: 3, lane: 0 });
+    const edges: SpeakerEdge[] = [];
+    let endedAt = 0;
+    let bshipLaneAtEnd = 0;
+    const target = Math.round(PARKED_GAME_END_S * 1.4 * CYCLE_HZ);
+    while (machine.cycles < target) {
+      machine.runSweeps(1, SWEEP_CEILING_CYCLES);
+      edges.push(...machine.takeSpeakerEdges());
+      if (endedAt === 0 && (machine.ram[STATE_ADDRESS] as number) !== 0) {
+        endedAt = machine.cycles;
+        bshipLaneAtEnd = machine.ram[BSLANE_ADDRESS] as number;
+      }
+    }
+    driven = { endedAt, bshipLaneAtEnd, lastEdgeAt: edges[edges.length - 1]?.cycle ?? 0 };
+    return driven;
+  };
+
+  it('ends the game while the boat is still crossing, or this proves nothing', () => {
+    expect(game().endedAt, 'the game never ended in this window').toBeGreaterThan(0);
+    expect(game().bshipLaneAtEnd, 'the ending did not land inside a crossing').not.toBe(BS_NONE);
+  }, LONG_RUN_TIMEOUT_MS);
+
+  it('leaves the speaker alone once the ending is on the glass', () => {
+    // **Zero, and zero is the principled bound rather than a strict-sounding
+    // one.** `game_lost` writes NIB_STATE and then plays the whole envelope with
+    // the sweep parked, so the sweep on which the ending first becomes visible
+    // has already finished the last edge of it - measured at 8 to 9 ms before,
+    // on every lane. Nothing can emit after that point except something still
+    // running when it should not be, which is the defect.
+    //
+    // An earlier form of this allowed one sweep of slack "for the sampling
+    // boundary", and that slack was load-bearing in the wrong direction: a
+    // variant that cleared the buzz from `tick`'s ended arm rather than from the
+    // two endings themselves leaves the crossing ticking for the one sweep
+    // between them, and **passed** - 2 edges, the last at +13 ms, inside a
+    // ~15 ms sweep. The tolerance was hiding a real difference in the ROM, so it
+    // is gone.
+    expect(
+      game().lastEdgeAt - game().endedAt,
+      'the speaker was still moving after the game ended',
+    ).toBeLessThanOrEqual(0);
+  }, LONG_RUN_TIMEOUT_MS);
 });

@@ -224,14 +224,21 @@ const ROM_CANNOT_REACH = {
   /**
    * Addresses inside an otherwise driven family that the ROM cannot reach.
    *
-   * The jet-kill burst in the cell nearest the player. `missile_step` advances
-   * the shot and *then* tests what it reached, so the cell it is launched into
-   * is never hit tested: fire at a jet standing directly in front of the
-   * launcher and the shot appears in its cell, leaves, and misses. The tube
-   * prints the burst there. This is a bug with a line in the test rather than a
-   * gap in the glass, and it is commissioned separately.
+   * **There are none.** This list carried one for as long as `missile_step`
+   * advanced the shot and *then* tested what it reached, which left the column
+   * the missile is launched into - grid 5, the cell in front of the launcher -
+   * written, drawn and left again without ever being hit tested. A jet standing
+   * there could not be shot, so its burst could not be printed, so
+   * `burst` under grid 5 was unreachable and was excluded here.
+   *
+   * The ROM tests before it steps now, and the address is reachable. Removed on
+   * the measurement rather than on the reasoning: aimed shots at a jet standing
+   * alone in its lane take it **14 times in 25 at grid 5**, against 0 in 12
+   * before, matching the 12 to 15 in 25 every other column returns; and a drive
+   * that kills in that cell lights `5:9`, `5:10` and `5:11` - all three lanes of
+   * the family - where it previously lit none of them.
    */
-  grids: new Map([['burst', [5]]]),
+  grids: new Map<string, number[]>(),
   /**
    * The battleship's burst in the third lane, which is plate 8.
    *

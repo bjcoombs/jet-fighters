@@ -82,19 +82,44 @@
 // jet there, so widening the window in time does not make an offset in lane
 // legal.
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { CYCLE_HZ } from '../../src/machine/cpu/tms1370/timing.js';
 import { Tms1370Machine } from './tms1370-probe.js';
+
+/**
+ * Wall-clock allowance for every drive in this file.
+ *
+ * **Not a measurement of anything, and deliberately generous.** Every bound the
+ * drives themselves use is in emulated cycles and is deterministic - the same
+ * ROM produces the same run every time. What varies is how long a shared runner
+ * takes to execute it, and Vitest's per-test default is five seconds. The
+ * slowest test here measures 1.4 s on an idle machine and has been observed at
+ * 94 s on a contended one, with three suites competing; a timeout tuned to the
+ * idle figure would turn a busy CI runner red for a reason that has nothing to
+ * do with the ROM.
+ *
+ * So this is an escape hatch against starvation rather than a horizon: if a
+ * drive ever genuinely hangs it still ends, and if the machine is merely loaded
+ * it does not. The figures that mean something are all in cycles.
+ */
+const DRIVE_TIMEOUT_MS = 60_000;
+
+vi.setConfig({ testTimeout: DRIVE_TIMEOUT_MS });
 
 /** RAM files, from the map at the head of `asm/jetfighter.asm`. */
 const FILE_D0 = 0;
 const FILE_D1 = 1;
+const FILE_D2 = 2;
+const FILE_D3 = 3;
 const FILE_STATE = 4;
 const FILE_JETS = 6;
 
 /** `FILE_STATE` nibbles. */
+const NIB_MCOL = 5;
+const NIB_MLANE = 6;
 const NIB_RCOL = 7;
 const NIB_RLANE = 8;
+const NIB_KILLS = 12;
 
 /** The playfield columns the squadron flies down: grids 1-5. */
 const GRID_COL_FIRST = 1;
@@ -109,6 +134,18 @@ const NEAR_INDEX_MAX = 7;
 
 /** `OPLA_A_FAR`: the far group's base index, from `asm/opla.inc.asm`. */
 const OPLA_A_FAR = 8;
+
+/** `OPLA_A_PAIR`: the pair group's base index. Latch set, so plates 6-7 only. */
+const OPLA_A_PAIR = 12;
+
+/**
+ * `RPL_R11`: the FILE_D3 code naming plate 8, which is the lane-2 missile.
+ *
+ * The pair group holds two plates, so only lanes 0 and 1 of the player's shot go
+ * through the O port; lane 2 is R11 and is named in the R-plate file instead.
+ * Any assertion about where the missile is drawn has to read both.
+ */
+const RPL_R11 = 1;
 
 /** Long enough for several waves, entries, rocket launches and a crossing. */
 const RUN_CYCLES = 40 * CYCLE_HZ;
@@ -134,17 +171,54 @@ interface Sample {
   readonly far: readonly number[];
   readonly rocketCol: number;
   readonly rocketLane: number;
+  /** Pair nibble of grids 1-5, indexed by grid: the missile's O-port lanes. */
+  readonly pair: readonly number[];
+  /** R-plate code of grids 1-5, indexed by grid: lane 2's missile lives here. */
+  readonly plate: readonly number[];
+  readonly missileCol: number;
+  readonly missileLane: number;
+  /** Jets shot down in this wave, which `missile_kill` increments. */
+  readonly kills: number;
   /** False while a sound holds the sweep and the tube is dark. */
   readonly refreshing: boolean;
 }
 
-/** Drive the machine with the lever parked, sampling state and display together. */
+/**
+ * Drive the machine with the lever parked, sampling state and display together.
+ *
+ * **The fire button is worked, and it has to be.** An earlier form of this drive
+ * left it alone, and the missile assertion below was written against it: with no
+ * shot ever launched there was no missile to draw, so the assertion held over an
+ * empty set and **passed against a `rd_missile` deliberately broken to draw one
+ * lane over**. It was caught by the deliberate break and by nothing else.
+ *
+ * That is the fourth vacuous assertion found on this run and the first that was
+ * mine. The lesson is the drive rather than the assertion: a check on how an
+ * actor is drawn is worth nothing unless the drive puts that actor on the glass,
+ * and "the suite is green" cannot distinguish the two.
+ *
+ * Tapped rather than held because firing is edge triggered - `tick_fire` reads
+ * `NIB_FIREP` first, so a held button launches one shot and no more.
+ */
 function sample(lane: number): readonly Sample[] {
   const machine = new Tms1370Machine();
   machine.setContacts({ skill: 1, lane, fire: false });
   const samples: Sample[] = [];
+  let taps = 0;
   while (machine.cycles < RUN_CYCLES) {
+    machine.setContacts({ fire: Math.floor(taps / 10) % 2 === 0 });
+    taps += 1;
     machine.step(SAMPLE_CYCLES);
+    // Nothing before the first completed sweep is a picture. `reset` clears all
+    // eight files and only then falls into `render`, so until a sweep has been
+    // drawn the display files hold the clear's zeroes rather than a frame - and
+    // zero is a legal *near* value but not a legal pair one, so an assertion
+    // about pair indices reads the power-on window as a fault. That the tube
+    // stays dark through the clear is asserted in `tms1370-rom.test.ts`, which
+    // is where that claim belongs.
+    if (machine.sweepCount < 1) {
+      continue;
+    }
     const ram = machine.ram;
     const nibble = (file: number, index: number): number => ram[file * 16 + index] as number;
     samples.push({
@@ -154,6 +228,11 @@ function sample(lane: number): readonly Sample[] {
       far: Array.from({ length: GRID_COL_LAST + 1 }, (_unused, g) => nibble(FILE_D1, g)),
       rocketCol: nibble(FILE_STATE, NIB_RCOL),
       rocketLane: nibble(FILE_STATE, NIB_RLANE),
+      pair: Array.from({ length: GRID_COL_LAST + 1 }, (_unused, g) => nibble(FILE_D2, g)),
+      plate: Array.from({ length: GRID_COL_LAST + 1 }, (_unused, g) => nibble(FILE_D3, g)),
+      missileCol: nibble(FILE_STATE, NIB_MCOL),
+      missileLane: nibble(FILE_STATE, NIB_MLANE),
+      kills: nibble(FILE_STATE, NIB_KILLS),
       refreshing: machine.isRefreshing(),
     });
   }
@@ -183,6 +262,17 @@ function recentlyJustified(
     bits |= bitmap(samples[index - back] as Sample, grid);
   }
   return bits;
+}
+
+/**
+ * The lane bitmap the player's shots justify for `grid`.
+ *
+ * Written against the state rather than against a count of missiles, so it holds
+ * whether the ROM flies one shot or one per lane: every lane whose missile stands
+ * on this grid is set, and nothing else is.
+ */
+function missileBitmap(shot: Sample, grid: number): number {
+  return shot.missileCol === grid && shot.missileLane < LANE_COUNT ? 1 << shot.missileLane : 0;
 }
 
 /** The lane bitmap the one rocket the ROM can hold justifies for `grid`. */
@@ -359,4 +449,275 @@ describe('the far pass draws a rocket only where a rocket is', () => {
       ).toEqual([]);
     });
   }
+});
+
+describe('the player\'s shot is drawn in the lane it flies down', () => {
+  // ## Why this exists before the change it guards
+  //
+  // `rd_missile` is about to become a three-lane walk, and a three-lane walk in
+  // the render step is exactly the shape that produced this file: `rd_jets`
+  // doubling a lane bit it had never initialised. The missile walk will use the
+  // same `NIB_RBIT`/`NIB_RLNE` scratch, so it can fail the same way, silently,
+  // while every coverage-shaped suite goes greener for it.
+  //
+  // So this assertion is written and proved armed *first*, against the
+  // single-missile ROM, by breaking `rd_missile` deliberately and checking that
+  // it fails. A falsifier written after the change it is meant to falsify is
+  // worth very little; three suites on this run were green on the defect they
+  // policed, and all three had been written that way round.
+  //
+  // ## Reading both halves of the missile
+  //
+  // The shot is drawn in two different places and an assertion that read one of
+  // them would pass for a ROM that lost the other. Lanes 0 and 1 are plates 6
+  // and 7, so they go through the O port and land in the pair nibble of the
+  // column the shot is on. **Lane 2 is plate 8, which is R11 and outside the PLA
+  // entirely**, so it is named in `FILE_D3` as `RPL_R11` instead. Both are read
+  // here, and the lane-2 half is the one a walk is most likely to drop, because
+  // it is the arm that does not look like the other two.
+  for (const detent of DETENTS) {
+    it(`lights no missile lane the player has no shot in, lever in lane ${detent}`, () => {
+      const shots = sample(detent);
+      const wrong: string[] = [];
+      shots.forEach((shot, index) => {
+        if (!shot.refreshing) {
+          return;
+        }
+        for (let grid = GRID_COL_FIRST; grid <= GRID_COL_LAST; grid += 1) {
+          const justified = recentlyJustified(shots, index, grid, missileBitmap);
+
+          // lanes 0 and 1, through the pair group
+          const drawn = shot.pair[grid] as number;
+          const bitmap = drawn >= OPLA_A_PAIR ? drawn - OPLA_A_PAIR : 0;
+          const spurious = bitmap & ~justified;
+          if (spurious !== 0) {
+            wrong.push(
+              `t=${shot.seconds.toFixed(2)}s grid ${grid}: pair nibble ${drawn} lights missile ` +
+                `lane(s) ${[0, 1].filter((l) => spurious & (1 << l))} with the shot at ` +
+                `col ${shot.missileCol} lane ${shot.missileLane}`,
+            );
+          }
+
+          // lane 2, through the R-plate file
+          if ((shot.plate[grid] as number) === RPL_R11 && (justified & (1 << 2)) === 0) {
+            wrong.push(
+              `t=${shot.seconds.toFixed(2)}s grid ${grid}: R-plate names the lane-2 missile ` +
+                `with the shot at col ${shot.missileCol} lane ${shot.missileLane}`,
+            );
+          }
+        }
+      });
+      expect(wrong.slice(0, 5), `${wrong.length} samples drew a shot the player has not got`).toEqual(
+        [],
+      );
+    });
+  }
+});
+
+describe('a shot in flight is drawn somewhere', () => {
+  // The other direction, and it is not symmetric with the one above. A check
+  // that only rejects lanes it should not see passes for a render step that
+  // draws *nothing*: deliberately dropping `rd_missile`'s plate-8 arm, which is
+  // the shape `rd_burst`'s recorded gap has, left the lane-2 shot undrawn and the
+  // assertion above green. Both directions or neither.
+  //
+  // Asserted over the flight rather than per sample, for the reason the jet
+  // walk's completeness check is: the display files lag the state by up to a
+  // sweep, and a shot that is spent before the next render was never drawable.
+  for (const detent of DETENTS) {
+    it(`draws every shot the player fires, lever in lane ${detent}`, () => {
+      const shots = sample(detent);
+      const undrawn: string[] = [];
+      let flightLane = -1;
+      let flightFrom = 0;
+      let drawn = false;
+      let drawable = 0;
+      const close = (at: number): void => {
+        if (flightLane >= 0 && drawable >= STALE_SAMPLES && !drawn) {
+          undrawn.push(
+            `a shot flew in lane ${flightLane} from t=${flightFrom.toFixed(2)}s to ` +
+              `t=${at.toFixed(2)}s and was never drawn`,
+          );
+        }
+      };
+      for (const shot of shots) {
+        const inFlight = shot.missileCol >= GRID_COL_FIRST && shot.missileCol <= GRID_COL_LAST;
+        const lane = inFlight ? shot.missileLane : -1;
+        if (lane !== flightLane) {
+          close(shot.seconds);
+          flightLane = lane;
+          flightFrom = shot.seconds;
+          drawn = false;
+          drawable = 0;
+        }
+        if (!inFlight || !shot.refreshing) {
+          continue;
+        }
+        drawable += 1;
+        const grid = shot.missileCol;
+        const pairBitmap =
+          (shot.pair[grid] as number) >= OPLA_A_PAIR ? (shot.pair[grid] as number) - OPLA_A_PAIR : 0;
+        const litOnPort = (pairBitmap & (1 << shot.missileLane)) !== 0;
+        const litOnPlate = shot.missileLane === 2 && (shot.plate[grid] as number) === RPL_R11;
+        if (litOnPort || litOnPlate) {
+          drawn = true;
+        }
+      }
+      close(shots[shots.length - 1]?.seconds ?? 0);
+      expect(undrawn.slice(0, 5), `${undrawn.length} shots were never drawn`).toEqual([]);
+    });
+  }
+});
+
+describe('a pair nibble is a pair index, and never off the end of the group', () => {
+  // The pair group is four slots - `OPLA_A_PAIR` plus a two-plate bitmap - so a
+  // lane bit of 4 walks off the end of it exactly as a lane bit of 8 walks off
+  // the end of the near group. `AMAAC` is four bits wide, so the sum wraps rather
+  // than saturating and the index resolves somewhere else in the table or to
+  // nothing at all. This is the pair-family sibling of the near-group overflow
+  // that started this file, and the missile is about to become a three-lane walk
+  // over exactly these plates.
+  for (const detent of DETENTS) {
+    it(`keeps every playfield pair nibble inside its group, lever in lane ${detent}`, () => {
+      const strays: string[] = [];
+      for (const shot of sample(detent)) {
+        if (!shot.refreshing) {
+          continue;
+        }
+        for (let grid = GRID_COL_FIRST; grid <= GRID_COL_LAST; grid += 1) {
+          const drawn = shot.pair[grid] as number;
+          if (drawn < OPLA_A_PAIR) {
+            strays.push(
+              `t=${shot.seconds.toFixed(2)}s grid ${grid}: pair nibble ${drawn} is below ` +
+                `OPLA_A_PAIR, so the pair pass would emit a ${drawn < 8 ? 'digit' : 'blank-digit'} slot`,
+            );
+          }
+        }
+      }
+      expect(strays.slice(0, 5), `${strays.length} samples left the pair group`).toEqual([]);
+    });
+  }
+});
+
+describe('a kill is credited to the lane the shot was flying down', () => {
+  // The second seam of the multi-missile change, and the one that survives a
+  // careful reading. `missile_kill` reads the lane from `NIB_MLANE` - a stored
+  // nibble - and clears that lane's jet. Once `missile_step` becomes a walk the
+  // lane is the loop index instead, and a `missile_kill` still reading the old
+  // nibble would credit whichever lane happened to be there: the wrong jet dies,
+  // the burst prints in the wrong cell, and the score still goes up by one. Every
+  // count in the game stays right while the wrong aircraft falls out of the sky.
+  //
+  // Read off the state rather than the picture, because the claim is about which
+  // jet the ROM removed and not about where it drew the burst.
+  for (const detent of DETENTS) {
+    it(`removes the jet the shot was aimed at, lever in lane ${detent}`, () => {
+      const shots = sample(detent);
+      const wrong: string[] = [];
+      let checked = 0;
+      shots.forEach((shot, index) => {
+        const before = shots[index - 1];
+        if (before === undefined || shot.kills <= before.kills) {
+          return;
+        }
+        // The lane that emptied across this sample is the one that lost a jet.
+        const emptied = [0, 1, 2].filter(
+          (lane) => (before.jets[lane] as number) !== 0 && (shot.jets[lane] as number) === 0,
+        );
+        if (emptied.length === 0) {
+          return; // the wave reset in the same sample; nothing to attribute
+        }
+        checked += 1;
+        if (!emptied.includes(before.missileLane)) {
+          wrong.push(
+            `t=${shot.seconds.toFixed(2)}s: a kill emptied lane(s) ${emptied} with the shot ` +
+              `flying down lane ${before.missileLane} at col ${before.missileCol}`,
+          );
+        }
+      });
+      // Non-vacuity, in the shape `tms1370-rom.test.ts` names: a check over kills
+      // that never happened is a check over nothing, and this file has already
+      // shipped one assertion that passed because its drive never fired.
+      expect(checked, 'no jet was shot down in this run').toBeGreaterThan(0);
+      expect(wrong.slice(0, 5), `${wrong.length} kills credited the wrong lane`).toEqual([]);
+    });
+  }
+});
+
+describe('the player can have a shot in more than one lane at once', () => {
+  // The third seam, and the only assertion in this file that is **expected to
+  // fail until the ROM changes**. It is written now, before the change, because
+  // that is the only way to know it is armed for the seam it guards.
+  //
+  // ## Why this is `it.fails()`, and what you owe it
+  //
+  // **`it.fails()` here means "expected to fail *because the seam is unbuilt*",
+  // not "known broken".** The assertion body below is live, executable and
+  // un-weakened: it runs every time the suite runs, and Vitest fails the run if
+  // it ever *passes*. Nothing about it is skipped and nothing is relaxed. What
+  // `it.fails()` records is a fact about the ROM - `tick_fire` gates on one shot
+  // anywhere rather than one per lane - not a fact about the assertion.
+  //
+  // **So a red here is success, and it arrives in the pull request that needs
+  // it.** The moment `tick_fire` gates per lane, this test starts passing,
+  // `it.fails()` starts failing, and the run goes red in the branch that landed
+  // multi-missile.
+  //
+  // **The obligation that comes with that:** whoever lands multi-missile must
+  // convert this back to a plain `it()`. That is the whole point of the
+  // mechanism, and the failure mode to avoid is reading the red as a regression
+  // and suppressing it - which would be this file's own history inverted. If you
+  // are here because `it.fails()` went red: the ROM caught up, and the fix is to
+  // delete `.fails`, not to silence the test.
+  //
+  // It must never be weakened, skipped or deleted to green a branch. The seam it
+  // covers is invisible to every other assertion in this file, each of which is
+  // about a shot that already exists.
+  //
+  // `tick_fire` gates firing on `NIB_MCOL` being zero - one shot anywhere on the
+  // playfield, not one shot per lane. That gate reads like an input check rather
+  // than like missile state, which is exactly why a multi-missile change can draw
+  // three shots correctly, step three shots correctly, and still fire only one:
+  // every assertion above would pass, because each is about a shot that exists.
+  //
+  // The owner's account of the physical unit is the specification here - tap,
+  // tap, tap and three shots stand in the three lanes, staggered by column:
+  //
+  //     >xx
+  //     X>X
+  //     xx>
+  //
+  // and the 500 ms measurement corroborates it, because a rank of three is only
+  // observable if a shot is still in flight when the next is fired. At 28 ms a
+  // column it crossed in 140 ms and no trio could ever have been seen.
+  //
+  // Read off the drawn picture rather than off state, deliberately: it is the
+  // one claim here that is about what the player sees, it is what the owner
+  // described, and it does not assume where per-lane state ends up living.
+  it.fails('draws shots in two lanes at the same instant', () => {
+    const lanesSeen = new Set<number>();
+    let bestFrame = 0;
+    for (const detent of DETENTS) {
+      for (const shot of sample(detent)) {
+        if (!shot.refreshing) {
+          continue;
+        }
+        const lanes = new Set<number>();
+        for (let grid = GRID_COL_FIRST; grid <= GRID_COL_LAST; grid += 1) {
+          const drawn = shot.pair[grid] as number;
+          const bitmap = drawn >= OPLA_A_PAIR ? drawn - OPLA_A_PAIR : 0;
+          for (const lane of [0, 1]) {
+            if (bitmap & (1 << lane)) lanes.add(lane);
+          }
+          if ((shot.plate[grid] as number) === RPL_R11) lanes.add(2);
+        }
+        bestFrame = Math.max(bestFrame, lanes.size);
+        for (const lane of lanes) lanesSeen.add(lane);
+      }
+    }
+    // Every lane must be reachable at all, or the check below could pass on a
+    // ROM that simply never draws two of them.
+    expect([...lanesSeen].sort(), 'the shot never reached some lane').toEqual([0, 1, 2]);
+    expect(bestFrame, 'no frame ever held shots in two lanes at once').toBeGreaterThan(1);
+  });
 });

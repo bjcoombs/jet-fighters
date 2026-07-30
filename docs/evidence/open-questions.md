@@ -8,28 +8,6 @@ what would settle it.
 Nothing here is a bug report - the bugs are in the issue history. These are the
 decisions and the evidence gaps.
 
-## A convention for anything recorded here as faithful
-
-**A claim that some behaviour is faithful must name the states it was measured across,
-not just the numbers it produced.** A test has to say what it quantifies over or it can
-pass over an empty set; prose has the same failure mode and no way to go red.
-
-Section 8b is the worked example. It first recorded that an ending "produces zero speaker
-edges", measured from one drive with the lever parked in lane 0 at skill 1. That was true
-of the run it came from and false of the machine: driving all nine combinations of skill
-and lane, **seven give zero edges and two buzz forever**, because those two end while a
-battleship is still crossing. The claim would have told the next reader that a real defect
-was correct behaviour, and nothing in the repository could have caught it - there was no
-assertion to fail, only a paragraph.
-
-So when recording something here as faithful, say what was varied and what was held: "all
-nine skill and lane combinations", "both endings", "with and without a crossing in
-progress". If a state was not covered, say that instead of leaving the scope implied. The
-equivalent discipline in the suites is a precondition assertion - `tools/probe/` carries
-the form "ends the game while the boat is still crossing, or this proves nothing" - and
-the reason is identical: a measurement that could not have contained the failing case is
-not evidence that the case does not exist.
-
 ## 1. Criterion V7 - the perceptual judgement
 
 **Status: failed once, not yet re-judged.**
@@ -264,7 +242,45 @@ This lives in the ai-native-toolkit plugin, affects every project using it, and 
 floor artifact - the marathon retrospective is explicitly forbidden from self-applying
 a fix. It needs the maintainer's out-of-band decision.
 
-### 3d. The machine's only randomness is the player's own rhythm
+### 3d. The machine's only randomness is the player's own rhythm - **superseded by the TMS1370 rebuild**
+
+**Everything below describes the v2 HMCS44 ROM and no longer describes the machine.**
+It is kept because sections 6 and 7 point at it, and because the defect it names is the
+one PRD R5 forbids inheriting - a reader who finds only a corrected ROM cannot tell what
+was corrected.
+
+What is true of v3, checked against `asm/jetfighter.asm` rather than remembered:
+
+- **`NIB_RAND` no longer exists**, and `ti_press` - the routine that sampled the timer on
+  a fire press - is gone with it. The one surviving mention of the name is a comment in
+  `rocket_fire` explaining what it used to do.
+- **Both rotors are pure round robins.** `NIB_ROTOR` picks the rocket's lane and advances
+  on every launch attempt, finding a jet or not, so an empty lane walks it on rather than
+  stalling it. The squadron's start lane is the same shape.
+- **The remaining timings are fixed constants.** The jet entry countdown reloads from
+  `ENTRY_HI`, and the battleship's gap is the `NIB_BS_HI`/`NIB_BS_LO` countdown pair. No
+  path samples the free-running timer into game state.
+
+So **the machine is now fully deterministic**: identical inputs give an identical game,
+every time, and the owner's *"shows up randomly"* is still something this ROM does not do.
+That is unchanged from the section below. What changed is the reason - not "entropy the
+player accidentally controls" but no entropy at all.
+
+Two consequences for anyone writing a drive against it, both learned the hard way here:
+
+- **Determinism is an asset, not a limitation.** A drive that reaches a rare state reaches
+  it identically on every run, so a measurement taken once holds, and a flake is a real
+  defect rather than luck. Several findings in this document rest on that.
+- **"Vary the seed" is not available.** There is no seed. Two runs of the same drive are
+  the same run, and repeating one proves nothing about coverage. To reach a different
+  state, **vary the play policy** - the lane walk, the firing rhythm, whether the drive
+  dodges, which skill it selects. `boatHunt` in `tools/probe/scoring-ruler.test.ts` is the
+  worked example: nine games that differ only in skill and starting lane, because that is
+  the only axis the machine offers.
+
+---
+
+*The v2 record, from here down:*
 
 Sections 6 and the battleship work both point here, and until now the reference was
 dangling.
@@ -374,9 +390,37 @@ fit the new atlas. The entire registration error found here was a frame that was
 self-consistent - every existing test passed from inside it, because they compared the
 atlas against `layout.ts` and both had inherited the same wrong phase. The only assertion
 that could see out of it was one anchored on something the atlas does not control.
-## 6. The capture rule is unsettled, and #74 may need reverting
+## 6. The capture rule, settled: a capture costs a launcher, in any lane
 
-**This is the largest open gameplay question and it is the owner's to settle.**
+**SETTLED by the owner.** He was asked directly, after playing the v3 build, and chose: **a
+jet reaching the G line costs one launcher wherever the lever is standing**, and the game
+ends on the third. That is `docs/prd/jet-fighters-v1.md` rule 6 and
+`docs/prd/jet-fighters-v3.md` line 280, so the rule the ROM implements is the one this
+section proposed keeping. What has been **removed** is a lane condition that was never in
+either PRD: `jm_capture` used to let a jet crossing any lane but the lever's through for
+nothing.
+
+That condition is what made the v3 build unplayable rather than merely inaccurate. The
+player's missile sweeps his own lane end to end in about 150 ms with unlimited ammo, so
+tapping fire kept that lane permanently empty - and the only jets that could capture him
+were exactly the ones he was killing, while `rf_look` will not launch a rocket from an
+empty lane either. Both loss paths closed at once. Measured: 0 to 1 launchers lost in 90 s
+of tapped-fire play, against game over in 24-43 s for the same machine left alone.
+
+Removing the condition needed one further change, recorded here because it does not follow
+from the rule. The loss is claimed at the end of the squadron's lane walk rather than from
+inside it: branching to `launcher_down` from the walk skipped the `step_reload` that sits
+at the end of it, so the march countdown was never reloaded and the march collapsed to the
+ladder's floor. On the ungated rule the three launchers went at sweeps 799, 815 and 831,
+sixteen apart, where a skill-1 step is 144. `NIB_J_LOST` is a flag and not a count, so a
+step costs one launcher however many jets arrive on it.
+
+**Still open from the same description:** the player's ship flashing when a bullet hits it,
+which is unimplemented and is noted at the end of this section.
+
+---
+
+### The question as it stood, and why it was the owner's to settle
 
 `launcher_down` currently makes a jet reaching the G line **cost one launcher**, so a game
 survives two captures and ends on the third. That landed in #74 on the strength of the
@@ -624,3 +668,337 @@ running, because the tube is still being drawn, so it goes on ticking the buzz. 
 that blanked the sweep could not have survived an ending unnoticed; this one could, and did,
 **while the tube kept drawing normally**. The mechanism that keeps the boat visible is the
 mechanism that let it buzz forever.
+
+## 9. FIXED in #117: a capture in the lever's lane collapsed the squadron's march
+
+**Fixed on `main` by #117, which reached it independently.** Kept because the mechanism
+and the measurement are worth having, and because the fix and the guard in this branch
+resolve it in different shapes - see the note at the end of this section.
+
+**This is a bug in the shipped ROM, not a question, and it is written here rather than
+only in the pull request that found it because it is independent of whether the capture
+rule in section 6 ever changes.** It needs no rule change to fire. It needs a jet to reach
+the G line in the lane the lever is standing in, which is the one case the current
+`jm_capture` charges for.
+
+**Mechanism.** `jm_capture` is reached from inside the squadron's lane walk, by
+`jm_move` when a jet steps past grid 5. On the arm that costs a launcher it branches
+straight out to `launcher_down`, and **the walk never finishes**. `step_reload` is at the
+end of that walk - `jm_lane_done` to `jm_beep` or `jm_reload`, and both to `step_reload` -
+so the squadron's step countdown, `NIB_STEP_LO` and `NIB_STEP_HI`, is never reloaded. It
+is already expired, having just fired this step. On the next sweep `jet_march` decrements
+an expired countdown and marches again, and it goes on marching once every sixteen sweeps
+- the ladder's floor, `STEP_HI_MIN` - until some step happens to complete without a
+capture.
+
+**Measured**, on a build with the lane condition removed so the path is easy to reach: the
+three launchers went at sweeps **799, 815 and 831**, sixteen apart, where a skill-1 step
+with a full squadron is **144 sweeps**. A factor of nine, and the game ends in a burst the
+player cannot react to.
+
+**Why it has been invisible.** On `main` the costly arm needs the jet to cross in the
+lever's own lane, and a player who taps fire keeps that lane empty - which is the
+immortality the same pull request diagnoses. So the path is rarely taken, and when it is
+taken the game is usually one launcher from over anyway. Nothing in the suite covers it:
+the death-path tests drive a machine that never fires (`launcher-lives.test.ts` asserts
+`everFired === false`), and no test asserts the march *rate* after a capture.
+
+**Two fixes, and they are not the same shape.** #117 made `step_reload` a `CALL`/`RETN`
+subroutine and had `jm_capture` call it on its way out of the walk, so the path that leaves
+reloads the countdown before it goes. The branch that found this claims the loss at the
+*end* of the walk instead - `jm_capture` sets a flag and rejoins `jm_lane_next`, and
+`sr_after` spends the flag after `step_reload` has run - so the capture path never leaves
+the walk at all, and the whole squadron finishes marching.
+
+The second is the stronger invariant: the countdown is reloaded on the one exit every
+completed walk takes, rather than on every exit somebody remembered to patch, and that
+distinction is what the original defect was. It also gives a guard the first does not - one
+march step costs one launcher however many jets arrive on it. Both are kept in the
+resolution: the subroutine is #117's, the claim point is the branch's, and #117's
+`jm_capture` call becomes unnecessary rather than being dropped silently.
+
+**A caution the rebase taught.** `launcher_hit`'s tail is instruction-identical to
+`jm_capture`'s, and a rebase spliced #117's continuation onto it - so a *rocket* landing on
+the launcher reloaded the squadron's countdown. No conflict marker, no lint error, a clean
+assemble. Measured: march intervals of 160, 160, 160, 160, 160, **112**, 160 sweeps, the
+112 landing on the sweep the rocket arrived. `tools/probe/march-cadence.test.ts`, written
+for the original defect, is what caught it.
+
+## 10. Can the real unit lose two launchers within half a second, and what does it sound like?
+
+**An owner question, raised by a fix rather than by a failure.**
+
+`tools/probe/launcher-lives.test.ts` counts the damage ladder off the speaker - two beeps
+after the first launcher, three after the second - because on this machine the beeps *are*
+the lives indicator: there is no lives display, and the three marks outside the playfield
+border are paint. It used to separate one warning from the next by the silence between
+them. That stopped working once the missile ran at its measured speed and games lasted
+long enough for a capture and a rocket to land in the same half-second: the two warnings
+then arrive as one run of five beeps rather than as a two and a three.
+
+The ROM is right in that case. It sounded 2 and then 3, which are the correct per-loss
+signals; the observer was merging them. The test now attributes each beep to the launcher
+it announces by reading `NIB_HITS`, which is the one place that file reads RAM and it
+reads it to *segment* the evidence rather than to supply it.
+
+**What is not settled is whether the machine's signal survives the collision.** If two
+launchers genuinely go within half a second, a human listener cannot separate five beeps
+into a two and a three either, so the player is told he has lost two launchers by a sound
+that does not say so. That is a question about the unit, not about the emulation:
+
+- Can the physical machine lose two launchers that close together at all?
+- If it can, does it sound both warnings back to back, or does one of them get suppressed?
+
+**No minimum-spacing rule has been invented to make the audio tidy**, and none should be
+until this is answered. A lockout would be a rule with no evidence behind it, added to
+make a test read cleanly.
+
+**The technique that made this tractable generalised on first contact with another
+suite.** Stating a precondition as its own named test - so it fails loudly instead of the
+real assertion passing quietly - was adopted by the distance-scoring branch, and within
+hours it caught a problem in that agent's own drive: a run that took 5.4 s against
+Vitest's five-second per-test default, so the win it was waiting for never arrived. Its
+guard reported *"the drive never reached the win - the cap is untested"* rather than
+passing over an absent event. A technique that works in the suite it was invented for is a
+habit; one that works in somebody else's on first contact is a method.
+
+## 11. Two blanking assertions pass because their input became rare, not because they were fixed
+
+`blank-to-glass.test.ts` and `sweep-timing.test.ts` each assert that the renderer paints
+nothing for the whole of every sound. Both failed while the player's missile was 28 ms a
+column, and the mechanism was understood: `BURST_GAP_CYCLES` is two sweeps, so a 71 ms
+march note and a 19 ms fire blip played close together are grouped as **one** sound, the
+ROM legitimately runs a sweep between them, and when that gap is shorter than
+`REFRESH_TIMEOUT_CYCLES` it is not recorded as a hole either - so the lit frames inside it
+counted against an assertion about a dark tube.
+
+**They now pass, and the mechanism has not been addressed.** At the measured 500 ms a
+column the player fires about one shot every two and a half seconds, so a fire blip landing
+adjacent to a march note has become rare enough that the fused pair does not occur in these
+windows. The assertions are green because their input got rarer.
+
+That will not hold. Anything that raises the fire rate, shortens the march step, or adds a
+sound to the loop can bring the pairing back - and distance-based scoring, which changes
+how fast the ladder walks down, is exactly such a change. When one of these goes red, the
+history is here: it is not a regression in the blank, it is the sound splitter calling two
+notes one sound.
+
+The march-note assertions in both files no longer have this problem - they select by pitch
+as well as by duration and reject a sound carrying anything faster than a march note. It is
+the "every sound, march or not" pair that remains exposed.
+
+### 11a. The general form: a timing change can invalidate a drive's premise silently
+
+**If you read one paragraph of this section, read this one. Revert the fix and watch the
+test pass.**
+
+That is the only technique on this run with a hit rate against the hazard below, and it
+found two of the four instances - including one in an assertion written *specifically* to
+catch this class, by someone who had spent the day finding the other three. Take a test you
+believe covers a defect, undo the fix in the ROM, and run it. If it still passes, it never
+covered the defect, and you have learned that in thirty seconds.
+
+Nothing else has worked. The hazard is invisible to reading, because the assertions are
+correct. It is invisible to coverage, because the addresses are all legal. It is invisible
+to CI, because nothing goes red. Reverting the fix is the only move that asks the question
+directly.
+
+**And one way these survive is worth naming separately, because it is not a property of
+the drives at all.** A correct diagnosis closes an investigation as effectively as a wrong
+one. Twice on this run a test in these suites was observed taking 80 to 94 seconds; both
+times it was diagnosed as another suite starving it, which was true, and the matter was
+dropped. The question that went unasked was the adjacent one - *whether the default
+timeout was survivable at all* - and the answer was no: 1.4 s idle against a five-second
+default and a 67x worst case. Nothing was wrong with the diagnosis. It answered the
+question in front of it and stopped, and stopping is what a correct answer licenses.
+
+So when a measurement surprises you and the explanation is satisfying, that is the moment
+to ask what *else* follows from it. The other routes below are drives whose premise
+stopped being true; this one is an explanation that was true and incomplete.
+
+---
+
+The blanking pair above is one instance of something worth naming, because this run
+produced four of them in a day and none announced itself.
+
+**Every drive in these suites rests on a premise about the machine's timing**, and the
+premise is almost never written down. Change a cadence anywhere and the premise can stop
+holding while the drive goes on running, goes on passing, and quietly measures something
+else. It is not a failure - nothing goes red - which is exactly what makes it dangerous.
+
+Four instances, in the order they were found:
+
+- **The input became rare.** The two assertions above pass because a fire blip landing
+  beside a march note stopped being common once the missile slowed. The mechanism is
+  untouched.
+- **The drive stopped reaching the case.** `launcher-lives.test.ts` needed a game that ends
+  during a battleship crossing, to prove the buzz stops. When the stranded buzz was found,
+  the three parked-lever games did that. After the wave retreat and the missile speed moved
+  every game length they end at 27.1, 36.6 and 45.4 s, all *between* crossings. The defect
+  had not moved; the drive had stopped arriving at it, and an assertion written over those
+  games passed against a ROM with the fix deliberately reverted.
+- **The drive started terminating for a different reason.** Every drive in this branch was
+  built when 199 points was unreachable - a skilled player topped out at 184 in 400 s - so
+  they all end by losing three launchers or by running out of clock. Distance-based scoring
+  roughly triples the rate, and the same drives now end by *winning*. A drive that measures
+  "how long until the machine falls silent" measures something different once silence
+  arrives from a win rather than a loss. Found from the other direction on the scoring
+  branch, whose census drive now ends on the third launcher at 198 where it used to reach
+  the win.
+
+- **The outcome the drive waits for is not the drive's to guarantee.** The scoring branch
+  tried to bound its census by running until the win, and measured 240, 300, 360, 480 and
+  600 s all stopping at the same 58 events and the same 198 points. Whether a game *wins*
+  is a pacing property, and pacing is exactly what this run has been changing from three
+  branches at once. **An outcome-dependent drive is hostage to every other branch's pacing
+  changes** - and unlike a drive that runs out of clock, waiting longer does not fix it.
+
+The last three are the same shape seen from different ends: **the drive's premise about why
+the run ends, or about what it will encounter before it does, stopped being true.** The
+fourth is the sharpest form of it, because it cannot be fixed by widening a window: the
+premise is about an outcome rather than about a duration.
+
+**What to do about it is not settled, and this section is not a solution.** Reverting the
+fix finds an instance once you suspect one; it does not tell you which drive to suspect.
+The one technique that prevents rather than detects is the precondition assertion - if a
+test needs a precondition
+to be meaningful, assert the precondition out loud as its own named test, so it fails
+loudly instead of the real assertion passing quietly. `launcher-lives.test.ts` carries one
+now (*"ends the game while the boat is still crossing, or this proves nothing"*), and
+`tools/probe/tms1370-rom.test.ts`'s `requireNonVacuous` is the same idea for cardinality.
+Neither is automatic and neither finds a premise nobody thought to state.
+
+The honest position is that **every timing-sensitive drive in this tree is exposed**, that
+this run alone changed the missile speed eighteen-fold, added a wave retreat, corrected the
+march ladder's arithmetic and tripled the scoring rate, and that the next cadence change
+will do it again to drives nobody has looked at.
+
+## 12. The gate that could not tell clean from never-ran
+
+Every pull request in this run merged with a green CodeRabbit check. Sixteen of the
+twenty-five v3-era merges were never reviewed by CodeRabbit at all; the check reported
+`SUCCESS` on all sixteen, verified one at a time on 2026-07-30. The gate was not bypassed
+and it did not fail. It answered a question nobody had asked it: *did the job finish*,
+not *did anything look at the code*.
+
+That is the shape this section is about, and it is not confined to a bot. The same shape
+appeared repeatedly in instruments written by hand, by both parties, over three days.
+
+**A second instance, from the brief that opened this work.** The ROM was described as
+sitting at 31 of 32 pages, and every plan made downstream of that treated space as the
+binding constraint - fixes were sized to it, a page relocation was justified by it, and
+one feature was deferred on it. The assembler does print `Pages used: 31 of 32`. It also
+prints `Program words: 1470 of 2048` at the time, and `1538 of 2048` now. Pages counts
+pages *touched*, not pages full. The ROM was and is about three-quarters empty. The
+figure was accurate, it was read off the right tool, and the conclusion drawn from it was
+wrong, because the number answers "how spread out is the code" and it was read as "how
+much room is left".
+
+**Three audits of this tree's own instruments, all of which the instruments failed.**
+Each was found by deliberately breaking the thing the test claimed to protect and
+checking that the test went red. None did:
+
+1. The missile-lane assertion passed against a ROM broken on purpose, because the drive
+   feeding it never pressed fire.
+2. The "lights no missile lane" assertion passed with one of its two arms deleted,
+   because it only ever constrained one direction.
+3. The unattended-silence assertion in `launcher-lives.test.ts` passed because no parked
+   game reached the state it was written to observe any more.
+
+A fourth was found while writing this section: the battleship hunt in
+`scoring-ruler.test.ts` launched a missile on 0 of 24 attempts and reported "no
+battleship was shot down in any game". True statement, correct arithmetic, nothing to do
+with the scoring ruler it was asserting on.
+
+**The quota comment matters more than it looks.** CodeRabbit posted "review limit
+reached" on the PRs it skipped. The information needed to catch this was present, in the
+thread, the whole time. What was consulted was the check's colour. An instrument that
+reports both a status and a reason will be read for its status.
+
+### The three families
+
+**1. Absence read as success.** The instrument observed nothing and reported pass, having
+never produced the input that would make the observation meaningful. The CodeRabbit gate,
+the silence assertion, and the battleship hunt are all this. The tell is that the passing
+condition and the never-ran condition are the same condition, and nothing distinguishes
+them. The fix is a precondition assertion: state and check the thing that must be true
+for the measurement to mean anything - that a shot was fired, that a game reached the
+state, that a review happened - and fail loudly when it is not.
+
+**2. A true and narrow claim accepted as complete.** The instrument answered an adjacent
+question accurately, and the accurate answer was taken for the question asked. `Pages
+used: 31 of 32` is this. So is the one-sided lane assertion, which correctly proved shots
+do not appear where they should not, and was read as proving they appear where they
+should. Nothing here is false, which is exactly why it survives review: checking the
+claim confirms it.
+
+The **misread-number chain** is the sharpest instance, and it has two halves that need
+separating. A figure of `13423.6` in a drive's output was a millisecond timestamp. It was
+read as a frequency in Hz, and a mechanism explaining the "anomalous 13.4 kHz component"
+was built on top of that reading and pursued. The first half is an ordinary mistake. The
+second half is the one worth recording: the misread was accepted and built upon without
+anyone returning to the source to check what the column was. The correction, when it came,
+had to disprove the mechanism separately from correcting the number, because by then the
+mechanism had acquired its own supporting argument. A wrong number is cheap; a wrong number
+that has been reasoned from is not.
+
+**3. Tolerances sized for the artefact rather than the machine.** Last, because it is the
+one that looks most like rigour. A band, threshold or window fitted to what the instrument
+happened to produce will keep passing as the machine moves underneath it. Two from this
+run: a median-pitch discriminator that could not separate a fused march-plus-blip from a
+clean march, because a fused signal still medians inside the band; and `warningRunsIn`,
+which counted every edge rather than rising edges and so reported every frequency at
+double, with a band widened until the doubled figures fitted. Both had numbers in them.
+Neither number came from the machine.
+
+### A separate mechanism, and the one with no wrong step in it
+
+The three families all contain a mistake somewhere - a wrong assertion, a misread
+column, a fitted tolerance. This one does not, which is why it is recorded apart from
+them rather than as a fourth family.
+
+**A correct derivation, from correct measurements, that stops early because the
+conclusion is attractive.**
+
+The instance. The battleship was driven, the shots were counted honestly, and the
+arithmetic was right: aiming at the lane the boat occupies scored 0 in 18 shots over
+11 crossings, because the boat descends a lane per 1.29 s while a shot needs 3.0 s to
+arrive. Every step of that holds up. It was about to be reported as **"the battleship
+cannot be hit"**, which does not follow from it. Leading the boat by two lanes hits it
+3 times in 27. What was missing was not a check on the numbers. It was the next
+question - *is there another way to aim* - and the reason it went unasked is that the
+finding was better without it. "The two most valuable targets cannot be chosen" is a
+more interesting thing to report than "I tried one strategy and it failed."
+
+**This is the second instance from the same source in one day**, and by the standard
+used everywhere else in this document, two makes it a pattern. The first is in section
+11a: a set of starvation calls that were true, that explained the observation, and that
+closed the investigation while a second cause was still live. Same shape - accurate
+work, satisfying explanation, premature stop, and a conclusion that was stronger than
+the evidence carried.
+
+What catches it is worth stating precisely, because the obvious answer is wrong.
+Scepticism about the measurements does not help; the measurements are correct, and
+checking them again returns the same numbers and more confidence. **What catches it is
+asking what else follows from them.** That prompt is already written into section 11a
+in its own words: when a measurement surprises you and the explanation is satisfying,
+that is the moment to ask what else follows. It was available and it was not used.
+
+Worth recording honestly: this one was not caught by the person who made it. It was
+caught because the finding was challenged and a leading control was demanded before
+the conclusion was accepted. A mechanism whose only known counter is someone else
+declining to take the answer is not yet a solved problem.
+
+### What this section is
+
+**A record, not a remediation.** Nothing here is fixed by this document. Three of the four
+instrument failures above have been repaired in this branch and the fourth is repaired in
+the commit that adds this section; the gate has not been changed, the review coverage has
+not been made up, and the deferred feature is still deferred on a constraint that turned
+out not to bind. The value of writing it down is that the next person to see a green check
+or a confident figure has a list of the specific ways this tree has produced both while
+measuring nothing.
+
+The one habit that found every instance: **break the thing on purpose and watch the
+instrument go red.** An instrument that has never been seen to fail has not been shown to
+work.

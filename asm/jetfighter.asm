@@ -149,6 +149,8 @@
 .EQU FILE_STATE,     4          ; the entities
 .EQU FILE_TIME,      5          ; countdowns and the score
 .EQU FILE_JETS,      6          ; one jet per lane, and the squadron's own state
+.EQU FILE_MISS,      7          ; the player's shot: its flight timer, and the
+                                ; room the three-in-flight rank will need
 
 ; --- FILE_D0: the near pass's nibbles, then the sound ------------------------
 ;
@@ -223,7 +225,9 @@
 .EQU NIB_TICK,       0          ; sweeps, wrapping every sixteen. The only clock.
 .EQU NIB_ENTRY_LO,   1          ; sweeps until the next jet is released, low
 .EQU NIB_ENTRY_HI,   2          ;   "                                   high
-.EQU NIB_MSTEP,      3          ; sweeps until the player's missile advances
+                                ; nibble 3 is free: the missile's flight timer
+                                ; used to live here as a single nibble and has
+                                ; moved to FILE_MISS as a pair. See MISSILE_LO.
 .EQU NIB_RSTEP,      4          ; sweeps until the jet's rocket advances
 .EQU NIB_KSTEP,      5          ; sweeps the burst stays on the glass
 .EQU NIB_ROCK_LO,    6          ; sweeps to the next rocket launch, low
@@ -236,6 +240,18 @@
 .EQU NIB_STEP_LO,   13          ; sweeps to the squadron's next step, low
 .EQU NIB_STEP_HI,   14          ;   "                                high
 .EQU NIB_CAPTURE,   15          ; sweeps the capture burst stays lit
+
+; --- FILE_MISS: the player's shot ------------------------------------------
+;
+; A whole file for two nibbles today, and that is deliberate: the flight timer
+; needs a pair rather than the single nibble it had, FILE_TIME had no seventeenth
+; nibble to give it, and the rank of three missiles the owner describes wants
+; per-lane state in one place rather than scattered across the files that had a
+; gap. Nothing here selects an R line, so file 7 is as good as any - see the
+; header's note on why the display files have to be 0-3.
+
+.EQU NIB_M_LO,       0          ; sweeps until the shot advances a column, low
+.EQU NIB_M_HI,       1          ;   "                                     high
 
 ; --- FILE_JETS: one jet per lane, and the squadron's own state ---------------
 ;
@@ -256,6 +272,10 @@
 .EQU NIB_J_SENT,     3          ; jets of this wave released so far, 0..6
 .EQU NIB_J_ROTOR,    4          ; the lane the next entry tries first
 .EQU NIB_J_WORK,     5          ; the lane a loop is working on
+.EQU NIB_J_LOST,     6          ; set when a jet crossed the G line this step.
+                                ; A flag and not a count: a step costs one
+                                ; launcher however many jets arrive on it, and
+                                ; step_reload spends it - see jm_capture
 .EQU NIB_J_MOVED,    7          ; set when a jet stepped this sweep
 .EQU NIB_J_TMP,      8          ; arithmetic scratch
 .EQU NIB_J_SCR,      9          ; arithmetic scratch
@@ -463,15 +483,47 @@
 
 ; --- Travel ------------------------------------------------------------------
 ;
-; PROVISIONAL. v1 moved both a missile and a rocket one column per 60 Hz tick;
-; T7 and T8 of docs/evidence/timing-analysis.md are unmeasured. The two are
-; deliberately different. The rocket is the one shot the player has to *respond*
-; to - the only defence is to move the lever out of its lane before it lands -
-; so its flight is the game's reaction window, and 7 sweeps is 97 ms a column,
-; putting a mid-board flight inside the 300-500 ms a see-decide-move response
-; costs. The player's missile keeps the fast figure because nothing is dodged in
-; response to it and slowing it would only take time away from the player.
-.EQU MISSILE_SWEEPS, 2          ; 28 ms a column
+; The rocket is PROVISIONAL; the missile is not, and the two rest on different
+; kinds of evidence.
+;
+; **The missile is MEASURED**, and it is the most precisely known cadence in this
+; program. `assets/reference/sprites/README.md` tracks the player's shot across
+; the gameplay video: *"it travels right to left, one cell per 500 ms. 744
+; adjacent leftward steps measured across the whole file; median interval 15
+; frames"*. n = 744 at 30 fps.
+;
+; **That figure does not fit a single nibble, and the history is worth keeping.**
+; 500 ms is 29 sweeps of the played machine, and `TCMIY` loads four bits, so the
+; longest flight a one-nibble countdown can express is 15 sweeps - 229 ms, still
+; more than twice too fast. This program carried `MISSILE_SWEEPS = 2`, 28 ms a
+; column, with a comment reasoning that "nothing is dodged in response to it and
+; slowing it would only take time away from the player". That is taste set
+; against an n = 744 measurement, and the ceiling is the likelier reason it was
+; reached for: the measured value was not expressible without giving the timer a
+; second nibble, which is what FILE_MISS now provides.
+;
+; The effect was not a detail. At 28 ms the shot crossed the whole field in about
+; 150 ms, so a player tapping fire kept his own lane permanently empty - and
+; since a jet can only capture him from his own lane, and `rf_look` will not
+; launch a rocket from an empty one, both ways of losing a launcher closed at
+; once. The owner reported that as not being able to die. It also made the rank
+; of three staggered missiles he describes on the physical unit unobservable: a
+; shot that crosses in 150 ms is never still in flight when the next is fired.
+;
+; Written as a low/high pair spent low first, like every countdown here longer
+; than fifteen sweeps. The wall-clock figure is MEASURED off the running machine
+; by tools/probe/tms1370-probe.ts rather than divided out of the nominal sweep,
+; for the reason BSHIP_STEP gives: a played sweep is longer than an idle one and
+; the nominal arithmetic runs short.
+.EQU MISSILE_LO,    15          ; 1 * 16 + 15 + 1 = 32 sweeps, and 500 ms a
+.EQU MISSILE_HI,     1          ;   column MEASURED off this machine
+;
+; PROVISIONAL. v1 moved a rocket one column per 60 Hz tick; T8 of
+; docs/evidence/timing-analysis.md is unmeasured. The rocket is the one shot the
+; player has to *respond* to - the only defence is to move the lever out of its
+; lane before it lands - so its flight is the game's reaction window, and 7
+; sweeps is 97 ms a column, putting a mid-board flight inside the 300-500 ms a
+; see-decide-move response costs.
 .EQU ROCKET_SWEEPS,  7          ; 97 ms a column
 
 ; --- The squadron's march ----------------------------------------------------
@@ -691,6 +743,16 @@
 ; both outside it.
 .EQU WARN_GAP,      10
 .EQU WARN_GAP_PASSES, 3
+
+; A lead-in silence before the first warning beep was tried here and reverted.
+; It existed because the analyser fused the warning with the march note that
+; precedes a capture - a property of the analyser, not of the machine - and the
+; ROM is not the place to fix that. It also parked the sweep for 54.6 ms, twice
+; the longest park this machine otherwise has, which measurably slowed a running
+; battleship buzz: two windows of a crossing read 60-62 Hz against a measured
+; band of 79-111. `tools/probe/tms1370-rom.test.ts` separates the two sounds by
+; counting pitch runs in the warning band instead, which is what
+; `launcher-lives.test.ts` already did.
 
 ; ============================================================================
 ; Page map
@@ -1139,9 +1201,10 @@ fire_missile:
         TAM
         TCY  NIB_MCOL
         TCMIY GRID_COL_LAST
-        LDX  FILE_TIME
-        TCY  NIB_MSTEP
-        TCMIY MISSILE_SWEEPS
+        LDX  FILE_MISS
+        TCY  NIB_M_LO
+        TCMIY MISSILE_LO        ; NIB_M_HI follows NIB_M_LO
+        TCMIY MISSILE_HI
         LDX  FILE_D0
         TCY  NIB_HALF_O
         TCMIY SND_FIRE_O
@@ -1447,9 +1510,13 @@ tick_missile:
         BR   tk_missile_live
         BR   tk_to_fire
 tk_missile_live:
-        LDX  FILE_TIME
-        TCY  NIB_MSTEP
-        DMAN                    ; A <- one sweep off the step
+        LDX  FILE_MISS
+        TCY  NIB_M_LO
+        DMAN                    ; a pair, spent low first
+        BR   tk_missile_wait
+        TAM                     ; the low nibble wrapping spends a high one
+        TCY  NIB_M_HI
+        DMAN
         BR   tk_missile_wait
         LDP  P_HIT
         BR   missile_step
@@ -1473,10 +1540,38 @@ tk_to_fire:
 
 .PAGE P_HIT
 
+; **The cell is tested before the shot leaves it, rather than after.** This
+; routine used to advance `NIB_MCOL` and only then ask what was standing on the
+; new column, which meant the column the missile is *launched* into - grid 5, the
+; cell directly in front of the launcher - was written, drawn and left again
+; without ever being hit tested. A jet standing there could not be shot at all:
+; measured over aimed shots with one jet alone in the lane, **0 kills in 12
+; against 14 to 18 in 25 at every other column**. The cell nearest the player was
+; the attacker's safe cell, which is the worst one for it to be, and it matters
+; more now that a jet crossing the G line costs a launcher in any lane - that jet
+; is the one the player most needs an answer to.
+;
+; Testing first covers grid 5 on the missile's first step and still covers grid 1
+; before the shot runs out past it, because the horizon arm is reached from the
+; decrement rather than from the test.
+
 missile_step:
-        LDX  FILE_TIME
-        TCY  NIB_MSTEP
-        TCMIY MISSILE_SWEEPS
+        LDX  FILE_MISS
+        TCY  NIB_M_LO
+        TCMIY MISSILE_LO        ; NIB_M_HI follows NIB_M_LO
+        TCMIY MISSILE_HI
+        LDX  FILE_STATE
+        TCY  NIB_MLANE
+        TMA
+        LDX  FILE_JETS
+        TAY
+        TMA                     ; A <- the grid the jet in that lane stands on
+        LDX  FILE_STATE
+        TCY  NIB_MCOL
+        MNEA                    ; status = that jet is somewhere else
+        BR   ms_advance
+        BR   missile_kill
+ms_advance:
         LDX  FILE_STATE
         TCY  NIB_MCOL
         DMAN                    ; outward: grid 5 toward grid 1
@@ -1486,23 +1581,12 @@ missile_step:
 ms_step_ok:
         TAM
         MNEZ                    ; grid 0 is the horizon, not a column
-        BR   ms_flying
+        BR   ms_clear
         LDP  P_SWEEP
         BR   ms_horizon
-ms_flying:
-        TCY  NIB_MLANE
-        TMA
-        LDX  FILE_JETS
-        TAY
-        TMA                     ; A <- the grid the jet in that lane stands on
-        LDX  FILE_STATE
-        TCY  NIB_MCOL
-        MNEA                    ; status = that jet is somewhere else
-        BR   ms_clear
-        BR   missile_kill
 ms_clear:
-        LDP  P_JETS
-        BR   jet_march
+        LDP  P_ROCKET
+        BR   ms_arrived         ; and test the cell it just moved into
 
 ; --- a jet is shot down ------------------------------------------------------
 
@@ -1722,10 +1806,7 @@ jm_beep:
 jm_reload:
         COMC
         LDP  C1_LADDER
-        CALL step_reload
-        COMC
-        LDP  P_SPAWN
-        BR   jet_release
+        BR   sr_after
 
 
 ; ============================================================================
@@ -1818,6 +1899,48 @@ jr_out:
 
 .PAGE P_ROCKET
 
+; --- the second half of the shot's hit test ---------------------------------
+;
+; **A step tests two cells: the one the shot leaves and the one it arrives in.**
+; Either alone provably misses a case, and they are different cases at opposite
+; ends of the field.
+;
+; Testing only the occupied cell before stepping misses the *crossing*. Within a
+; sweep `tick_missile` runs before `jet_march`, so a shot at grid 3 with a jet at
+; grid 2 tests 3, finds nothing, steps to 2 - and then the jet marches to 3. The
+; two have swapped without ever being tested together, and the shot flies on past
+; a jet it went through. Measured on this ROM before this arm existed: three
+; crossings in 139 flights at skill 1, against a detector that saw 1162 samples
+; with shot and jet on the same column, so it was live rather than vacuous.
+;
+; Testing only the arrival cell after stepping misses the *launch cell*: a shot
+; fired at grid 5 steps to 4 before its first test, so a jet standing in front of
+; the launcher is never tested at all. That was `ROM_CANNOT_REACH`'s `burst[5]`
+; entry - 0 kills in 12 aimed shots against 14 in 25 everywhere else - and the
+; owner reported it as bullets going through jets at the right-hand edge.
+;
+; So neither order is a choice between a defect and no defect; it is a choice
+; between two defects. Both cells are tested, and the cost is eleven words on a
+; page that had room rather than four squeezed onto one that did not.
+
+ms_arrived:
+        LDX  FILE_STATE
+        TCY  NIB_MLANE
+        TMA
+        LDX  FILE_JETS
+        TAY
+        TMA                     ; A <- the grid the jet in that lane stands on
+        LDX  FILE_STATE
+        TCY  NIB_MCOL
+        MNEA                    ; status = that jet is somewhere else
+        BR   ms_missed_it
+        LDP  P_HIT
+        BR   missile_kill
+ms_missed_it:
+        LDP  P_JETS
+        BR   jet_march
+
+
 tick_rocket:
         LDX  FILE_STATE
         TCY  NIB_RCOL
@@ -1859,8 +1982,7 @@ rm_arrived:
         TCY  NIB_LANE
         MNEA                    ; status = the launcher is in some other lane
         BR   tr_done
-        COMC
-        LDP  C1_LOSE
+        LDP  P_SPILL
         BR   launcher_hit
 
 tr_done:
@@ -1882,30 +2004,71 @@ tr_done:
 ;
 ; Placed on P_SPILL because P_JETS is full; it is reached
 ; by branch like the rest of the loop and carries no state across the page.
+;
+; **Any jet crossing the G line costs a launcher, wherever the lever is.** That
+; is PRD v1 R6 and v3 PRD line 280, and it is the owner's own call rather than a
+; measurement - docs/evidence/open-questions.md section 6 records that it was put
+; to him and how he answered. An earlier form of this routine tested the lever's
+; lane and let a jet crossing any other lane through for nothing, which made a
+; player who taps fire immortal: his missile sweeps his own lane end to end in
+; about 150 ms, so the only jets that could ever have reached him were dead
+; before they arrived, and `rf_look` will not launch a rocket from an empty lane
+; either. Both loss paths closed at once and 90 s of play cost nothing.
+;
+; **The loss is claimed at the end of the lane walk and not here.** Two reasons,
+; and the second is the load-bearing one:
+;
+;   - Three jets can cross on one march step, and three launchers is the whole
+;     game. `NIB_J_LOST` is a flag rather than a count, so a step costs one
+;     launcher however many arrive on it.
+;   - Branching straight to `launcher_down` from inside the walk abandons the
+;     walk, and `step_reload` sits at the end of it. The squadron's countdown
+;     was then never reloaded, so it stayed expired and the march collapsed to
+;     one step every sixteen sweeps - the ladder's floor - until some step
+;     happened to finish without a capture. Measured on the ungated rule: the
+;     three launchers went at sweeps 799, 815 and 831, sixteen apart, where a
+;     skill-1 step is 144. That is a cascade rather than a difficulty, and it is
+;     what taking the exit out of the walk fixes.
 
-jm_capture:
-        LDX  FILE_JETS
-        CLA
-        TAM                     ; the lane empties whether or not it cost
-        TYA                     ; anything: the jet has crossed the G line
+; --- a rocket arrives in the launcher's lane ---------------------------------
+;
+; Placed here rather than on C1_LOSE beside `launcher_down` because that page
+; filled up. Reached from `rm_arrived` on P_ROCKET, which is chapter 0 like this
+; page, so the crossing this move removed is one the old placement had to make.
+
+launcher_hit:
         LDX  FILE_STATE
+        TCY  NIB_RLANE
+        TMA
         TCY  NIB_KLANE
         TAM
-        TCY  NIB_LANE
-        MNEA                    ; status = the launcher is in some other lane
-        BR   jm_flew_past
         LDX  FILE_TIME
         TCY  NIB_CAPTURE
         TCMIY CAPTURE_SWEEPS
         COMC
-        LDP  C1_LADDER
-        CALL step_reload        ; the walk's own reload is below `jm_lane_next`
-        LDP  C1_LOSE            ; and this path never returns there, so the
-        BR   launcher_down      ; countdown is reloaded here instead
+        LDP  C1_LOSE
+        BR   launcher_down      ; and *not* through the ladder: a rocket landing
+                                ; on the launcher is not a squadron step and must
+                                ; not reload the march countdown
 
-; A jet that crosses the line the player is *not* standing in costs nothing.
-; That is the whole of what moving the lever is for, and without it the machine
-; loses all three launchers to the first squadron whatever the player does.
+
+jm_capture:
+        LDX  FILE_JETS
+        CLA
+        TAM                     ; the lane empties: the jet has crossed the line
+        TYA
+        LDX  FILE_STATE
+        TCY  NIB_KLANE
+        TAM
+        TCY  NIB_LANE
+        MNEA                    ; WITHDRAWN-RULE BUILD: only the lever's own lane
+        BR   jm_flew_past
+        LDX  FILE_TIME
+        TCY  NIB_CAPTURE
+        TCMIY CAPTURE_SWEEPS
+        LDX  FILE_JETS
+        TCY  NIB_J_LOST
+        TCMIY 1
 jm_flew_past:
         LDP  P_JETS
         BR   jm_lane_next
@@ -2064,6 +2227,9 @@ reset:
         LDX  FILE_JETS
         LDP  P_LEAF
         CALL clear_file
+        LDX  FILE_MISS
+        LDP  P_LEAF
+        CALL clear_file
 
 ; --- the state a cleared RAM does not already describe -----------------------
 
@@ -2101,18 +2267,10 @@ reset:
 .CHAPTER 1
 .PAGE C1_LOSE
 
-; --- a rocket arrives in the launcher's lane ---------------------------------
-
-launcher_hit:
-        LDX  FILE_STATE
-        TCY  NIB_RLANE
-        TMA
-        TCY  NIB_KLANE
-        TAM
-        LDX  FILE_TIME
-        TCY  NIB_CAPTURE
-        TCMIY CAPTURE_SWEEPS
-        BR   launcher_down
+; `launcher_hit` used to sit here, and now lives on P_SPILL: this page filled up
+; and the warning below needed three more words than it had. It is reached from
+; `rm_arrived` on P_ROCKET, which is chapter 0 like P_SPILL, so moving it also
+; took a `COMC` out of that path rather than adding one.
 
 ; --- a launcher is destroyed, however it happened ----------------------------
 ;
@@ -2121,6 +2279,7 @@ launcher_hit:
 ; PRD v1 R6 and audio-reference.md's launcherHitWarning: two beeps on the first
 ; hit, three on the second, and on the third the full loss sound. All three are
 ; owner-confirmed.
+;
 
 launcher_down:
         LDX  FILE_STATE
@@ -2137,10 +2296,10 @@ launcher_down:
         BR   ld_to_over
         LDX  FILE_STATE
         TCY  NIB_HITS
-        TMA
+        TMA                     ; hits is 1 or 2, so beeps is hits + 1
         LDX  FILE_JETS
         TCY  NIB_J_TMP
-        TAM                     ; hits is 1 or 2, so beeps is hits + 1
+        TAM
 lw_beep:
         LDX  FILE_D0
         TCY  NIB_HALF_O
@@ -2195,11 +2354,23 @@ ld_to_over:
 
 .PAGE C1_OVER
 
+; **An ending has to stop the battleship's buzz, because nothing else will.**
+; `strobe` ticks NIB_BUZZ on every O strobe and toggles R15 off it, and from the
+; next sweep `tick` takes its `tk_ended` arm straight to `render` and never
+; reaches `tick_bship` again - so a crossing in progress never runs down to
+; `bs_leave`, which is what would have cleared the buzz. Measured before this
+; landed: an ending during a crossing left **9032 speaker edges** behind it and
+; the machine buzzed for as long as it was left switched on. NIB_BPHASE follows
+; NIB_BUZZ in the map, so one `TCY` and two `TCMIY` clear both.
+
 game_lost:
         LDX  FILE_STATE
         TCY  NIB_STATE
         TCMIY ST_OVER
         LDX  FILE_D0
+        TCY  NIB_BUZZ
+        TCMIY 0
+        TCMIY 0
         TCY  NIB_HALF_O
         TCMIY SND_LOSS1_O
         TCMIY SND_LOSS1_I
@@ -2270,6 +2441,10 @@ game_win:
         LDX  FILE_STATE
         TCY  NIB_STATE
         TCMIY ST_WIN
+        LDX  FILE_D0
+        TCY  NIB_BUZZ
+        TCMIY 0                 ; a win during a crossing strands the buzz the
+        TCMIY 0                 ; same way a loss does - see game_lost
         LDX  FILE_JETS
         TCY  NIB_J_TMP
         TCMIY 2                 ; three passes of the arpeggio
@@ -2965,6 +3140,65 @@ sr_ok:
         TCY  NIB_STEP_LO
         TCMIY 15
         RETN
+
+; --- what the walk does once the countdown is back ---------------------------
+;
+; Reached from `jm_reload`, which is the one exit every completed lane walk takes
+; - beeping or not, capture or not. **`step_reload` is a subroutine and this is
+; the only thing that calls it**, which is a deliberate narrowing of the shape it
+; arrived in: it was made callable so the capture path could reload the countdown
+; on its way out of the walk, and the capture path no longer leaves the walk. A
+; claim deferred to here is reached on every step, so the countdown cannot be
+; skipped by any path rather than by all the paths anyone remembered.
+
+sr_after:
+        CALL step_reload
+        LDX  FILE_JETS
+        TCY  NIB_J_LOST
+        MNEZ                    ; did any jet cross the G line on this step?
+        BR   sr_lost
+        COMC
+        LDP  P_SPAWN
+        BR   jet_release
+
+; The capture's exit, taken here rather than from inside the lane walk so that
+; the countdown above is always reloaded first. C1_LOSE is this chapter, so
+; there is no COMC on this arm and there must not be one.
+;
+; **The wave retreats.** Every jet still airborne goes back to grid 1, the far
+; end of the field, so the next capture costs the squadron a whole fresh advance
+; rather than the next march step. OWNER-CONFIRMED: asked what the machine does
+; when a jet takes a launcher, he described the survivors returning to the far
+; side. `assets/reference/loss-audio.m4a` corroborates it rather than being the
+; source of it - his own losing game runs about 58 s between the second launcher
+; and the third, which no squadron already standing on the G line can produce.
+;
+; Without it the three launchers go on three consecutive march steps, 2.7 s
+; apart, because the rank that arrived together is still standing there when the
+; countdown next expires. That figure is not tuned toward the recording and must
+; not be: what is implemented is the rule he described, and the spacing is
+; whatever the rule produces.
+sr_lost:
+        LDX  FILE_JETS
+        TCY  NIB_J_LOST
+        TCMIY 0                 ; one launcher a step, however many arrived
+        CLA
+        TAY                     ; Y <- lane 0, and walk the three
+sr_retreat:
+        LDX  FILE_JETS
+        MNEZ                    ; is there a survivor in this lane?
+        BR   sr_back
+        BR   sr_next
+sr_back:
+        TCMIY GRID_COL_FIRST    ; back to the far end - and TCMIY steps Y on,
+        BR   sr_test            ; which is the walk this arm owes the loop
+sr_next:
+        IYC                     ; the empty arm has to step Y itself
+sr_test:
+        YNEC LANE_COUNT
+        BR   sr_retreat
+        LDP  C1_LOSE
+        BR   launcher_down
 
 
 

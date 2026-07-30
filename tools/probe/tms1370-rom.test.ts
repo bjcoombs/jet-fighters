@@ -82,6 +82,43 @@ function leverOnly(cycles: number, lane?: number, skill = 1): InputEvent[] {
   return events;
 }
 
+/**
+ * The sustained pitches inside a stretch of edge stream, as runs of like periods.
+ *
+ * The same method `launcher-lives.test.ts` uses and for the same reason: one
+ * figure over a whole sound averages a march note running into a warning and
+ * reports a pitch neither of them has.
+ */
+function warningRunsIn(
+  edges: readonly { cycle: number; level: 0 | 1 }[],
+  from: number,
+  to: number,
+): number[] {
+  // Rising edges only: a period is rise to rise, and counting both levels would
+  // report every half-period and put a 467 Hz beep at 934.
+  const rising = edges
+    .filter((edge) => edge.level === 1 && edge.cycle >= from && edge.cycle <= to)
+    .map((edge) => edge.cycle);
+  const periods = rising.slice(1).map((cycle, index) => cycle - (rising[index] as number));
+  const found: number[] = [];
+  let current: number[] = [];
+  const close = (): void => {
+    if (current.length >= 3) {
+      const sorted = [...current].sort((left, right) => left - right);
+      const hz = CYCLE_HZ / (sorted[sorted.length >> 1] as number);
+      if (hz >= 455 && hz <= 545) found.push(hz);
+    }
+    current = [];
+  };
+  for (const period of periods) {
+    const previous = current[current.length - 1];
+    if (previous !== undefined && Math.abs(period - previous) / previous >= 0.06) close();
+    current.push(period);
+  }
+  close();
+  return found;
+}
+
 /** The three detents of the skill dial. */
 const SKILLS = [1, 2, 3] as const;
 
@@ -119,6 +156,26 @@ const ROTOR_SWEEP_TIMEOUT_MS = 30_000;
  * So: anywhere a window, a threshold or a sample count is computed *from the
  * data it is about to judge*, it can collapse to a size that judges nothing.
  * Put this under it.
+ *
+ * ## A fourth route, and counting the subject does not find this one either
+ *
+ * The three above all concern what the assertion did with the data. The fourth
+ * concerns whether the machine was ever asked the question: **the drive never
+ * delivered the stimulus.** Two instances outside this file, both green:
+ *
+ * - A missile assertion whose drive held `fire: false` throughout. It passed
+ *   against a ROM broken on purpose.
+ * - The battleship hunt in `scoring-ruler.test.ts`, which closed the fire
+ *   contact for 5 ms against a 13.7 ms sweep. K is read once per sweep, so the
+ *   press opened and closed between two reads and launched a missile on 0 of 24
+ *   attempts, while reporting truthfully that no battleship was shot down.
+ *
+ * `requireNonVacuous` does not catch these, because the list is not empty - it
+ * is full of correct observations of a machine that was never poked. What
+ * catches them is an assertion on the *precondition*: that a shot was fired,
+ * that the state was entered, that the drive ended for the reason assumed. See
+ * `ends by playing the game out, not by running out of clock` in
+ * `scoring-ruler.test.ts`, and section 12 of docs/evidence/open-questions.md.
  */
 function requireNonVacuous(count: number, what: string): void {
   expect(count, `nothing to compare: ${what}`).toBeGreaterThan(0);
@@ -147,14 +204,33 @@ function parkedGame(
   skill: number,
   lever: number,
   forSeconds = 45,
+  dodge = false,
 ): { launches: Launch[]; lanes: number[]; litCells: ReadonlySet<string> } {
   const machine = new Tms1370Machine();
   machine.setContacts({ skill, lane: lever, fire: false });
   const launches: Launch[] = [];
   let flying = false;
+  let lane = lever;
   while (machine.cycles < seconds(forSeconds)) {
     machine.step(CYCLE_HZ / 200);
     const ram = machine.ram;
+    // Dodging keeps the game alive without ever pressing fire, which is what
+    // the rotor needs to be sampled past its second rung - see the union below.
+    if (dodge) {
+      let worst = -1;
+      let nearest = lane;
+      for (const candidate of [0, 1, 2]) {
+        const grid = ram[FILE_JETS * 16 + candidate] as number;
+        if (grid > worst) {
+          worst = grid;
+          nearest = candidate;
+        }
+      }
+      if (nearest === lane) {
+        lane = (lane + 1) % 3;
+        machine.setContacts({ lane });
+      }
+    }
     const column = ram[FILE_STATE * 16 + NIB_RCOL] as number;
     if (column !== 0 && !flying) {
       launches.push({
@@ -365,7 +441,37 @@ describe('a rocket can reach the launcher in any of the three lanes', () => {
         [0, 1, 2].map((lever) => ({ skill, lever, ...parkedGame(skill, lever) })),
       );
 
-      const flown = [...new Set(games.flatMap((game) => game.lanes))].sort();
+      // ## Why the union comes from a dodging run and not from the parked ones
+      //
+      // **The parked union was a lifetime accident, and a correctness fix took
+      // it away.** A parked game spends its launchers on jets it never avoids,
+      // so how far the rotor gets is decided by how long the game survives. That
+      // union reached lane 0 only because one particular parked run at skill 3
+      // happened to live long enough to see a third launch. Charging a launcher
+      // for the crossings that used to go uncharged shortened that run by 9 s -
+      // 28.0 s to 18.6 s, measured either side - and the third launch went with
+      // it. The rotor had not changed at all: it is four sites in `rocket_fire`
+      // and nothing on the input path touches it.
+      //
+      // A drive that dodges but still never fires survives long enough to reach
+      // every rung, and reaches [1, 2, 0] in all nine runs at every skill and
+      // every starting lane rather than in one lucky one. It falsifies the v2
+      // defect exactly as well, because what v2 sampled was the *fire* press:
+      // a lever that moves without firing never moved `NIB_RAND`.
+      //
+      // This is section 11a of docs/evidence/open-questions.md in its purest
+      // form. The assertion did not break; its drive stopped reaching the case.
+      // One dodging run per skill rather than one per lever: all three levers
+      // produce the identical lane sequence at a given skill, because dodging
+      // makes the starting lane irrelevant within a second. Nine of these cost
+      // more than the 30 s budget allows on CI and buy nothing.
+      const dodged = SKILLS.map((skill) => ({
+        skill,
+        lever: 0,
+        ...parkedGame(skill, 0, 45, true),
+      }));
+
+      const flown = [...new Set(dodged.flatMap((game) => game.lanes))].sort();
       expect(flown, 'the rotor did not reach every lane').toEqual([0, 1, 2]);
 
       // The falsifier proper: every rocket flew down a lane that had a jet
@@ -404,7 +510,7 @@ describe('a rocket can reach the launcher in any of the three lanes', () => {
       // the rotor only stops on a lane holding a jet. This is asserted on every
       // launch of every run rather than on a prefix, and it does not depend on
       // when anything happened.
-      const allLaunches = games.flatMap((game) =>
+      const allLaunches = [...games, ...dodged].flatMap((game) =>
         game.launches.map((launch) => ({ skill: game.skill, lever: game.lever, ...launch })),
       );
       requireNonVacuous(allLaunches.length, 'no rocket launched in any run, at any skill');
@@ -449,15 +555,27 @@ describe('a rocket can reach the launcher in any of the three lanes', () => {
 
   for (const lane of [0, 1, 2]) {
     it(`warns in lane ${lane} with the lever parked there`, () => {
+      // **A warning is found by the pitch runs inside a sound, not by the
+      // sound's own pitch.** A capture is claimed at the end of the squadron's
+      // lane walk, directly after `jm_beep`'s march note, so the warning and the
+      // march note arrive inside one `BURST_GAP_CYCLES` group. Measuring the
+      // group gives ~450 Hz - the two tones averaged - and finds no warning,
+      // though the machine sounded one perfectly well.
+      //
+      // Counting runs in the band instead is `launcher-lives.test.ts`'s method,
+      // and it is here because a lead-in silence was briefly added to the ROM to
+      // separate the two sounds for this assertion's benefit. That was the wrong
+      // place to fix it: the fusing is a property of the analyser, and the ROM is
+      // not changed to make a test read. The silence also parked the sweep for
+      // 54.6 ms and measurably slowed a running battleship buzz.
       const run = runGame({ cycles, input: leverOnly(cycles, lane) });
       const sounds = splitSounds(run.speakerEdges, BURST_GAP_CYCLES);
-      const warnings = sounds.filter((sound) => {
-        const hz = soundHz(run.speakerEdges, sound.from, sound.to, CYCLE_HZ);
-        return hz >= 455 && hz <= 545;
-      });
+      const warnings = sounds.filter(
+        (sound) => warningRunsIn(run.speakerEdges, sound.from, sound.to).length > 0,
+      );
       expect(
         warnings.length,
-        `no 455-545 Hz warning burst with the lever parked in lane ${lane}`,
+        `no 455-545 Hz warning beep with the lever parked in lane ${lane}`,
       ).toBeGreaterThan(0);
       // The beeps of one hit fall inside one cluster, which is what the
       // 25-28 ms measured gap makes them.

@@ -123,16 +123,34 @@ const BSLANE_ADDRESS = gameSymbol('FILE_STATE') * 16 + gameSymbol('NIB_BSLANE');
 const BS_NONE = gameSymbol('BS_NONE');
 
 /**
+ * The low nibble `step_reload` loads beside `NIB_STEP_HI`.
+ *
+ * A literal in the ROM rather than a named constant - `TCY NIB_STEP_LO` then
+ * `TCMIY 15` - so it is named here instead. If the ROM ever gives it a name,
+ * read that symbol and delete this.
+ */
+const STEP_LO_RELOAD = 15;
+
+/**
  * The squadron's slowest march step, in sweeps.
  *
  * Re-derived from this ROM's own ladder rather than converted from the v2
- * figure. `STEP_HI = STEP_HI_MAX - kills - STEP_SKILL * (skill - 1)` and a step
- * is `STEP_HI * 16` sweeps, so `STEP_HI_MAX * 16` - 144 sweeps - is skill 1 with
- * a full squadron: the top of the ladder, the worst case, and where a freshly
- * powered machine starts. The ladder only walks down from there as the player
- * scores, so a window of N of these holds at least N march notes.
+ * figure. `STEP_HI = STEP_HI_MAX - kills - STEP_SKILL * (skill - 1)`, and a
+ * countdown pair on this machine runs for **`hi * 16 + lo + 1`** sweeps - it is
+ * spent low first, so the low nibble wrapping is what spends a high one, and the
+ * pair is exhausted one sweep after the last high nibble goes. So skill 1 with a
+ * full squadron is `STEP_HI_MAX * 16 + 15 + 1` = 160 sweeps: the top of the
+ * ladder, the worst case, and where a freshly powered machine starts. The ladder
+ * only walks down from there as the player scores, so a window of N of these
+ * holds at least N march notes.
+ *
+ * **This read `STEP_HI_MAX * 16` and was 11% short.** The same arithmetic is done
+ * correctly for the battleship's pair in `battleship-arrival.test.ts`, which
+ * spells it `BSHIP_STEP_HI * 16 + BSHIP_STEP_LO + 1` - two places computing the
+ * same kind of countdown, one of them right. It is written as an expression
+ * rather than as 160 so that moving a rung moves this with it.
  */
-const MARCH_STEP_SWEEPS = gameSymbol('STEP_HI_MAX') * 16;
+const MARCH_STEP_SWEEPS = gameSymbol('STEP_HI_MAX') * 16 + STEP_LO_RELOAD + 1;
 
 /**
  * Machine cycles to run, stated in march steps.
@@ -166,6 +184,29 @@ const RUN_CYCLES = MARCH_STEPS_DRAWN * MARCH_STEP_SWEEPS * SWEEP_INSTRUCTIONS;
  */
 const MARCH_MS_MIN = 50;
 const MARCH_MS_MAX = 110;
+
+/**
+ * Bounds on a march note's *pitch*, in Hz - the measured band, not a tolerance.
+ *
+ * `docs/evidence/audio-reference.md` measures jetMarch at 600-650 Hz and the
+ * ROM's recipe lands at 627. Duration alone does not identify this note, and
+ * relying on it was a real fault rather than a theoretical one: a 71 ms march
+ * note followed closely by the 19 ms fire blip is one ~107 ms sound under
+ * {@link BURST_GAP_CYCLES}, which falls inside the window above, so the pair was
+ * being selected as a single march note. The sweep runs between the two
+ * constituent notes - there is time for one, which is the whole reason that
+ * threshold is two sweeps - and when that gap is shorter than
+ * {@link REFRESH_TIMEOUT_CYCLES} it is not recorded as a hole either, so the lit
+ * frames in it counted against an assertion about a dark tube.
+ *
+ * Pitch separates them where duration cannot: the fused pair carries the blip's
+ * edges as well as the march's and measures about 700 Hz, while a march note on
+ * its own sits at 627. This narrows the selection rather than loosening the
+ * assertion - the test now selects what its name says it does, instead of
+ * whatever else happened to last 50 to 110 ms.
+ */
+const MARCH_HZ_MIN = 600;
+const MARCH_HZ_MAX = 650;
 
 /**
  * A drive that plays the game: the lever walks the three lanes and the fire
@@ -215,6 +256,60 @@ interface Sound {
    * these holes. Same threshold and same reasoning as sweep-timing.test.ts.
    */
   readonly holes: readonly (readonly [number, number])[];
+  /** Median repetition rate over the sound's own edges - see {@link toneHz}. */
+  readonly hz: number;
+  /** Periods that are not the march note's - see {@link foreignPeriods}. */
+  readonly foreign: number;
+}
+
+/**
+ * The dominant repetition rate of one sound, in Hz.
+ *
+ * The same method `soundHz` in `tms1370-probe.ts` uses, and for its reason: a
+ * square wave on one pin has no spectrum worth taking, so the period is the time
+ * between every second edge and the honest figure is the median of those. Local
+ * rather than imported because this file carries the edge stream as plain cycles.
+ */
+function toneHz(edgeCycles: readonly number[]): number {
+  const periods = periodsOf(edgeCycles);
+  if (periods.length === 0) {
+    return 0;
+  }
+  const sorted = [...periods].sort((left, right) => left - right);
+  return CYCLE_HZ / (sorted[sorted.length >> 1] as number);
+}
+
+/** Every period in an edge stream: the interval between every second edge. */
+function periodsOf(edgeCycles: readonly number[]): number[] {
+  const periods: number[] = [];
+  for (let at = 2; at < edgeCycles.length; at += 2) {
+    periods.push((edgeCycles[at] as number) - (edgeCycles[at - 2] as number));
+  }
+  return periods;
+}
+
+/**
+ * Periods in an edge stream faster than a march note's, which no march note has.
+ *
+ * The median {@link toneHz} reports is the right estimator for *a* note's pitch
+ * and the wrong discriminator for whether a sound is only that note - a median is
+ * robust to a minority tone, which is the very property that makes it a good
+ * pitch estimator. A 71 ms march note fused with the 19 ms fire blip carries 44
+ * periods at 627 Hz and 29 at 1577, and its median is still 627: in band, and not
+ * one note.
+ *
+ * The test is one-sided, and measurement is what says which side. Read off the
+ * running machine, a march note's periods are 627 Hz with a handful at 583 - the
+ * boundary between the three bursts `note` builds it from - so a band that
+ * excluded 583 would reject every real note, which a first cut of this did. What
+ * a march note never carries is anything *faster* than itself: the fire blip is
+ * 1577 Hz with 1326 at its own burst boundaries, and the single period spanning
+ * the join between two sounds is slower than both (56 Hz). So counting only the
+ * periods above the band separates a note from a fusion and leaves the note's own
+ * internal structure alone.
+ */
+function foreignPeriods(edgeCycles: readonly number[]): number {
+  return periodsOf(edgeCycles).filter((period) => CYCLE_HZ / period > MARCH_HZ_MAX).length;
 }
 
 /** Split an R15 edge stream into sounds at gaps of {@link BURST_GAP_CYCLES}. */
@@ -224,17 +319,32 @@ function splitSounds(edgeCycles: readonly number[]): Sound[] {
   let first = edgeCycles[0] as number;
   let last = first;
   let holes: (readonly [number, number])[] = [];
+  let members: number[] = [first];
   for (const cycle of edgeCycles.slice(1)) {
     if (cycle - last > BURST_GAP_CYCLES) {
-      sounds.push({ firstEdge: first, lastEdge: last, holes });
+      sounds.push({
+        firstEdge: first,
+        lastEdge: last,
+        holes,
+        hz: toneHz(members),
+        foreign: foreignPeriods(members),
+      });
       holes = [];
+      members = [];
       first = cycle;
     } else if (cycle - last > REFRESH_TIMEOUT_CYCLES) {
       holes.push([last, cycle]);
     }
+    members.push(cycle);
     last = cycle;
   }
-  sounds.push({ firstEdge: first, lastEdge: last, holes });
+  sounds.push({
+    firstEdge: first,
+    lastEdge: last,
+    holes,
+    hz: toneHz(members),
+    foreign: foreignPeriods(members),
+  });
   return sounds;
 }
 
@@ -375,7 +485,13 @@ describe('the blank the ROM makes reaches the glass (D1)', () => {
   const { frames, sounds } = play(machine, renderer, recorder, ids);
   const marchNotes = sounds.filter((sound) => {
     const toneMs = ms(sound.lastEdge - sound.firstEdge);
-    return toneMs > MARCH_MS_MIN && toneMs < MARCH_MS_MAX;
+    return (
+      toneMs > MARCH_MS_MIN &&
+      toneMs < MARCH_MS_MAX &&
+      sound.hz >= MARCH_HZ_MIN &&
+      sound.hz <= MARCH_HZ_MAX &&
+      sound.foreign === 0
+    );
   });
 
   /**
