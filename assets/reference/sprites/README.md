@@ -410,14 +410,59 @@ The whole sequence for that one kill, from the frame log:
 So `missile-lit.png` in the stills set is **mislabelled**: it is the jet-kill burst, not a
 missile. Section 4 below is wrong on this point and is corrected here.
 
-**A jet is worth 1 point, and an earlier revision read 2.** That revision read the digits
-across file seconds 205-208 as "38 before, 40 after a cell-4 kill, 41 after a cell-3 kill"
-and concluded that farther kills score more. The burst episodes detected in that window are
-**three**, not two - cell 2 lane 1 at frames 6178-6194, cell 3 lane 0 at 6201-6223, and cell
-2 lane 1 at 6201-6204 - and 38 to 41 across three kills is +1 each. Both readings fit the
-digits that were read; they differ in how many kills happened. Settling it needs the score
-decoded on every frame, which the slanted digits defeated. **Until then, no
-distance-dependent jet score should be built into the ROM.**
+**A jet is worth 3, 2 or 1 by the column it died in, and the flat 1 this section used to
+assert has been overturned by owner testimony.** The ROM scores jets against the printed
+ruler as of the change that added `SCORE_JET_MID` and `SCORE_JET_FAR`; the derivation from
+the ink to the numbers is beside `SCORE_JET` in `asm/jetfighter.asm`, and the assertion is
+`tools/probe/scoring-ruler.test.ts`.
+
+The superseded text, kept because a deleted conclusion gets reinvented:
+
+> **A jet is worth 1 point, and an earlier revision read 2.** That revision read the digits
+> across file seconds 205-208 as "38 before, 40 after a cell-4 kill, 41 after a cell-3 kill"
+> and concluded that farther kills score more. The burst episodes detected in that window are
+> **three**, not two - cell 2 lane 1 at frames 6178-6194, cell 3 lane 0 at 6201-6223, and cell
+> 2 lane 1 at 6201-6204 - and 38 to 41 across three kills is +1 each. Both readings fit the
+> digits that were read; they differ in how many kills happened. Settling it needs the score
+> decoded on every frame, which the slanted digits defeated. **Until then, no
+> distance-dependent jet score should be built into the ROM.**
+
+**What moved it, and what did not.** The owner, playing the physical unit, was asked
+directly whether hitting a jet further away scores more than hitting one close to the
+launcher - with the prohibition above and the re-reading below both put in front of him -
+and answered yes. That is **testimony, not a measurement**, and it is what settles it. The
+per-frame score decode this section asked for has still never been run. If it ever is, it
+should be run against the ROM's table rather than against the flat 1.
+
+**The re-reading, which corroborates but does not settle.** It is a re-reading of the
+detection output above, not a fresh pass over the video, and the recording is not in the
+repository to re-derive it from.
+
+Of the three burst episodes the +1-per-kill count rests on, the third is a **probable
+double-detection**:
+
+| Episode | Frames | Duration | Cell, lane |
+| --- | --- | --- | --- |
+| 1 | 6178-6194 | 17 frames | cell 2, lane 1 |
+| 2 | 6201-6223 | 23 frames | cell 3, lane 0 |
+| 3 | 6201-6204 | **4 frames** | cell 2, lane 1 |
+
+Three things are wrong with episode 3 and nothing is wrong with the other two. It runs four
+frames against a **median of 19 over 76 episodes**, measured in this same section. It sits
+at the same cell and lane as episode 1, which ended seven frames earlier. And it begins on
+the *identical frame* as episode 2, which is what a detector does when one object's tail is
+re-acquired as a second object, not what two independent kills look like.
+
+Drop it and the window holds two kills, at cell 2 and cell 3. The ROM's table pays cell 2
+two points and cell 3 one, and **2 + 1 = 3** - exactly the 38-to-41 the digits were read as.
+So the measurement this section rests on does not contradict distance scoring; under the
+more plausible episode count it predicts the observed digits precisely.
+
+The single cleanest kill in the recording agrees as well. Four paragraphs above: score 41 at
+frame 6290, one burst at **cell 3** lane 1 across 6323-6345, score 42 at frame 6400. A
+cell-3 kill for +1, which is what the ROM's table pays cell 3. It does not discriminate
+between the two readings - the flat 1 predicts it too - but it is the only jet kill here
+that is unambiguously alone in its window, and it confirms one row of the table directly.
 
 **The cell-0 burst is the battleship's, and it is worth 10 points.**
 `video/battleship-kill-burst-lane0.png` and `video/battleship-kill-burst-lane2.png`.
@@ -436,11 +481,15 @@ happened to be lit:
 | 6162 | 205.4 s | **38** |
 | 6234 | 207.8 s | **41** |
 
-The cell-0 burst occupies frames 6134-6159. **28 to 38 is exactly +10 across it.** The three
-jet-kill bursts that follow - cell 2 lane 1 at 6178-6194, cell 3 lane 0 at 6201-6223, cell 2
-lane 1 at 6201-6204 - account for the further +3 by frame 6234. A jet at 1 point and a
-battleship at 10, both in the same seven seconds of one recording, matching the rules on the
-back label.
+The cell-0 burst occupies frames 6134-6159. **28 to 38 is exactly +10 across it.** That is
+the finding of this paragraph and nothing above has disturbed it: the boat is worth ten, and
+the burst that pays it is this one.
+
+The jet-kill bursts that follow account for the further +3 by frame 6234. **How many of them
+there are is the question settled against distance scoring above**, and it does not bear on
+the battleship's ten either way. Three detected episodes at +1 each was the original reading;
+on the two-kill reading - episode 3 being a probable double-detection - it is a cell-2 kill
+at two points and a cell-3 kill at one, which is the same +3 and is what the ROM now pays.
 
 Its vertical centre sits about 0.05 of the field height **above** the lane centre (`v` 0.200
 against lane 0's 0.251; `v` 0.501 against lane 2's 0.560), so the burst is drawn above the

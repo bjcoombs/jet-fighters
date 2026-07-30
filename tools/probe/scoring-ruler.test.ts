@@ -55,8 +55,8 @@
 // already wrapped and the tens not yet bumped - 19 reads as 10 - and the next
 // sample then reads +10. At a 5 ms sample that is about a 0.5% chance per
 // scoring event, and it showed up as a `-9` in the first census run of this
-// drive. `settledScore` steps past the write before believing a change, which is
-// why every delta below is a single number and not a pair.
+// drive. `aimedDrive` steps `SETTLE_CYCLES` past the write before believing a
+// change, which is why every delta below is a single number and not a pair.
 
 import { describe, expect, it } from 'vitest';
 import { CYCLE_HZ } from '../../src/machine/cpu/tms1370/timing.js';

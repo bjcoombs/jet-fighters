@@ -286,8 +286,25 @@ export interface RulerTick {
  * is printed on the front overlay and the cells are on the tube behind it, the
  * two run on different pitches (see {@link RULER_SPAN_MARKS}), and under it no
  * numeral landed on a tick at all. The photographs are the authority on where
- * the ink is, so the scoring table no longer places the numerals. Nothing about
- * scoring itself changes - the ROM is untouched.
+ * the ink is, so the scoring table no longer places the numerals.
+ *
+ * **The ROM now takes its scoring from this registration, so the dependency
+ * runs the other way round.** When these ticks were first fitted the note here
+ * read "nothing about scoring itself changes - the ROM is untouched", and that
+ * has stopped being true: `score_jet` pays 3 on grid 1, 2 on grid 2 and 1 from
+ * grid 3 to the G line, which is these five drops read onto the cell lattice.
+ * Since tick pitch is 7/7.5 of a cell, tick `k` lands `0.9333k` cells right of
+ * the left crosshair and therefore inside cell `k - 1` for every one of the
+ * seven - so `10` falls in cell 0 (the battleship's, carrying no jet column),
+ * `3` in cell 1, `2` in cell 2, `1` in cell 3, and `G`, whose bracket is
+ * mirrored and so labels the band to its *right*, in cell 6 (the launcher's, a
+ * capture and not a score). Cells 4 and 5 carry the bare ticks 5 and 6 and are
+ * clamped to the last named band.
+ *
+ * The derivation is written out in full beside `SCORE_JET` in
+ * `asm/jetfighter.asm` and asserted by `tools/probe/scoring-ruler.test.ts`.
+ * **Moving a numeral here now changes what the game pays**, which it did not
+ * before; the ROM's copy of the table has to move with it.
  */
 export const RULER_TICKS: readonly RulerTick[] = [
   { label: '10', tick: 1 },
