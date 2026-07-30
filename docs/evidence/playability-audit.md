@@ -385,6 +385,90 @@ instead of as three unexplained downstream counts.
 
 ---
 
+## 8b. The ghost layer, and the one constant nobody has measured
+
+The owner confirmed the departure report - *"yes the three boats appear briefly on
+departure"* - after sections 1 to 7 had concluded the machine cannot produce it. What
+follows is where that left the question.
+
+### The machine really cannot, now traced rather than sampled
+
+Section 6's ruling-out rested partly on a record that turned out to be sampled (see
+section 8). Re-done without that hole:
+
+- **Every completed frame**, interval-based so a plate lit for a single cycle still
+  registers: **0 frames of 3701 with two or more grid-0 plates in any family.**
+- **Instruction by instruction**, three departures, on a *played* game so a missile, a
+  rocket and a burst had all used the shared render scratch first: **the most plates ever
+  selected on grid 0 in one family is 1.**
+- The kill path likewise: exactly one burst segment, throughout every burst.
+
+`rd_bship` skips the draw entirely when the lane reads `BS_NONE`, `lane_bit` returns
+exactly one of 1 / 2 / 4, and `rd_bs_draw` stores rather than ORs. On a departure sweep
+grid 0's nibbles are never written at all.
+
+### Three visible marks does not need three lit segments - but the arithmetic still says no
+
+The renderer composes a **ghost layer under everything, at a constant alpha, for every
+segment in the atlas including all three battleship positions**. So the third position is
+never dark, and three marks needs only two phosphor-lit segments rather than three.
+
+Composed exactly - background, ghost at `GHOST_ALPHA`, then the active layer source-over,
+which is skipped below `MIN_VISIBLE_BRIGHTNESS` - in Rec.709 luminance:
+
+| Display | Row 1 | Row 2 | Row 3 | 2nd row lift over ghost |
+| --- | --- | --- | --- | --- |
+| 60 Hz | 13.1 | 13.1 | 13.1 | 0% |
+| 120 Hz | 155.3 | 14.3 | **13.1** | 9% |
+| 144 Hz | 153.1 | 15.7 | **13.1** | 20% |
+| 240 Hz | 139.0 | 24.9 | **13.1** | 90% |
+
+Ghost-only is 13.11 and fully lit is 157.28, a ratio of 12. **The third row is exactly
+13.11 at every refresh rate - it is never lifted by anything.** So the composed picture is
+one bright mark, one marginally lifted, and one untouched. At 120 Hz the lift is 9%.
+
+**The trail is refresh-rate dependent, and at 60 Hz it is not drawn at all.** The lane
+just vacated decays over about 12 ms, so a faster display samples that decay where a
+slower one steps over it: the trailing segment's brightness runs 0.0001 at 60 Hz, 0.0114
+at 120, 0.0241 at 144, 0.1068 at 240. **At 60 Hz that is below
+`MIN_VISIBLE_BRIGHTNESS = 0.004`, so the active layer skips the segment entirely** - not
+dim, not drawn. Every measurement in this repository was taken at 60 Hz.
+
+### What is actually worth checking next
+
+**The ghost matrix is faithful in kind.** `assets/reference/readme-real-tube.jpg` plainly
+shows unlit segments as a visible grey matrix - faint jets in every cell across all three
+rows, alongside the two or three bright sprites. **"All ships on all rows" is this
+machine's normal appearance, on the real unit as much as ours.**
+
+So the open question is not whether three boats can be seen. It is:
+
+> Are the three marks *brighter* than the faint ships that are always visible, or are they
+> those same ships becoming *noticeable* when the bright one goes out?
+
+**If the answer is "brighter", `GHOST_ALPHA` is the first place to look, and it has never
+been measured.** `src/machine/tube/palette.ts` documents it as *"a judgement call tuned by
+eye"*, inherited from v1's single neutral `rgba(120, 120, 120, 0.08)`, with the alpha kept
+and only the colour made per-region. Nothing in `docs/evidence/` calibrates it, and
+`vfd-appearance.md` says nothing about ghost prominence.
+
+**A calibration attempt was made and its output is not recorded here, deliberately.**
+Sampling patches from `readme-real-tube.jpg` returned a *lit* orange jet at 1.1x the plain
+dark screen, which contradicts what the photograph obviously shows, so the patches were
+misregistered and every figure from that pass is unusable. Doing it properly needs the
+per-row frame-rail registration that `layout.ts` used for the ruler - the photograph is a
+hand-held phone shot through a tinted filter, and absolute luminance in it is dominated by
+exposure rather than by the tube.
+
+**One caution for whoever does it.** `docs/evidence/timing-analysis.md`'s method section
+records that camera drift across that clip is 28 px in y, two thirds of the lane pitch, so
+a lane band fixed in frame coordinates mixes lanes and one jet straddling a boundary reads
+as *a pair of sprites in adjacent lanes at the same column* - an artefact that pass came
+close to recording as a finding. This project has produced the "one sprite in two lanes"
+percept once already, from an instrument rather than from the machine.
+
+---
+
 ## 9. What this audit did not cover
 
 Named because a drive that never arrives and a drive that arrives and finds nothing are
