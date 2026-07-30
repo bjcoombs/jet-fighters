@@ -483,3 +483,69 @@ disagreements between the two say where the reconstruction is wrong.
 `asm/jetfighter.asm` on `main` is HMCS44 and is expected to be replaced wholesale rather
 than reverted. Only the `.asm` is family-specific - the recordings,
 `docs/evidence/audio-reference.md` and the probe tests all carry across.
+
+## 8. Three owner observations, measured and confirmed faithful
+
+The owner reported three things while playing the deployed build. All three were
+measured against the running machine rather than reasoned about, and **none of them is a
+defect**. Recorded here so the next report of any of them can be answered from the tree
+instead of costing another diagnosis.
+
+### 8a. "The last note of the game win is a high note, not a low note"
+
+**The ROM ends low, and so does the audio path.** Driven to a win and measured off R15,
+the jingle is:
+
+| note | pitch | length |
+| ---- | ----- | ------ |
+| arpeggio, three times | 758 -> 956 -> 1190 Hz | 180 / 144 / 143 ms |
+| the resolution | **956 Hz** | 256 ms, 240 periods |
+
+Peak 1190 Hz, final note 956 Hz, and the speaker is silent afterwards - `tk_ended`
+branches straight to `render` in a finished game. That is `win.arpeggio` and
+`win.resolutionHz` as `audio-reference.md` measures them.
+
+The same edge stream pushed through the real synth in `src/machine/audio/` renders the
+last 300 ms at 972 Hz zero-crossing with an RMS of 0.4905, against 0.4926 at the start of
+the jingle. **Nothing is truncated, attenuated or dropped**, and the 100 ms window at
+t = 1.50 s and t = 1.60 s both read 950 Hz against a 1150 Hz peak window.
+
+So the resolution is played, rendered and audible. What is true is that **it is only about
+3.8 semitones below the peak, and 956 Hz is a high note in absolute terms** - A#5, and the
+same pitch the arpeggio already passes through on its way up. A listener expecting the
+jingle to settle onto something obviously low will not hear that. **This is a question for
+the owner about what the unit sounds like, not a defect to fix**, and changing the
+resolution's pitch would move the ROM away from the measurement.
+
+`tools/probe/win-jingle.test.ts` now asserts the shape, so a future change that really did
+end the jingle on its peak would fail. Verified by mutation: pointing `gw_last` at
+`SND_WIN3` instead of `SND_WIN2` fails both the shape and the pitch assertion.
+
+### 8b and 8c. Both endings freeze the controls
+
+**Faithful, and it is the ROM ignoring input rather than the emulator stopping.** After an
+ending, working the lever and the fire button for two emulated seconds leaves `NIB_STATE`
+at `ST_WIN`, the score at 199, and produces **zero speaker edges**. The machine is running
+and choosing to do nothing: `tick` branches to `tk_ended` for anything above `ST_PLAY`, and
+`Board.running` is `power.isOn` and nothing else, so no layer above the ROM has halted.
+
+A core reset - what the on-screen power switch does - returns `NIB_STATE` to `ST_PLAY` and
+the score to 0, so **the unit is not stuck**. That is `docs/prd/jet-fighters-v1.md:30`'s
+back-label rule, power-cycle to start a new game, wired as v1 line 168 describes.
+
+### 8d. "The screen flashes" - one blank, not a flicker
+
+Sampling what a viewer sees at 60 Hz across a whole game, the ending produces **40
+consecutive dark frames, about 0.67 s, with exactly two dark/lit transitions.** One
+blackout. After it the tube is lit and stable: 60 viewer frames, one distinct lit set, 12
+segments - the final score standing still. During play only 2% of frames are dark.
+
+The cause is the ROM stopping the sweep while it drives the speaker, which
+`tools/probe/blank-to-glass.test.ts` already asserts for every sound on this machine. The
+loss envelope is simply the longest sound the ROM plays, so it is the only one long enough
+to read as a blackout rather than a blink.
+
+**Stated generally, because it will be reported again about some other sound: every sound
+on this machine is a visible blink, and the longer the sound the more it looks like a
+fault.** Criterion V12 names that as something an operator should recognise as authentic.
+A build in which the tube kept drawing through a sound would be the wrong one.
