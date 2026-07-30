@@ -951,6 +951,44 @@ which counted every edge rather than rising edges and so reported every frequenc
 double, with a band widened until the doubled figures fitted. Both had numbers in them.
 Neither number came from the machine.
 
+### A separate mechanism, and the one with no wrong step in it
+
+The three families all contain a mistake somewhere - a wrong assertion, a misread
+column, a fitted tolerance. This one does not, which is why it is recorded apart from
+them rather than as a fourth family.
+
+**A correct derivation, from correct measurements, that stops early because the
+conclusion is attractive.**
+
+The instance. The battleship was driven, the shots were counted honestly, and the
+arithmetic was right: aiming at the lane the boat occupies scored 0 in 18 shots over
+11 crossings, because the boat descends a lane per 1.29 s while a shot needs 3.0 s to
+arrive. Every step of that holds up. It was about to be reported as **"the battleship
+cannot be hit"**, which does not follow from it. Leading the boat by two lanes hits it
+3 times in 27. What was missing was not a check on the numbers. It was the next
+question - *is there another way to aim* - and the reason it went unasked is that the
+finding was better without it. "The two most valuable targets cannot be chosen" is a
+more interesting thing to report than "I tried one strategy and it failed."
+
+**This is the second instance from the same source in one day**, and by the standard
+used everywhere else in this document, two makes it a pattern. The first is in section
+11a: a set of starvation calls that were true, that explained the observation, and that
+closed the investigation while a second cause was still live. Same shape - accurate
+work, satisfying explanation, premature stop, and a conclusion that was stronger than
+the evidence carried.
+
+What catches it is worth stating precisely, because the obvious answer is wrong.
+Scepticism about the measurements does not help; the measurements are correct, and
+checking them again returns the same numbers and more confidence. **What catches it is
+asking what else follows from them.** That prompt is already written into section 11a
+in its own words: when a measurement surprises you and the explanation is satisfying,
+that is the moment to ask what else follows. It was available and it was not used.
+
+Worth recording honestly: this one was not caught by the person who made it. It was
+caught because the finding was challenged and a leading control was demanded before
+the conclusion was accepted. A mechanism whose only known counter is someone else
+declining to take the answer is not yet a solved problem.
+
 ### What this section is
 
 **A record, not a remediation.** Nothing here is fixed by this document. Three of the four

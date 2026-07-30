@@ -563,6 +563,24 @@ describe("the printed ruler", () => {
       // not the ruler failing to pay ten; it is a general-purpose drive being
       // asked to land a low-probability shot a fixed number of times. Hunting the
       // boat across several games is what the claim actually needs.
+      //
+      // ## Earnable, and rare. Both, or the record is misleading.
+      //
+      // This hunt lands **3 kills in 27 led shots**, the same one-in-nine as the
+      // standalone control in `tools/probe/drives/battleship-lead.ts`. Twenty-four
+      // of the twenty-seven miss.
+      //
+      // Both halves belong in the record. "The boat must be led" invites the
+      // reading that leading works, and it mostly does not: a player who has
+      // learned the lead still walks away from most crossings with nothing. The
+      // ten points are earnable *and* rare, which is a different claim from
+      // earnable, and it is the one the machine supports.
+      //
+      // It is also why this assertion is written to tolerate a miss rather than
+      // to expect a hit per crossing. A drive that could not miss would pass on
+      // something other than the mechanic - the same condition the dodging rotor
+      // drive is held to. If a change ever makes this reliable, that is a
+      // behaviour change worth noticing, not a test getting better.
       const boat = boatHunt();
       expect(
         boat.attempts,
