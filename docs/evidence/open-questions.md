@@ -989,6 +989,82 @@ caught because the finding was challenged and a leading control was demanded bef
 the conclusion was accepted. A mechanism whose only known counter is someone else
 declining to take the answer is not yet a solved problem.
 
+### The same misreading twice, from the same six-line header
+
+Family 2 above records `Pages used: 31 of 32` being read as a space budget when
+`Program words` one line above was the real figure. **It has now happened a second
+time, in the same listing header, on a different counter**, which by this document's
+own standard makes it a pattern rather than a slip.
+
+The second instance: `RAM high-water mark: 128 of 128 nibbles`, read as "RAM is full",
+and a feature nearly declared unbuildable on it. The mark is `(file + 1) * 16` -
+`tools/tmsasm/assembler.ts:702`, driven by whichever file an `LDX` selects. It is the
+**highest address reachable**, not the count of nibbles in use. It moved 112 to 128
+because a new file 7 was introduced holding exactly two nibbles. File 7 has fourteen
+free, and the feature was never in doubt.
+
+The root is worth naming, because it is a property of the header and not of either
+reader. Three of its lines are `X of Y`, and `Y` does not mean the same thing in each:
+
+| Line | What `Y` is |
+| --- | --- |
+| `Program words: 1538 of 2048` | a real capacity |
+| `Pages used: 31 of 32` | pages *touched*, so `Y` is a count of containers, not room |
+| `Highest address: 2047 ($7FF) of 2047` | a span, and always equal once anything is placed high |
+| `RAM high-water mark: 128 of 128` | a span, from file selection alone |
+
+Only the first is a budget. The other three are spans or tallies wearing a budget's
+notation, and two of the three have now been read as budgets by two different readers
+on the same day. **A span presented as `X of Y` will be read as an occupancy**, and no
+amount of care by the reader fixes a label that invites the error.
+
+Unlike most of this section there is a cheap remediation available here - the two span
+lines could say `span` or `highest touched` rather than `of N`, and `Pages used` could
+carry the free-word count it already knows. That is a change to `tools/tmsasm/output.ts`
+and not to this document, so it is named here rather than made.
+
+### A further mechanism: both halves true, the error entirely in the join
+
+Reported by the agent that built the renderer harness, and verified here against the
+source before being written down.
+
+The reasoning was: `src/main.ts` calls `board.getLitSegments()`; `getLitSegments()` is
+unprotected, returning the last completed frame with no staleness rule; therefore the
+application draws a stale lit tube where the probe would report it dark.
+
+**Both premises are true. The conclusion is false, and nothing in between is a
+mistake.** They are two different methods that happen to share a name:
+
+- `src/main.ts:189` really does call `board.getLitSegments()`.
+- `Display.getLitSegments()` at `src/machine/board/display.ts:282` really is
+  unprotected - it is `return this.getFrame().segments`, and `getFrame()` hands back
+  `_lastFrame` however old it is.
+- But `Board.getLitSegments()` at `src/machine/board/board.ts:299` is a *different
+  method*, and it delegates to `this.display.getObservedFrame(...)`, which is the one
+  that applies the staleness rule.
+
+The join is invisible precisely because the name is shared. In a layered tree a
+wrapper that shares its delegate's method name is exactly where this hides - and the
+wrapper usually exists **because** it changes the behaviour, which is what makes the
+shared name so misleading.
+
+**The consequence is what earns this a place here.** Every other instance in this
+section cost a wrong belief. This one commissioned a **wrong experiment**: believing
+the application used the unprotected path, the agent re-ran a 7202-frame renderer
+scan driving `getFrame()`, modelling a path the application never takes, and got a
+perfectly plausible number that could have been quoted. Nothing about the output
+would have looked wrong. **Experiments outlive the sentences that motivate them** - a
+retracted claim is retracted, but a measurement taken under it keeps circulating with
+its methodology unexamined, and that is the sharper warning.
+
+The check that generalises, and it is cheap: **when a conclusion rests on "X calls Y"
+and "Y does Z", confirm the Y in both clauses is the same Y.** What caught it was
+grepping for *who calls what* rather than for the symbol. `rg "getObservedFrame" src/`
+shows `board.ts` calling it, which is impossible if `board.getLitSegments()` were the
+unprotected one. The contradiction is only visible from the caller side; reading
+`display.ts` as carefully as you like will never show it, because nothing in that file
+is wrong.
+
 ### What this section is
 
 **A record, not a remediation.** Nothing here is fixed by this document. Three of the four
@@ -1002,3 +1078,32 @@ measuring nothing.
 The one habit that found every instance: **break the thing on purpose and watch the
 instrument go red.** An instrument that has never been seen to fail has not been shown to
 work.
+
+## 13. Where the probe and the application model the tube differently
+
+One divergence, found while checking the shared-name join above, and recorded because
+it lands inside a window that already has an anomaly in it.
+
+**`Board.getLitSegments()` falls back to `sampleFrame()` when `frameCount === 0`; the
+probe's equivalent does not.** `src/machine/board/board.ts:299` returns
+`this.sampleFrame().segments` before any frame has completed, where
+`Tms1370Machine.getLitSegments()` at `tools/probe/tms1370-probe.ts:366` goes straight
+to `getObservedFrame` with no such branch. So before the first completed frame the
+application shows the tube mid-sweep and the probe shows it dark. Both are defensible;
+they are not the same.
+
+It only matters before the first completed frame, and that is not an empty window:
+
+- `NIB_BSLANE` reads 0 for the first **11.5 ms** after power-on, measured. Zero is a
+  valid lane, and `BS_NONE` is 15, so until the ROM's clear routine writes 15 the
+  state says a battleship is crossing in the top lane. A phantom battleship, at
+  power-on, for as long as it takes the ROM to clear RAM.
+- The probe reports nothing lit at all until **30 ms**, also measured.
+
+So the phantom sits entirely inside the window where the two paths disagree about what
+is on the glass. **Two known anomalies in the same 30 ms, with the probe modelling that
+window differently from the application**, is worth a note rather than a rediscovery.
+
+Neither is asserted to be a defect here. What is asserted is that any claim about what
+the tube shows in the first 30 ms after power-on has to say which of the two paths it
+was measured on, because they answer differently and both are in this tree.
