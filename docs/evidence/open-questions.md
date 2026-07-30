@@ -989,6 +989,40 @@ caught because the finding was challenged and a leading control was demanded bef
 the conclusion was accepted. A mechanism whose only known counter is someone else
 declining to take the answer is not yet a solved problem.
 
+### The same misreading twice, from the same six-line header
+
+Family 2 above records `Pages used: 31 of 32` being read as a space budget when
+`Program words` one line above was the real figure. **It has now happened a second
+time, in the same listing header, on a different counter**, which by this document's
+own standard makes it a pattern rather than a slip.
+
+The second instance: `RAM high-water mark: 128 of 128 nibbles`, read as "RAM is full",
+and a feature nearly declared unbuildable on it. The mark is `(file + 1) * 16` -
+`tools/tmsasm/assembler.ts:702`, driven by whichever file an `LDX` selects. It is the
+**highest address reachable**, not the count of nibbles in use. It moved 112 to 128
+because a new file 7 was introduced holding exactly two nibbles. File 7 has fourteen
+free, and the feature was never in doubt.
+
+The root is worth naming, because it is a property of the header and not of either
+reader. Three of its lines are `X of Y`, and `Y` does not mean the same thing in each:
+
+| Line | What `Y` is |
+| --- | --- |
+| `Program words: 1538 of 2048` | a real capacity |
+| `Pages used: 31 of 32` | pages *touched*, so `Y` is a count of containers, not room |
+| `Highest address: 2047 ($7FF) of 2047` | a span, and always equal once anything is placed high |
+| `RAM high-water mark: 128 of 128` | a span, from file selection alone |
+
+Only the first is a budget. The other three are spans or tallies wearing a budget's
+notation, and two of the three have now been read as budgets by two different readers
+on the same day. **A span presented as `X of Y` will be read as an occupancy**, and no
+amount of care by the reader fixes a label that invites the error.
+
+Unlike most of this section there is a cheap remediation available here - the two span
+lines could say `span` or `highest touched` rather than `of N`, and `Pages used` could
+carry the free-word count it already knows. That is a change to `tools/tmsasm/output.ts`
+and not to this document, so it is named here rather than made.
+
 ### A further mechanism: both halves true, the error entirely in the join
 
 Reported by the agent that built the renderer harness, and verified here against the
