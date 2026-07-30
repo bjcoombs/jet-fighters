@@ -285,13 +285,17 @@ describe('the printed ruler', () => {
   const { scored: census, capped } = untilTheWin(drive);
 
   it('truncates nothing, or truncates exactly the winning add', () => {
-    // Both branches assert. The drive either never reaches 199, in which case
-    // the census must be the whole drive and nothing has been dropped from the
-    // tests below, or it does, in which case the one dropped event has to be
-    // the last of the drive and has to land exactly on 199. There is no shape
-    // in which this test passes by having nothing to say.
+    // Both branches assert something about the *drive*, which is the thing that
+    // can change. An earlier version asserted `census` equals `drive` on the
+    // no-win branch, and that was tautological - `untilTheWin` returns the same
+    // array when it finds nothing to split on, so it restated the split rather
+    // than testing the run. What is worth pinning instead is that the drive
+    // genuinely ended short of the win, which is a measured fact about the game
+    // and not a restatement of the search that produced the branch.
     if (capped === undefined) {
-      expect(census).toEqual(drive);
+      const last = drive.at(-1) as Kill;
+      expect(last.to).toBeLessThan(WIN_SCORE);
+      expect(drive.every((kill) => kill.to < WIN_SCORE)).toBe(true);
       return;
     }
     expect(capped).toBe(drive.at(-1));
