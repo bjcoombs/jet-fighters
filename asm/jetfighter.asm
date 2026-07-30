@@ -744,21 +744,15 @@
 .EQU WARN_GAP,      10
 .EQU WARN_GAP_PASSES, 3
 
-; The silence the warning *opens* with, which is longer than the ones inside it
-; and has to be. A capture is claimed at the end of the squadron's lane walk,
-; directly after `jm_beep`'s 71 ms march note, so without a lead-in the first
-; warning beep is flush against it and the two read as one 90 ms sound rather
-; than as a note and a warning - measured at ~450 Hz across the pair, outside the
-; 455-545 Hz band this warning is supposed to occupy.
-;
-; It cannot be one of the gaps above. Those are deliberately *shorter* than a
-; sound's own boundary - 27.3 ms against the two sweeps that separate one sound
-; from the next - because the beeps of one warning have to hold together as one
-; signal. A lead-in of the same length would hold the march note in with them
-; for exactly the same reason. So it is two of them: (7 + 1) passes is 3184
-; cycles = 54.6 ms, past the boundary and still inside the gap between the
-; squadron's steps, so the warning is not perceptibly delayed by it.
-.EQU WARN_LEAD_PASSES, 7
+; A lead-in silence before the first warning beep was tried here and reverted.
+; It existed because the analyser fused the warning with the march note that
+; precedes a capture - a property of the analyser, not of the machine - and the
+; ROM is not the place to fix that. It also parked the sweep for 54.6 ms, twice
+; the longest park this machine otherwise has, which measurably slowed a running
+; battleship buzz: two windows of a crossing read 60-62 Hz against a measured
+; band of 79-111. `tools/probe/tms1370-rom.test.ts` separates the two sounds by
+; counting pitch runs in the warning band instead, which is what
+; `launcher-lives.test.ts` already did.
 
 ; ============================================================================
 ; Page map
@@ -2286,17 +2280,6 @@ reset:
 ; hit, three on the second, and on the third the full loss sound. All three are
 ; owner-confirmed.
 ;
-; **The warning opens with a gap, not with a beep.** The loop below runs
-; beep-then-gap, and entering it at the beep put the first one flush against
-; whatever the sweep had just played. A capture arrives at the end of the
-; squadron's lane walk, immediately after `jm_beep`'s march note, and the two
-; fused into a single burst: measured, 121 ms and 110 edges at ~450 Hz where a
-; march note alone is 71 ms and 90 edges at 625, which is outside the 455-545 Hz
-; band audio-reference.md measures for this warning. Entering at the gap costs
-; one `IMAC` in place of a `TMA` - the beep count is built one higher because the
-; loop now spends one before the first beep - and it invents no sound: the same
-; beeps, in the same numbers, at the same pitch, with the same 27.3 ms gap the
-; owner's recording measures, and one of those gaps in front.
 
 launcher_down:
         LDX  FILE_STATE
@@ -2313,13 +2296,10 @@ launcher_down:
         BR   ld_to_over
         LDX  FILE_STATE
         TCY  NIB_HITS
-        IMAC                    ; hits is 1 or 2, so beeps is hits + 1 - and the
-        LDX  FILE_JETS          ; count is built one higher here than it used to
-        TCY  NIB_J_TMP          ; be, because the loop is entered at its gap
-        TAM                     ; rather than at its first beep
-        TCY  NIB_J_SCR
-        TCMIY WARN_LEAD_PASSES  ; the lead-in silence, longer than the gaps
-        BR   lw_gap_out         ; between the beeps - see WARN_LEAD_PASSES
+        TMA                     ; hits is 1 or 2, so beeps is hits + 1
+        LDX  FILE_JETS
+        TCY  NIB_J_TMP
+        TAM
 lw_beep:
         LDX  FILE_D0
         TCY  NIB_HALF_O

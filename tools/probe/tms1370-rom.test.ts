@@ -82,6 +82,43 @@ function leverOnly(cycles: number, lane?: number, skill = 1): InputEvent[] {
   return events;
 }
 
+/**
+ * The sustained pitches inside a stretch of edge stream, as runs of like periods.
+ *
+ * The same method `launcher-lives.test.ts` uses and for the same reason: one
+ * figure over a whole sound averages a march note running into a warning and
+ * reports a pitch neither of them has.
+ */
+function warningRunsIn(
+  edges: readonly { cycle: number; level: 0 | 1 }[],
+  from: number,
+  to: number,
+): number[] {
+  // Rising edges only: a period is rise to rise, and counting both levels would
+  // report every half-period and put a 467 Hz beep at 934.
+  const rising = edges
+    .filter((edge) => edge.level === 1 && edge.cycle >= from && edge.cycle <= to)
+    .map((edge) => edge.cycle);
+  const periods = rising.slice(1).map((cycle, index) => cycle - (rising[index] as number));
+  const found: number[] = [];
+  let current: number[] = [];
+  const close = (): void => {
+    if (current.length >= 3) {
+      const sorted = [...current].sort((left, right) => left - right);
+      const hz = CYCLE_HZ / (sorted[sorted.length >> 1] as number);
+      if (hz >= 455 && hz <= 545) found.push(hz);
+    }
+    current = [];
+  };
+  for (const period of periods) {
+    const previous = current[current.length - 1];
+    if (previous !== undefined && Math.abs(period - previous) / previous >= 0.06) close();
+    current.push(period);
+  }
+  close();
+  return found;
+}
+
 /** The three detents of the skill dial. */
 const SKILLS = [1, 2, 3] as const;
 
@@ -449,15 +486,27 @@ describe('a rocket can reach the launcher in any of the three lanes', () => {
 
   for (const lane of [0, 1, 2]) {
     it(`warns in lane ${lane} with the lever parked there`, () => {
+      // **A warning is found by the pitch runs inside a sound, not by the
+      // sound's own pitch.** A capture is claimed at the end of the squadron's
+      // lane walk, directly after `jm_beep`'s march note, so the warning and the
+      // march note arrive inside one `BURST_GAP_CYCLES` group. Measuring the
+      // group gives ~450 Hz - the two tones averaged - and finds no warning,
+      // though the machine sounded one perfectly well.
+      //
+      // Counting runs in the band instead is `launcher-lives.test.ts`'s method,
+      // and it is here because a lead-in silence was briefly added to the ROM to
+      // separate the two sounds for this assertion's benefit. That was the wrong
+      // place to fix it: the fusing is a property of the analyser, and the ROM is
+      // not changed to make a test read. The silence also parked the sweep for
+      // 54.6 ms and measurably slowed a running battleship buzz.
       const run = runGame({ cycles, input: leverOnly(cycles, lane) });
       const sounds = splitSounds(run.speakerEdges, BURST_GAP_CYCLES);
-      const warnings = sounds.filter((sound) => {
-        const hz = soundHz(run.speakerEdges, sound.from, sound.to, CYCLE_HZ);
-        return hz >= 455 && hz <= 545;
-      });
+      const warnings = sounds.filter(
+        (sound) => warningRunsIn(run.speakerEdges, sound.from, sound.to).length > 0,
+      );
       expect(
         warnings.length,
-        `no 455-545 Hz warning burst with the lever parked in lane ${lane}`,
+        `no 455-545 Hz warning beep with the lever parked in lane ${lane}`,
       ).toBeGreaterThan(0);
       // The beeps of one hit fall inside one cluster, which is what the
       // 25-28 ms measured gap makes them.

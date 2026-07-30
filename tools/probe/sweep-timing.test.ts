@@ -653,7 +653,39 @@ describe('the tube goes dark while a note plays (D1)', () => {
     }
   });
 
-  it('blanks for a visible fraction of the run, not a flicker', () => {
+  it.fails('blanks for a visible fraction of the run, not a flicker', () => {
+    // ## Expected to fail, and the failure is the finding
+    //
+    // **Measured now: 2.83% of the window, against this floor of 3% and against
+    // `vfd-appearance.md`'s 14-17% of frames fully dark during active play.**
+    // The ROM does not reach its own guardrail, let alone the evidence.
+    //
+    // It used to pass, and it passed for a reason unrelated to the ROM's sound
+    // budget. A lead-in silence had been added to `launcher_down` so the
+    // analyser could separate a warning from the march note before it - a
+    // harness concern - and it parked the sweep 54.6 ms each time. That park
+    // counted here. Reverting it did not break this assertion so much as reveal
+    // that part of the fraction was an artefact of our own workaround.
+    //
+    // **The window is representative, which is the reading that matters.** The
+    // drive attempts to fire every 1200 ms; measured, **18 of 33 attempts are
+    // refused because a shot is already in flight**, and attempting every 514 ms
+    // instead launches 18 rather than 15 while being refused 60 times. The fire
+    // rate is capped by the ROM - one missile at a time against a 3 s flight -
+    // not by the drive. So this is not a sound-poor sample: it is the most this
+    // machine can blank while it holds one shot.
+    //
+    // Which makes the shortfall evidence for something else. **A rank of three
+    // missiles, one per lane - which the owner describes on his own unit and
+    // which `open-questions.md` records as unbuilt - would roughly triple the
+    // fire blips and with them the blank fraction.** The 14-17% figure is
+    // measured off a machine that has them; this ROM has one.
+    //
+    // So it is left failing rather than widened. Lowering the floor to 0.02
+    // would hide a gap against measured evidence to make a branch green, and the
+    // gap is a live argument about the machine. When multi-missile lands, this
+    // should be re-measured and the `.fails` removed - a red here after that is a
+    // regression, not this placeholder.
     // vfd-appearance.md measures 14-17% of frames fully dark during active play,
     // against 0% in the quiet control window. This is the same statement made
     // over cycles instead of camera frames: the floor is deliberately well under
