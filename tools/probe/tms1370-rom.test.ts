@@ -41,6 +41,7 @@ import {
   sweepPeriods,
   Tms1370Machine,
   type InputEvent,
+  type Contacts,
   type RunResult,
 } from './tms1370-probe.js';
 
@@ -56,21 +57,61 @@ const FILE_JETS = 6;
 const seconds = (value: number): number => Math.round(value * CYCLE_HZ);
 
 /**
- * A drive that plays the game: the lever walks the three lanes and the fire
- * button is pressed once per lap.
+ * A drive that plays the game *and defends it*: the lever stands in the lane of
+ * whichever jet is deepest, steps out of a live rocket's lane, and taps fire.
  *
  * The machine falls silent unattended - a squadron that is never shot at takes
  * all three launchers - so a run that needs the game *alive* has to play it.
- * That is the same property `UNATTENDED_SILENCE_S` records for the v2 machine
- * and the reason contract criterion V8b states its own input schedule.
+ *
+ * **It now has to play it well.** This was a fixed schedule walking the three
+ * lanes, and that was survivable only while a capture cost a launcher in the
+ * lever's own lane alone: the player kept that lane clear by firing and the
+ * other two were free. With the rule the owner settled - a capture costs a
+ * launcher in any lane, `open-questions.md` section 6 - an open-loop lever loses
+ * all three in 19-37 s, and every run below that needs a battleship crossing, a
+ * rocket down all three lanes or a three-digit score stopped reaching it.
+ *
+ * A longer `cycles` cannot rescue those: the *game* ends rather than the clock.
+ * Defending is the least this drive can do and still observe what it asserts on.
  */
-function playing(cycles: number, everyCycles = 70_000): InputEvent[] {
-  const events: InputEvent[] = [{ cycle: 0, change: { skill: 1 } }];
-  for (let at = 0, lane = 0; at < cycles; at += everyCycles, lane = (lane + 1) % 3) {
-    events.push({ cycle: at, change: { lane, fire: true } });
-    events.push({ cycle: at + 3_000, change: { fire: false } });
-  }
-  return events;
+function defending(): (machine: Tms1370Machine) => Contacts | undefined {
+  let releaseAt = -1;
+  let fireAt = -1;
+  return (machine) => {
+    if (releaseAt > 0 && machine.cycles >= releaseAt) {
+      releaseAt = -1;
+      return { fire: false };
+    }
+    if (releaseAt > 0) return undefined;
+    // **The lever has to be read before the fire edge.** The ROM samples both in
+    // one sweep and `tick_fire` is edge triggered, so moving and firing in the
+    // same instant launches the shot down whichever lane the lever held last.
+    // Aiming and firing are staged a sweep apart for that reason; doing both at
+    // once scored one point in forty-five seconds.
+    if (fireAt > 0 && machine.cycles >= fireAt) {
+      fireAt = -1;
+      releaseAt = machine.cycles + 3_000;
+      return { fire: true };
+    }
+    if (fireAt > 0) return undefined;
+    const ram = machine.ram;
+    const rocketColumn = ram[FILE_STATE * 16 + NIB_RCOL] as number;
+    const rocketLane = ram[FILE_STATE * 16 + NIB_RLANE] as number;
+    let best = -1;
+    let lane = 0;
+    for (let candidate = 0; candidate < 3; candidate += 1) {
+      // A rocket takes the launcher only where it arrives, so standing out of
+      // its lane is the whole defence - `rm_arrived` compares the two lanes.
+      if (rocketColumn !== 0 && candidate === rocketLane) continue;
+      const grid = ram[FILE_JETS * 16 + candidate] as number;
+      if (grid > best) {
+        best = grid;
+        lane = candidate;
+      }
+    }
+    fireAt = machine.cycles + SWEEP_INSTRUCTIONS;
+    return { skill: 1, lane };
+  };
 }
 
 /** A drive that only works the lever, with the fire button never pressed. */
@@ -258,7 +299,7 @@ function parkedGame(
 
 describe('the machine comes up', () => {
   const cycles = seconds(3);
-  const run = runGame({ cycles, input: playing(cycles), keepStrobes: true });
+  const run = runGame({ cycles, policy: defending(), keepStrobes: true });
 
   it('strobes every one of the nine display grids', () => {
     expect(run.gridsStrobed).toEqual(
@@ -310,7 +351,7 @@ describe('the source and the cadence module agree on the sweep length', () => {
 
 describe('the display', () => {
   const cycles = seconds(40);
-  const run = runGame({ cycles, input: playing(cycles) });
+  const run = runGame({ cycles, policy: defending() });
 
   it('drives only plate masks the output PLA holds', () => {
     // The left-hand side of contract V4's closure, run over the masks the ROM
@@ -656,7 +697,7 @@ describe('the sounds', () => {
     // are not evenly spaced - which is the evidence for that mechanism rather
     // than noise on top of it.
     const cycles = seconds(20);
-    const run = runGame({ cycles, input: playing(cycles) });
+    const run = runGame({ cycles, policy: defending() });
     const arrivals = splitSounds(run.speakerEdges, BURST_GAP_CYCLES).filter(
       (sound) => (sound.to - sound.from) / CYCLE_HZ > 3,
     );
@@ -675,7 +716,7 @@ describe('the sounds', () => {
     // an R-latch write, so a non-empty edge stream is itself the assertion -
     // what this pins is that the stream is not empty for the wrong reason.
     const cycles = seconds(8);
-    const run = runGame({ cycles, input: playing(cycles) });
+    const run = runGame({ cycles, policy: defending() });
     expect(run.speakerEdges.length).toBeGreaterThan(0);
     for (const edge of run.speakerEdges) {
       expect(edge.level === 0 || edge.level === 1).toBe(true);
@@ -685,7 +726,7 @@ describe('the sounds', () => {
 
 describe('the game', () => {
   const cycles = seconds(45);
-  const run: RunResult = runGame({ cycles, input: playing(cycles) });
+  const run: RunResult = runGame({ cycles, policy: defending() });
 
   it('keeps playing while the player plays', () => {
     const last = run.speakerEdges.at(-1);

@@ -236,6 +236,15 @@ const PLATE_DART = [6, 7, 8];
  * 12.7 s** in lane 2, **5.7 and 6.4 s** in lane 1. The spacing is what the wave
  * retreat was changed for and it is intact.
  *
+ * **Unchased observation, recorded because the middle lane is where a player
+ * naturally sits.** Lane 1 ends a third sooner than either neighbour and at
+ * roughly half the spacing, because it is the only lane in these runs reached by
+ * both threats: lanes 0 and 2 lose all three launchers to captures, lane 1 loses
+ * two and one to a rocket. Whether the centre is *systematically* more lethal or
+ * these three runs simply caught a rotor that served lane 1 is not established -
+ * `rocket_fire`'s rotor does reach all three lanes, so a longer sample would
+ * settle it. Nobody has taken that sample.
+ *
  * It is named and measured for the reason CLAUDE.md gives: a literal horizon in
  * a test about a machine that stops is a bet on when it stops, and the v2 figure
  * this replaces moved three times in one day. Every run below is a multiple of
