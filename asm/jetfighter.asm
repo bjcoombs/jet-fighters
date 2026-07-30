@@ -391,13 +391,28 @@
 ;
 ;   STEP_HI = STEP_HI_MAX - kills - STEP_SKILL * (skill - 1), floored
 ;
-; and a step is STEP_HI * 16 sweeps. Skill 1 with a full squadron is 144 sweeps
-; = 1989 ms, which is the ~2040 ms slowest march the evidence gives; the floor
-; is 16 sweeps = 221 ms, just above the measured 205 ms. Thinning the squadron
-; walks it down six rungs and the dial another four, so both terms matter and
-; neither can pin it on its own.
-.EQU STEP_HI_MAX,    9          ; skill 1, full squadron: 144 sweeps, 1989 ms
-.EQU STEP_HI_MIN,    1          ; the floor: 16 sweeps, 221 ms
+; and a step is STEP_HI * 16 + STEP_LO + 1 sweeps. The low nibble is reloaded to
+; 15 and spent first, and the step falls on the sweep *after* the pair reaches
+; zero, so a rung is (STEP_HI + 1) * 16 sweeps and not STEP_HI * 16 -
+; `tools/probe/battleship-arrival.test.ts` already carries the same correction
+; for the battleship's pair. Skill 1 with a full squadron is 160 sweeps and the
+; floor is 32. Thinning the squadron walks it down six rungs and the dial
+; another four, so both terms matter and neither can pin it on its own.
+;
+; **The rungs do not bracket the measurement, and the constants below are
+; deliberately left as they are.** At the measured sweep of 15.24 ms
+; (SWEEP_INSTRUCTIONS = 889 over the provisional CYCLE_HZ - see
+; `docs/research/mp2110-timing-measurement.md` before treating any ms figure
+; here as settled) the top rung is 2438 ms against the ~2040 ms slowest march
+; the evidence gives, and the floor is 488 ms against the 205 ms the unit was
+; never observed to beat. The figures this replaces - "144 sweeps = 1989 ms" and
+; "16 sweeps = 221 ms" - dropped the low nibble *and* converted at 13.81 ms a
+; sweep, which is not this machine's sweep; the two errors partly cancelled and
+; the ladder read as though it sat inside the evidence. Moving STEP_HI_MAX or
+; STEP_HI_MIN is a gameplay change and belongs to whoever owns the cadence
+; ladder, not to the control-flow fix that surfaced the arithmetic.
+.EQU STEP_HI_MAX,    9          ; skill 1, full squadron: 160 sweeps, 2438 ms
+.EQU STEP_HI_MIN,    1          ; the floor: 32 sweeps, 488 ms
 .EQU STEP_SKILL,     2          ; rungs the dial is worth, per notch
 
 ; --- Releasing the squadron --------------------------------------------------
@@ -1569,13 +1584,14 @@ jm_beep:
         TCMIY SND_MARCH_B
         LDP  P_LEAF
         CALL note               ; jetMarch: 641 Hz, 70.2 ms
-        COMC
-        LDP  C1_LADDER
-        BR   step_reload
+                                ; and on into the reload below
 jm_reload:
         COMC
         LDP  C1_LADDER
-        BR   step_reload
+        CALL step_reload
+        COMC
+        LDP  P_SPAWN
+        BR   jet_release
 
 
 ; ============================================================================
@@ -1748,8 +1764,10 @@ jm_capture:
         TCY  NIB_CAPTURE
         TCMIY CAPTURE_SWEEPS
         COMC
-        LDP  C1_LOSE
-        BR   launcher_down
+        LDP  C1_LADDER
+        CALL step_reload        ; the walk's own reload is below `jm_lane_next`
+        LDP  C1_LOSE            ; and this path never returns there, so the
+        BR   launcher_down      ; countdown is reloaded here instead
 
 ; A jet that crosses the line the player is *not* standing in costs nothing.
 ; That is the whole of what moving the lever is for, and without it the machine
@@ -2769,6 +2787,14 @@ as_out:
 ; STEP_HI = STEP_HI_MAX - kills - STEP_SKILL * (skill - 1), floored at
 ; STEP_HI_MIN. `SAMAN` is memory minus accumulator, so the subtrahend is built
 ; in A and the constant put in memory rather than the other way round.
+;
+; A subroutine rather than a branch target, because the countdown has to be
+; reloaded on paths that do not end at `jet_release`. A capture leaves the lane
+; walk for `launcher_down` and never reaches the walk's end, so while this was
+; entered by branch the countdown stayed as `jet_march` left it - high nibble
+; zero, low nibble 15 - and the squadron took its next step sixteen sweeps
+; later instead of the ladder's. It holds no `LDP`, which inside a subroutine
+; would overwrite the return page, and its one branch stays on this page.
 
 step_reload:
         LDX  FILE_STATE
@@ -2800,9 +2826,7 @@ sr_ok:
         TAM
         TCY  NIB_STEP_LO
         TCMIY 15
-        COMC
-        LDP  P_SPAWN
-        BR   jet_release
+        RETN
 
 
 
