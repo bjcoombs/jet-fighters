@@ -93,29 +93,42 @@ function warningRunsIn(
   edges: readonly { cycle: number; level: 0 | 1 }[],
   from: number,
   to: number,
-): number[] {
+): { hz: number; from: number; to: number }[] {
   // Rising edges only: a period is rise to rise, and counting both levels would
   // report every half-period and put a 467 Hz beep at 934.
   const rising = edges
     .filter((edge) => edge.level === 1 && edge.cycle >= from && edge.cycle <= to)
     .map((edge) => edge.cycle);
   const periods = rising.slice(1).map((cycle, index) => cycle - (rising[index] as number));
-  const found: number[] = [];
+  // Each run carries the cycles it spans as well as its pitch, so a caller can
+  // measure the *warning* rather than the analyser group that contains it.
+  const found: { hz: number; from: number; to: number }[] = [];
   let current: number[] = [];
-  const close = (): void => {
+  let startIndex = 0;
+  const close = (endIndex: number): void => {
     if (current.length >= 3) {
       const sorted = [...current].sort((left, right) => left - right);
       const hz = CYCLE_HZ / (sorted[sorted.length >> 1] as number);
-      if (hz >= 455 && hz <= 545) found.push(hz);
+      if (hz >= 455 && hz <= 545) {
+        found.push({
+          hz,
+          from: rising[startIndex] as number,
+          to: rising[Math.min(endIndex + 1, rising.length - 1)] as number,
+        });
+      }
     }
     current = [];
   };
-  for (const period of periods) {
+  for (const [index, period] of periods.entries()) {
     const previous = current[current.length - 1];
-    if (previous !== undefined && Math.abs(period - previous) / previous >= 0.06) close();
+    if (previous !== undefined && Math.abs(period - previous) / previous >= 0.06) {
+      close(index);
+      startIndex = index;
+    }
+    if (current.length === 0) startIndex = index;
     current.push(period);
   }
-  close();
+  close(periods.length - 1);
   return found;
 }
 
@@ -579,8 +592,19 @@ describe('a rocket can reach the launcher in any of the three lanes', () => {
       ).toBeGreaterThan(0);
       // The beeps of one hit fall inside one cluster, which is what the
       // 25-28 ms measured gap makes them.
-      const first = warnings[0] as { from: number; to: number };
-      expect(first.to - first.from).toBeLessThan(WARNING_CLUSTER_CYCLES);
+      //
+      // **Measured over the warning's own runs, not over the `splitSounds`
+      // group that contains them.** A group is an analyser construct bounded by
+      // `BURST_GAP_CYCLES`, so how far it extends depends on how densely the ROM
+      // happens to be sounding - and the comment above already records that a
+      // march note lands inside the same group as the warning. Speeding the
+      // march up put more march notes in that group and the span grew to 214590
+      // cycles against this 29167 limit, while the warning itself was unchanged:
+      // two beeps, 455-545 Hz, 25-28 ms apart. The group was never the thing
+      // this assertion is about.
+      const runs = warningRunsIn(run.speakerEdges, warnings[0]!.from, warnings[0]!.to);
+      const span = (runs[runs.length - 1]?.to ?? 0) - (runs[0]?.from ?? 0);
+      expect(span).toBeLessThan(WARNING_CLUSTER_CYCLES);
     });
   }
 });
