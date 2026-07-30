@@ -108,11 +108,17 @@ const BOAT_POINTS = 10;
 /** Every value the ruler names. A delta outside this set is the ROM inventing one. */
 const RULER_VALUES = new Set([1, 2, 3, BOAT_POINTS]);
 
+/** The winning score, and the value `as_cap` truncates a bigger one back to. */
+const WIN_SCORE = 199;
+
 /** One scoring event: the cell the burst stood in, and what the score moved by. */
 interface Kill {
   /** The grid the burst stands on: 0 the battleship, 1-5 the jet columns. */
   readonly grid: number;
   readonly delta: number;
+  /** The score before and after, which is what makes the 199 cap recognisable. */
+  readonly from: number;
+  readonly to: number;
 }
 
 /** The three BCD nibbles as one number. */
@@ -166,8 +172,14 @@ function aimedDrive(forSeconds: number, aim: Aim, skill = 1): Kill[] {
     } else if (seen !== score) {
       machine.step(SETTLE_CYCLES);
       ram = machine.ram;
-      kills.push({ grid: (ram[FILE_STATE * 16 + NIB_KCOL] as number) - 1, delta: scoreOf(ram) - score });
-      score = scoreOf(ram);
+      const settled = scoreOf(ram);
+      kills.push({
+        grid: (ram[FILE_STATE * 16 + NIB_KCOL] as number) - 1,
+        delta: settled - score,
+        from: score,
+        to: settled,
+      });
+      score = settled;
     }
 
     if (releaseFireAt > 0 && machine.cycles >= releaseFireAt) {
@@ -217,8 +229,41 @@ const COLUMN_SECONDS = 120;
 /** Grids a missile can actually reach - see the header. */
 const REACHABLE = [1, 2, 3, 4] as const;
 
+/**
+ * A drive's scoring events, split at the winning add.
+ *
+ * **This is not an exclusion for a known bug, and it is written out rather than
+ * folded into the assertion so that it cannot become one.** 199 is a win and the
+ * ROM caps at it: `as_cap` writes 1-9-9 flat when the hundreds digit reaches
+ * two, so a `+3` landing on 198 moves the score by 1 and not by 3. That is PRD
+ * v1 rule 6, not a scoring defect, and it is why paying jets three times what
+ * they used to now brings a long drive to a win where it previously ran out of
+ * clock. `capped` is asserted to be the last event of the drive and to land
+ * exactly on 199, so a truncation anywhere else stays a failure.
+ */
+function untilTheWin(kills: readonly Kill[]): {
+  scored: readonly Kill[];
+  capped: Kill | undefined;
+} {
+  const at = kills.findIndex((kill) => kill.to === WIN_SCORE);
+  if (at < 0) return { scored: kills, capped: undefined };
+  return { scored: kills.slice(0, at), capped: kills[at] as Kill };
+}
+
 describe('the printed ruler', () => {
-  const census = aimedDrive(CENSUS_SECONDS, { kind: 'roundRobin' });
+  const drive = aimedDrive(CENSUS_SECONDS, { kind: 'roundRobin' });
+  const { scored: census, capped } = untilTheWin(drive);
+
+  it('caps the winning add at 199 and stops there', () => {
+    expect(capped, 'the drive never reached the win - the cap is untested').toBeDefined();
+    const win = capped as Kill;
+    expect(win).toBe(drive.at(-1));
+    expect(win.to).toBe(WIN_SCORE);
+    // The truncation may only ever shorten an add that would have overshot.
+    const full = win.grid === 0 ? BOAT_POINTS : (RULER_POINTS[win.grid] as number);
+    expect(win.from + full).toBeGreaterThanOrEqual(WIN_SCORE);
+    expect(win.delta).toBeLessThanOrEqual(full);
+  });
 
   it('scores enough to be worth reading', () => {
     // Not the assertion - the guard on it. Every test below is vacuously true
@@ -253,7 +298,7 @@ describe('the printed ruler', () => {
   });
 
   it.each(REACHABLE)('pays the ruler value for an aimed kill on grid %i', (column) => {
-    const kills = aimedDrive(COLUMN_SECONDS, { kind: 'only', column });
+    const kills = untilTheWin(aimedDrive(COLUMN_SECONDS, { kind: 'only', column })).scored;
     const here = kills.filter((kill) => kill.grid === column);
     expect(here.length, `no jet was killed on grid ${column}`).toBeGreaterThan(0);
     expect([...new Set(here.map((kill) => kill.delta))]).toEqual([RULER_POINTS[column]]);
