@@ -222,11 +222,30 @@ function boatHunt(): { attempts: number; kills: Kill[] } {
   return { attempts, kills };
 }
 
-function aimedDrive(forSeconds: number, aim: Aim, skill = 1): Kill[] {
+const ST_OVER = 1;
+const ST_WIN = 2;
+
+/**
+ * How a drive stopped. **Reported so it can be asserted on**, because a drive
+ * that ran out of clock and a drive that played a game to its end produce the
+ * same `Kill[]` and mean different things: the first says "this is what fitted
+ * in the window", the second says "this is the whole game". Section 12 of
+ * docs/evidence/open-questions.md is the list of what happens when that
+ * distinction is left implicit.
+ */
+type Ending = 'lost' | 'won' | 'clock';
+
+interface Drive {
+  kills: Kill[];
+  ended: Ending;
+}
+
+function aimedDrive(forSeconds: number, aim: Aim, skill = 1): Drive {
   const machine = new Tms1370Machine();
   machine.setContacts({ skill, lane: 0, fire: false });
 
   const kills: Kill[] = [];
+  let ended: Ending = 'clock';
   let score = -1;
   let releaseFireAt = -1;
   let pressFireAt = -1;
@@ -238,7 +257,11 @@ function aimedDrive(forSeconds: number, aim: Aim, skill = 1): Kill[] {
     let ram = machine.ram;
 
     // A game that has ended stops scoring, so there is nothing left to measure.
-    if ((ram[FILE_STATE * 16 + NIB_STATE] as number) !== 0) break;
+    const state = ram[FILE_STATE * 16 + NIB_STATE] as number;
+    if (state !== 0) {
+      ended = state === ST_WIN ? 'won' : state === ST_OVER ? 'lost' : 'clock';
+      break;
+    }
 
     const seen = scoreOf(ram);
     if (score < 0) {
@@ -326,7 +349,7 @@ function aimedDrive(forSeconds: number, aim: Aim, skill = 1): Kill[] {
     machine.setContacts({ lane });
     pressFireAt = machine.cycles + SAMPLE_CYCLES;
   }
-  return kills;
+  return { kills, ended };
 }
 
 /**
@@ -421,11 +444,28 @@ describe('the printed ruler', () => {
   let drive: readonly Kill[];
   let census: readonly Kill[];
   let capped: Kill | undefined;
+  let ending: Ending;
 
   beforeAll(() => {
-    drive = aimedDrive(CENSUS_SECONDS, { kind: 'roundRobin' });
+    const run = aimedDrive(CENSUS_SECONDS, { kind: 'roundRobin' });
+    drive = run.kills;
+    ending = run.ended;
     ({ scored: census, capped } = untilTheWin(drive));
   }, DRIVE_TIMEOUT_MS);
+
+  // **A precondition for everything below, not a result.** Every assertion in
+  // this suite reads the census as a complete game. If the drive stopped because
+  // `CENSUS_SECONDS` ran out, it is instead a window onto a game still in
+  // progress, and claims about what the ruler paid over a game become claims
+  // about what it paid over four minutes - which would still pass, and would
+  // mean something else.
+  //
+  // Only "not the clock" is pinned. Which *game* ending it reaches is pacing and
+  // is documented as unstable on `untilTheWin` above: the same drive has both
+  // won and lost across changes that did not touch scoring at all.
+  it('ends by playing the game out, not by running out of clock', () => {
+    expect(ending).not.toBe('clock');
+  });
 
   it('truncates nothing, or truncates exactly the winning add', () => {
     // Both branches assert something about the *drive*, which is the thing that
@@ -504,7 +544,7 @@ describe('the printed ruler', () => {
   it.each(REACHABLE)(
     'pays the ruler value for an aimed kill on grid %i',
     (column) => {
-      const kills = untilTheWin(aimedDrive(COLUMN_SECONDS, { kind: 'only', column })).scored;
+      const kills = untilTheWin(aimedDrive(COLUMN_SECONDS, { kind: 'only', column }).kills).scored;
       const here = kills.filter((kill) => kill.grid === column);
       expect(here.length, `no jet was killed on grid ${column}`).toBeGreaterThan(0);
       expect([...new Set(here.map((kill) => kill.delta))]).toEqual([RULER_POINTS[column]]);
@@ -526,7 +566,7 @@ describe('the printed ruler', () => {
       // window in which the row is unasserted. It cannot pass by finding no
       // kills unless finding no kills is itself the current, stated truth.
       const kills = untilTheWin(
-        aimedDrive(COLUMN_SECONDS, { kind: 'only', column: UNREACHABLE }),
+        aimedDrive(COLUMN_SECONDS, { kind: 'only', column: UNREACHABLE }).kills,
       ).scored;
       const here = kills.filter((kill) => kill.grid === UNREACHABLE);
       if (here.length === 0) {
