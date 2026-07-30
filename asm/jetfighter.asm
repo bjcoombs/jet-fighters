@@ -1569,13 +1569,14 @@ jm_beep:
         TCMIY SND_MARCH_B
         LDP  P_LEAF
         CALL note               ; jetMarch: 641 Hz, 70.2 ms
-        COMC
-        LDP  C1_LADDER
-        BR   step_reload
+                                ; and on into the reload below
 jm_reload:
         COMC
         LDP  C1_LADDER
-        BR   step_reload
+        CALL step_reload
+        COMC
+        LDP  P_SPAWN
+        BR   jet_release
 
 
 ; ============================================================================
@@ -1748,8 +1749,10 @@ jm_capture:
         TCY  NIB_CAPTURE
         TCMIY CAPTURE_SWEEPS
         COMC
-        LDP  C1_LOSE
-        BR   launcher_down
+        LDP  C1_LADDER
+        CALL step_reload        ; the walk's own reload is below `jm_lane_next`
+        LDP  C1_LOSE            ; and this path never returns there, so the
+        BR   launcher_down      ; countdown is reloaded here instead
 
 ; A jet that crosses the line the player is *not* standing in costs nothing.
 ; That is the whole of what moving the lever is for, and without it the machine
@@ -2769,6 +2772,14 @@ as_out:
 ; STEP_HI = STEP_HI_MAX - kills - STEP_SKILL * (skill - 1), floored at
 ; STEP_HI_MIN. `SAMAN` is memory minus accumulator, so the subtrahend is built
 ; in A and the constant put in memory rather than the other way round.
+;
+; A subroutine rather than a branch target, because the countdown has to be
+; reloaded on paths that do not end at `jet_release`. A capture leaves the lane
+; walk for `launcher_down` and never reaches the walk's end, so while this was
+; entered by branch the countdown stayed as `jet_march` left it - high nibble
+; zero, low nibble 15 - and the squadron took its next step sixteen sweeps
+; later instead of the ladder's. It holds no `LDP`, which inside a subroutine
+; would overwrite the return page, and its one branch stays on this page.
 
 step_reload:
         LDX  FILE_STATE
@@ -2800,9 +2811,7 @@ sr_ok:
         TAM
         TCY  NIB_STEP_LO
         TCMIY 15
-        COMC
-        LDP  P_SPAWN
-        BR   jet_release
+        RETN
 
 
 
