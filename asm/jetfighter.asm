@@ -2332,11 +2332,23 @@ ld_to_over:
 
 .PAGE C1_OVER
 
+; **An ending has to stop the battleship's buzz, because nothing else will.**
+; `strobe` ticks NIB_BUZZ on every O strobe and toggles R15 off it, and from the
+; next sweep `tick` takes its `tk_ended` arm straight to `render` and never
+; reaches `tick_bship` again - so a crossing in progress never runs down to
+; `bs_leave`, which is what would have cleared the buzz. Measured before this
+; landed: an ending during a crossing left **9032 speaker edges** behind it and
+; the machine buzzed for as long as it was left switched on. NIB_BPHASE follows
+; NIB_BUZZ in the map, so one `TCY` and two `TCMIY` clear both.
+
 game_lost:
         LDX  FILE_STATE
         TCY  NIB_STATE
         TCMIY ST_OVER
         LDX  FILE_D0
+        TCY  NIB_BUZZ
+        TCMIY 0
+        TCMIY 0
         TCY  NIB_HALF_O
         TCMIY SND_LOSS1_O
         TCMIY SND_LOSS1_I
@@ -2407,6 +2419,10 @@ game_win:
         LDX  FILE_STATE
         TCY  NIB_STATE
         TCMIY ST_WIN
+        LDX  FILE_D0
+        TCY  NIB_BUZZ
+        TCMIY 0                 ; a win during a crossing strands the buzz the
+        TCMIY 0                 ; same way a loss does - see game_lost
         LDX  FILE_JETS
         TCY  NIB_J_TMP
         TCMIY 2                 ; three passes of the arpeggio
