@@ -782,17 +782,35 @@ describe('the game is losable while it is being played', () => {
   }
 
   it(
-    'is won from the top lane by tapping fire alone, which is a rule and not a bug here',
+    'is no longer won from the top lane by tapping fire alone',
     () => {
-      // Pinned deliberately. A blind tapping player who never moves the lever
-      // reaches 199 from lane 0 - one launcher lost on the way. It is asserted
-      // because it is surprising, because the owner's original report was that
-      // he could not die, and because a test that merely stayed silent about it
-      // would let the balance drift back without anyone noticing.
+      // **This assertion has been inverted, and the inversion is the record.**
+      //
+      // It used to pin that a blind tapping player reaches 199 from lane 0
+      // having lost one launcher, and it was asserted *because* it was
+      // surprising and because the owner's report was that he could not die.
+      //
+      // With the capture rule the owner settled - a capture costs a launcher in
+      // any lane, `open-questions.md` section 6 - tapping alone loses in every
+      // lane. Measured at skill 1, all three levers:
+      //
+      //   lane 0: lost at 29.7 s, score  19 of 199, three launchers
+      //   lane 1: lost at 28.1 s, score  16 of 199, three launchers
+      //   lane 2: lost at 28.4 s, score  26 of 199, three launchers
+      //
+      // **The margin is not marginal**, which is the thing worth knowing: the
+      // tapper does not fall just short of 199, it reaches under 14% of it and
+      // loses every launcher. So this is a record of the machine rather than a
+      // tripwire that the next tuning change will flip back.
+      //
+      // Whether a blind tapping player *should* be able to win from one lane
+      // remains a rules question with the owner and is untouched by this. The
+      // file's job is to say what the machine does, and what it does has
+      // changed.
       const game = playingOn(0);
       expect(game.everFired, 'the drive never actually fired').toBe(true);
-      expect(game.won, 'lane 0 no longer wins by tapping alone').toBe(true);
-      expect(game.hits.length, 'lane 0 lost a different number of launchers').toBe(1);
+      expect(game.won, 'lane 0 wins by tapping alone again').toBe(false);
+      expect(game.hits.length, 'lane 0 lost a different number of launchers').toBe(3);
     },
     LONG_RUN_TIMEOUT_MS,
   );

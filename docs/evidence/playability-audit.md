@@ -37,7 +37,37 @@ says so and is not called faithful.
 
 ---
 
-## 1. A competently played game cannot be lost
+## 1. A competently played game cannot be lost - SUPERSEDED
+
+> **Superseded. The finding was true of the build it was measured on and is no longer true
+> of the machine.**
+>
+> **Why it was true:** `jm_capture` carried an undocumented lane condition - a jet reaching
+> the G line cost a launcher only when it arrived in the lever's own lane, and crossings
+> elsewhere were free. The player's own lane is the one he keeps clear by firing, and
+> `rf_look` will not launch a rocket from an empty lane either, so **both loss paths closed
+> together.** `open-questions.md` section 6 records that condition as removed on the owner's
+> own ruling; it was still in the ROM, labelled `WITHDRAWN-RULE BUILD`, when this section
+> was written. Every policy below was measured through it.
+>
+> **What the same policies do with the settled rule:**
+>
+> | Policy | As measured below | With a capture costing a launcher in any lane |
+> | --- | --- | --- |
+> | greedy | WIN 58-61 s, 0-2 hits | **OVER 25-55 s, three launchers, every skill** |
+> | dodge | WIN 58-60 s, 0 hits | **OVER at skills 1 and 3**; WIN at 2 in 245 s |
+> | **defensive** | **WIN 325-534 s, 87 rockets and none landing** | **OVER 163-207 s, three launchers, every skill** |
+> | dodgeOnly | OVER 32-47 s | OVER 21-36 s |
+>
+> The defensive row was the load-bearing measurement of this whole audit - built precisely
+> because every other policy ended too fast to sample anything - and it now loses every
+> launcher at every skill.
+>
+> **The section is kept rather than rewritten**, because the reasoning below is how the
+> extra shield was found: it was the anomaly of a game that could not be lost, chased
+> across seven layers, that eventually produced the three instructions. The rocket findings
+> in it also still stand - `rm_arrived` compares lanes only at arrival, and that test is
+> correct and faithful. What is superseded is the conclusion, not the measurements.
 
 **Measured across three play policies x three skill levels, plus a fourth policy at three
 skill levels, all on `f3e0769`. Not a single drive.**
