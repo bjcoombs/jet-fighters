@@ -71,12 +71,35 @@ function initialState(): PaintState {
 /**
  * A recording 2D context. Assign styles and call drawing methods exactly as on a
  * real context; `calls` accumulates what happened.
+ *
+ * **`calls` is unbounded by default, which is right for a unit test and wrong
+ * for a drive.** One `draw` is on the order of a hundred calls, so minutes of
+ * animation frames are millions of retained objects: driving the renderer
+ * against the real machine for two emulated minutes exhausted the V8 heap
+ * outright. That failure pushes the next person toward short drives, which is
+ * how a drive quietly stops reaching the case it was written for.
+ *
+ * A drive that wants the phosphor state rather than the call log - most of
+ * them, since {@link createTubeRenderer}'s `brightnessOf` is the useful
+ * surface - should construct with `recordCalls: false`.
  */
 export class FakeCanvasContext {
   readonly calls: RecordedCall[] = [];
 
+  /** When false, calls are executed for their paint-state effects but not kept. */
+  readonly recordCalls: boolean;
+
   private state: PaintState = initialState();
   private readonly stack: PaintState[] = [];
+
+  constructor(options: { readonly recordCalls?: boolean } = {}) {
+    this.recordCalls = options.recordCalls ?? true;
+  }
+
+  /** Drop every retained call, keeping paint state. For a drive that wants only the last frame. */
+  clear(): void {
+    this.calls.length = 0;
+  }
 
   // --- paint state -----------------------------------------------------------
 
@@ -284,10 +307,12 @@ export class FakeCanvasContext {
   }
 
   fillText(text: string, x: number, y: number): void {
+    if (!this.recordCalls) return;
     this.calls.push({ ...this.snapshot(), op: 'fillText', args: [x, y], text });
   }
 
   private record(op: string, args: readonly number[]): void {
+    if (!this.recordCalls) return;
     this.calls.push({ ...this.snapshot(), op, args });
   }
 
@@ -303,20 +328,24 @@ export class FakeCanvasContext {
 }
 
 /** A recording context typed as a real one, plus the recorder itself. */
-export function createFakeContext(): {
+export function createFakeContext(options: { readonly recordCalls?: boolean } = {}): {
   readonly ctx: CanvasRenderingContext2D;
   readonly recorder: FakeCanvasContext;
 } {
-  const recorder = new FakeCanvasContext();
+  const recorder = new FakeCanvasContext(options);
   return { ctx: recorder as unknown as CanvasRenderingContext2D, recorder };
 }
 
 /** A canvas whose `getContext('2d')` hands back a recording context. */
-export function createFakeCanvas(cssWidth = 726, cssHeight = 600): {
+export function createFakeCanvas(
+  cssWidth = 726,
+  cssHeight = 600,
+  options: { readonly recordCalls?: boolean } = {},
+): {
   readonly canvas: HTMLCanvasElement;
   readonly recorder: FakeCanvasContext;
 } {
-  const { ctx, recorder } = createFakeContext();
+  const { ctx, recorder } = createFakeContext(options);
   const canvas = {
     width: cssWidth,
     height: cssHeight,
