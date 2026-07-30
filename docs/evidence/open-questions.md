@@ -242,7 +242,45 @@ This lives in the ai-native-toolkit plugin, affects every project using it, and 
 floor artifact - the marathon retrospective is explicitly forbidden from self-applying
 a fix. It needs the maintainer's out-of-band decision.
 
-### 3d. The machine's only randomness is the player's own rhythm
+### 3d. The machine's only randomness is the player's own rhythm - **superseded by the TMS1370 rebuild**
+
+**Everything below describes the v2 HMCS44 ROM and no longer describes the machine.**
+It is kept because sections 6 and 7 point at it, and because the defect it names is the
+one PRD R5 forbids inheriting - a reader who finds only a corrected ROM cannot tell what
+was corrected.
+
+What is true of v3, checked against `asm/jetfighter.asm` rather than remembered:
+
+- **`NIB_RAND` no longer exists**, and `ti_press` - the routine that sampled the timer on
+  a fire press - is gone with it. The one surviving mention of the name is a comment in
+  `rocket_fire` explaining what it used to do.
+- **Both rotors are pure round robins.** `NIB_ROTOR` picks the rocket's lane and advances
+  on every launch attempt, finding a jet or not, so an empty lane walks it on rather than
+  stalling it. The squadron's start lane is the same shape.
+- **The remaining timings are fixed constants.** The jet entry countdown reloads from
+  `ENTRY_HI`, and the battleship's gap is the `NIB_BS_HI`/`NIB_BS_LO` countdown pair. No
+  path samples the free-running timer into game state.
+
+So **the machine is now fully deterministic**: identical inputs give an identical game,
+every time, and the owner's *"shows up randomly"* is still something this ROM does not do.
+That is unchanged from the section below. What changed is the reason - not "entropy the
+player accidentally controls" but no entropy at all.
+
+Two consequences for anyone writing a drive against it, both learned the hard way here:
+
+- **Determinism is an asset, not a limitation.** A drive that reaches a rare state reaches
+  it identically on every run, so a measurement taken once holds, and a flake is a real
+  defect rather than luck. Several findings in this document rest on that.
+- **"Vary the seed" is not available.** There is no seed. Two runs of the same drive are
+  the same run, and repeating one proves nothing about coverage. To reach a different
+  state, **vary the play policy** - the lane walk, the firing rhythm, whether the drive
+  dodges, which skill it selects. `boatHunt` in `tools/probe/scoring-ruler.test.ts` is the
+  worked example: nine games that differ only in skill and starting lane, because that is
+  the only axis the machine offers.
+
+---
+
+*The v2 record, from here down:*
 
 Sections 6 and the battleship work both point here, and until now the reference was
 dangling.
@@ -834,3 +872,95 @@ The honest position is that **every timing-sensitive drive in this tree is expos
 this run alone changed the missile speed eighteen-fold, added a wave retreat, corrected the
 march ladder's arithmetic and tripled the scoring rate, and that the next cadence change
 will do it again to drives nobody has looked at.
+
+## 12. The gate that could not tell clean from never-ran
+
+Every pull request in this run merged with a green CodeRabbit check. Sixteen of the
+twenty-five v3-era merges were never reviewed by CodeRabbit at all; the check reported
+`SUCCESS` on all sixteen, verified one at a time on 2026-07-30. The gate was not bypassed
+and it did not fail. It answered a question nobody had asked it: *did the job finish*,
+not *did anything look at the code*.
+
+That is the shape this section is about, and it is not confined to a bot. The same shape
+appeared repeatedly in instruments written by hand, by both parties, over three days.
+
+**A second instance, from the brief that opened this work.** The ROM was described as
+sitting at 31 of 32 pages, and every plan made downstream of that treated space as the
+binding constraint - fixes were sized to it, a page relocation was justified by it, and
+one feature was deferred on it. The assembler does print `Pages used: 31 of 32`. It also
+prints `Program words: 1470 of 2048` at the time, and `1538 of 2048` now. Pages counts
+pages *touched*, not pages full. The ROM was and is about three-quarters empty. The
+figure was accurate, it was read off the right tool, and the conclusion drawn from it was
+wrong, because the number answers "how spread out is the code" and it was read as "how
+much room is left".
+
+**Three audits of this tree's own instruments, all of which the instruments failed.**
+Each was found by deliberately breaking the thing the test claimed to protect and
+checking that the test went red. None did:
+
+1. The missile-lane assertion passed against a ROM broken on purpose, because the drive
+   feeding it never pressed fire.
+2. The "lights no missile lane" assertion passed with one of its two arms deleted,
+   because it only ever constrained one direction.
+3. The unattended-silence assertion in `launcher-lives.test.ts` passed because no parked
+   game reached the state it was written to observe any more.
+
+A fourth was found while writing this section: the battleship hunt in
+`scoring-ruler.test.ts` launched a missile on 0 of 24 attempts and reported "no
+battleship was shot down in any game". True statement, correct arithmetic, nothing to do
+with the scoring ruler it was asserting on.
+
+**The quota comment matters more than it looks.** CodeRabbit posted "review limit
+reached" on the PRs it skipped. The information needed to catch this was present, in the
+thread, the whole time. What was consulted was the check's colour. An instrument that
+reports both a status and a reason will be read for its status.
+
+### The three families
+
+**1. Absence read as success.** The instrument observed nothing and reported pass, having
+never produced the input that would make the observation meaningful. The CodeRabbit gate,
+the silence assertion, and the battleship hunt are all this. The tell is that the passing
+condition and the never-ran condition are the same condition, and nothing distinguishes
+them. The fix is a precondition assertion: state and check the thing that must be true
+for the measurement to mean anything - that a shot was fired, that a game reached the
+state, that a review happened - and fail loudly when it is not.
+
+**2. A true and narrow claim accepted as complete.** The instrument answered an adjacent
+question accurately, and the accurate answer was taken for the question asked. `Pages
+used: 31 of 32` is this. So is the one-sided lane assertion, which correctly proved shots
+do not appear where they should not, and was read as proving they appear where they
+should. Nothing here is false, which is exactly why it survives review: checking the
+claim confirms it.
+
+The **misread-number chain** is the sharpest instance, and it has two halves that need
+separating. A figure of `13423.6` in a drive's output was a millisecond timestamp. It was
+read as a frequency in Hz, and a mechanism explaining the "anomalous 13.4 kHz component"
+was built on top of that reading and pursued. The first half is an ordinary mistake. The
+second half is the one worth recording: the misread was accepted and built upon without
+anyone returning to the source to check what the column was. The correction, when it came,
+had to disprove the mechanism separately from correcting the number, because by then the
+mechanism had acquired its own supporting argument. A wrong number is cheap; a wrong number
+that has been reasoned from is not.
+
+**3. Tolerances sized for the artefact rather than the machine.** Last, because it is the
+one that looks most like rigour. A band, threshold or window fitted to what the instrument
+happened to produce will keep passing as the machine moves underneath it. Two from this
+run: a median-pitch discriminator that could not separate a fused march-plus-blip from a
+clean march, because a fused signal still medians inside the band; and `warningRunsIn`,
+which counted every edge rather than rising edges and so reported every frequency at
+double, with a band widened until the doubled figures fitted. Both had numbers in them.
+Neither number came from the machine.
+
+### What this section is
+
+**A record, not a remediation.** Nothing here is fixed by this document. Three of the four
+instrument failures above have been repaired in this branch and the fourth is repaired in
+the commit that adds this section; the gate has not been changed, the review coverage has
+not been made up, and the deferred feature is still deferred on a constraint that turned
+out not to bind. The value of writing it down is that the next person to see a green check
+or a confident figure has a list of the specific ways this tree has produced both while
+measuring nothing.
+
+The one habit that found every instance: **break the thing on purpose and watch the
+instrument go red.** An instrument that has never been seen to fail has not been shown to
+work.
