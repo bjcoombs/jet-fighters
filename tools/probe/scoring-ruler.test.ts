@@ -234,6 +234,44 @@ function boatHunt(): { attempts: number; kills: Kill[] } {
         const boat = ram[FILE_STATE * 16 + NIB_BSLANE] as number;
         if (boat !== BOAT_TOP_LANE) {
           firedThisCrossing = false;
+          // ## Between crossings the hunt has to defend, or it never sees a
+          // ## second one
+          //
+          // This drive used to do nothing at all while no boat was in the top
+          // lane, which was survivable while `jm_capture` let a jet crossing the
+          // G line outside the lever's lane through for nothing. With the
+          // settled rule - a capture costs a launcher in any lane - a player who
+          // only ever shoots at boats loses all three launchers in twenty to
+          // thirty seconds and sees one or two crossings in a whole game.
+          //
+          // So between crossings it kills the deepest jet, aiming a sweep ahead
+          // of the fire because the ROM samples lever and button together and
+          // `tick_fire` is edge triggered.
+          //
+          // **It holds fire for the whole of a crossing rather than only at the
+          // top lane.** A shot takes 3.0 s to reach the horizon and the top lane
+          // is held for 1.29 s of a 3.9 s crossing, so a missile launched at a
+          // jet mid-crossing is still in flight when the lead window opens and
+          // `NIB_MCOL` blocks the shot that matters. Defending only while
+          // `BS_NONE` keeps the barrel free for the boat.
+          if (boat === BS_NONE) {
+            let deepest = -1;
+            let target = 0;
+            for (const candidate of [0, 1, 2]) {
+              const grid = ram[FILE_JETS * 16 + candidate] as number;
+              if (grid > deepest) {
+                deepest = grid;
+                target = candidate;
+              }
+            }
+            if (deepest > 0 && (ram[FILE_STATE * 16 + NIB_MCOL] as number) === 0) {
+              machine.setContacts({ lane: target });
+              machine.step(SAMPLE_CYCLES);
+              machine.setContacts({ fire: true });
+              machine.step(FIRE_HOLD_CYCLES);
+              machine.setContacts({ fire: false });
+            }
+          }
           continue;
         }
         if (
