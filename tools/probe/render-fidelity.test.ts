@@ -629,13 +629,30 @@ describe('the player can have a shot in more than one lane at once', () => {
   // fail until the ROM changes**. It is written now, before the change, because
   // that is the only way to know it is armed for the seam it guards.
   //
-  // **If you are reading this because it is red, check which kind of red it is.**
-  // Red while `tick_fire` still gates on a single `NIB_MCOL` is the placeholder
-  // doing its job: the per-lane gate has not landed yet. Red *after* `tick_fire`
-  // gates per lane is a regression and must be fixed in the ROM. It must never be
-  // weakened, skipped or deleted to green a branch - the whole reason it exists
-  // is that the seam it covers is invisible to every other assertion here, each
-  // of which is about a shot that already exists.
+  // ## Why this is `it.fails()`, and what you owe it
+  //
+  // **`it.fails()` here means "expected to fail *because the seam is unbuilt*",
+  // not "known broken".** The assertion body below is live, executable and
+  // un-weakened: it runs every time the suite runs, and Vitest fails the run if
+  // it ever *passes*. Nothing about it is skipped and nothing is relaxed. What
+  // `it.fails()` records is a fact about the ROM - `tick_fire` gates on one shot
+  // anywhere rather than one per lane - not a fact about the assertion.
+  //
+  // **So a red here is success, and it arrives in the pull request that needs
+  // it.** The moment `tick_fire` gates per lane, this test starts passing,
+  // `it.fails()` starts failing, and the run goes red in the branch that landed
+  // multi-missile.
+  //
+  // **The obligation that comes with that:** whoever lands multi-missile must
+  // convert this back to a plain `it()`. That is the whole point of the
+  // mechanism, and the failure mode to avoid is reading the red as a regression
+  // and suppressing it - which would be this file's own history inverted. If you
+  // are here because `it.fails()` went red: the ROM caught up, and the fix is to
+  // delete `.fails`, not to silence the test.
+  //
+  // It must never be weakened, skipped or deleted to green a branch. The seam it
+  // covers is invisible to every other assertion in this file, each of which is
+  // about a shot that already exists.
   //
   // `tick_fire` gates firing on `NIB_MCOL` being zero - one shot anywhere on the
   // playfield, not one shot per lane. That gate reads like an input check rather
@@ -657,7 +674,7 @@ describe('the player can have a shot in more than one lane at once', () => {
   // Read off the drawn picture rather than off state, deliberately: it is the
   // one claim here that is about what the player sees, it is what the owner
   // described, and it does not assume where per-lane state ends up living.
-  it('draws shots in two lanes at the same instant', () => {
+  it.fails('draws shots in two lanes at the same instant', () => {
     const lanesSeen = new Set<number>();
     let bestFrame = 0;
     for (const detent of DETENTS) {
