@@ -58,7 +58,7 @@
 // drive. `aimedDrive` steps `SETTLE_CYCLES` past the write before believing a
 // change, which is why every delta below is a single number and not a pair.
 
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { CYCLE_HZ } from '../../src/machine/cpu/tms1370/timing.js';
 import { Tms1370Machine } from './tms1370-probe.js';
 
@@ -221,13 +221,28 @@ function aimedDrive(forSeconds: number, aim: Aim, skill = 1): Kill[] {
 }
 
 /**
- * Four minutes of emulated play. The drive usually ends before this on its own,
- * when the third launcher goes; the horizon is here so a drive that somehow
- * survives still terminates.
+ * Four minutes of emulated play - a **ceiling that is never reached**, not a
+ * horizon on when the machine stops.
+ *
+ * The project rule is that a machine-stop horizon must be a multiple of a named
+ * measured constant, `UNATTENDED_SILENCE_S` being the worked example, because a
+ * literal there is a bet on when the machine stops and that figure has moved
+ * three times. This is deliberately *not* that kind of number, and the
+ * difference is measured rather than asserted: drives of **240, 300, 360, 480
+ * and 600 s all stop at the same 58 events and the same final score**, because
+ * the run ends when the third launcher goes and not when the clock runs out.
+ * Two and a half times the value changes no result, so there is no bet here to
+ * lose.
+ *
+ * Deriving it from `UNATTENDED_SILENCE_S` would also be a false dependency in
+ * the other direction: that constant measures when an *unattended* machine
+ * falls silent, at 24.6 s, and every drive here is attended and plays. Tying an
+ * attended ceiling to an unattended measurement would make the number look
+ * derived while coupling it to a quantity it does not depend on.
  */
 const CENSUS_SECONDS = 240;
 
-/** Long enough for tens of kills at any column a missile can reach. */
+/** The same kind of ceiling: long enough for tens of kills at any reachable column. */
 const COLUMN_SECONDS = 120;
 
 /** Grids a missile can reach today - see the header, and `UNREACHABLE` below. */
@@ -246,11 +261,19 @@ const REACHABLE = [1, 2, 3, 4] as const;
 const UNREACHABLE = 5;
 
 /**
- * A drive that runs a whole squadron down is seconds of wall clock, and CI's
- * runner is several times slower than a developer's. Named for the reason every
- * horizon in these suites is: it moves when the drive does, not when a rule
- * does. The first version of this file had no explicit timeout, passed locally,
- * and failed CI on Vitest's 5 s default at 5.4 s.
+ * A **wall-clock harness budget**, not an emulated horizon - the one number here
+ * that is in real milliseconds.
+ *
+ * A drive that runs a whole squadron down costs seconds of wall clock and CI's
+ * runner is several times slower than a developer's. The first version of this
+ * file had no explicit timeout, passed locally, and failed CI on Vitest's 5 s
+ * default at 5.4 s.
+ *
+ * This one cannot be expressed as a multiple of a measured emulated constant
+ * and should not be: the ratio between emulated seconds and wall-clock
+ * milliseconds is host speed, so a "derived" value would encode the speed of
+ * whichever machine wrote it. It is a generous ceiling on the harness, sized so
+ * that a slow runner does not fail a test that a fast one passes.
  */
 const DRIVE_TIMEOUT_MS = 60_000;
 
@@ -281,8 +304,19 @@ function untilTheWin(kills: readonly Kill[]): {
 }
 
 describe('the printed ruler', () => {
-  const drive = aimedDrive(CENSUS_SECONDS, { kind: 'roundRobin' });
-  const { scored: census, capped } = untilTheWin(drive);
+  // The census runs in a hook rather than in the describe body so that it is
+  // covered by DRIVE_TIMEOUT_MS. Evaluated inline it runs during collection,
+  // where the per-test timeout does not reach it and the default hook budget of
+  // 10 s would be the only thing bounding a drive that costs seconds on CI -
+  // which is the shape of the failure this suite already had once.
+  let drive: readonly Kill[];
+  let census: readonly Kill[];
+  let capped: Kill | undefined;
+
+  beforeAll(() => {
+    drive = aimedDrive(CENSUS_SECONDS, { kind: 'roundRobin' });
+    ({ scored: census, capped } = untilTheWin(drive));
+  }, DRIVE_TIMEOUT_MS);
 
   it('truncates nothing, or truncates exactly the winning add', () => {
     // Both branches assert something about the *drive*, which is the thing that
