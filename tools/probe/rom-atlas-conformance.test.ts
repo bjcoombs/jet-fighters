@@ -78,12 +78,33 @@ interface Scenario {
   readonly what: string;
   /** Skill dial position, 1 to 3. */
   readonly skill: 1 | 2 | 3;
-  /** Where to put the lever this sweep. */
-  readonly lever: (sweep: number) => Lane;
+  /**
+   * Where to put the lever this sweep.
+   *
+   * **The machine is passed so a scenario can play competently rather than
+   * open-loop.** Every scenario here was a pure function of the sweep number,
+   * which was sufficient while a capture only cost a launcher in the lever's own
+   * lane: the player kept that lane clear by firing and the game ran for as long
+   * as the scenario asked. With the settled rule - a capture costs a launcher in
+   * any lane, `open-questions.md` section 6 - an open-loop lever cannot defend
+   * the other two, so a game ends in 19-37 s and the rare conjunctions this
+   * search needs stop arriving.
+   *
+   * A longer `sweeps` does not help, because the *game* ends rather than the
+   * clock. The scenario has to aim.
+   */
+  readonly lever: (sweep: number, machine: Tms1370Machine) => Lane;
   readonly fire: (sweep: number) => boolean;
   /** Sweeps to play. A sweep is the tube's frame period on this machine. */
   readonly sweeps: number;
 }
+
+/** `FILE_JETS`, whose first three nibbles hold each lane's jet. */
+const JETS_FILE = 6;
+/** `FILE_STATE`, and the jets' rocket within it. */
+const STATE_FILE = 4;
+const ROCKET_COLUMN = 7;
+const ROCKET_LANE = 8;
 
 const cycling =
   (dwell: number) =>
@@ -130,7 +151,63 @@ const SCENARIO_SWEEPS = 1500;
  * the *burst* - the boat killed in a given lane - and that comes of playing more
  * crossings rather than of dodging one.
  */
+/**
+ * A lever that defends: it stands in the lane of whichever jet is deepest, so
+ * the next shot goes at the jet closest to the G line.
+ *
+ * This is what a player does, and since the settled capture rule it is what any
+ * scenario needing more than about thirty seconds of game has to do. It reads
+ * `FILE_JETS`, which is the same latitude the other drives in `tools/probe/`
+ * take to decide where to aim - the lever still reaches the game only by
+ * closing a contact on the K matrix.
+ */
+/**
+ * Sweeps between re-reads of the game state.
+ *
+ * `Tms1370Machine.ram` builds a fresh 128-nibble image per call, and this search
+ * plays thousands of sweeps across many scenarios - re-reading every sweep made
+ * the whole suite slow enough to time other files out under Vitest's parallel
+ * run. The squadron steps every 144 sweeps at skill 1, so a decision that is at
+ * most eight sweeps stale is the same decision.
+ */
+const GUARD_REFRESH_SWEEPS = 1;
+
+let guardCacheSweep = -1;
+let guardCacheLane: Lane = 0;
+
+const guarding = (sweep: number, machine: Tms1370Machine): Lane => {
+  if (guardCacheSweep >= 0 && sweep - guardCacheSweep < GUARD_REFRESH_SWEEPS) {
+    return guardCacheLane;
+  }
+  guardCacheSweep = sweep;
+  const ram = machine.ram;
+  const rocketColumn = ram[STATE_FILE * 16 + ROCKET_COLUMN] as number;
+  const rocketLane = ram[STATE_FILE * 16 + ROCKET_LANE] as number;
+  let best = -1;
+  let lane: Lane = 0;
+  for (const candidate of LANES) {
+    // A rocket takes the launcher only if it arrives in the launcher's lane, so
+    // standing anywhere else is the whole defence - `rm_arrived` compares the
+    // two lanes and nothing else. Guarding a jet is not worth a launcher.
+    if (rocketColumn !== 0 && candidate === rocketLane) continue;
+    const grid = ram[JETS_FILE * 16 + candidate] as number;
+    if (grid > best) {
+      best = grid;
+      lane = candidate;
+    }
+  }
+  guardCacheLane = lane;
+  return lane;
+};
+
 const KNOWN_GOOD: Scenario[] = [
+  {
+    what: 'a defended game: the lever guards whichever jet is deepest and steps out of a live rocket lane, so the squadron is held off long enough to reach a three-digit score',
+    skill: 2,
+    lever: (sweep, machine) => guarding(sweep, machine),
+    fire: every(2),
+    sweeps: HUNDREDS_COLUMN_SWEEPS,
+  },
   {
     what: 'one shot and then nothing: the squadron walks in, the launcher is destroyed, and a whole battleship crossing goes by unshot',
     skill: 3,
@@ -290,10 +367,11 @@ interface Coverage {
  * to observe, so the drive ends there.
  */
 function play(scenario: Scenario): ReadonlySet<string> {
+  guardCacheSweep = -1;
   const machine = new Tms1370Machine();
   machine.setContacts({ skill: scenario.skill });
   for (let sweep = 0; sweep < scenario.sweeps; sweep += 1) {
-    machine.setContacts({ lane: scenario.lever(sweep), fire: scenario.fire(sweep) });
+    machine.setContacts({ lane: scenario.lever(sweep, machine), fire: scenario.fire(sweep) });
     if (machine.runSweeps(1, CAPTURE_WINDOW_CYCLES) >= CAPTURE_WINDOW_CYCLES) {
       break;
     }
