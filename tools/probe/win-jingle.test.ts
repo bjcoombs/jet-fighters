@@ -5,11 +5,15 @@
 // ## The gap this closes
 //
 // `tools/probe/speaker-bands.test.ts` carries the jingle's three fundamentals
-// and says, in its own comment on those rows:
+// and said, in its own comment on those rows:
 //
 //     win.fundamentalsHz, +/- 3%. The jingle needs 199 points and is not reached
 //     by the scenarios below; the rows are here so the table is the whole
 //     contract.
+//
+// Reaching them turned out to matter twice over: the rows had never run, and one
+// of them was a bound this machine cannot meet from either side. See
+// {@link ARPEGGIO_TOLERANCE}.
 //
 // So the one sound with a documented resolution had no assertion behind it, in
 // the suite that exists to police sounds. The owner reported the jingle "ends on
@@ -96,11 +100,15 @@ const WIN_FUNDAMENTALS = [750, 940, 1240] as const;
  * (758 against 750 is 1.1%, 956 against 940 is 1.7%); it is only the top note
  * that the encoding cannot place.
  *
- * `tools/probe/speaker-bands.test.ts` declares 1203-1277 for that note, which
- * this ROM cannot satisfy and no scenario there reaches, so nothing has ever
- * failed on it. Widening the tolerance here rather than restating the ROM's own
- * 1190 keeps the assertion pointed at the measurement: a note that drifted to
- * 1296 would still fail, and so would one that vanished.
+ * `tools/probe/speaker-bands.test.ts` declared 1203-1277 for that note - a bound
+ * this ROM cannot satisfy from either side, and one no scenario there reached,
+ * so nothing had ever failed on it. That row is widened to +/-5% in the same
+ * change as this file, and `audio-reference.md` records the quantisation the
+ * bound now follows.
+ *
+ * Widening the tolerance rather than restating the ROM's own 1190 keeps the
+ * assertion pointed at the measurement: a note that drifted to 1296 would still
+ * fail, and so would one that vanished.
  */
 const ARPEGGIO_TOLERANCE = 0.05;
 
