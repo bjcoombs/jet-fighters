@@ -2127,16 +2127,34 @@ jm_capture:
         LDX  FILE_STATE
         TCY  NIB_KLANE
         TAM
-        TCY  NIB_LANE
-        MNEA                    ; WITHDRAWN-RULE BUILD: only the lever's own lane
-        BR   jm_flew_past
+        ; **A capture costs a launcher in any lane.** There used to be a lane
+        ; condition here - `MNEA` on NIB_LANE, branching past the loss when the
+        ; jet crossed anywhere but the lever's own lane - and it is gone.
+        ;
+        ; `docs/evidence/open-questions.md` section 6 records it as removed, on
+        ; the owner's own ruling after he played the v3 build: a jet reaching the
+        ; G line costs one launcher wherever the lever is standing, and the game
+        ; ends on the third. It was never in either PRD. It survived in the ROM
+        ; labelled "WITHDRAWN-RULE BUILD" while the document said it was gone.
+        ;
+        ; It is the identified cause of "I don't seem to be able to die": the
+        ; player's own lane is the one he keeps empty by firing, so the only jets
+        ; that could capture him were the ones he was already killing - and
+        ; `rf_look` will not launch a rocket from an empty lane either, so both
+        ; loss paths closed together.
+        ;
+        ; `NIB_J_LOST` is a flag and not a count: a step costs one launcher
+        ; however many jets arrive on it, which is why the loss is claimed at the
+        ; end of the lane walk and not from inside it. Claiming it from inside
+        ; skips the `step_reload` at the end of the walk and collapses the march
+        ; to the ladder's floor - section 6 measures that failure at three
+        ; launchers gone in sweeps 799, 815 and 831, sixteen apart.
         LDX  FILE_TIME
         TCY  NIB_CAPTURE
         TCMIY CAPTURE_SWEEPS
         LDX  FILE_JETS
         TCY  NIB_J_LOST
         TCMIY 1
-jm_flew_past:
         LDP  P_JETS
         BR   jm_lane_next
 
