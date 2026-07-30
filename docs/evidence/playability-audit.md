@@ -22,9 +22,9 @@ When it lands, expect win times, kills by grid, jets steps per release and every
 figure in section 1 to move. Nothing in this file should be quoted as current without
 checking that constant first.
 
-The lesson is its own finding, recorded in section 7: **once a branch merges,
-`git show origin/main:<file>` stops being a pre-fix baseline.** Pin to a commit, not to a
-branch name.
+The lesson is its own finding, and section 8 records how it was learned: **once a branch
+merges, `git show origin/main:<file>` stops being a pre-fix baseline.** Pin to a commit,
+not to a branch name.
 
 ## A convention this file follows
 
@@ -357,6 +357,19 @@ wrong before they were right**, and the pattern is worth more than any single nu
 
 **Two of the four invented a defect. Two produced silence.** Every one was caught by a
 number disagreeing with something already known - not by any check in the repository.
+
+### A fifth, in the verification rather than the probe
+
+A check that a scoring assertion still failed against the pre-fix ROM returned **10 of 10
+passing**, which is exactly what a suite gone blind looks like. It had not gone blind. The
+check diffed against `origin/main`, and `origin/main` had moved: the fix had merged
+mid-check, so the "pre-fix" ROM being tested already contained the fix. Against the commit
+before the fix, the same suite failed 3 of 10, as intended.
+
+**Once a branch merges, a branch name stops being a baseline.** Worse, the failure is
+silent and its polarity is arbitrary - here it reported a healthy suite as blind, and with
+the comparison the other way round it would have reported a blind suite as healthy. Any
+fail-on-defect check should name a commit.
 
 Two things follow.
 
