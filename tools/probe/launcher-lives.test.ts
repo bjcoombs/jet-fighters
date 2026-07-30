@@ -818,14 +818,23 @@ describe('an ending during a battleship crossing stops the buzz', () => {
   });
 
   it('leaves the speaker alone once the ending is on the glass', () => {
-    // Not a tolerance: `game_lost` writes NIB_STATE and then plays the whole
-    // envelope with the sweep parked, so the sweep on which the ending first
-    // becomes visible is already past the last edge of it - measured at 8 to 9 ms
-    // *before* it, on every lane. One sweep of slack covers the sampling
-    // boundary and nothing else.
+    // **Zero, and zero is the principled bound rather than a strict-sounding
+    // one.** `game_lost` writes NIB_STATE and then plays the whole envelope with
+    // the sweep parked, so the sweep on which the ending first becomes visible
+    // has already finished the last edge of it - measured at 8 to 9 ms before,
+    // on every lane. Nothing can emit after that point except something still
+    // running when it should not be, which is the defect.
+    //
+    // An earlier form of this allowed one sweep of slack "for the sampling
+    // boundary", and that slack was load-bearing in the wrong direction: a
+    // variant that cleared the buzz from `tick`'s ended arm rather than from the
+    // two endings themselves leaves the crossing ticking for the one sweep
+    // between them, and **passed** - 2 edges, the last at +13 ms, inside a
+    // ~15 ms sweep. The tolerance was hiding a real difference in the ROM, so it
+    // is gone.
     expect(
       game.lastEdgeAt - game.endedAt,
       'the speaker was still moving after the game ended',
-    ).toBeLessThan(SWEEP_INSTRUCTIONS);
+    ).toBeLessThanOrEqual(0);
   });
 });
