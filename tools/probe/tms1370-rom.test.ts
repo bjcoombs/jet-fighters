@@ -49,6 +49,9 @@ const FILE_STATE = 4;
 const NIB_RCOL = 7;
 const NIB_RLANE = 8;
 
+/** `FILE_JETS`, whose first three nibbles are the squadron's one jet per lane. */
+const FILE_JETS = 6;
+
 /** Seconds of emulated time, as the cycle count the probe takes. */
 const seconds = (value: number): number => Math.round(value * CYCLE_HZ);
 
@@ -90,33 +93,68 @@ const SKILLS = [1, 2, 3] as const;
 const ROTOR_SWEEP_TIMEOUT_MS = 30_000;
 
 /**
- * One parked-lever game: the lane of every rocket launched, and what it lit.
+ * Fail loudly when a comparison has nothing left to compare.
+ *
+ * A guard rather than an assertion about the machine. Three suites on this ROM
+ * have now been found green on the very defect they policed, and all three were
+ * the same shape: **a test that derived its expectation from observed behaviour
+ * and then certified that behaviour.** The other two were a rocket-lane
+ * assertion satisfied by phantom pixels a render bug overflowed into the far
+ * group, and a capture control built on a lane whose captures were being drawn
+ * in the wrong lane. This one is the arithmetic version - a prefix comparison
+ * whose window came from `Math.min` over the runs themselves, so a run that
+ * produced nothing shrank the window to zero and the check compared three empty
+ * strings and passed.
+ *
+ * Anywhere a window, a threshold or a sample count is computed *from the data it
+ * is about to judge*, it can collapse to a size that judges nothing. Put this
+ * under it.
+ */
+function requireNonVacuous(count: number, what: string): void {
+  expect(count, `nothing to compare: ${what}`).toBeGreaterThan(0);
+}
+
+/** One rocket launch: the lane it flew, and which lanes held a jet at the time. */
+interface Launch {
+  readonly lane: number;
+  readonly occupied: readonly number[];
+}
+
+/**
+ * One parked-lever game: every rocket launched, and what the run lit.
  *
  * `NIB_RCOL` going from zero to non-zero is a launch - the ROM holds one rocket,
  * so there is no ambiguity about which one - and `NIB_RLANE` beside it is the
  * lane it flies down. Sampled at 5 ms against a flight of about 100 ms a column,
  * so no launch can fall between two samples. Both halves come off the same drive
  * because running it twice is the whole cost of this test.
+ *
+ * The squadron's three lane nibbles are read at the same instant, because which
+ * lanes hold a jet is what `rocket_fire` actually chooses from and it is the
+ * only timing-independent thing there is to assert about the choice.
  */
 function parkedGame(
   skill: number,
   lever: number,
   forSeconds = 45,
-): { lanes: number[]; litCells: ReadonlySet<string> } {
+): { launches: Launch[]; lanes: number[]; litCells: ReadonlySet<string> } {
   const machine = new Tms1370Machine();
   machine.setContacts({ skill, lane: lever, fire: false });
-  const lanes: number[] = [];
+  const launches: Launch[] = [];
   let flying = false;
   while (machine.cycles < seconds(forSeconds)) {
     machine.step(CYCLE_HZ / 200);
     const ram = machine.ram;
     const column = ram[FILE_STATE * 16 + NIB_RCOL] as number;
     if (column !== 0 && !flying) {
-      lanes.push(ram[FILE_STATE * 16 + NIB_RLANE] as number);
+      launches.push({
+        lane: ram[FILE_STATE * 16 + NIB_RLANE] as number,
+        occupied: [0, 1, 2].filter((lane) => (ram[FILE_JETS * 16 + lane] as number) !== 0),
+      });
     }
     flying = column !== 0;
   }
-  return { lanes, litCells: machine.litCells };
+  return { launches, lanes: launches.map((launch) => launch.lane), litCells: machine.litCells };
 }
 
 describe('the machine comes up', () => {
@@ -284,7 +322,9 @@ describe('a rocket can reach the launcher in any of the three lanes', () => {
     // the G line in the lever's own lane costs a launcher and warns too, so a
     // parked-lever run can hear all three warnings with the rocket never
     // leaving one lane. What the defect *is* - a lane drawn from a nibble the
-    // player's own keypress sets - is what the lane *sequence* below rules out.
+    // player's own keypress sets - is what the occupancy check below rules out:
+    // such a lane knows nothing about the squadron and fires into empty lanes,
+    // and the rotor cannot, because it only stops on a lane holding a jet.
     //
     // ## Why this reads NIB_RLANE and not the lit cells
     //
@@ -318,17 +358,63 @@ describe('a rocket can reach the launcher in any of the three lanes', () => {
       const flown = [...new Set(games.flatMap((game) => game.lanes))].sort();
       expect(flown, 'the rotor did not reach every lane').toEqual([0, 1, 2]);
 
-      // The falsifier proper. With the lane drawn from the player, parking the
-      // lever somewhere else would change the sequence; the rotor's does not.
-      for (const skill of SKILLS) {
-        const runs = games.filter((game) => game.skill === skill);
-        const shortest = Math.min(...runs.map((game) => game.lanes.length));
-        const prefixes = new Set(runs.map((game) => game.lanes.slice(0, shortest).join(',')));
+      // The falsifier proper: every rocket flew down a lane that had a jet
+      // airborne in it at the moment it launched.
+      //
+      // ## Why this, and not the lane *sequence* across lever positions
+      //
+      // This used to require the lane sequence to be identical for all three
+      // lever positions at a given skill, truncated to the shortest run. That
+      // premise is not implied by R5, and the check was vacuous where it was not
+      // wrong. Measured across the three levers at skill 3, launch counts were
+      // 1 / 0 / 1 - one lever fired no rocket at all inside the window, `shortest`
+      // collapsed to zero, and the comparison was between three empty strings.
+      // It has been passing without asserting anything. See
+      // {@link requireNonVacuous}, which is now under it.
+      //
+      // Once the counts were 2 / 2 / 2 and it had content, it failed - and it
+      // failed on a machine that satisfies R5. `NIB_ROTOR` is referenced at
+      // exactly four sites in the whole ROM, all of them inside `rocket_fire`,
+      // and `rocket_fire` never reads `NIB_LANE` or `NIB_LANEB`. The lane is a
+      // function of rotor phase and of which lanes are occupied: `rf_look` fires
+      // only where `MNEZ` finds a jet, and `rf_empty` advances the rotor and
+      // retries. The lever legitimately moves occupancy, because an arrival in
+      // the lever's own lane is a capture while an arrival elsewhere flies past.
+      // The header above already concedes exactly this effect for the skill dial
+      // - "samples the rotor at a different phase" - and the lever is subject to
+      // the same one.
+      //
+      // Decisive: at skill 3 with the lever in lane 2, the first launch had only
+      // lane 0 occupied and fired down lane 0. Occupancy forced it. A lane drawn
+      // from the player's keypress could not have produced that.
+      //
+      // What replaces it is what the v2 defect would actually violate. A lane
+      // taken from a free-running timer nibble knows nothing about the squadron,
+      // so it fires into empty lanes; a lane taken from the rotor cannot, because
+      // the rotor only stops on a lane holding a jet. This is asserted on every
+      // launch of every run rather than on a prefix, and it does not depend on
+      // when anything happened.
+      const allLaunches = games.flatMap((game) =>
+        game.launches.map((launch) => ({ skill: game.skill, lever: game.lever, ...launch })),
+      );
+      requireNonVacuous(allLaunches.length, 'no rocket launched in any run, at any skill');
+      for (const launch of allLaunches) {
         expect(
-          [...prefixes],
-          `skill ${skill}: the rocket's lane sequence moved when only the lever did`,
-        ).toHaveLength(1);
+          launch.occupied,
+          `skill ${launch.skill}, lever ${launch.lever}: a rocket flew down lane ${launch.lane} with no jet in it`,
+        ).toContain(launch.lane);
       }
+
+      // And the same discipline applied to the assertion just made, because it
+      // is the kind that can go quietly trivial. If every launch happened to
+      // find all three lanes occupied, "flew down an occupied lane" would be
+      // satisfied by any lane at all and would be asserting nothing again.
+      // Measured, it bites: at skill 3 with the lever in lane 2 the first launch
+      // had exactly one lane occupied, so the rotor had no choice to make.
+      requireNonVacuous(
+        allLaunches.filter((launch) => launch.occupied.length < 3).length,
+        'every launch found all three lanes occupied, so the occupancy check constrained nothing',
+      );
 
       // And not vacuously: a ROM that pinned the rocket to one lane would
       // satisfy the sequence check trivially, so more than one lane has to be
