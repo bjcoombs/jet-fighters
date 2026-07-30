@@ -739,3 +739,49 @@ notes one sound.
 The march-note assertions in both files no longer have this problem - they select by pitch
 as well as by duration and reject a sound carrying anything faster than a march note. It is
 the "every sound, march or not" pair that remains exposed.
+
+### 11a. The general form: a timing change can invalidate a drive's premise silently
+
+The blanking pair above is one instance of something worth naming, because this run
+produced three of them in a day and none announced itself.
+
+**Every drive in these suites rests on a premise about the machine's timing**, and the
+premise is almost never written down. Change a cadence anywhere and the premise can stop
+holding while the drive goes on running, goes on passing, and quietly measures something
+else. It is not a failure - nothing goes red - which is exactly what makes it dangerous.
+
+Three instances, in the order they were found:
+
+- **The input became rare.** The two assertions above pass because a fire blip landing
+  beside a march note stopped being common once the missile slowed. The mechanism is
+  untouched.
+- **The drive stopped reaching the case.** `launcher-lives.test.ts` needed a game that ends
+  during a battleship crossing, to prove the buzz stops. When the stranded buzz was found,
+  the three parked-lever games did that. After the wave retreat and the missile speed moved
+  every game length they end at 27.1, 36.6 and 45.4 s, all *between* crossings. The defect
+  had not moved; the drive had stopped arriving at it, and an assertion written over those
+  games passed against a ROM with the fix deliberately reverted.
+- **The drive started terminating for a different reason.** Every drive in this branch was
+  built when 199 points was unreachable - a skilled player topped out at 184 in 400 s - so
+  they all end by losing three launchers or by running out of clock. Distance-based scoring
+  roughly triples the rate, and the same drives now end by *winning*. A drive that measures
+  "how long until the machine falls silent" measures something different once silence
+  arrives from a win rather than a loss. Found from the other direction on the scoring
+  branch, whose census drive now ends on the third launcher at 198 where it used to reach
+  the win.
+
+The second and third are the same shape seen from either end: **the drive's premise about
+why the run ends, or about what it will encounter before it does, stopped being true.**
+
+**What to do about it is not settled, and this section is not a solution.** The one
+technique that has worked is the precondition assertion - if a test needs a precondition
+to be meaningful, assert the precondition out loud as its own named test, so it fails
+loudly instead of the real assertion passing quietly. `launcher-lives.test.ts` carries one
+now (*"ends the game while the boat is still crossing, or this proves nothing"*), and
+`tools/probe/tms1370-rom.test.ts`'s `requireNonVacuous` is the same idea for cardinality.
+Neither is automatic and neither finds a premise nobody thought to state.
+
+The honest position is that **every timing-sensitive drive in this tree is exposed**, that
+this run alone changed the missile speed eighteen-fold, added a wave retreat, corrected the
+march ladder's arithmetic and tripled the scoring rate, and that the next cadence change
+will do it again to drives nobody has looked at.
