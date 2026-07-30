@@ -572,12 +572,36 @@ function lossesIn(game: Game): Sound[] {
   return game.sounds.filter(isLoss);
 }
 
-const games = new Map(LEVERS.map(({ lane }) => [lane, standStill(lane)]));
+/**
+ * The three parked-lever games, driven on first use rather than at import.
+ *
+ * **Not a style preference.** This was `new Map(LEVERS.map(...))` at module
+ * scope, which runs three full games - up to 63 s of emulated time each - while
+ * Vitest is still collecting the file, where no `it` timeout reaches them and
+ * only the default hook budget applies. CodeRabbit found the same shape in
+ * `scoring-ruler.test.ts` after #121 merged, and it had already turned that
+ * suite red once: a 5.4 s drive against a five-second default.
+ *
+ * Driving on first access moves the cost inside whichever test asks for it, and
+ * every test that does carries {@link LONG_RUN_TIMEOUT_MS}. Memoised, so the
+ * three games are still driven once between them rather than once per assertion.
+ */
+const driven = new Map<number, Game>();
+
+function gameFor(lane: number): Game {
+  const already = driven.get(lane);
+  if (already !== undefined) {
+    return already;
+  }
+  const fresh = standStill(lane);
+  driven.set(lane, fresh);
+  return fresh;
+}
 
 describe('standing still costs three launchers, and the third ends the game', () => {
   for (const { detent, lane } of LEVERS) {
     describe(`lever parked in lane ${lane} (${detent})`, () => {
-      const game = (): Game => games.get(lane) as Game;
+      const game = (): Game => gameFor(lane);
 
       it(
         'announces exactly two launchers before it ends, at two beeps then three',
@@ -695,7 +719,7 @@ describe('which mechanism took each launcher, read off the tube', () => {
       // warning and 0.69 s behind the 0.67 s loss envelope.
       let captures = 0;
       for (const { detent, lane } of LEVERS) {
-        const game = games.get(lane) as Game;
+        const game = gameFor(lane);
         captures += game.departures.length;
         for (const departure of game.departures) {
           const cause = launcherLosses(game).find(
@@ -742,7 +766,7 @@ describe('which mechanism took each launcher, read off the tube', () => {
     // strictly more than the old form asserted - the ladder is now checked in
     // all three lanes rather than in the one that happened to be rocket-only.
     const byRocket = LEVERS.flatMap(({ detent, lane }) => {
-      const game = games.get(lane) as Game;
+      const game = gameFor(lane);
       return launcherLosses(game)
         .filter(
           (loss) =>
@@ -759,7 +783,7 @@ describe('which mechanism took each launcher, read off the tube', () => {
       'every launcher in every lane was taken by a capture, so the rocket path is untested',
     ).toBeGreaterThan(0);
     for (const { detent, lane } of LEVERS) {
-      const game = games.get(lane) as Game;
+      const game = gameFor(lane);
       expect(warningsIn(game).map((warning) => warning.beeps), detent).toEqual([2, 3]);
       expect(lossesIn(game), detent).toHaveLength(1);
     }
@@ -794,7 +818,13 @@ describe('an ending during a battleship crossing stops the buzz', () => {
   // the failure this suite has already shipped once. Skill 3 in lane 0 ends at
   // 30.8 s with `NIB_BSLANE` still naming a lane, and the guard below fails
   // loudly if that ever stops being true rather than passing quietly.
-  const game = (() => {
+  // Driven on first use, not at collection time - see `gameFor` above for why a
+  // drive in a `describe` body escapes every timeout in the file.
+  let driven: { endedAt: number; bshipLaneAtEnd: number; lastEdgeAt: number } | undefined;
+  const game = (): { endedAt: number; bshipLaneAtEnd: number; lastEdgeAt: number } => {
+    if (driven !== undefined) {
+      return driven;
+    }
     const machine = new Tms1370Machine();
     machine.setContacts({ skill: 3, lane: 0 });
     const edges: SpeakerEdge[] = [];
@@ -809,13 +839,14 @@ describe('an ending during a battleship crossing stops the buzz', () => {
         bshipLaneAtEnd = machine.ram[BSLANE_ADDRESS] as number;
       }
     }
-    return { endedAt, bshipLaneAtEnd, lastEdgeAt: edges[edges.length - 1]?.cycle ?? 0 };
-  })();
+    driven = { endedAt, bshipLaneAtEnd, lastEdgeAt: edges[edges.length - 1]?.cycle ?? 0 };
+    return driven;
+  };
 
   it('ends the game while the boat is still crossing, or this proves nothing', () => {
-    expect(game.endedAt, 'the game never ended in this window').toBeGreaterThan(0);
-    expect(game.bshipLaneAtEnd, 'the ending did not land inside a crossing').not.toBe(BS_NONE);
-  });
+    expect(game().endedAt, 'the game never ended in this window').toBeGreaterThan(0);
+    expect(game().bshipLaneAtEnd, 'the ending did not land inside a crossing').not.toBe(BS_NONE);
+  }, LONG_RUN_TIMEOUT_MS);
 
   it('leaves the speaker alone once the ending is on the glass', () => {
     // **Zero, and zero is the principled bound rather than a strict-sounding
@@ -833,8 +864,8 @@ describe('an ending during a battleship crossing stops the buzz', () => {
     // ~15 ms sweep. The tolerance was hiding a real difference in the ROM, so it
     // is gone.
     expect(
-      game.lastEdgeAt - game.endedAt,
+      game().lastEdgeAt - game().endedAt,
       'the speaker was still moving after the game ended',
     ).toBeLessThanOrEqual(0);
-  });
+  }, LONG_RUN_TIMEOUT_MS);
 });
