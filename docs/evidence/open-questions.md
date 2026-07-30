@@ -483,3 +483,110 @@ disagreements between the two say where the reconstruction is wrong.
 `asm/jetfighter.asm` on `main` is HMCS44 and is expected to be replaced wholesale rather
 than reverted. Only the `.asm` is family-specific - the recordings,
 `docs/evidence/audio-reference.md` and the probe tests all carry across.
+
+## 8. Three owner observations, measured and confirmed faithful
+
+The owner reported three things while playing the deployed build. All three were
+measured against the running machine rather than reasoned about, and **none of them is a
+defect**. Recorded here so the next report of any of them can be answered from the tree
+instead of costing another diagnosis.
+
+### 8a. "The last note of the game win is a high note, not a low note"
+
+**The ROM ends low, and so does the audio path.** Driven to a win and measured off R15,
+the jingle is:
+
+| note | pitch | length |
+| ---- | ----- | ------ |
+| arpeggio, three times | 758 -> 956 -> 1190 Hz | 180 / 144 / 143 ms |
+| the resolution | **956 Hz** | 256 ms, 240 periods |
+
+Peak 1190 Hz, final note 956 Hz, and the speaker is silent afterwards - `tk_ended`
+branches straight to `render` in a finished game. That is `win.arpeggio` and
+`win.resolutionHz` as `audio-reference.md` measures them.
+
+The same edge stream pushed through the real synth in `src/machine/audio/` renders the
+last 300 ms at 972 Hz zero-crossing with an RMS of 0.4905, against 0.4926 at the start of
+the jingle. **Nothing is truncated, attenuated or dropped**, and the 100 ms window at
+t = 1.50 s and t = 1.60 s both read 950 Hz against a 1150 Hz peak window.
+
+So the resolution is played, rendered and audible. What is true is that **it is only about
+3.8 semitones below the peak, and 956 Hz is a high note in absolute terms** - A#5, and the
+same pitch the arpeggio already passes through on its way up. A listener expecting the
+jingle to settle onto something obviously low will not hear that. **This is a question for
+the owner about what the unit sounds like, not a defect to fix**, and changing the
+resolution's pitch would move the ROM away from the measurement.
+
+`tools/probe/win-jingle.test.ts` now asserts the shape, so a future change that really did
+end the jingle on its peak would fail. Verified by mutation: pointing `gw_last` at
+`SND_WIN3` instead of `SND_WIN2` fails both the shape and the pitch assertion.
+
+### 8b and 8c. Both endings freeze the controls
+
+**Faithful, and it is the ROM ignoring input rather than the emulator stopping.** After an
+ending, working the lever and the fire button for two emulated seconds leaves `NIB_STATE`
+at `ST_WIN` and the score at 199. The machine is running and choosing to do nothing: `tick`
+branches to `tk_ended` for anything above `ST_PLAY`, and `Board.running` is `power.isOn` and
+nothing else, so no layer above the ROM has halted.
+
+A core reset - what the on-screen power switch does - returns `NIB_STATE` to `ST_PLAY` and
+the score to 0, so **the unit is not stuck**. That is `docs/prd/jet-fighters-v1.md:30`'s
+back-label rule, power-cycle to start a new game, wired as v1 line 168 describes.
+
+**But the ending is not always silent, and that part is a real defect rather than a faithful
+freeze.** An earlier draft of this section said an ending "produces zero speaker edges",
+measured with the lever parked in lane 0 at skill 1. That reading was true of the run it
+came from and not of the machine: it was one of the cases where no battleship happened to be
+crossing. Driving all nine parked-lever combinations of skill and lane:
+
+| ending lands... | runs | speaker edges in the 4 s after the ending |
+| --------------- | ---- | ----------------------------------------- |
+| with no boat on the glass | 7 of 9 | 0 |
+| **during a crossing** | **2 of 9** (skill 2 lane 2, skill 3 lane 0) | **632 and 629** |
+
+The buzz is ticked from `strobe` on every O strobe, and once `tick` takes its `tk_ended` arm
+it never reaches `tick_bship` again to run the crossing down - so a game that ends mid
+crossing buzzes for as long as the machine is left switched on. The capture-rule work found
+this independently and fixes it by clearing `NIB_BUZZ` and `NIB_BPHASE` at the top of
+`game_win` and `game_lost`; the numbers above were measured before that change.
+
+**The lesson is the same one section 8a's assertion exists for.** "Zero edges" was measured
+from one drive and stated as a property of the machine. It took two more drives out of nine
+to contradict it. A property claimed about an ending has to be measured across the states
+the machine can be in when it ends, not the state it happened to be in once.
+
+### 8d. "The screen flashes" - one blank, not a flicker
+
+Sampling what a viewer sees at 60 Hz across a whole game, the ending produces **40
+consecutive dark frames, about 0.67 s, with exactly two dark/lit transitions.** One
+blackout. After it the tube is lit and stable: 60 viewer frames, one distinct lit set, 12
+segments - the final score standing still. During play only 2% of frames are dark.
+
+The cause is the ROM stopping the sweep while it drives the speaker, which
+`tools/probe/blank-to-glass.test.ts` already asserts for every sound on this machine. The
+loss envelope is simply the longest sound the ROM plays, so it is the only one long enough
+to read as a blackout rather than a blink.
+
+**Stated generally, because it will be reported again about some other sound: every
+*note-driven* sound on this machine is a visible blink, and the longer it plays the more it
+looks like a fault.** Criterion V12 names that as something an operator should recognise as
+authentic, and a build whose tube kept drawing through a note would be the wrong one.
+
+**The battleship buzz is the exception, and saying why makes the rule sharper rather than
+weaker.** The blink is not a property of sound; it is a property of `note`, which parks the
+sweep for the whole of what it plays. The buzz is not played that way - it is ticked from
+`strobe`, at `st_buzz`, one O strobe at a time, precisely so that a four-second crossing
+does not blank the display the player has to see it on. Section 7 records the change and
+what it bought: the worst blank in the 600 ms after an arrival fell from 383.5 ms to 1.5 ms,
+and the battleship stopped blanking the tube entirely.
+
+So the test is *how* a sound is produced, not how long it lasts: **`note` blanks, `strobe`
+does not.**
+
+That same distinction is what makes the stranded buzz in 8b possible, which is worth
+noticing because the two findings corroborate each other. Once `tick` takes its `tk_ended`
+arm it never reaches `tick_bship` again to run a crossing down - but `strobe` is still
+running, because the tube is still being drawn, so it goes on ticking the buzz. A sound
+that blanked the sweep could not have survived an ending unnoticed; this one could, and did,
+**while the tube kept drawing normally**. The mechanism that keeps the boat visible is the
+mechanism that let it buzz forever.

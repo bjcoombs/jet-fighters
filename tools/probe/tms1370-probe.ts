@@ -250,6 +250,29 @@ export class Tms1370Machine {
     );
   }
 
+  /**
+   * Write one RAM nibble directly - **the only way past the K matrix, and not
+   * how a scenario is set up.**
+   *
+   * Everything else in this harness reaches the game the way a player does, by
+   * closing a contact, and CLAUDE.md's "no game state outside the emulated RAM"
+   * is why. This exists for the one case where the honest route is a CI
+   * liability rather than a discipline: the win jingle needs 199 points, which
+   * is minutes of emulated play, and the thing under test is the jingle rather
+   * than the route to it.
+   *
+   * Used correctly it moves the machine *next to* the behaviour and lets the ROM
+   * do the rest - set the score to 198 and let a kill carry it to 199 through
+   * `add_score`, so `as_win` and `game_win` are still entered by the program's
+   * own path. Used to write the outcome itself it would assert nothing, which is
+   * the failure mode the rest of these suites exist to avoid.
+   *
+   * If you are reaching for this to avoid *driving* something, drive it.
+   */
+  pokeRam(file: number, nibble: number, value: number): void {
+    this.cpu.ram.write(file, nibble, value);
+  }
+
   /** Close one or more case contacts, leaving the rest as they are. */
   setContacts(change: Contacts): void {
     Object.assign(this.contacts, change);

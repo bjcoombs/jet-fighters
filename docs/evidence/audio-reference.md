@@ -343,6 +343,39 @@ inter-note gaps were observed):
 
 Total 1830 ms, matching the measured ~1.83 s.
 
+### What the TMS1370 can actually play, and why the top note is 1190 Hz
+
+The measurements above stand. **The machine cannot play one of them**, and that is a
+property of the note generator rather than a defect in the ROM or an error in the
+reading.
+
+`note` builds a half-period from a nested loop - outer count `NIB_HALF_O`, inner count
+`NIB_HALF_I`. With the outer count zero, which all three win notes use, the full period
+is `4 * I + 25` instructions. That reproduces every figure the ROM states beside these
+constants:
+
+| I | period (instructions) | pitch | against the measurement |
+| --- | --- | --- | --- |
+| 13 | 77 | 758 Hz | 750 measured, 1.1% high |
+| 9 | 61 | 956 Hz | 940 measured, 1.7% high |
+| 6 | 49 | **1190 Hz** | **1240 measured, 4.0% low** |
+| 5 | 45 | 1296 Hz | 1240 measured, 4.5% high |
+
+So the two pitches reachable either side of the measured 1240 Hz are 1190 and 1296.
+**1190 is the closest this machine can play**, and the gap between neighbouring pitches
+at that end of the range is 8.5% - the inner count is an integer, and the steps get
+coarser as it falls. The first two notes land inside 2% because `I` is larger there and
+the quantisation is correspondingly finer.
+
+This is why `tools/probe/speaker-bands.test.ts` bounds the third note at +/-5% where the
+other two use +/-3%: a +/-3% band on 1240 Hz is 1203-1277, which this note generator
+cannot enter from either side. **The band follows the hardware; the measurement it is
+derived from is unchanged.**
+
+Recorded because that band was written at +/-3% and never reached - the jingle needs 199
+points and no scenario in that suite got there - so nothing ever failed on a bound the
+machine could not meet. `tools/probe/win-jingle.test.ts` now reaches it.
+
 **Correction recorded during v1**: an earlier transcription included an E6 pass-tone
 before the resolution. Re-analysis of the recording found no E6 - the final
 arpeggio's D#6 resolves straight to the sustained A#5. Do not reintroduce it.
