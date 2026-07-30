@@ -398,7 +398,7 @@ function standStill(lane: number): Game {
  * The latest a game ends when the fire button is actually being worked.
  *
  * **Measured on this machine**, the same way and on the same drive the test
- * below uses: 45.4 s in lane 1, 46.8 s in lane 2, 77.9 s in lane 0.
+ * below uses: 118.7 s in lane 1, 119.0 s in lane 2, 119.7 s in lane 0.
  *
  * It is now *longer* than the parked figure, where it used to be shorter, and the
  * reversal is the point of the change that caused it. On the 28 ms missile a
@@ -409,7 +409,7 @@ function standStill(lane: number): Game {
  * takes 2.5 s to do it, so tapping fire keeps the player alive noticeably longer
  * than standing still without keeping him alive indefinitely.
  */
-const PLAYED_GAME_END_S = 77.9;
+const PLAYED_GAME_END_S = 119.7;
 
 /**
  * Park the lever, tap fire, and watch - the drive {@link standStill} refuses.

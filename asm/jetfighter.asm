@@ -1591,8 +1591,8 @@ ms_step_ok:
         LDP  P_SWEEP
         BR   ms_horizon
 ms_clear:
-        LDP  P_JETS
-        BR   jet_march
+        LDP  P_ROCKET
+        BR   ms_arrived         ; and test the cell it just moved into
 
 ; --- a jet is shot down ------------------------------------------------------
 
@@ -1904,6 +1904,48 @@ jr_out:
 ; ============================================================================
 
 .PAGE P_ROCKET
+
+; --- the second half of the shot's hit test ---------------------------------
+;
+; **A step tests two cells: the one the shot leaves and the one it arrives in.**
+; Either alone provably misses a case, and they are different cases at opposite
+; ends of the field.
+;
+; Testing only the occupied cell before stepping misses the *crossing*. Within a
+; sweep `tick_missile` runs before `jet_march`, so a shot at grid 3 with a jet at
+; grid 2 tests 3, finds nothing, steps to 2 - and then the jet marches to 3. The
+; two have swapped without ever being tested together, and the shot flies on past
+; a jet it went through. Measured on this ROM before this arm existed: three
+; crossings in 139 flights at skill 1, against a detector that saw 1162 samples
+; with shot and jet on the same column, so it was live rather than vacuous.
+;
+; Testing only the arrival cell after stepping misses the *launch cell*: a shot
+; fired at grid 5 steps to 4 before its first test, so a jet standing in front of
+; the launcher is never tested at all. That was `ROM_CANNOT_REACH`'s `burst[5]`
+; entry - 0 kills in 12 aimed shots against 14 in 25 everywhere else - and the
+; owner reported it as bullets going through jets at the right-hand edge.
+;
+; So neither order is a choice between a defect and no defect; it is a choice
+; between two defects. Both cells are tested, and the cost is eleven words on a
+; page that had room rather than four squeezed onto one that did not.
+
+ms_arrived:
+        LDX  FILE_STATE
+        TCY  NIB_MLANE
+        TMA
+        LDX  FILE_JETS
+        TAY
+        TMA                     ; A <- the grid the jet in that lane stands on
+        LDX  FILE_STATE
+        TCY  NIB_MCOL
+        MNEA                    ; status = that jet is somewhere else
+        BR   ms_missed_it
+        LDP  P_HIT
+        BR   missile_kill
+ms_missed_it:
+        LDP  P_JETS
+        BR   jet_march
+
 
 tick_rocket:
         LDX  FILE_STATE
