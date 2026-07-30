@@ -464,8 +464,8 @@ function standStill(lane: number): Game {
  * **Measured on this machine**, all three lanes now losing all three launchers.
  * Two independent measurements were taken and they do not agree exactly:
  *
- *   via this file's own drive : lane 0 29.7 s, lane 1 28.1 s, lane 2 28.4 s
- *   via a standalone loop     : lane 0 35.7 s, lane 1 28.5 s, lane 2 29.0 s
+ *   via a standalone loop     : lane 0 29.7 s, lane 1 28.1 s, lane 2 28.4 s
+ *   via this file's own drive : lane 0 35.7 s, lane 1 28.5 s, lane 2 29.0 s
  *
  * They agree on the outcome, on lanes 1 and 2, and on the scores being 15-26 of
  * 199. They differed on lane 0 by 6 s, and **that difference is now explained:
@@ -480,11 +480,19 @@ function standStill(lane: number): Game {
  * event seen two ways, and the larger figure is the right one for this file
  * because this file taps that way.
  *
- * This constant is a *horizon* - "the latest a game ends" - so it takes the
- * larger figure. A horizon set from the smaller of two disagreeing measurements
- * is a bet that the smaller one is right; set from the larger it is merely
- * generous, and generous is the safe direction for a bound. If the 6 s is ever
- * explained, this comment is where to correct it.
+ * This constant is a *horizon* - "the latest a game ends" - so the larger figure
+ * is right twice over: it is the one native to this file's drive, and a horizon
+ * set from the smaller of two disagreeing measurements is a bet that the smaller
+ * one is right.
+ *
+ * **The reversal above is worth keeping.** This comment first recorded the two
+ * figures the other way round, attributing 29.7 s to this file's drive and
+ * 35.7 s to the loop, and called the gap unexplained - taking the larger value
+ * for the weak reason that a generous bound is safe, rather than the strong one
+ * that it is the only figure measured on the drive the constant serves. Same
+ * number, and an argument that would not have survived the next person asking
+ * why. Two disagreeing measurements are worth attributing correctly even when
+ * the disagreement does not change the answer.
  *
  * ## Two superseded revisions, kept because each was measured and each was wrong
  *
