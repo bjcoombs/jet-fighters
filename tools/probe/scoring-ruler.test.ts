@@ -230,8 +230,20 @@ const CENSUS_SECONDS = 240;
 /** Long enough for tens of kills at any column a missile can reach. */
 const COLUMN_SECONDS = 120;
 
-/** Grids a missile can actually reach - see the header. */
+/** Grids a missile can reach today - see the header, and `UNREACHABLE` below. */
 const REACHABLE = [1, 2, 3, 4] as const;
+
+/**
+ * The grid a missile cannot reach, which is asserted rather than skipped.
+ *
+ * Leaving grid 5 out of {@link REACHABLE} and saying nothing else about it would
+ * be a hole in the table exactly where the next change to the missile lands. The
+ * test below instead asserts *both* shapes: while the launch cell goes untested
+ * by `missile_step`, it pins that no jet can be killed there at all, and the
+ * moment that stops being true it starts checking grid 5 against the ruler. So
+ * it can never pass by finding zero kills and shrugging.
+ */
+const UNREACHABLE = 5;
 
 /**
  * A drive that runs a whole squadron down is seconds of wall clock, and CI's
@@ -335,6 +347,34 @@ describe('the printed ruler', () => {
       const here = kills.filter((kill) => kill.grid === column);
       expect(here.length, `no jet was killed on grid ${column}`).toBeGreaterThan(0);
       expect([...new Set(here.map((kill) => kill.delta))]).toEqual([RULER_POINTS[column]]);
+    },
+    DRIVE_TIMEOUT_MS,
+  );
+
+  it(
+    'either cannot kill on grid 5 at all, or pays the ruler value there too',
+    () => {
+      // Both branches assert, and the branch taken is a statement about the
+      // missile rather than about scoring.
+      //
+      // Today `fire_missile` writes the launch cell and `missile_step`
+      // decrements before it hit-tests, so grid 5 is drawn and never tested and
+      // the count must be exactly zero - a jet standing on the cell before the G
+      // line is unshootable. When that is reordered the count goes non-zero and
+      // this test starts checking grid 5's ruler value on the first run, with no
+      // window in which the row is unasserted. It cannot pass by finding no
+      // kills unless finding no kills is itself the current, stated truth.
+      const kills = untilTheWin(
+        aimedDrive(COLUMN_SECONDS, { kind: 'only', column: UNREACHABLE }),
+      ).scored;
+      const here = kills.filter((kill) => kill.grid === UNREACHABLE);
+      if (here.length === 0) {
+        // Not a skip: the assertion is that the cell is unreachable, and a
+        // single kill here is a change in the missile that must be noticed.
+        expect(here).toEqual([]);
+        return;
+      }
+      expect([...new Set(here.map((kill) => kill.delta))]).toEqual([RULER_POINTS[UNREACHABLE]]);
     },
     DRIVE_TIMEOUT_MS,
   );
