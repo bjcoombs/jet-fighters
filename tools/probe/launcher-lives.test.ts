@@ -325,7 +325,17 @@ interface Game {
   readonly endedAt: number;
   /** Cycle of the last R15 edge in the whole run. */
   readonly lastEdgeAt: number;
+  /** Whether the run ended in `ST_WIN` rather than by losing three launchers. */
+  readonly won?: boolean;
 }
+
+/** `ST_WIN`, from the ROM rather than written here. */
+const ST_WIN = (() => {
+  const asm = assembleGame();
+  const found = asm.symbols.find((definition) => definition.name === 'ST_WIN');
+  if (found === undefined) throw new Error('asm/jetfighter.asm no longer defines ST_WIN');
+  return found.value;
+})();
 
 /**
  * Park the lever in one lane, never touch fire, and watch.
@@ -398,7 +408,8 @@ function standStill(lane: number): Game {
  * The latest a game ends when the fire button is actually being worked.
  *
  * **Measured on this machine**, the same way and on the same drive the test
- * below uses: 118.7 s in lane 1, 119.0 s in lane 2, 119.7 s in lane 0.
+ * below uses: lane 1 ends at 161.4 s and lane 2 at 166.6 s, both by losing the
+ * third launcher, and **lane 0 ends at 247.0 s by winning**.
  *
  * It is now *longer* than the parked figure, where it used to be shorter, and the
  * reversal is the point of the change that caused it. On the 28 ms missile a
@@ -409,7 +420,7 @@ function standStill(lane: number): Game {
  * takes 2.5 s to do it, so tapping fire keeps the player alive noticeably longer
  * than standing still without keeping him alive indefinitely.
  */
-const PLAYED_GAME_END_S = 119.7;
+const PLAYED_GAME_END_S = 247.0;
 
 /**
  * Park the lever, tap fire, and watch - the drive {@link standStill} refuses.
@@ -425,6 +436,7 @@ function playingOn(lane: number): Game {
   const edges: SpeakerEdge[] = [];
   const hits: number[] = [];
   let seenHits = 0;
+  let endedAt = 0;
   let everFired = false;
   const target = Math.round(PLAYED_GAME_END_S * 1.4 * CYCLE_HZ);
   for (let sweep = 0; machine.cycles < target; sweep += 1) {
@@ -449,14 +461,18 @@ function playingOn(lane: number): Game {
       hits.push(machine.cycles);
       seenHits = nowHits;
     }
+    if (endedAt === 0 && (machine.ram[STATE_ADDRESS] as number) !== 0) {
+      endedAt = machine.cycles;
+    }
   }
   return {
     sounds: soundsIn(edges),
     departures: [],
     everFired,
     hits,
-    endedAt: 0,
+    endedAt,
     lastEdgeAt: edges[edges.length - 1]?.cycle ?? 0,
+    won: (machine.ram[STATE_ADDRESS] as number) === ST_WIN,
   };
 }
 
@@ -676,18 +692,55 @@ describe('the game is losable while it is being played', () => {
   // deliberately not a claim about *how long* a played game lasts, which is a
   // difficulty question and not a rules one. It claims only that playing does
   // not make the machine immortal.
-  for (const { detent, lane } of LEVERS) {
+  // ## The premise changed under this, and the change is asserted rather than
+  // ## scoped away
+  //
+  // This was three identical assertions: with fire worked, every lever position
+  // loses all three launchers. That was true when it was written. It is not now.
+  // Testing both the cell the shot leaves and the cell it arrives in made a
+  // tapping player enough more lethal that **lane 0 wins** - one launcher lost
+  // at 160.7 s, then 199 points at 247.0 s - while lanes 1 and 2 still lose all
+  // three, at 161.4 s and 166.6 s.
+  //
+  // **The assertion stopped terminating for the reason it was built around**,
+  // which is the hazard `open-questions.md` §11a describes, arriving here by way
+  // of a fix in this same branch. The wrong response is to narrow the claim to
+  // the two lanes that still lose, because that buries the most interesting
+  // behaviour in the file as an absence. Lane 0's win is pinned below as its own
+  // fact, so that if the balance ever moves back a test says so.
+  //
+  // Whether a blind tapping player *should* be able to win from one lane is a
+  // rules question and is with the owner. This file's job is to say what the
+  // machine does.
+  for (const { detent, lane } of LEVERS.filter((lever) => lever.lane !== 0)) {
     it(
       `still loses all three launchers with the fire button worked, lever ${detent}`,
       () => {
         const game = playingOn(lane);
         expect(game.everFired, `${detent}: the drive never actually fired`).toBe(true);
+        expect(game.won, `${detent}: the game was won, not lost`).toBe(false);
         expect(warningsIn(game).map((warning) => warning.beeps), detent).toEqual([2, 3]);
         expect(lossesIn(game), detent).toHaveLength(1);
       },
       LONG_RUN_TIMEOUT_MS,
     );
   }
+
+  it(
+    'is won from the top lane by tapping fire alone, which is a rule and not a bug here',
+    () => {
+      // Pinned deliberately. A blind tapping player who never moves the lever
+      // reaches 199 from lane 0 - one launcher lost on the way. It is asserted
+      // because it is surprising, because the owner's original report was that
+      // he could not die, and because a test that merely stayed silent about it
+      // would let the balance drift back without anyone noticing.
+      const game = playingOn(0);
+      expect(game.everFired, 'the drive never actually fired').toBe(true);
+      expect(game.won, 'lane 0 no longer wins by tapping alone').toBe(true);
+      expect(game.hits.length, 'lane 0 lost a different number of launchers').toBe(1);
+    },
+    LONG_RUN_TIMEOUT_MS,
+  );
 });
 
 describe('which mechanism took each launcher, read off the tube', () => {
