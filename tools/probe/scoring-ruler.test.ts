@@ -159,6 +159,69 @@ type Aim = { readonly kind: 'roundRobin' } | { readonly kind: 'only'; readonly c
  */
 const DODGE_DEPTH = 4;
 
+/** The lane the battleship enters on, and the lane a shot must be led into. */
+/**
+ * How long to hold the fire contact closed.
+ *
+ * **Not cosmetic.** The K matrix is read once per sweep, so a press shorter than
+ * a sweep can open and close entirely between two reads and never be seen. The
+ * first version of the hunt below pressed for one `SAMPLE_CYCLES` slice - 5 ms
+ * against a 13.7 ms sweep - and launched a missile on 0 of 24 attempts. It
+ * reported "no battleship was shot down", which was true, and which had nothing
+ * to do with the scoring ruler it was asserting on.
+ */
+const FIRE_HOLD_CYCLES = SAMPLE_CYCLES * 10;
+
+const BOAT_TOP_LANE = 0;
+const BOAT_LEAD_LANE = 2;
+
+/**
+ * Hunt the battleship across several games, one shot per crossing, led by two.
+ *
+ * Separate from the census drive because a boat kill is a low-probability event
+ * that has to be sought rather than encountered: see the comment on the
+ * assertion that uses this. `tools/probe/drives/battleship-lead.ts` is the same
+ * strategy as a standalone instrument and measures 3 kills in 27 crossings.
+ */
+function boatHunt(): { attempts: number; kills: Kill[] } {
+  const kills: Kill[] = [];
+  let attempts = 0;
+  for (const skill of [1, 2, 3] as const) {
+    for (const seed of [0, 1, 2]) {
+      const machine = new Tms1370Machine();
+      machine.setContacts({ skill, lane: seed, fire: false });
+      let score = scoreOf(machine.ram);
+      let firedThisCrossing = false;
+      while (machine.cycles < seconds(300)) {
+        machine.step(SAMPLE_CYCLES);
+        let ram = machine.ram;
+        if ((ram[FILE_STATE * 16 + NIB_STATE] as number) !== 0) break;
+        const seen = scoreOf(ram);
+        if (seen !== score) {
+          machine.step(SETTLE_CYCLES);
+          ram = machine.ram;
+          const settled = scoreOf(ram);
+          const grid = (ram[FILE_STATE * 16 + NIB_KCOL] as number) - 1;
+          if (grid === 0) kills.push({ grid, delta: settled - score, from: score, to: settled });
+          score = settled;
+        }
+        const boat = ram[FILE_STATE * 16 + NIB_BSLANE] as number;
+        if (boat !== BOAT_TOP_LANE) {
+          firedThisCrossing = false;
+          continue;
+        }
+        if (firedThisCrossing || (ram[FILE_STATE * 16 + NIB_MCOL] as number) !== 0) continue;
+        machine.setContacts({ lane: BOAT_LEAD_LANE, fire: true });
+        machine.step(FIRE_HOLD_CYCLES);
+        machine.setContacts({ fire: false });
+        firedThisCrossing = true;
+        attempts += 1;
+      }
+    }
+  }
+  return { attempts, kills };
+}
+
 function aimedDrive(forSeconds: number, aim: Aim, skill = 1): Kill[] {
   const machine = new Tms1370Machine();
   machine.setContacts({ skill, lane: 0, fire: false });
@@ -245,6 +308,16 @@ function aimedDrive(forSeconds: number, aim: Aim, skill = 1): Kill[] {
       wanted = (wanted % 5) + 1;
       const boat = ram[FILE_STATE * 16 + NIB_BSLANE] as number;
       if (preferred >= 0) lane = preferred;
+      // **The boat has to be led.** It descends one lane per 1.29 s and a shot
+      // needs 3.0 s to reach the horizon, so a shot aimed where the boat *is*
+      // arrives more than two lanes late and the census never sees a ten. Firing
+      // at the top lane plus two is the nearest whole lane to the 2.3 the
+      // arithmetic asks for, and it only exists while the boat is at the top -
+      // once it has descended there is no lane left to lead into.
+      //
+      // The boat is deliberately *not* a target here. It can only be hit by
+      // leading it two lanes from the top lane, which is a hunt rather than an
+      // opportunistic shot: `boatHunt` below does that separately.
       else if (boat !== BS_NONE) lane = boat;
       else lane = jets.findIndex((grid) => grid !== 0);
     }
@@ -409,9 +482,23 @@ describe('the printed ruler', () => {
   it('still pays the battleship its ten', () => {
     // `score_bship` is untouched by the distance work. This is the guard that
     // says so from the outside.
-    const boat = census.filter((kill) => kill.grid === 0);
-    expect(boat.length).toBeGreaterThan(0);
-    expect([...new Set(boat.map((kill) => kill.delta))]).toEqual([BOAT_POINTS]);
+    // **Driven separately, because the census cannot reliably reach a boat.**
+    // The battleship has to be led by two lanes - it descends one lane per
+    // 1.29 s and a shot needs 3.0 s to reach the horizon - and it can only be led
+    // from the top lane, which it holds for 1.29 s of a 3.9 s crossing. A shot
+    // fired into that window connects about one time in nine.
+    //
+    // The census sees roughly ten such windows before the drive wins, so it
+    // expects about one kill with wide variance, and it measured zero. That is
+    // not the ruler failing to pay ten; it is a general-purpose drive being
+    // asked to land a low-probability shot a fixed number of times. Hunting the
+    // boat across several games is what the claim actually needs.
+    const boat = boatHunt();
+    expect(boat.attempts, 'the hunt never got a shot into the lead window').toBeGreaterThan(10);
+    expect(boat.kills.length, 'no battleship was shot down in any game').toBeGreaterThan(0);
+    for (const kill of boat.kills) {
+      expect(kill.delta, 'a battleship paid something other than ten').toBe(BOAT_POINTS);
+    }
   });
 
   it.each(REACHABLE)(
