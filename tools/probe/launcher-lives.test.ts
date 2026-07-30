@@ -121,6 +121,17 @@ const HITS_ADDRESS = (() => {
   return value('FILE_STATE') * 16 + value('NIB_HITS');
 })();
 
+/** Where the jets' rocket records the column it is on. Zero means none in flight. */
+const ROCKET_COLUMN_ADDRESS = (() => {
+  const asm = assembleGame();
+  const value = (name: string): number => {
+    const found = asm.symbols.find((definition) => definition.name === name);
+    if (found === undefined) throw new Error(`asm/jetfighter.asm no longer defines ${name}`);
+    return found.value;
+  };
+  return value('FILE_STATE') * 16 + value('NIB_RCOL');
+})();
+
 /** Where `NIB_BSLANE` lives, and the value meaning no crossing is in progress. */
 const BSLANE_ADDRESS = (() => {
   const asm = assembleGame();
@@ -303,6 +314,18 @@ interface Game {
   readonly sounds: readonly Sound[];
   /** The cycle of each sweep on which a jet left the deepest jet cell. */
   readonly departures: readonly number[];
+  /**
+   * The cycle of each sweep on which the jets' rocket was spent.
+   *
+   * Recorded so a launcher loss can be attributed to a rocket **positively**,
+   * by the rocket's own nibble, rather than inferred from the absence of a
+   * capture near it. Inference by absence was safe while a capture only cost a
+   * launcher in the lever's own lane; once a capture costs one in any lane -
+   * `open-questions.md` section 6 - departures became frequent enough that a
+   * genuine rocket loss almost always has one nearby by coincidence, and the
+   * rocket path read as untested when it was merely misattributed.
+   */
+  readonly rocketArrivals: readonly number[];
   /** Whether a missile dart was ever lit anywhere on the playfield. */
   readonly everFired: boolean;
   /**
@@ -356,6 +379,8 @@ function standStill(lane: number): Game {
   machine.setContacts({ skill: 1, lane });
   const edges: SpeakerEdge[] = [];
   const departures: number[] = [];
+  const rocketArrivals: number[] = [];
+  let previousRocketColumn = 0;
   const hits: number[] = [];
   let seenHits = 0;
   let endedAt = 0;
@@ -384,6 +409,13 @@ function standStill(lane: number): Game {
     if (wasDeep && !isDeep) {
       departures.push(machine.cycles);
     }
+    // The rocket's own nibble going back to zero is the shot being spent, which
+    // is the only moment it can take a launcher.
+    const rocketColumn = machine.ram[ROCKET_COLUMN_ADDRESS] as number;
+    if (previousRocketColumn !== 0 && rocketColumn === 0) {
+      rocketArrivals.push(machine.cycles);
+    }
+    previousRocketColumn = rocketColumn;
     wasDeep = isDeep;
     const nowHits = machine.ram[HITS_ADDRESS] as number;
     if (nowHits > seenHits) {
@@ -397,6 +429,7 @@ function standStill(lane: number): Game {
   return {
     sounds: soundsIn(edges),
     departures,
+    rocketArrivals,
     everFired,
     hits,
     endedAt,
@@ -468,6 +501,7 @@ function playingOn(lane: number): Game {
   return {
     sounds: soundsIn(edges),
     departures: [],
+    rocketArrivals: [],
     everFired,
     hits,
     endedAt,
@@ -818,16 +852,27 @@ describe('which mechanism took each launcher, read off the tube', () => {
     // in every lane regardless of which mechanism took which launcher. That is
     // strictly more than the old form asserted - the ladder is now checked in
     // all three lanes rather than in the one that happened to be rocket-only.
+    // **Attributed positively, by the rocket's own nibble.**
+    //
+    // This used to read "a loss with no departure near it", which was safe only
+    // while a capture cost a launcher in the lever's own lane alone. Once a
+    // capture costs one in *any* lane - `open-questions.md` section 6, the rule
+    // the owner settled - departures became frequent enough that a genuine
+    // rocket loss almost always has one within the window by coincidence, and
+    // every lane read as capture-only. The rocket path was being exercised the
+    // whole time and this assertion could not see it.
+    //
+    // `rocketArrivals` records the sweep on which `NIB_RCOL` returned to zero,
+    // which is the shot being spent and the only moment it can take a launcher.
+    // Measured with the settled rule: lanes 0 and 2 lose three launchers to
+    // captures, lane 1 loses two and one to a rocket, at every skill.
     const byRocket = LEVERS.flatMap(({ detent, lane }) => {
       const game = gameFor(lane);
       return launcherLosses(game)
-        .filter(
-          (loss) =>
-            !game.departures.some(
-              (departure) =>
-                departure - loss >= -CAPTURE_LEAD_CYCLES &&
-                departure - loss <= CAPTURE_WINDOW_CYCLES,
-            ),
+        .filter((loss) =>
+          game.rocketArrivals.some(
+            (arrival) => loss - arrival >= 0 && loss - arrival <= CAPTURE_WINDOW_CYCLES,
+          ),
         )
         .map((atCycle) => `${detent} at ${atCycle}`);
     });
