@@ -544,19 +544,86 @@
 ; floor is 32. Thinning the squadron walks it down six rungs and the dial
 ; another four, so both terms matter and neither can pin it on its own.
 ;
-; **The rungs do not bracket the measurement, and the constants below are
-; deliberately left as they are.** At the measured sweep of 15.24 ms
-; (SWEEP_INSTRUCTIONS = 889 over the provisional CYCLE_HZ - see
-; `docs/research/mp2110-timing-measurement.md` before treating any ms figure
-; here as settled) the top rung is 2438 ms against the ~2040 ms slowest march
-; the evidence gives, and the floor is 488 ms against the 205 ms the unit was
-; never observed to beat. The figures this replaces - "144 sweeps = 1989 ms" and
-; "16 sweeps = 221 ms" - dropped the low nibble *and* converted at 13.81 ms a
-; sweep, which is not this machine's sweep; the two errors partly cancelled and
-; the ladder read as though it sat inside the evidence. Moving STEP_HI_MAX or
-; STEP_HI_MIN is a gameplay change and belongs to whoever owns the cadence
-; ladder, not to the control-flow fix that surfaced the arithmetic.
-.EQU STEP_HI_MAX,    9          ; skill 1, full squadron: 160 sweeps, 2438 ms
+; The figures this replaces - "144 sweeps = 1989 ms" and "16 sweeps = 221 ms" -
+; dropped the low nibble *and* converted at 13.81 ms a sweep, which is not this
+; machine's sweep; the two errors partly cancelled and the ladder read as though
+; it sat inside the evidence.
+;
+; **STEP_HI_MAX was 9 and is now 7, because the owner reported the slowest dial
+; setting as too slow and the measurement agreed with him.**
+;
+; What settled it, and why this is a faithfulness change rather than a
+; preference. `docs/evidence/timing-analysis.md` row T1 measures the physical
+; unit's **slowest steady march at 2.033 and 2.050 s**, frame-stepped from
+; `IMG_6113.mov` at t=64.4 and t=90.2. The top rung at STEP_HI_MAX 9 is 160
+; sweeps, 2438 ms nominal - and **2724 ms as actually played**, pooled over five
+; drives at skill 1 with a full squadron. **70% of skill-1 march steps were
+; slower than the slowest march the unit was ever observed to make.**
+;
+; It had never been checked against that row. The figure quoted in its favour -
+; "2.51 s against 2438 ms nominal" - compared the implementation against its own
+; constant, which is circular, and was measured on an *idle* drive: the condition
+; a player is never in. This comment block already conceded the mismatch in the
+; sentence "the top rung is 2438 ms against the ~2040 ms slowest march the
+; evidence gives" while leaving the constant alone.
+;
+; **8, and not the 7 this change first proposed.** T1 is the *slowest* march
+; observed, so it is a ceiling and any rung above it is defensible; what picks
+; between them is what each costs elsewhere. Measured over six pooled games at
+; each value, aiming always at the furthest jet:
+;
+;   rung | top rung measured | vs T1 | steps slower than T1 | kills on grid 1
+;      9 | 2812 ms           | +38%  | 70%                  | 12%
+;      8 | 2390 ms           | +17%  | 50%                  | 10%
+;      7 | 2307 ms           | +13%  | 41%                  |  2%
+;
+; **7 buys nine points of pace and costs the ruler's top band.** Grid 1 is the
+; `3` on the printed overlay, and at 7 it collapses to 2% of kills because the
+; shot needs about 2 s to cross four cells while the march steps every 2.3 s - a
+; jet has left grid 1 before the missile arrives. 8 keeps it at 10% against 12%.
+;
+; **And the rungs are not evenly spaced in practice.** 8 and 7 are 244 ms apart
+; nominally and **83 ms apart measured**, because a faster march sounds its beep
+; more often and each beep suspends the sweep. This change first chose 7 by
+; extrapolating a ratio measured at rung 9, which is the mistake its own closing
+; paragraph warns against.
+;
+; Those two are *idle* figures, and idle is the only condition in which this rung
+; can be sampled at all: in a played game the player scores before two
+; consecutive steps happen at kills 0, so the rung holds 29% of game time and
+; yields no clean interval. **Quoting an idle number as though it were what a
+; player feels is the mistake that let the old constant stand** - see the
+; paragraph above - so it is named as one here rather than hidden.
+;
+; **The ratio of measured to nominal is a calibration, not a constant, and it
+; expires.** It is **1.18** on this ROM, and it is entirely a function of how much
+; sound a game makes, because the countdown is in sweeps and the core cannot
+; strobe while it bit-bangs the speaker. **The missile rank the owner describes -
+; one shot per lane, up to three in flight - raises the sound density and will
+; slow the played march again, back toward the figure he complained about. This
+; ratio must be re-derived once that lands**, and it is an acceptance criterion on
+; that branch rather than a note here.
+;
+; One second-order effect to know before re-deriving it: **speeding the march up
+; raises the march-beep rate, which suspends more sweeps, which slows the played
+; march.** The ladder partly resists being sped up, so the next change to these
+; constants should be measured rather than extrapolated.
+;
+; **The ladder delivers five rungs from thinning, not six, and that is
+; structural.** NIB_KILLS runs 0..6, but the sixth kill clears the wave, so
+; `kills = 6` never survives to a march: measured at **0 steps and 0% of game
+; time across ten drives**. Reaching it needs a change to the wave-clear path,
+; which is not worth the collision risk while that file region is in flight. The
+; range that actually runs is 0..5, and the constants above are chosen for it.
+;
+; At the measured sweep of 15.24 ms (SWEEP_INSTRUCTIONS = 889 over the
+; provisional CYCLE_HZ - see `docs/research/mp2110-timing-measurement.md` before
+; treating any ms figure here as settled) the floor is still 488 ms against the
+; 205 ms the unit was never observed to beat. **STEP_HI_MIN is left alone**: the
+; floor is reached only at skill 3 with a thinned squadron, nobody has reported
+; it, and moving two ends of a ladder at once makes neither attributable.
+.EQU STEP_HI_MAX,    8          ; skill 1, full squadron: 144 sweeps, 2195 ms
+                                ;   nominal, 2390 ms measured. Was 9 - see above.
 .EQU STEP_HI_MIN,    1          ; the floor: 32 sweeps, 488 ms
 .EQU STEP_SKILL,     2          ; rungs the dial is worth, per notch
 
