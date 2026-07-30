@@ -751,6 +751,22 @@ the "every sound, march or not" pair that remains exposed.
 
 ### 11a. The general form: a timing change can invalidate a drive's premise silently
 
+**If you read one paragraph of this section, read this one. Revert the fix and watch the
+test pass.**
+
+That is the only technique on this run with a hit rate against the hazard below, and it
+found two of the four instances - including one in an assertion written *specifically* to
+catch this class, by someone who had spent the day finding the other three. Take a test you
+believe covers a defect, undo the fix in the ROM, and run it. If it still passes, it never
+covered the defect, and you have learned that in thirty seconds.
+
+Nothing else has worked. The hazard is invisible to reading, because the assertions are
+correct. It is invisible to coverage, because the addresses are all legal. It is invisible
+to CI, because nothing goes red. Reverting the fix is the only move that asks the question
+directly.
+
+---
+
 The blanking pair above is one instance of something worth naming, because this run
 produced four of them in a day and none announced itself.
 
@@ -791,8 +807,10 @@ the run ends, or about what it will encounter before it does, stopped being true
 fourth is the sharpest form of it, because it cannot be fixed by widening a window: the
 premise is about an outcome rather than about a duration.
 
-**What to do about it is not settled, and this section is not a solution.** The one
-technique that has worked is the precondition assertion - if a test needs a precondition
+**What to do about it is not settled, and this section is not a solution.** Reverting the
+fix finds an instance once you suspect one; it does not tell you which drive to suspect.
+The one technique that prevents rather than detects is the precondition assertion - if a
+test needs a precondition
 to be meaningful, assert the precondition out loud as its own named test, so it fails
 loudly instead of the real assertion passing quietly. `launcher-lives.test.ts` carries one
 now (*"ends the game while the boat is still crossing, or this proves nothing"*), and
