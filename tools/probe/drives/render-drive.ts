@@ -30,6 +30,21 @@
 // with the application. `frame()` does not offer the choice - see
 // `docs/evidence/playability-audit.md` section 8 for the afternoon that
 // established why.
+//
+// ## One divergence this cannot paper over: the first 10 ms
+//
+// `Board.getLitSegments()` falls back to `sampleFrame()` - the duty accrued so
+// far in the frame *in progress* - while `display.frameCount === 0`, so the very
+// first sweep is shown as it accumulates rather than as nothing.
+// `Tms1370Machine.getLitSegments()` has no such fallback and reports an empty
+// frame until the first sweep completes. **So a drive of the first ~20 ms after
+// power-on models a different tube from the browser's.**
+//
+// That window is not empty of interest. `NIB_BSLANE` reads 0 - "boat in lane 0"
+// - for about 10 ms before the ROM writes `BS_NONE`, and the first lit cell does
+// not appear until 21.9 ms. Two known anomalies live in the same window this
+// harness models incorrectly, so a drive that means to examine power-on should
+// read `Board` directly rather than trusting `frame()` there.
 
 import { CYCLE_HZ } from '../../../src/machine/cpu/tms1370/timing.js';
 import { createFakeContext } from '../../../src/machine/tube/fake-canvas.js';
