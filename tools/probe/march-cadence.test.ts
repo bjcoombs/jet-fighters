@@ -298,10 +298,18 @@ describe('the squadron keeps its march cadence across a launcher loss', () => {
       it('holds the ladder value across the capture, rather than dropping to the floor', () => {
         // The assertion the defect fails. Pre-fix this reported 16 for the
         // interval spanning each non-terminal capture, against a top rung of 160.
-        for (const spanning of intervalsSpanningACapture(game())) {
+        //
+        // Each of the three assertions here counts what it is about before
+        // quantifying over it. A `for` over an empty list and a `toEqual` against
+        // a self-derived array both pass while asserting nothing, and a test that
+        // goes green because its subject vanished is the failure mode this whole
+        // run keeps finding - including in the rocket-lane check this PR repairs.
+        const spanning = intervalsSpanningACapture(game());
+        expect(spanning.length, 'intervals spanning a capture').toBeGreaterThan(0);
+        for (const span of spanning) {
           expect(
-            spanning.sweeps,
-            `sweeps between the march steps either side of the capture at sweep ${spanning.atCycleSweep}`,
+            span.sweeps,
+            `sweeps between the march steps either side of the capture at sweep ${span.atCycleSweep}`,
           ).toBe(LADDER_TOP_SWEEPS);
         }
       });
@@ -310,15 +318,17 @@ describe('the squadron keeps its march cadence across a launcher loss', () => {
         // The same rule stated over every step rather than only the ones next to
         // a capture, which is what the invariant actually is: nothing in a game
         // where no jet was shot may change the squadron's cadence.
-        expect(intervals(game())).toEqual(
-          intervals(game()).map(() => LADDER_TOP_SWEEPS),
-        );
+        const measured = intervals(game());
+        expect(measured.length, 'march intervals measured').toBeGreaterThan(0);
+        expect(measured).toEqual(measured.map(() => LADDER_TOP_SWEEPS));
       });
 
       it('never takes a step the cadence ladder cannot ask for', () => {
         // The rule from underneath, and the form that survives a ladder change:
         // no interval may be shorter than the shortest rung, whatever the rung.
-        for (const interval of intervals(game())) {
+        const measured = intervals(game());
+        expect(measured.length, 'march intervals measured').toBeGreaterThan(0);
+        for (const interval of measured) {
           expect(interval, 'sweeps between two march steps').toBeGreaterThanOrEqual(
             LADDER_FLOOR_SWEEPS,
           );
