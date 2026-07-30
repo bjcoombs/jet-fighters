@@ -58,9 +58,9 @@
 // drive. `aimedDrive` steps `SETTLE_CYCLES` past the write before believing a
 // change, which is why every delta below is a single number and not a pair.
 
-import { beforeAll, describe, expect, it } from 'vitest';
-import { CYCLE_HZ } from '../../src/machine/cpu/tms1370/timing.js';
-import { Tms1370Machine } from './tms1370-probe.js';
+import { beforeAll, describe, expect, it } from "vitest";
+import { CYCLE_HZ } from "../../src/machine/cpu/tms1370/timing.js";
+import { Tms1370Machine } from "./tms1370-probe.js";
 
 /** `FILE_STATE`, `FILE_TIME` and `FILE_JETS`, from the RAM map in the ROM source. */
 const FILE_STATE = 4;
@@ -102,7 +102,13 @@ const SETTLE_CYCLES = 600;
  * the last named band extends to G. The derivation from tick positions to these
  * numbers is beside `SCORE_JET` in `asm/jetfighter.asm`.
  */
-const RULER_POINTS: Readonly<Record<number, number>> = { 1: 3, 2: 2, 3: 1, 4: 1, 5: 1 };
+const RULER_POINTS: Readonly<Record<number, number>> = {
+  1: 3,
+  2: 2,
+  3: 1,
+  4: 1,
+  5: 1,
+};
 
 /** The battleship's own tick, on grid 0. Shipped in #116 and not this file's subject. */
 const BOAT_POINTS = 10;
@@ -139,7 +145,9 @@ function scoreOf(ram: Uint8Array): number {
  * `only` waits for a jet standing on one named column and shoots nothing else,
  * which is how a single column's value is measured on its own.
  */
-type Aim = { readonly kind: 'roundRobin' } | { readonly kind: 'only'; readonly column: number };
+type Aim =
+  | { readonly kind: "roundRobin" }
+  | { readonly kind: "only"; readonly column: number };
 
 /**
  * Play the game, aiming, and record every scoring event with the cell it came
@@ -202,7 +210,13 @@ function boatHunt(): { attempts: number; kills: Kill[] } {
           ram = machine.ram;
           const settled = scoreOf(ram);
           const grid = (ram[FILE_STATE * 16 + NIB_KCOL] as number) - 1;
-          if (grid === 0) kills.push({ grid, delta: settled - score, from: score, to: settled });
+          if (grid === 0)
+            kills.push({
+              grid,
+              delta: settled - score,
+              from: score,
+              to: settled,
+            });
           score = settled;
         }
         const boat = ram[FILE_STATE * 16 + NIB_BSLANE] as number;
@@ -210,7 +224,11 @@ function boatHunt(): { attempts: number; kills: Kill[] } {
           firedThisCrossing = false;
           continue;
         }
-        if (firedThisCrossing || (ram[FILE_STATE * 16 + NIB_MCOL] as number) !== 0) continue;
+        if (
+          firedThisCrossing ||
+          (ram[FILE_STATE * 16 + NIB_MCOL] as number) !== 0
+        )
+          continue;
         machine.setContacts({ lane: BOAT_LEAD_LANE, fire: true });
         machine.step(FIRE_HOLD_CYCLES);
         machine.setContacts({ fire: false });
@@ -233,7 +251,7 @@ const ST_WIN = 2;
  * docs/evidence/open-questions.md is the list of what happens when that
  * distinction is left implicit.
  */
-type Ending = 'lost' | 'won' | 'clock';
+type Ending = "lost" | "won" | "clock";
 
 interface Drive {
   kills: Kill[];
@@ -245,7 +263,7 @@ function aimedDrive(forSeconds: number, aim: Aim, skill = 1): Drive {
   machine.setContacts({ skill, lane: 0, fire: false });
 
   const kills: Kill[] = [];
-  let ended: Ending = 'clock';
+  let ended: Ending = "clock";
   let score = -1;
   let releaseFireAt = -1;
   let pressFireAt = -1;
@@ -259,7 +277,7 @@ function aimedDrive(forSeconds: number, aim: Aim, skill = 1): Drive {
     // A game that has ended stops scoring, so there is nothing left to measure.
     const state = ram[FILE_STATE * 16 + NIB_STATE] as number;
     if (state !== 0) {
-      ended = state === ST_WIN ? 'won' : state === ST_OVER ? 'lost' : 'clock';
+      ended = state === ST_WIN ? "won" : state === ST_OVER ? "lost" : "clock";
       break;
     }
 
@@ -300,13 +318,16 @@ function aimedDrive(forSeconds: number, aim: Aim, skill = 1): Drive {
     // This is not making the drive good at the game; it is stopping it standing
     // still in front of the one thing that can end the run.
     if ((ram[FILE_STATE * 16 + NIB_MCOL] as number) !== 0) {
-      const inbound = [0, 1, 2].map((lane) => ram[FILE_JETS * 16 + lane] as number);
+      const inbound = [0, 1, 2].map(
+        (lane) => ram[FILE_JETS * 16 + lane] as number,
+      );
       const rocketLane =
         (ram[FILE_STATE * 16 + NIB_RCOL] as number) !== 0
           ? (ram[FILE_STATE * 16 + NIB_RLANE] as number)
           : -1;
       const safe = [0, 1, 2].find(
-        (lane) => (inbound[lane] as number) < DODGE_DEPTH && lane !== rocketLane,
+        (lane) =>
+          (inbound[lane] as number) < DODGE_DEPTH && lane !== rocketLane,
       );
       if (safe !== undefined) machine.setContacts({ lane: safe });
       continue;
@@ -321,7 +342,7 @@ function aimedDrive(forSeconds: number, aim: Aim, skill = 1): Drive {
 
     const jets = [0, 1, 2].map((lane) => ram[FILE_JETS * 16 + lane] as number);
     let lane: number;
-    if (aim.kind === 'only') {
+    if (aim.kind === "only") {
       lane = jets.indexOf(aim.column);
     } else {
       // Preferred column first so the drive covers the field, then the boat
@@ -435,7 +456,7 @@ function untilTheWin(kills: readonly Kill[]): {
   return { scored: kills.slice(0, at), capped: kills[at] as Kill };
 }
 
-describe('the printed ruler', () => {
+describe("the printed ruler", () => {
   // The census runs in a hook rather than in the describe body so that it is
   // covered by DRIVE_TIMEOUT_MS. Evaluated inline it runs during collection,
   // where the per-test timeout does not reach it and the default hook budget of
@@ -447,7 +468,7 @@ describe('the printed ruler', () => {
   let ending: Ending;
 
   beforeAll(() => {
-    const run = aimedDrive(CENSUS_SECONDS, { kind: 'roundRobin' });
+    const run = aimedDrive(CENSUS_SECONDS, { kind: "roundRobin" });
     drive = run.kills;
     ending = run.ended;
     ({ scored: census, capped } = untilTheWin(drive));
@@ -463,11 +484,11 @@ describe('the printed ruler', () => {
   // Only "not the clock" is pinned. Which *game* ending it reaches is pacing and
   // is documented as unstable on `untilTheWin` above: the same drive has both
   // won and lost across changes that did not touch scoring at all.
-  it('ends by playing the game out, not by running out of clock', () => {
-    expect(ending).not.toBe('clock');
+  it("ends by playing the game out, not by running out of clock", () => {
+    expect(ending).not.toBe("clock");
   });
 
-  it('truncates nothing, or truncates exactly the winning add', () => {
+  it("truncates nothing, or truncates exactly the winning add", () => {
     // Both branches assert something about the *drive*, which is the thing that
     // can change. An earlier version asserted `census` equals `drive` on the
     // no-win branch, and that was tautological - `untilTheWin` returns the same
@@ -485,12 +506,13 @@ describe('the printed ruler', () => {
     expect(capped.to).toBe(WIN_SCORE);
     expect(census.length).toBe(drive.length - 1);
     // The truncation may only ever shorten an add that would have overshot.
-    const full = capped.grid === 0 ? BOAT_POINTS : (RULER_POINTS[capped.grid] as number);
+    const full =
+      capped.grid === 0 ? BOAT_POINTS : (RULER_POINTS[capped.grid] as number);
     expect(capped.from + full).toBeGreaterThanOrEqual(WIN_SCORE);
     expect(capped.delta).toBeLessThanOrEqual(full);
   });
 
-  it('scores enough to be worth reading', () => {
+  it("scores enough to be worth reading", () => {
     // Not the assertion - the guard on it. Every test below is vacuously true
     // over an empty drive, and a drive that stops scoring is exactly what a
     // regression in the missile or the march would produce.
@@ -503,57 +525,82 @@ describe('the printed ruler', () => {
     expect(new Set(census.map((kill) => kill.grid)).size).toBeGreaterThan(1);
   });
 
-  it('pays a jet exactly the ruler value for the column it died in', () => {
+  it("pays a jet exactly the ruler value for the column it died in", () => {
     const wrong = census
       .filter((kill) => kill.grid !== 0)
       .filter((kill) => kill.delta !== RULER_POINTS[kill.grid]);
     expect(
-      wrong.map((kill) => `grid ${kill.grid} scored +${kill.delta}, ruler says +${RULER_POINTS[kill.grid]}`),
+      wrong.map(
+        (kill) =>
+          `grid ${kill.grid} scored +${kill.delta}, ruler says +${RULER_POINTS[kill.grid]}`,
+      ),
     ).toEqual([]);
   });
 
-  it('never scores a value the ruler does not name', () => {
+  it("never scores a value the ruler does not name", () => {
     const unnamed = [...new Set(census.map((kill) => kill.delta))].filter(
       (delta) => !RULER_VALUES.has(delta),
     );
     expect(unnamed).toEqual([]);
   });
 
-  it('still pays the battleship its ten', () => {
-    // `score_bship` is untouched by the distance work. This is the guard that
-    // says so from the outside.
-    // **Driven separately, because the census cannot reliably reach a boat.**
-    // The battleship has to be led by two lanes - it descends one lane per
-    // 1.29 s and a shot needs 3.0 s to reach the horizon - and it can only be led
-    // from the top lane, which it holds for 1.29 s of a 3.9 s crossing. A shot
-    // fired into that window connects about one time in nine.
-    //
-    // The census sees roughly ten such windows before the drive wins, so it
-    // expects about one kill with wide variance, and it measured zero. That is
-    // not the ruler failing to pay ten; it is a general-purpose drive being
-    // asked to land a low-probability shot a fixed number of times. Hunting the
-    // boat across several games is what the claim actually needs.
-    const boat = boatHunt();
-    expect(boat.attempts, 'the hunt never got a shot into the lead window').toBeGreaterThan(10);
-    expect(boat.kills.length, 'no battleship was shot down in any game').toBeGreaterThan(0);
-    for (const kill of boat.kills) {
-      expect(kill.delta, 'a battleship paid something other than ten').toBe(BOAT_POINTS);
-    }
-  });
+  // Nine 300 s games, so it needs the drive budget rather than the 5 s default:
+  // it cost 4.4 s locally and 15.3 s on CI, which is how it went green here and
+  // red there.
+  it(
+    "still pays the battleship its ten",
+    () => {
+      // `score_bship` is untouched by the distance work. This is the guard that
+      // says so from the outside.
+      // **Driven separately, because the census cannot reliably reach a boat.**
+      // The battleship has to be led by two lanes - it descends one lane per
+      // 1.29 s and a shot needs 3.0 s to reach the horizon - and it can only be led
+      // from the top lane, which it holds for 1.29 s of a 3.9 s crossing. A shot
+      // fired into that window connects about one time in nine.
+      //
+      // The census sees roughly ten such windows before the drive wins, so it
+      // expects about one kill with wide variance, and it measured zero. That is
+      // not the ruler failing to pay ten; it is a general-purpose drive being
+      // asked to land a low-probability shot a fixed number of times. Hunting the
+      // boat across several games is what the claim actually needs.
+      const boat = boatHunt();
+      expect(
+        boat.attempts,
+        "the hunt never got a shot into the lead window",
+      ).toBeGreaterThan(10);
+      expect(
+        boat.kills.length,
+        "no battleship was shot down in any game",
+      ).toBeGreaterThan(0);
+      for (const kill of boat.kills) {
+        expect(kill.delta, "a battleship paid something other than ten").toBe(
+          BOAT_POINTS,
+        );
+      }
+    },
+    DRIVE_TIMEOUT_MS,
+  );
 
   it.each(REACHABLE)(
-    'pays the ruler value for an aimed kill on grid %i',
+    "pays the ruler value for an aimed kill on grid %i",
     (column) => {
-      const kills = untilTheWin(aimedDrive(COLUMN_SECONDS, { kind: 'only', column }).kills).scored;
+      const kills = untilTheWin(
+        aimedDrive(COLUMN_SECONDS, { kind: "only", column }).kills,
+      ).scored;
       const here = kills.filter((kill) => kill.grid === column);
-      expect(here.length, `no jet was killed on grid ${column}`).toBeGreaterThan(0);
-      expect([...new Set(here.map((kill) => kill.delta))]).toEqual([RULER_POINTS[column]]);
+      expect(
+        here.length,
+        `no jet was killed on grid ${column}`,
+      ).toBeGreaterThan(0);
+      expect([...new Set(here.map((kill) => kill.delta))]).toEqual([
+        RULER_POINTS[column],
+      ]);
     },
     DRIVE_TIMEOUT_MS,
   );
 
   it(
-    'either cannot kill on grid 5 at all, or pays the ruler value there too',
+    "either cannot kill on grid 5 at all, or pays the ruler value there too",
     () => {
       // Both branches assert, and the branch taken is a statement about the
       // missile rather than about scoring.
@@ -566,7 +613,7 @@ describe('the printed ruler', () => {
       // window in which the row is unasserted. It cannot pass by finding no
       // kills unless finding no kills is itself the current, stated truth.
       const kills = untilTheWin(
-        aimedDrive(COLUMN_SECONDS, { kind: 'only', column: UNREACHABLE }).kills,
+        aimedDrive(COLUMN_SECONDS, { kind: "only", column: UNREACHABLE }).kills,
       ).scored;
       const here = kills.filter((kill) => kill.grid === UNREACHABLE);
       if (here.length === 0) {
@@ -575,7 +622,9 @@ describe('the printed ruler', () => {
         expect(here).toEqual([]);
         return;
       }
-      expect([...new Set(here.map((kill) => kill.delta))]).toEqual([RULER_POINTS[UNREACHABLE]]);
+      expect([...new Set(here.map((kill) => kill.delta))]).toEqual([
+        RULER_POINTS[UNREACHABLE],
+      ]);
     },
     DRIVE_TIMEOUT_MS,
   );

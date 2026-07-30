@@ -461,9 +461,15 @@ describe('a rocket can reach the launcher in any of the three lanes', () => {
       //
       // This is section 11a of docs/evidence/open-questions.md in its purest
       // form. The assertion did not break; its drive stopped reaching the case.
-      const dodged = SKILLS.flatMap((skill) =>
-        [0, 1, 2].map((lever) => ({ skill, lever, ...parkedGame(skill, lever, 45, true) })),
-      );
+      // One dodging run per skill rather than one per lever: all three levers
+      // produce the identical lane sequence at a given skill, because dodging
+      // makes the starting lane irrelevant within a second. Nine of these cost
+      // more than the 30 s budget allows on CI and buy nothing.
+      const dodged = SKILLS.map((skill) => ({
+        skill,
+        lever: 0,
+        ...parkedGame(skill, 0, 45, true),
+      }));
 
       const flown = [...new Set(dodged.flatMap((game) => game.lanes))].sort();
       expect(flown, 'the rotor did not reach every lane').toEqual([0, 1, 2]);
