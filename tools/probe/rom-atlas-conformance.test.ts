@@ -42,7 +42,7 @@
 //
 // Node-side test: no DOM, no browser globals.
 
-import { describe, it, expect } from 'vitest';
+import { beforeAll, describe, it, expect } from 'vitest';
 import { CAPTURE_WINDOW_CYCLES } from '../../src/machine/board/tms1370-cadence.js';
 import { Tms1370Machine } from './tms1370-probe.js';
 import { loadAtlas, getSegmentByAddress } from '../../src/machine/tube/atlas.js';
@@ -92,6 +92,19 @@ interface Scenario {
    *
    * A longer `sweeps` does not help, because the *game* ends rather than the
    * clock. The scenario has to aim.
+   *
+   * **This costs no reproducibility, and that is a property of this machine
+   * rather than a judgement.** The objection to a closed-loop scenario is that
+   * it makes a run depend on state and so on chance. **v3 has no chance in it:**
+   * `NIB_RAND` does not exist, `rocket_fire` and `jet_enter` both take their
+   * lane from a plain round robin that nothing on the input path touches, and
+   * the same drive run twice produces an identical lane sequence. A scenario
+   * reading machine state is therefore exactly as reproducible as one reading
+   * only the sweep number.
+   *
+   * That was not true of v2, where `NIB_RAND` sampled the free-running timer on
+   * the sweep the player pressed fire, so the objection is worth answering here
+   * rather than re-litigating.
    */
   readonly lever: (sweep: number, machine: Tms1370Machine) => Lane;
   readonly fire: (sweep: number) => boolean;
@@ -429,7 +442,27 @@ function sweepScenarios(): Coverage {
 
 const atlas = loadAtlas();
 const atlasSegments = atlas.segments;
-const coverage = sweepScenarios();
+/**
+ * Budget for the coverage search, in wall-clock milliseconds.
+ *
+ * **The search runs in a hook rather than at module scope so that this bound
+ * applies to it.** Evaluated at import time it is outside every per-test
+ * timeout, and a search that slows down does not fail - it starves whatever
+ * Vitest is running in parallel, so four unrelated files time out and look
+ * broken while this one stays green. That happened here: a badly-playing lever
+ * took the search from 49 s to 246 s and took `render-fidelity`, `launcher-lives`
+ * and `tms1370-rom` down with it, none of which had anything wrong.
+ *
+ * A slow test does not fail, it makes other tests fail. Bounded here, this file
+ * names itself instead.
+ */
+const SEARCH_BUDGET_MS = 240_000;
+
+let coverage: Coverage;
+
+beforeAll(() => {
+  coverage = sweepScenarios();
+}, SEARCH_BUDGET_MS);
 
 /** Per family, the grids and plates the atlas actually defines it on. */
 function atlasBy(pick: (grid: number, plate: number) => number): Map<string, number[]> {
