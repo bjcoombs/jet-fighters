@@ -525,13 +525,35 @@ end the jingle on its peak would fail. Verified by mutation: pointing `gw_last` 
 
 **Faithful, and it is the ROM ignoring input rather than the emulator stopping.** After an
 ending, working the lever and the fire button for two emulated seconds leaves `NIB_STATE`
-at `ST_WIN`, the score at 199, and produces **zero speaker edges**. The machine is running
-and choosing to do nothing: `tick` branches to `tk_ended` for anything above `ST_PLAY`, and
-`Board.running` is `power.isOn` and nothing else, so no layer above the ROM has halted.
+at `ST_WIN` and the score at 199. The machine is running and choosing to do nothing: `tick`
+branches to `tk_ended` for anything above `ST_PLAY`, and `Board.running` is `power.isOn` and
+nothing else, so no layer above the ROM has halted.
 
 A core reset - what the on-screen power switch does - returns `NIB_STATE` to `ST_PLAY` and
 the score to 0, so **the unit is not stuck**. That is `docs/prd/jet-fighters-v1.md:30`'s
 back-label rule, power-cycle to start a new game, wired as v1 line 168 describes.
+
+**But the ending is not always silent, and that part is a real defect rather than a faithful
+freeze.** An earlier draft of this section said an ending "produces zero speaker edges",
+measured with the lever parked in lane 0 at skill 1. That reading was true of the run it
+came from and not of the machine: it was one of the cases where no battleship happened to be
+crossing. Driving all nine parked-lever combinations of skill and lane:
+
+| ending lands... | runs | speaker edges in the 4 s after the ending |
+| --------------- | ---- | ----------------------------------------- |
+| with no boat on the glass | 7 of 9 | 0 |
+| **during a crossing** | **2 of 9** (skill 2 lane 2, skill 3 lane 0) | **632 and 629** |
+
+The buzz is ticked from `strobe` on every O strobe, and once `tick` takes its `tk_ended` arm
+it never reaches `tick_bship` again to run the crossing down - so a game that ends mid
+crossing buzzes for as long as the machine is left switched on. The capture-rule work found
+this independently and fixes it by clearing `NIB_BUZZ` and `NIB_BPHASE` at the top of
+`game_win` and `game_lost`; the numbers above were measured before that change.
+
+**The lesson is the same one section 8a's assertion exists for.** "Zero edges" was measured
+from one drive and stated as a property of the machine. It took two more drives out of nine
+to contradict it. A property claimed about an ending has to be measured across the states
+the machine can be in when it ends, not the state it happened to be in once.
 
 ### 8d. "The screen flashes" - one blank, not a flicker
 

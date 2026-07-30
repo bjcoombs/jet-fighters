@@ -234,6 +234,22 @@ describe('the win jingle', () => {
     // `tk_ended` branches straight to `render` in a finished game, so nothing
     // should follow the jingle. Without this the assertions below would be about
     // wherever the capture window happened to stop.
+    //
+    // This is not unconditionally true of the ROM as it stands, and the exposure
+    // is worth naming rather than discovering later. The battleship buzz is
+    // ticked from `strobe` on every O strobe, and once `tick` takes its
+    // `tk_ended` arm it never reaches `tick_bship` again to run the crossing
+    // down - so an ending that lands *during* a crossing buzzes for as long as
+    // the machine is left on. Measured over the nine parked-lever combinations
+    // of skill and lane, two of them end mid crossing and produce ~630 edges in
+    // the four seconds afterwards where the other seven produce none.
+    //
+    // This drive is not one of those: it wins early, with no boat on the glass.
+    // That is luck rather than design, and the assertion is kept pointing at the
+    // right thing anyway - silence after an ending is what the machine should do,
+    // and the capture-rule work clears `NIB_BUZZ` and `NIB_BPHASE` at the top of
+    // `game_win` to make it true in every case. If this ever fails because the
+    // win drifted into a crossing, the buzz is the bug, not this expectation.
     expect(jingle.silentAfter, 'the speaker went quiet after the jingle').toBe(true);
   });
 
