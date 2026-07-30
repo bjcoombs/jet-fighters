@@ -67,6 +67,8 @@ const FILE_STATE = 4;
 const FILE_TIME = 5;
 const FILE_JETS = 6;
 const NIB_MCOL = 5;
+const NIB_RCOL = 7;
+const NIB_RLANE = 8;
 const NIB_BSLANE = 9;
 const NIB_STATE = 11;
 const NIB_KCOL = 14;
@@ -148,6 +150,15 @@ type Aim = { readonly kind: 'roundRobin' } | { readonly kind: 'only'; readonly c
  * edge because the ROM reads the lever and the button in the same sweep and
  * `tick_fire` is edge triggered on the button.
  */
+/**
+ * How close a jet has to be before the drive steps out of its lane.
+ *
+ * Grid 5 is the cell in front of the launcher and grid 4 the one before it, so
+ * four is "arriving next step or the one after". Lower would dodge shadows and
+ * cost aiming time; higher would step aside too late to matter.
+ */
+const DODGE_DEPTH = 4;
+
 function aimedDrive(forSeconds: number, aim: Aim, skill = 1): Kill[] {
   const machine = new Tms1370Machine();
   machine.setContacts({ skill, lane: 0, fire: false });
@@ -187,8 +198,33 @@ function aimedDrive(forSeconds: number, aim: Aim, skill = 1): Kill[] {
       releaseFireAt = -1;
     }
     if (releaseFireAt > 0) continue;
-    // One missile at a time, so there is no point pressing fire while one flies.
-    if ((ram[FILE_STATE * 16 + NIB_MCOL] as number) !== 0) continue;
+    // One missile at a time, so there is no point pressing fire while one flies
+    // - but there is every point in moving the lever, and leaving it parked is
+    // what made this drive suicidal once the missile flew at its measured speed.
+    //
+    // The lever aims *and* defends: a jet crossing the G line costs a launcher
+    // only in the lane the lever is standing in, so parking it on the lane just
+    // fired at is standing exactly where the capture lands. At 28 ms a column
+    // the shot was gone before that mattered. At 500 ms it is in flight for two
+    // and a half seconds, and the drive died with 15 scoring events where it
+    // used to reach 58 - the same at 240 s, 480 s and 720 s, because it was
+    // dying rather than running out of clock.
+    //
+    // So while a shot flies, step out of the way of anything about to arrive.
+    // This is not making the drive good at the game; it is stopping it standing
+    // still in front of the one thing that can end the run.
+    if ((ram[FILE_STATE * 16 + NIB_MCOL] as number) !== 0) {
+      const inbound = [0, 1, 2].map((lane) => ram[FILE_JETS * 16 + lane] as number);
+      const rocketLane =
+        (ram[FILE_STATE * 16 + NIB_RCOL] as number) !== 0
+          ? (ram[FILE_STATE * 16 + NIB_RLANE] as number)
+          : -1;
+      const safe = [0, 1, 2].find(
+        (lane) => (inbound[lane] as number) < DODGE_DEPTH && lane !== rocketLane,
+      );
+      if (safe !== undefined) machine.setContacts({ lane: safe });
+      continue;
+    }
 
     if (pressFireAt > 0 && machine.cycles >= pressFireAt) {
       machine.setContacts({ fire: true });
