@@ -41,6 +41,17 @@ need a row and a column each - four nibbles.
 `jet_enter` writes `GRID_COL_FIRST` and marches inward, so every plane currently
 enters at the same place.
 
+**4. A plane can change lane mid-flight.** Owner testimony, added 2026-08-25 from
+`assets/reference/jetfighters-video.mov`, watching the physical unit: **at most two
+jets approach at once**, and as they march toward the launcher they change row -
+not only their entry row, which point 3 already covers, but their row *during* the
+march. This is additional to, not instead of, the (row, column) position model: it
+means a plane's row is not fixed for the plane's lifetime, so whatever design
+answers task 10's question (b) - what happens to every lane-indexed reader of
+`FILE_JETS` - also has to answer "what moves a plane's row, and how often" once
+positions replace the lane rank. Not yet designed against; the missile rank
+(tasks 1-9) is unaffected, since it does not read a jet's row at all.
+
 ## Why the count is the clue
 
 The owner's own inference, and it is a good one: *"the max two planes hints at
