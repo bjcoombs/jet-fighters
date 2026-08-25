@@ -47,6 +47,21 @@ const TOLERANCE = 0.1;
 const FRAMES_SAMPLED = 200;
 
 /**
+ * Sweeps the duty sample may run before it gives up on reaching that count.
+ *
+ * A dark frame does not count towards {@link FRAMES_SAMPLED}, so the loop needs
+ * some other end: the ROM stops sweeping for the whole of every sound and for
+ * good once the game ends, and this drive only works the lever. Sized as a
+ * multiple of the frames wanted rather than as a cycle horizon, because what it
+ * bounds is a count of attempts. Four times is generous against the measured
+ * shortfall - this drive is silent enough that 200 frames currently take exactly
+ * 200 sweeps - and still ends a run against a tube that has gone dark for good.
+ * The headroom is the point: a ROM that sounds more often should widen the
+ * sample rather than fail, and only a tube that has stopped should end it.
+ */
+const FRAME_ATTEMPTS_MAX = 4 * FRAMES_SAMPLED;
+
+/**
  * Cycles to wait for one sweep before giving up on it.
  *
  * `runSweeps` needs a ceiling because the ROM stops sweeping for the whole of
@@ -150,7 +165,16 @@ describe('the sweep the cadence module measures', () => {
     machine.setContacts({ skill: 1, lane: 1 });
     const dwells: number[] = [];
     const periods: number[] = [];
-    for (let taken = 0; taken < FRAMES_SAMPLED; taken += 1) {
+    // **The loop counts frames it kept, not sweeps it ran.** Counting attempts
+    // would let a stretch of sound spend the budget on dark frames and leave the
+    // median resting on whatever few lit ones survived - a smaller version of the
+    // single-frame bet this test was rewritten to remove. The attempt ceiling is
+    // what stops it running forever once the game ends and the sweeps stop.
+    for (
+      let attempt = 0;
+      periods.length < FRAMES_SAMPLED && attempt < FRAME_ATTEMPTS_MAX;
+      attempt += 1
+    ) {
       machine.runSweeps(1, SWEEP_WAIT_CYCLES);
       const frame = machine.getObservedFrame();
       if (frame.segments.length === 0 || frame.cycles === 0) {
@@ -161,7 +185,9 @@ describe('the sweep the cadence module measures', () => {
         dwells.push(Math.round(segment.duty * frame.cycles));
       }
     }
-    expect(periods.length, 'nothing was lit to measure').toBeGreaterThan(0);
+    expect(periods, 'the tube went dark before a full sample was taken').toHaveLength(
+      FRAMES_SAMPLED,
+    );
 
     // 1. A driven segment accrues exactly one strobe dwell in the frame. The
     //    median rather than every segment, for the reason the dwell assertion

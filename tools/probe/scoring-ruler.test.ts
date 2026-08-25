@@ -297,7 +297,8 @@ const LEAD_DELAY_SAMPLES = Array.from(
  * fixed release point this function stopped relying on. It is not run by
  * `npm test`; correcting it is tracked separately.
  */
-function boatHunt(): { attempts: number; kills: Kill[] } {
+function boatHunt(): { attempts: number; kills: Kill[]; used: number[] } {
+  const used: number[] = [];
   const kills: Kill[] = [];
   let attempts = 0;
   // Advances across games, so successive crossings take successive offsets and
@@ -381,6 +382,7 @@ function boatHunt(): { attempts: number; kills: Kill[] } {
           leadDelay = LEAD_DELAY_SAMPLES[
             crossingIndex % LEAD_DELAY_SAMPLES.length
           ] as number;
+          used.push(crossingIndex % LEAD_DELAY_SAMPLES.length);
           crossingIndex += 1;
           sinceTop = 0;
         } else {
@@ -417,7 +419,7 @@ function boatHunt(): { attempts: number; kills: Kill[] } {
       }
     }
   }
-  return { attempts, kills };
+  return { attempts, kills, used };
 }
 
 const ST_OVER = 1;
@@ -819,6 +821,16 @@ describe("the printed ruler", () => {
       // sweep. With all three, 893 through 898 pass - the range tasks 4-6 will
       // move the sweep through as the rank lands.
       const boat = boatHunt();
+      // **The coverage the offsets claim has to be coverage the hunt performs.**
+      // One offset is taken per crossing, wrapping, so a hunt with fewer
+      // crossings than offsets would sample a prefix of the dwell and leave the
+      // late window untried - which is the fault the list was widened to fix,
+      // reappearing one level up. Measured: 119 crossings across the 27 games
+      // against 33 offsets, so every offset is taken about three times.
+      expect(
+        [...new Set(boat.used)].sort((left, right) => left - right),
+        "the hunt never reached some lead offset, so part of the dwell is untried",
+      ).toEqual(LEAD_DELAY_SAMPLES.map((_unused, index) => index));
       expect(
         boat.attempts,
         "the hunt never got a shot into the lead window",

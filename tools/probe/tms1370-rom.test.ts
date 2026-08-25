@@ -49,6 +49,7 @@ import {
 const FILE_STATE = 4;
 const NIB_RCOL = 7;
 const NIB_RLANE = 8;
+const NIB_STATE = 11;
 
 /** `FILE_JETS`, whose first three nibbles are the squadron's one jet per lane. */
 const FILE_JETS = 6;
@@ -177,6 +178,23 @@ function warningRunsIn(
 const SKILLS = [1, 2, 3] as const;
 
 /**
+ * Emulated seconds a defended game is given, so the rotor reaches its third rung.
+ *
+ * An emulated-time horizon and not a wall-clock one, unlike
+ * {@link ROTOR_SWEEP_TIMEOUT_MS}: what it has to cover is a number of *game
+ * events*, and at 120 s it covered them only at one sweep length. Measured, the
+ * ninth launch of a defending skill-1 game is the first to fly down lane 0 and
+ * it lands between 90 s and 180 s; the run then ends on its own, so a longer
+ * figure buys nothing (240 s returns the same launches).
+ *
+ * It is affordable because the defended runs stop when the game is lost, which
+ * costs skills 2 and 3 almost nothing - they die early and launch nothing more.
+ * With both changes the drive is 9.3 s locally against the 12.9 s it would be
+ * without the early stop, and against 9.6 s before either.
+ */
+const ROTOR_DEFENDED_SECONDS = 180;
+
+/**
  * Nine parked-lever games is about 26 million emulated cycles, which is past
  * Vitest's 5 s default. Named rather than inlined for the reason every horizon
  * in these suites is: it moves when the drive does, not when a rule does.
@@ -276,6 +294,7 @@ function parkedGame(
   forSeconds = 45,
   dodge = false,
   defend = false,
+  stopWhenLost = false,
 ): { launches: Launch[]; lanes: number[]; litCells: ReadonlySet<string> } {
   const machine = new Tms1370Machine();
   machine.setContacts({ skill, lane: lever, fire: false });
@@ -286,6 +305,15 @@ function parkedGame(
   while (machine.cycles < seconds(forSeconds)) {
     machine.step(CYCLE_HZ / 200);
     const ram = machine.ram;
+    // **Off by default, because `litCells` is a union and stopping early shrinks
+    // it.** Callers reading the lit set need every cell the run would have lit;
+    // callers reading `launches` do not, because `rocket_fire` is reached from
+    // the playing arm of the tick and a game that has ended launches nothing
+    // more. Verified rather than assumed: the defended runs below return the
+    // same lane lists with this on and off, and only the wall clock moves.
+    if (stopWhenLost && (ram[FILE_STATE * 16 + NIB_STATE] as number) !== 0) {
+      break;
+    }
     // `defend` supersedes `dodge` where the game is now long enough to need it:
     // dodging avoids rockets, and since the settled capture rule a jet reaching
     // the G line costs a launcher in *any* lane, so avoidance alone no longer
@@ -579,10 +607,48 @@ describe('a rocket can reach the launcher in any of the three lanes', () => {
       const dodged = SKILLS.map((skill) => ({
         skill,
         lever: 0,
-        ...parkedGame(skill, 0, 120, false, true),
+        ...parkedGame(skill, 0, ROTOR_DEFENDED_SECONDS, false, true, true),
       }));
 
-      const flown = [...new Set(dodged.flatMap((game) => game.lanes))].sort();
+      // ## The union is taken over every run this test makes, not over three
+      //
+      // **Whether the rotor reaches its third rung is decided by how long a game
+      // survives, and that moves with the sweep.** The paragraphs above say so
+      // twice - a correctness fix that shortened a run by 9 s took lane 0 away
+      // once already, and "no single skill sees all three lanes" is the same
+      // observation. Pooling only `dodged` made the assertion rest on three runs
+      // at one lever, so any cadence change could take the third rung off all
+      // three at once: it did, when the missile rank landed and moved the sweep
+      // by a handful of instructions per pass. Nothing about the rotor changed -
+      // `NIB_ROTOR` is four sites in `rocket_fire` and none of them was touched -
+      // and the drive simply played a differently-phased game.
+      //
+      // `games` is nine runs across the whole dial and all three lever positions,
+      // it is already computed for the occupancy check below, and the header
+      // above already concedes that the lever samples the rotor at a different
+      // phase for the same reason the dial does. So the completeness claim is
+      // taken over all twelve runs rather than over three of them. This costs no
+      // emulated time - both sets were being run anyway - which matters, because
+      // `ROTOR_SWEEP_TIMEOUT_MS` is a wall-clock budget for the runner.
+      //
+      // **Pooling was not enough on its own, and what it took is worth writing
+      // down**, because the next cadence change will land here too. Lane 0 was
+      // reached by none of the twelve, and the reason is not that the lever adds
+      // nothing - it is that a *defended* run ignores its lever entirely, since
+      // `defending` sets the lane every step. So `dodged`'s three runs are three
+      // samples and not nine, and the parked nine almost all launch into lane 1
+      // alone. Searched across skill, lever, dodge, defend and four durations,
+      // exactly one configuration reaches lane 0: skill 1, defending, and not
+      // before the ninth launch, which needs about 180 s rather than 120 s.
+      // `ROTOR_DEFENDED_SECONDS` is that, and `stopWhenLost` is what pays for it.
+      //
+      // The rotor itself is untouched and lane 0 is genuinely reachable, which
+      // is the thing to establish before widening a window rather than after:
+      // `rf_try` increments `NIB_ROTOR`, wraps it at 3 and fires wherever `MNEZ`
+      // finds a jet, so no lane is excluded by construction. Confirmed from the
+      // other side too - pinning `rf_wrap` to 1 so the rotor never visits lane 0
+      // takes this assertion red.
+      const flown = [...new Set([...games, ...dodged].flatMap((game) => game.lanes))].sort();
       expect(flown, 'the rotor did not reach every lane').toEqual([0, 1, 2]);
 
       // The falsifier proper: every rocket flew down a lane that had a jet
