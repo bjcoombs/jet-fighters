@@ -253,6 +253,14 @@
 .EQU NIB_M_LO,       0          ; sweeps until the shot advances a column, low
 .EQU NIB_M_HI,       1          ;   "                                     high
 
+; Nibble 15, deliberately at the far end of the file and away from the missile
+; rank this header describes: mr-ram-map's plan wants 0-5 (three lanes' worth
+; of column plus the shared timer and walk index) and entropy-nibble wants "6
+; or later". game_lost and game_win both write this the instant NIB_STATE
+; leaves ST_PLAY, and tk_ended (P_TICK) restores it into NIB_LANE every sweep
+; from there on - see the note on tk_ended for why that is free.
+.EQU NIB_LAUNCH_FROZEN, 15      ; the lever's lane, pinned at the ending
+
 ; --- FILE_JETS: one jet per lane, and the squadron's own state ---------------
 ;
 ; Not a rank in every lane and not a block: a wave is six jets released into
@@ -1531,6 +1539,24 @@ tick:
         BR   tk_ended
         BR   tick_burst
 tk_ended:
+        ; The owner reported the launcher still tracking the lever after the
+        ; game ended, when every other control had already stopped responding
+        ; - is_lever (P_INPUT) still writes NIB_LANE live off the K matrix
+        ; every sweep, unconditionally and unchanged, because gating it there
+        ; costs a handful of words on *every* sweep of *every* game and this
+        ; codebase's cadence figures (BUZZ_DIV and the rest) are measured
+        ; against the instruction count that runs during ST_PLAY - see
+        ; docs/evidence/timing-analysis.md. This page is reached only once
+        ; ST_PLAY has already ended, so overwriting NIB_LANE back to what it
+        ; held at the ending, every sweep from here on, costs nothing any
+        ; measured cadence depends on. NIB_LAUNCH_FROZEN is written once, by
+        ; game_lost and game_win, the instant NIB_STATE leaves ST_PLAY.
+        LDX  FILE_MISS
+        TCY  NIB_LAUNCH_FROZEN
+        TMA
+        LDX  FILE_STATE
+        TCY  NIB_LANE
+        TAM
         COMC
         LDP  C1_REND1
         BR   render             ; a finished game still shows its final score
@@ -2452,6 +2478,11 @@ game_lost:
         LDX  FILE_STATE
         TCY  NIB_STATE
         TCMIY ST_OVER
+        TCY  NIB_LANE            ; pin the lever where it stood - see tk_ended
+        TMA
+        LDX  FILE_MISS
+        TCY  NIB_LAUNCH_FROZEN
+        TAM
         LDX  FILE_D0
         TCY  NIB_BUZZ
         TCMIY 0
@@ -3165,6 +3196,12 @@ as_test_u:
         BR   as_win
         BR   as_out
 as_win:
+        LDX  FILE_STATE          ; pin the lever where it stood - see tk_ended.
+        TCY  NIB_LANE            ; done here rather than in game_win: the win
+        TMA                      ; jingle's page (C1_WIN) has one word free and
+        LDX  FILE_MISS           ; this page (P_SCORE) has room
+        TCY  NIB_LAUNCH_FROZEN
+        TAM
         LDP  C1_WIN
         BR   game_win
 as_out:
