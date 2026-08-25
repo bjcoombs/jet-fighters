@@ -113,6 +113,7 @@ const FILE_D2 = 2;
 const FILE_D3 = 3;
 const FILE_STATE = 4;
 const FILE_JETS = 6;
+const FILE_MISS = 7;
 
 /** `FILE_STATE` nibbles. */
 const NIB_RCOL = 7;
@@ -148,24 +149,21 @@ const RPL_R11 = 1;
 /**
  * The grid the player's shot in `lane` stands on, and 0 for no shot in that lane.
  *
- * **The only thing in this file that knows where missile state lives**, and it is
- * a function rather than a pair of nibble constants because that address is about
- * to move. Today the ROM holds one shot as a column and a lane, so at most one
- * lane can answer non-zero and the other two read as empty - which is the same
- * answer the rank will give while only one shot is up. The rank the owner
- * describes is three columns with the lane implied by which nibble holds it
- * (`docs/evidence/owner-entity-model.md`, "Why the count is the clue"), so when
- * the map moves, this body moves with it and every assertion below is already
- * written against the shape it will have.
+ * **The only thing in this file that knows where missile state lives.** The
+ * column now lives in `FILE_MISS`, one nibble per lane, with the lane implied by
+ * which nibble holds it - the shape the owner describes
+ * (`docs/evidence/owner-entity-model.md`, "Why the count is the clue"). There is
+ * no lane indirection left to do: nibble `lane` is lane `lane`'s column.
+ *
+ * The ROM still fires one shot at a time, so at most one lane answers non-zero
+ * today. That is a property of the firing guard and not of this map, and it is
+ * why every assertion below was already written per lane.
  *
  * The nibble numbers are from the RAM map at the head of `asm/jetfighter.asm`.
  */
 function missileCol(ram: Uint8Array, lane: number): number {
-  const NIB_MCOL = 5;
-  const NIB_MLANE = 6;
-  return (ram[FILE_STATE * 16 + NIB_MLANE] as number) === lane
-    ? (ram[FILE_STATE * 16 + NIB_MCOL] as number)
-    : 0;
+  const NIB_MC = 0;
+  return ram[FILE_MISS * 16 + NIB_MC + lane] as number;
 }
 
 /** Long enough for several waves, entries, rocket launches and a crossing. */

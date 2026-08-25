@@ -66,6 +66,7 @@ import { Tms1370Machine } from "./tms1370-probe.js";
 const FILE_STATE = 4;
 const FILE_TIME = 5;
 const FILE_JETS = 6;
+const FILE_MISS = 7;
 const NIB_RCOL = 7;
 const NIB_RLANE = 8;
 const NIB_BSLANE = 9;
@@ -143,19 +144,18 @@ interface Kill {
 /**
  * The grid the player's shot in `lane` stands on, and 0 for no shot in that lane.
  *
- * **The only thing in this file that knows where missile state lives**, and it is
- * a function rather than a nibble constant because that address is about to move.
- * Today the ROM holds one shot as a column and a lane, so at most one lane can
- * answer non-zero; the rank the owner describes is three columns with the lane
- * implied by which nibble holds it (`docs/evidence/owner-entity-model.md`). The
- * nibble numbers are from the RAM map at the head of `asm/jetfighter.asm`.
+ * **The only thing in this file that knows where missile state lives.** The
+ * column now lives in `FILE_MISS`, one nibble per lane, with the lane implied by
+ * which nibble holds it - the rank the owner describes
+ * (`docs/evidence/owner-entity-model.md`). There is no lane indirection left to
+ * do: nibble `lane` is lane `lane`'s column. The ROM still fires one shot at a
+ * time, so at most one lane answers non-zero today, but that is the firing
+ * guard's doing and not this map's. The nibble numbers are from the RAM map at
+ * the head of `asm/jetfighter.asm`.
  */
 function missileCol(ram: Uint8Array, lane: number): number {
-  const NIB_MCOL = 5;
-  const NIB_MLANE = 6;
-  return (ram[FILE_STATE * 16 + NIB_MLANE] as number) === lane
-    ? (ram[FILE_STATE * 16 + NIB_MCOL] as number)
-    : 0;
+  const NIB_MC = 0;
+  return ram[FILE_MISS * 16 + NIB_MC + lane] as number;
 }
 
 /**
