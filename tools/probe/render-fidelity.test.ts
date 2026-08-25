@@ -600,6 +600,81 @@ describe('a shot in flight is drawn somewhere', () => {
   }
 });
 
+describe('each lane of the rank is drawn under its own plate and no other', () => {
+  // The off-by-one check for `rd_missile`'s three-lane render, and the reason it
+  // is separate from the two assertions above.
+  //
+  // Those two are written against the *state*: the drawn lanes must be a subset
+  // of the lanes `FILE_MISS` says hold a shot, and every shot must be drawn
+  // somewhere. Both are the right shape for a rank of three, and both are also
+  // satisfiable by a walk that is wrong in a way the state happens to excuse -
+  // most of all while the ROM still fires one shot at a time, when "the lanes
+  // that hold a shot" is a one-element set that a stale sample can widen.
+  //
+  // This one is written against the *drive* instead, which is what makes it a
+  // per-lane check rather than a whole-picture one. The lever is parked in one detent for
+  // the whole run and `tick_fire` fires down `NIB_LANE`, so **lane `detent` is
+  // the only lane a shot can ever be in** - no lag, no torn read and no wave
+  // reset changes that. So the picture may name lane `detent` and nothing else,
+  // at every instant, on every playfield grid. An arm that adds a neighbouring
+  // lane's bit, or tests a neighbouring lane's nibble, draws the shot under the
+  // wrong plate and this fails on the first frame that holds a shot.
+  //
+  // ## Both halves, and the exclusion between them
+  //
+  // The lane is read from the pair nibble and the R-plate file together, and the
+  // two are required to disagree: lanes 0 and 1 are plates 6 and 7 and go through
+  // the O port, lane 2 is plate 8 and is named in `FILE_D3` as `RPL_R11`. So a
+  // lane-2 shot that also raised a pair bit, or a lane-0 shot that also named the
+  // R plate, fails here even though each half on its own looks right - which is
+  // the plate-8 arm being reached for the wrong lane, the other way a three-lane
+  // render goes wrong.
+  //
+  // Nothing else writes the nibbles this reads. `FILE_D2` at grids 1-5 is
+  // `rd_missile`'s alone - `rd_launcher` writes grid 6 and the boat's burst grid
+  // 0 - and the only other R-plate code a playfield grid takes is
+  // `RPL_BURST + lane`, which is 2 to 4 and never 1.
+  for (const detent of DETENTS) {
+    it(`draws a shot fired in lane ${detent} under that lane's plate alone`, () => {
+      const shots = sample(detent);
+      const wrong: string[] = [];
+      let drawnFrames = 0;
+      for (const shot of shots) {
+        if (!shot.refreshing) {
+          continue;
+        }
+        for (let grid = GRID_COL_FIRST; grid <= GRID_COL_LAST; grid += 1) {
+          const nibble = shot.pair[grid] as number;
+          const onPort = nibble >= OPLA_A_PAIR ? nibble - OPLA_A_PAIR : 0;
+          const onPlate = (shot.plate[grid] as number) === RPL_R11 ? 1 << 2 : 0;
+          const drawn = onPort | onPlate;
+          if (drawn === 0) {
+            continue; // no shot drawn in this column, which is most of them
+          }
+          drawnFrames += 1;
+          if (drawn !== 1 << detent) {
+            wrong.push(
+              `t=${shot.seconds.toFixed(2)}s grid ${grid}: the render drew lane(s) ` +
+                `${[...Array(LANE_COUNT).keys()].filter((l) => drawn & (1 << l))} for a shot ` +
+                `that can only be in lane ${detent} - pair nibble ${nibble}, R plate ` +
+                `${shot.plate[grid]}, shots at [${shot.missiles}]`,
+            );
+          }
+        }
+      }
+      // Non-vacuity, and it is load-bearing here rather than a formality: the
+      // claim is "only lane `detent` is ever lit", which a ROM that draws no
+      // missile at all satisfies perfectly. This file has already shipped one
+      // assertion that passed because its drive never fired.
+      expect(drawnFrames, `no shot was ever drawn in lane ${detent}`).toBeGreaterThan(0);
+      expect(
+        wrong.slice(0, 5),
+        `${wrong.length} frames drew a lane-${detent} shot somewhere other than lane ${detent}`,
+      ).toEqual([]);
+    });
+  }
+});
+
 describe('a pair nibble is a pair index, and never off the end of the group', () => {
   // The pair group is four slots - `OPLA_A_PAIR` plus a two-plate bitmap - so a
   // lane bit of 4 walks off the end of it exactly as a lane bit of 8 walks off

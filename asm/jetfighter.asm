@@ -2984,56 +2984,90 @@ rd_rk_draw:
 
 ; --- the player's missile, on the pair plates --------------------------------
 ;
+; All three lanes of the rank are drawn here. **The nibble index IS the lane**,
+; so there is no lane to decode: nibble 0 is lane 0's column, nibble 1 lane 1's,
+; nibble 2 lane 2's, and a zero means that lane holds no shot.
+;
 ; Lanes 0 and 1 are plates 6 and 7 and go through the PLA; lane 2 is plate 8,
 ; which is R11, so it names a line in FILE_D3 instead.
+;
+; Two shots can stand in one column, which is why the pair group holds all four
+; subsets of its two plates and why lanes 0 and 1 *add* rather than overwrite -
+; `IMAC` for lane 0's bit of 1 and `IMAC`+`IAC` for lane 1's bit of 2. The sum
+; caps at OPLA_A_PAIR + 3, a slot `asm/opla.inc.asm` already declares; lane 2
+; never joins it, because plate 8 is not on the O port at all.
+;
+; ## Why this is three straight-line arms and not `rd_jets`' walk
+;
+; **The sweep budget, measured rather than guessed.** `rd_jets` walks the three
+; lanes over NIB_RBIT/NIB_RLNE, and the obvious thing to do here was the same
+; walk over FILE_MISS. It does not fit. A walk pays its loop bookkeeping - read
+; the lane, double the bit, step the lane, test for the end - on every lane
+; whether or not that lane holds a shot, and measured over 30 s of emulated time
+; with no input that came to **+46 instructions on every sweep** (893 to 939).
+;
+; The ceiling that rules it out is `tools/probe/sweep-timing.test.ts`: the ROM's
+; sweep, spread across the oscillator's stated range, has to still contain the
+; 70.6-72.5 Hz the reference video admits, and the fast end of that is the tight
+; one - a mean silent sweep of 920 cycles is where it falls through. The walk
+; measured 946 against that limit and took three timing assertions red with it.
+;
+; Unrolled, a lane that holds no shot costs `TCY`, `MNEZ` and two `BR`s, and the
+; scratch pair is not touched at all: the bit is a constant per arm, so there is
+; nothing to walk and nothing to keep in step. That is +5 instructions a sweep
+; idle, and in play it is a *saving* - the old single-lane arm reached its bit
+; through `COMC / LDP P_LEAF / CALL lane_bit / COMC` and this reaches it through
+; an immediate. Measured on a played run: 915.4 cycles before, 898.5 after.
+;
+; So the bit-then-lane hazard `rd_jets` carries - `NIB_RBIT` is 11, `NIB_RLNE`
+; is 12, `TCMIY` steps Y up, and writing them the other way round lands the
+; second store in nibble 13 where nothing reads it - **cannot arise here, because
+; this code never writes either nibble.** That is the reason to prefer this shape
+; beyond the cycles: the fault that made the atlas conformance suite go *greener*
+; rather than red needs a walked bit to exist, and there is no walked bit. What
+; guards the arms instead is `tools/probe/render-fidelity.test.ts`, which pins
+; each lane's shot to that lane's own plate and to no other.
+;
+; `rd_launcher` runs next and sets NIB_RGRID, NIB_RLNE and NIB_RBIT itself, so
+; nothing downstream depends on what this routine leaves behind.
 
 rd_missile:
-        LDX  FILE_STATE
-        TCY  NIB_MLANE
-        TMY                     ; the nibble index is the lane, and a lane in RAM
-        LDX  FILE_MISS          ; reaches Y without going through A
-        LDP  C1_REND4           ; the in-page arm needs PB naming this page, so
-                                ; the other one goes through a trampoline
-        MNEZ
-        BR   rd_ms_draw
-        BR   rd_ms_none
-rd_ms_none:
-        LDP  C1_REND5
-        BR   rd_launcher
-rd_ms_draw:
-        TMA
-        LDX  FILE_D3
-        TCY  NIB_RGRID
-        TAM
-        LDX  FILE_STATE
-        TCY  NIB_MLANE
-        TMA
-        LDX  FILE_D3
-        TCY  NIB_RLNE
-        TAM
-        TBIT1 1                 ; lane 2 is the one that is not on the O port
-        BR   rd_ms_plate8
-        COMC
-        LDP  P_LEAF
-        CALL lane_bit
-        COMC
-        LDX  FILE_D3
-        TCY  NIB_RBIT
-        TMA
-        TCY  NIB_RGRID
-        TMY
+        LDX  FILE_MISS
+        TCY  NIB_MC
+        MNEZ                    ; a shot in lane 0?
+        BR   rd_ms_lane0
+        BR   rd_ms_t1
+rd_ms_lane0:
+        TMA                     ; A <- the column the shot stands on
         LDX  FILE_D2
-        AMAAC
+        TAY                     ; Y <- that column, addressing its pair nibble
+        IMAC                    ; lane 0 is plate 6, so the bit is 1
         TAM
-        LDP  C1_REND5
-        TCY  0
-        YNEC 1
-        BR   rd_launcher
-rd_ms_plate8:
-        LDX  FILE_D3
-        TCY  NIB_RGRID
-        TMY
+        LDX  FILE_MISS
+rd_ms_t1:
+        TCY  NIB_MC + 1
+        MNEZ                    ; a shot in lane 1?
+        BR   rd_ms_lane1
+        BR   rd_ms_t2
+rd_ms_lane1:
+        TMA
+        LDX  FILE_D2
+        TAY
+        IMAC
+        IAC                     ; lane 1 is plate 7, so the bit is 2
+        TAM
+        LDX  FILE_MISS
+rd_ms_t2:
+        TCY  NIB_MC + 2
+        MNEZ                    ; a shot in lane 2?
+        BR   rd_ms_lane2
+        BR   rd_ms_done
+rd_ms_lane2:
+        TMA
+        LDX  FILE_D3            ; lane 2 is plate 8, which is R11 and not on the
+        TAY                     ; O port, so it names a line instead
         TCMIY RPL_R11
+rd_ms_done:
         LDP  C1_REND5
         BR   rd_launcher
 
