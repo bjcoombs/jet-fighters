@@ -204,10 +204,13 @@
 .EQU NIB_SKILL,      2          ; skill dial, 1..3
 .EQU NIB_FIRE,       3          ; fire contact this sweep
 .EQU NIB_FIREP,      4          ; fire contact last sweep - firing is edge triggered
-.EQU NIB_MCOL,       5          ; player missile grid, 0 = none in flight
-.EQU NIB_MLANE,      6          ; player missile lane
+                                ; Nibble 5 is free: the missile's column lived
+                                ; here as a single grid nibble and has moved to
+                                ; FILE_MISS, where the nibble index is the lane
+                                ; and there is one column per lane. See NIB_MC.
+.EQU NIB_MLANE,      6          ; player missile lane, until the rank retires it
                                 ; Nibbles 5-6 are reserved once the rank retires
-                                ; these two: the second plane needs a row and a
+                                ; NIB_MLANE: the second plane needs a row and a
                                 ; column of its own, and this adjacent pair is
                                 ; where they go - docs/evidence/owner-entity-
                                 ; model.md line 38, "Two planes need a row and a
@@ -885,13 +888,15 @@
 .EQU P_ROCKET,      11          ; the rocket: travel, launch, and which jet fires
 .EQU P_SPILL,       12          ; whatever did not fit on the page it belongs to
 .EQU P_BSHIP,       13          ; the battleship
-.EQU P_SPARE,       14          ; the one page this program does not use. The
-                                ; render step was here and outgrew it - see
-                                ; C1_REND1 - and it is left named rather than
-                                ; deleted because a page is the unit a routine
-                                ; has to fit in, so "one page free" is the
-                                ; headroom figure that matters and not the 588
-                                ; words the listing reports.
+.EQU P_SPARE,       14          ; `bship_kill`, which P_SWEEP no longer had room
+                                ; for. The render step was here first and
+                                ; outgrew it - see C1_REND1 - and the page then
+                                ; sat empty until the missile's column moved to
+                                ; FILE_MISS. It is no longer the free page: a
+                                ; page is the unit a routine has to fit in, so
+                                ; the headroom figure that matters is now
+                                ; P_SPILL's remainder and not the words the
+                                ; listing reports.
 .EQU P_RESET,       15          ; the reset routine
 
 ; Chapter 1. `BR` and `CALL` both copy the chapter buffer into the chapter
@@ -998,42 +1003,16 @@ ms_horizon:
         TCY  NIB_MLANE
         MNEA                    ; status = the boat is in some other lane
         BR   ms_missed
-        BR   bship_kill
+        LDP  P_SPARE            ; the false arm re-arms status, so the page load
+        BR   bship_kill         ; rides here and not between the test and the BR
 ms_missed:
         LDX  FILE_STATE
-        TCY  NIB_MCOL
+        TCY  NIB_MLANE
+        TMY                     ; the nibble index is the lane, and a lane in RAM
+        LDX  FILE_MISS          ; reaches Y without going through A
         TCMIY 0                 ; the missile is spent against the horizon
         LDP  P_JETS
         BR   jet_march
-
-
-; --- the battleship is hit ---------------------------------------------------
-
-bship_kill:
-        LDX  FILE_STATE
-        TCY  NIB_MCOL
-        TCMIY 0
-        TCY  NIB_BSLANE
-        TMA
-        TCY  NIB_KLANE
-        TAM
-        TCY  NIB_KCOL
-        TCMIY GRID_BSHIP + 1
-        TCY  NIB_BSLANE
-        TCMIY BS_NONE           ; the crossing ends early
-        LDX  FILE_D0
-        TCY  NIB_BUZZ
-        TCMIY 0                 ; and the buzz stops with the boat
-        TCY  R_SPEAKER
-        RSTR                    ; leaving the pin low
-        LDX  FILE_TIME
-        TCY  NIB_KSTEP
-        TCMIY BURST_SWEEPS
-        TCY  NIB_BS_LO
-        TCMIY BSHIP_GAP_LO
-        TCMIY BSHIP_GAP_HI
-        LDP  P_SCORE
-        BR   score_bship
 
 
 
@@ -1127,7 +1106,9 @@ tick_fire:
         BR   tk_fired
         BR   tick_jets
 tk_fired:
-        TCY  NIB_MCOL
+        TCY  NIB_MLANE
+        TMY                     ; the nibble index is the lane, and a lane in RAM
+        LDX  FILE_MISS          ; reaches Y without going through A
         MNEZ                    ; one missile at a time
         BR   tick_jets
         LDP  P_STROBE
@@ -1295,19 +1276,20 @@ st_off:
 
 ; --- fire_missile ------------------------------------------------------------
 ;
-; One missile at a time, which is what NIB_MCOL being a single column nibble
-; means. It leaves in the lane the lever is in and travels outward, grid 5
-; toward grid 1 and then the horizon.
+; One missile at a time still, which is now what the single `tk_fired` guard
+; means rather than what the storage allows - FILE_MISS has a column per lane.
+; It leaves in the lane the lever is in and travels outward, grid 5 toward grid 1
+; and then the horizon.
 
 fire_missile:
         LDX  FILE_STATE
         TCY  NIB_LANE
         TMA
         TCY  NIB_MLANE
-        TAM
-        TCY  NIB_MCOL
-        TCMIY GRID_COL_LAST
+        TAM                     ; A still holds the lane
         LDX  FILE_MISS
+        TAY                     ; the nibble index is the lane
+        TCMIY GRID_COL_LAST
         TCY  NIB_M_LO
         TCMIY MISSILE_LO        ; NIB_M_HI follows NIB_M_LO
         TCMIY MISSILE_HI
@@ -1629,13 +1611,14 @@ tk_capture_left:
         TAM
 tick_missile:
         LDX  FILE_STATE
-        TCY  NIB_MCOL
+        TCY  NIB_MLANE
+        TMY                     ; the nibble index is the lane, and a lane in RAM
+        LDX  FILE_MISS          ; reaches Y without going through A
         MNEZ
         BR   tk_missile_live
         BR   tk_to_fire
 tk_missile_live:
-        LDX  FILE_MISS
-        TCY  NIB_M_LO
+        TCY  NIB_M_LO           ; X is already FILE_MISS from the test above
         DMAN                    ; a pair, spent low first
         BR   tk_missile_wait
         TAM                     ; the low nibble wrapping spends a high one
@@ -1665,7 +1648,7 @@ tk_to_fire:
 .PAGE P_HIT
 
 ; **The cell is tested before the shot leaves it, rather than after.** This
-; routine used to advance `NIB_MCOL` and only then ask what was standing on the
+; routine used to advance the missile's column and only then ask what was on the
 ; new column, which meant the column the missile is *launched* into - grid 5, the
 ; cell directly in front of the launcher - was written, drawn and left again
 ; without ever being hit tested. A jet standing there could not be shot at all:
@@ -1690,15 +1673,15 @@ missile_step:
         LDX  FILE_JETS
         TAY
         TMA                     ; A <- the grid the jet in that lane stands on
-        LDX  FILE_STATE
-        TCY  NIB_MCOL
+        LDX  FILE_MISS          ; FILE_JETS and FILE_MISS are both indexed by the
+                                ; lane, so Y already names the right nibble and
+                                ; only the file has to change
         MNEA                    ; status = that jet is somewhere else
         BR   ms_advance
         BR   missile_kill
 ms_advance:
-        LDX  FILE_STATE
-        TCY  NIB_MCOL
-        DMAN                    ; outward: grid 5 toward grid 1
+        DMAN                    ; outward: grid 5 toward grid 1. X is FILE_MISS
+                                ; and Y the lane, both still set by the test
         BR   ms_step_ok
         LDP  P_SWEEP
         BR   ms_horizon         ; past the last column is the battleship's row
@@ -1720,19 +1703,23 @@ missile_kill:
         TMA
         TCY  NIB_KLANE
         TAM                     ; the burst stands where the jet did
-        TCY  NIB_MCOL
+        LDX  FILE_MISS
+        TAY                     ; A still holds the lane, and the lane IS the
+                                ; nibble
         TMA
         A1AAC                   ; NIB_KCOL is the grid plus one, so 0 is "none"
+        LDX  FILE_STATE
         TCY  NIB_KCOL
         TAM
         LDX  FILE_TIME
         TCY  NIB_KSTEP
         TCMIY BURST_SWEEPS
         LDX  FILE_STATE
-        TCY  NIB_MCOL
-        TCMIY 0
         TCY  NIB_MLANE
         TMA
+        LDX  FILE_MISS
+        TAY
+        TCMIY 0                 ; the shot is spent, and A survives TCMIY
         LDX  FILE_JETS
         TAY
         CLA
@@ -2054,8 +2041,7 @@ ms_arrived:
         LDX  FILE_JETS
         TAY
         TMA                     ; A <- the grid the jet in that lane stands on
-        LDX  FILE_STATE
-        TCY  NIB_MCOL
+        LDX  FILE_MISS          ; Y is the lane, which indexes both files
         MNEA                    ; status = that jet is somewhere else
         BR   ms_missed_it
         LDP  P_HIT
@@ -2325,6 +2311,49 @@ bs_out:
         COMC
         LDP  C1_REND1
         BR   render
+
+; ============================================================================
+; Page 14 - the battleship is hit
+; ============================================================================
+;
+; `bship_kill` was on P_SWEEP, beside the `ms_horizon` test that reaches it, and
+; moved here when the missile's column left FILE_STATE for FILE_MISS. Clearing a
+; lane-indexed column costs the lane in A and a second `LDX` to get back to
+; FILE_STATE, and P_SWEEP had six words free against the eight the two arms
+; wanted. Placement is the cheap thing to change here - `BR` carries six bits
+; within a page, so the arm above pays one `LDP` and nothing else - and this page
+; was empty.
+
+.PAGE P_SPARE
+
+bship_kill:
+        LDX  FILE_STATE
+        TCY  NIB_MLANE
+        TMY                     ; the nibble index is the lane, and a lane in RAM
+        LDX  FILE_MISS          ; reaches Y without going through A
+        TCMIY 0
+        LDX  FILE_STATE
+        TCY  NIB_BSLANE
+        TMA
+        TCY  NIB_KLANE
+        TAM
+        TCY  NIB_KCOL
+        TCMIY GRID_BSHIP + 1
+        TCY  NIB_BSLANE
+        TCMIY BS_NONE           ; the crossing ends early
+        LDX  FILE_D0
+        TCY  NIB_BUZZ
+        TCMIY 0                 ; and the buzz stops with the boat
+        TCY  R_SPEAKER
+        RSTR                    ; leaving the pin low
+        LDX  FILE_TIME
+        TCY  NIB_KSTEP
+        TCMIY BURST_SWEEPS
+        TCY  NIB_BS_LO
+        TCMIY BSHIP_GAP_LO
+        TCMIY BSHIP_GAP_HI
+        LDP  P_SCORE
+        BR   score_bship
 
 ; ============================================================================
 ; Page 15 - reset
@@ -2942,7 +2971,9 @@ rd_rk_draw:
 
 rd_missile:
         LDX  FILE_STATE
-        TCY  NIB_MCOL
+        TCY  NIB_MLANE
+        TMY                     ; the nibble index is the lane, and a lane in RAM
+        LDX  FILE_MISS          ; reaches Y without going through A
         LDP  C1_REND4           ; the in-page arm needs PB naming this page, so
                                 ; the other one goes through a trampoline
         MNEZ

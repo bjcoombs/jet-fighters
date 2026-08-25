@@ -14,8 +14,13 @@
 // is where a capture lands, and dies faster than one that taps blindly.
 
 import { Tms1370Machine } from '../tms1370-probe.js';
-const FILE_STATE = 4, FILE_TIME = 5, FILE_JETS = 6, CYCLE_HZ = 58333, DODGE = 4;
+const FILE_STATE = 4, FILE_TIME = 5, FILE_JETS = 6, FILE_MISS = 7, CYCLE_HZ = 58333, DODGE = 4;
 const at = (f: number, n: number, r: Uint8Array) => r[f * 16 + n];
+// The shot's column lives in FILE_MISS, one nibble per lane, so the lane is the
+// nibble holding it rather than a nibble of its own. One shot at a time still,
+// so at most one lane answers - and -1 means no shot, as `prevM.lane` expects.
+const shotLane = (r: Uint8Array) =>
+  [0, 1, 2].find((l) => at(FILE_MISS, l, r) !== 0) ?? -1;
 
 for (const skill of [1, 2, 3]) {
   const m = new Tms1370Machine();
@@ -27,7 +32,8 @@ for (const skill of [1, 2, 3]) {
   for (let i = 0; i < 20 * 400 && over === 0; i++) {
     const ram = m.ram;
     const jets = [0, 1, 2].map((l) => at(FILE_JETS, l, ram));
-    const mcol = at(FILE_STATE, 5, ram), mlane = at(FILE_STATE, 6, ram);
+    const mlane = shotLane(ram);
+    const mcol = mlane >= 0 ? (at(FILE_MISS, mlane, ram) as number) : 0;
     // march steps and releases
     jets.forEach((g, l) => {
       const p = prevJets[l] as number;

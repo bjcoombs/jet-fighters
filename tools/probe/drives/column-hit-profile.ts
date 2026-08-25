@@ -8,8 +8,12 @@
 // grid 2 - because the shot cannot arrive before the jet has marched on.
 
 import { Tms1370Machine } from '../tms1370-probe.js';
-const FILE_STATE = 4, FILE_JETS = 6, CYCLE_HZ = 58333, DODGE = 4;
+const FILE_STATE = 4, FILE_JETS = 6, FILE_MISS = 7, CYCLE_HZ = 58333, DODGE = 4;
 const at = (f: number, n: number, r: Uint8Array) => r[f * 16 + n];
+// The shot's column lives in FILE_MISS, one nibble per lane. This drive only
+// asks "is a shot up", which is now a question about the whole rank.
+const shotCol = (r: Uint8Array) =>
+  Math.max(...[0, 1, 2].map((l) => at(FILE_MISS, l, r) as number));
 for (const target of [1, 2, 3, 4, 5]) {
   const m = new Tms1370Machine();
   m.setContacts({ skill: 1, lane: 0, fire: false });
@@ -18,7 +22,7 @@ for (const target of [1, 2, 3, 4, 5]) {
   for (let i = 0; i < 20 * 300; i++) {
     const ram = m.ram;
     const jets = [0, 1, 2].map((l) => at(FILE_JETS, l, ram));
-    const mcol = at(FILE_STATE, 5, ram);
+    const mcol = shotCol(ram);
     if (mcol !== 0) {
       const rl = at(FILE_STATE, 7, ram) !== 0 ? at(FILE_STATE, 8, ram) : -1;
       const safe = [0, 1, 2].find((l) => (jets[l] as number) < DODGE && l !== rl);
