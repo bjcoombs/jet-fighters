@@ -995,22 +995,37 @@ main_work:
 ;
 ; Placed here rather than on P_HIT because that page is full and this one is
 ; not. It is reached by branch like everything else in the loop.
+;
+; **Entry contract: Y holds the lane the shot was flying down**, exactly as at
+; `missile_kill`, and for the same reason - `missile_step` reaches both arms of
+; this with the lane already in Y, and NIB_MLANE names one shot where a rank has
+; three.
+;
+; The shot is spent whichever way the test goes, so the clear happens once, ahead
+; of the test, while the lane is still in Y. `bship_kill` used to do its own on
+; the arm it owns and no longer does.
+;
+; **That clear writes a zero over a zero today, and is kept anyway.** Both of
+; `missile_step`'s branches into here already leave FILE_MISS[lane] at zero: one
+; takes the borrow out of `DMAN`, which borrows only when the column was zero to
+; begin with, and the other has just stored a zero through `ms_step_ok`'s `TAM`.
+; Deleting it turns nothing in the suite red - that was measured, not assumed.
+; It stays because it is what makes "the shot is spent" true *at this label* for
+; any caller, instead of an inference about how the one caller of the day happens
+; to arrive, and the walk over three lanes is the next change.
 
 ms_horizon:
+        TYA                     ; A <- the lane; Y is about to name a nibble
+        LDX  FILE_MISS
+        TCMIY 0                 ; the shot is spent against the horizon, whichever
+                                ; arm follows. A survives TCMIY
         LDX  FILE_STATE
         TCY  NIB_BSLANE
-        TMA
-        TCY  NIB_MLANE
         MNEA                    ; status = the boat is in some other lane
         BR   ms_missed
         LDP  P_SPARE            ; the false arm re-arms status, so the page load
         BR   bship_kill         ; rides here and not between the test and the BR
 ms_missed:
-        LDX  FILE_STATE
-        TCY  NIB_MLANE
-        TMY                     ; the nibble index is the lane, and a lane in RAM
-        LDX  FILE_MISS          ; reaches Y without going through A
-        TCMIY 0                 ; the missile is spent against the horizon
         LDP  P_JETS
         BR   jet_march
 
@@ -1678,60 +1693,66 @@ missile_step:
                                 ; only the file has to change
         MNEA                    ; status = that jet is somewhere else
         BR   ms_advance
-        BR   missile_kill
+        BR   missile_kill       ; Y is the lane, which is the whole handover
 ms_advance:
         DMAN                    ; outward: grid 5 toward grid 1. X is FILE_MISS
                                 ; and Y the lane, both still set by the test
         BR   ms_step_ok
         LDP  P_SWEEP
-        BR   ms_horizon         ; past the last column is the battleship's row
+        BR   ms_horizon         ; past the last column is the battleship's row,
+                                ; and Y is still the lane it flew down
 ms_step_ok:
         TAM
         MNEZ                    ; grid 0 is the horizon, not a column
         BR   ms_clear
         LDP  P_SWEEP
-        BR   ms_horizon
+        BR   ms_horizon         ; Y is still the lane here too
 ms_clear:
         LDP  P_ROCKET
         BR   ms_arrived         ; and test the cell it just moved into
 
 ; --- a jet is shot down ------------------------------------------------------
+;
+; **Entry contract: Y holds the lane the shot was flying down.** Nothing else is
+; required, and nothing here re-derives it. Both arms of the hit test reach this
+; label off a comparison that already had the lane in Y - `missile_step` before
+; the shot leaves its cell, `ms_arrived` after it lands in the next one - so the
+; lane is the caller's to state and this routine's to trust. Reading NIB_MLANE
+; back instead would name whichever shot that nibble last described, which is
+; the one shot the rank is retiring; a third caller walking the three lanes will
+; pass its loop index the same way.
+;
+; The column comes out of FILE_MISS[lane] rather than off a register, and costs
+; nothing for it: this routine has to clear that nibble anyway, and `CLA` + `XMA`
+; reads it out and writes the zero back in the two words the clear alone would
+; have taken. So A is free at entry as well.
 
 missile_kill:
+        TYA                     ; A <- the lane, which has to outlive Y below
         LDX  FILE_STATE
-        TCY  NIB_MLANE
-        TMA
         TCY  NIB_KLANE
-        TAM                     ; the burst stands where the jet did
+        TAM                     ; the burst stands in the shot's own lane
+        TMY                     ; and that lane comes straight back into Y
+        CLA
         LDX  FILE_MISS
-        TAY                     ; A still holds the lane, and the lane IS the
-                                ; nibble
-        TMA
+        XMA                     ; A <- the column the shot died on, and the spent
+                                ; shot is cleared in the same word
         A1AAC                   ; NIB_KCOL is the grid plus one, so 0 is "none"
+        LDX  FILE_JETS          ; FILE_JETS and FILE_MISS are both indexed by the
+        TCMIY 0                 ; lane, so that lane is empty again without Y
+                                ; being reloaded. A survives TCMIY
         LDX  FILE_STATE
         TCY  NIB_KCOL
         TAM
-        LDX  FILE_TIME
-        TCY  NIB_KSTEP
-        TCMIY BURST_SWEEPS
-        LDX  FILE_STATE
-        TCY  NIB_MLANE
-        TMA
-        LDX  FILE_MISS
-        TAY
-        TCMIY 0                 ; the shot is spent, and A survives TCMIY
-        LDX  FILE_JETS
-        TAY
-        CLA
-        TAM                     ; that lane is empty again
-        LDX  FILE_STATE
         TCY  NIB_KILLS
         IMAC
         TAM                     ; and the squadron is one thinner, which is a
-        LDP  P_SCORE            ; rung down the cadence ladder
-        TCY  0
-        YNEC 1
-        BR   score_jet
+                                ; rung down the cadence ladder
+        LDX  FILE_TIME
+        TCY  NIB_KSTEP
+        TCMIY BURST_SWEEPS
+        LDP  P_SCORE            ; a page load leaves status armed, so the branch
+        BR   score_jet          ; below is unconditional without a guard pair
 
 ; ============================================================================
 ; Page 8 - the score
@@ -2044,8 +2065,8 @@ ms_arrived:
         LDX  FILE_MISS          ; Y is the lane, which indexes both files
         MNEA                    ; status = that jet is somewhere else
         BR   ms_missed_it
-        LDP  P_HIT
-        BR   missile_kill
+        LDP  P_HIT              ; Y survives the page load, and Y is the lane -
+        BR   missile_kill       ; `missile_kill` asks for nothing else
 ms_missed_it:
         LDP  P_JETS
         BR   jet_march
@@ -2317,21 +2338,18 @@ bs_out:
 ; ============================================================================
 ;
 ; `bship_kill` was on P_SWEEP, beside the `ms_horizon` test that reaches it, and
-; moved here when the missile's column left FILE_STATE for FILE_MISS. Clearing a
-; lane-indexed column costs the lane in A and a second `LDX` to get back to
-; FILE_STATE, and P_SWEEP had six words free against the eight the two arms
-; wanted. Placement is the cheap thing to change here - `BR` carries six bits
-; within a page, so the arm above pays one `LDP` and nothing else - and this page
-; was empty.
+; moved here when the missile's column left FILE_STATE for FILE_MISS. Placement
+; is the cheap thing to change here - `BR` carries six bits within a page, so the
+; arm above pays one `LDP` and nothing else - and this page was empty.
+;
+; **It no longer clears the spent shot**: `ms_horizon` does that once, ahead of
+; the test that picks between the two arms, back when the lane is still in Y.
+; This arm never had a lane of its own - the burst it raises stands in
+; NIB_BSLANE, the boat's lane, and not in the shot's.
 
 .PAGE P_SPARE
 
 bship_kill:
-        LDX  FILE_STATE
-        TCY  NIB_MLANE
-        TMY                     ; the nibble index is the lane, and a lane in RAM
-        LDX  FILE_MISS          ; reaches Y without going through A
-        TCMIY 0
         LDX  FILE_STATE
         TCY  NIB_BSLANE
         TMA
