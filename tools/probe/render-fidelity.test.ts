@@ -115,8 +115,6 @@ const FILE_STATE = 4;
 const FILE_JETS = 6;
 
 /** `FILE_STATE` nibbles. */
-const NIB_MCOL = 5;
-const NIB_MLANE = 6;
 const NIB_RCOL = 7;
 const NIB_RLANE = 8;
 const NIB_KILLS = 12;
@@ -147,6 +145,29 @@ const OPLA_A_PAIR = 12;
  */
 const RPL_R11 = 1;
 
+/**
+ * The grid the player's shot in `lane` stands on, and 0 for no shot in that lane.
+ *
+ * **The only thing in this file that knows where missile state lives**, and it is
+ * a function rather than a pair of nibble constants because that address is about
+ * to move. Today the ROM holds one shot as a column and a lane, so at most one
+ * lane can answer non-zero and the other two read as empty - which is the same
+ * answer the rank will give while only one shot is up. The rank the owner
+ * describes is three columns with the lane implied by which nibble holds it
+ * (`docs/evidence/owner-entity-model.md`, "Why the count is the clue"), so when
+ * the map moves, this body moves with it and every assertion below is already
+ * written against the shape it will have.
+ *
+ * The nibble numbers are from the RAM map at the head of `asm/jetfighter.asm`.
+ */
+function missileCol(ram: Uint8Array, lane: number): number {
+  const NIB_MCOL = 5;
+  const NIB_MLANE = 6;
+  return (ram[FILE_STATE * 16 + NIB_MLANE] as number) === lane
+    ? (ram[FILE_STATE * 16 + NIB_MCOL] as number)
+    : 0;
+}
+
 /** Long enough for several waves, entries, rocket launches and a crossing. */
 const RUN_CYCLES = 40 * CYCLE_HZ;
 
@@ -175,8 +196,8 @@ interface Sample {
   readonly pair: readonly number[];
   /** R-plate code of grids 1-5, indexed by grid: lane 2's missile lives here. */
   readonly plate: readonly number[];
-  readonly missileCol: number;
-  readonly missileLane: number;
+  /** Grid the player's shot in each lane stands on, 0 for a lane with no shot. */
+  readonly missiles: readonly number[];
   /** Jets shot down in this wave, which `missile_kill` increments. */
   readonly kills: number;
   /** False while a sound holds the sweep and the tube is dark. */
@@ -230,8 +251,7 @@ function sample(lane: number): readonly Sample[] {
       rocketLane: nibble(FILE_STATE, NIB_RLANE),
       pair: Array.from({ length: GRID_COL_LAST + 1 }, (_unused, g) => nibble(FILE_D2, g)),
       plate: Array.from({ length: GRID_COL_LAST + 1 }, (_unused, g) => nibble(FILE_D3, g)),
-      missileCol: nibble(FILE_STATE, NIB_MCOL),
-      missileLane: nibble(FILE_STATE, NIB_MLANE),
+      missiles: Array.from({ length: LANE_COUNT }, (_unused, l) => missileCol(ram, l)),
       kills: nibble(FILE_STATE, NIB_KILLS),
       refreshing: machine.isRefreshing(),
     });
@@ -270,9 +290,16 @@ function recentlyJustified(
  * Written against the state rather than against a count of missiles, so it holds
  * whether the ROM flies one shot or one per lane: every lane whose missile stands
  * on this grid is set, and nothing else is.
+ *
+ * An empty lane reads 0, and every caller asks about a playfield grid - 1 to 5 -
+ * so an empty lane never sets its bit. This is `jetBitmap`'s shape for the same
+ * reason: both are "which lanes does the state put on this column?".
  */
 function missileBitmap(shot: Sample, grid: number): number {
-  return shot.missileCol === grid && shot.missileLane < LANE_COUNT ? 1 << shot.missileLane : 0;
+  return shot.missiles.reduce(
+    (bits, standsOn, lane) => (standsOn === grid ? bits | (1 << lane) : bits),
+    0,
+  );
 }
 
 /** The lane bitmap the one rocket the ROM can hold justifies for `grid`. */
@@ -493,8 +520,8 @@ describe('the player\'s shot is drawn in the lane it flies down', () => {
           if (spurious !== 0) {
             wrong.push(
               `t=${shot.seconds.toFixed(2)}s grid ${grid}: pair nibble ${drawn} lights missile ` +
-                `lane(s) ${[0, 1].filter((l) => spurious & (1 << l))} with the shot at ` +
-                `col ${shot.missileCol} lane ${shot.missileLane}`,
+                `lane(s) ${[0, 1].filter((l) => spurious & (1 << l))} with shots at ` +
+                `[${shot.missiles}]`,
             );
           }
 
@@ -502,7 +529,7 @@ describe('the player\'s shot is drawn in the lane it flies down', () => {
           if ((shot.plate[grid] as number) === RPL_R11 && (justified & (1 << 2)) === 0) {
             wrong.push(
               `t=${shot.seconds.toFixed(2)}s grid ${grid}: R-plate names the lane-2 missile ` +
-                `with the shot at col ${shot.missileCol} lane ${shot.missileLane}`,
+                `with shots at [${shot.missiles}]`,
             );
           }
         }
@@ -528,42 +555,48 @@ describe('a shot in flight is drawn somewhere', () => {
     it(`draws every shot the player fires, lever in lane ${detent}`, () => {
       const shots = sample(detent);
       const undrawn: string[] = [];
-      let flightLane = -1;
-      let flightFrom = 0;
-      let drawn = false;
-      let drawable = 0;
-      const close = (at: number): void => {
-        if (flightLane >= 0 && drawable >= STALE_SAMPLES && !drawn) {
-          undrawn.push(
-            `a shot flew in lane ${flightLane} from t=${flightFrom.toFixed(2)}s to ` +
-              `t=${at.toFixed(2)}s and was never drawn`,
-          );
+      // A flight per lane rather than one flight at a time: while the ROM holds
+      // one shot only one of these three ever runs, and a rank of three needs no
+      // second form of the check.
+      for (let lane = 0; lane < LANE_COUNT; lane += 1) {
+        let flying = false;
+        let flightFrom = 0;
+        let drawn = false;
+        let drawable = 0;
+        const close = (at: number): void => {
+          if (flying && drawable >= STALE_SAMPLES && !drawn) {
+            undrawn.push(
+              `a shot flew in lane ${lane} from t=${flightFrom.toFixed(2)}s to ` +
+                `t=${at.toFixed(2)}s and was never drawn`,
+            );
+          }
+        };
+        for (const shot of shots) {
+          const grid = shot.missiles[lane] as number;
+          const inFlight = grid >= GRID_COL_FIRST && grid <= GRID_COL_LAST;
+          if (inFlight !== flying) {
+            close(shot.seconds);
+            flying = inFlight;
+            flightFrom = shot.seconds;
+            drawn = false;
+            drawable = 0;
+          }
+          if (!inFlight || !shot.refreshing) {
+            continue;
+          }
+          drawable += 1;
+          const pairBitmap =
+            (shot.pair[grid] as number) >= OPLA_A_PAIR
+              ? (shot.pair[grid] as number) - OPLA_A_PAIR
+              : 0;
+          const litOnPort = (pairBitmap & (1 << lane)) !== 0;
+          const litOnPlate = lane === 2 && (shot.plate[grid] as number) === RPL_R11;
+          if (litOnPort || litOnPlate) {
+            drawn = true;
+          }
         }
-      };
-      for (const shot of shots) {
-        const inFlight = shot.missileCol >= GRID_COL_FIRST && shot.missileCol <= GRID_COL_LAST;
-        const lane = inFlight ? shot.missileLane : -1;
-        if (lane !== flightLane) {
-          close(shot.seconds);
-          flightLane = lane;
-          flightFrom = shot.seconds;
-          drawn = false;
-          drawable = 0;
-        }
-        if (!inFlight || !shot.refreshing) {
-          continue;
-        }
-        drawable += 1;
-        const grid = shot.missileCol;
-        const pairBitmap =
-          (shot.pair[grid] as number) >= OPLA_A_PAIR ? (shot.pair[grid] as number) - OPLA_A_PAIR : 0;
-        const litOnPort = (pairBitmap & (1 << shot.missileLane)) !== 0;
-        const litOnPlate = shot.missileLane === 2 && (shot.plate[grid] as number) === RPL_R11;
-        if (litOnPort || litOnPlate) {
-          drawn = true;
-        }
+        close(shots[shots.length - 1]?.seconds ?? 0);
       }
-      close(shots[shots.length - 1]?.seconds ?? 0);
       expect(undrawn.slice(0, 5), `${undrawn.length} shots were never drawn`).toEqual([]);
     });
   }
@@ -599,14 +632,49 @@ describe('a pair nibble is a pair index, and never off the end of the group', ()
   }
 });
 
+/**
+ * Samples before a kill in which the shot that did it has to be found: two, and
+ * the second one is a torn read rather than a tolerance.
+ *
+ * `missile_kill` clears the shot, then clears the jet, then counts the kill, and
+ * those are separate writes - a sample can land between the first and the second
+ * and see a lane that still holds its jet with the shot already gone. One does,
+ * deterministically, at t=27.27 s of the lever-in-lane-0 drive. So the sample
+ * immediately before a kill can be empty of the shot that caused it, and the
+ * pairing is looked for over the two samples before it instead. This is the same
+ * hazard `scoring-ruler.test.ts` names for `add_score`'s two BCD digits.
+ */
+const ATTRIBUTION_SAMPLES = 2;
+
 describe('a kill is credited to the lane the shot was flying down', () => {
   // The second seam of the multi-missile change, and the one that survives a
-  // careful reading. `missile_kill` reads the lane from `NIB_MLANE` - a stored
-  // nibble - and clears that lane's jet. Once `missile_step` becomes a walk the
-  // lane is the loop index instead, and a `missile_kill` still reading the old
-  // nibble would credit whichever lane happened to be there: the wrong jet dies,
-  // the burst prints in the wrong cell, and the score still goes up by one. Every
+  // careful reading. `missile_kill` reads the lane from a stored nibble and
+  // clears that lane's jet. Once `missile_step` becomes a walk the lane is the
+  // loop index instead, and a `missile_kill` still reading the stored nibble
+  // would credit whichever lane happened to be there: the wrong jet dies, the
+  // burst prints in the wrong cell, and the score still goes up by one. Every
   // count in the game stays right while the wrong aircraft falls out of the sky.
+  //
+  // ## What is asserted, and why it is not "the lane the shot was in"
+  //
+  // The claim below is per lane and not per shot: **every lane that lost a jet
+  // must have had a shot of the player's standing in the cell that jet stood
+  // in.** That is the same statement for one missile and for three - with one
+  // shot up, exactly one lane can answer it - and it does not go vacuous or
+  // ambiguous when two jets fall in the same sample, which asking "which lane
+  // was *the* shot in?" would.
+  //
+  // ## The one-column allowance, which is the meeting and not a tolerance
+  //
+  // The sample the kill lands in is no use for this: `missile_kill` clears the
+  // shot and the jet together, so both read zero by then and the state that
+  // justified the kill is an earlier sample's. In that sample the two are often
+  // one column apart rather than on the same cell, because the sample is 10 ms
+  // and the two ways they meet both take one step: `missile_step` tests the cell
+  // before the shot leaves it and then advances into the jet's, and a jet
+  // marching inward steps into a cell a standing shot already holds. Either way
+  // the shot is on the jet's grid or on the next one out - never two cells off,
+  // and never in another lane, which is the fault this is here to catch.
   //
   // Read off the state rather than the picture, because the claim is about which
   // jet the ROM removed and not about where it drew the burst.
@@ -628,11 +696,23 @@ describe('a kill is credited to the lane the shot was flying down', () => {
           return; // the wave reset in the same sample; nothing to attribute
         }
         checked += 1;
-        if (!emptied.includes(before.missileLane)) {
-          wrong.push(
-            `t=${shot.seconds.toFixed(2)}s: a kill emptied lane(s) ${emptied} with the shot ` +
-              `flying down lane ${before.missileLane} at col ${before.missileCol}`,
-          );
+        const recent = shots.slice(Math.max(0, index - ATTRIBUTION_SAMPLES), index);
+        for (const lane of emptied) {
+          // The shot and the jet it hit, in the same lane and within a column of
+          // one another, in one of the samples just before the kill.
+          const met = recent.some((at) => {
+            const shotAt = at.missiles[lane] as number;
+            const jetAt = at.jets[lane] as number;
+            return jetAt !== 0 && (shotAt === jetAt || shotAt === jetAt + 1);
+          });
+          if (!met) {
+            wrong.push(
+              `t=${shot.seconds.toFixed(2)}s: a kill emptied lane(s) ${emptied}, and lane ` +
+                `${lane} lost the jet on grid ${before.jets[lane]} with no shot of the ` +
+                `player's standing on it - shots were ` +
+                recent.map((at) => `[${at.missiles}]`).join(' then '),
+            );
+          }
         }
       });
       // Non-vacuity, in the shape `tms1370-rom.test.ts` names: a check over kills
@@ -674,11 +754,12 @@ describe('the player can have a shot in more than one lane at once', () => {
   // covers is invisible to every other assertion in this file, each of which is
   // about a shot that already exists.
   //
-  // `tick_fire` gates firing on `NIB_MCOL` being zero - one shot anywhere on the
-  // playfield, not one shot per lane. That gate reads like an input check rather
-  // than like missile state, which is exactly why a multi-missile change can draw
-  // three shots correctly, step three shots correctly, and still fire only one:
-  // every assertion above would pass, because each is about a shot that exists.
+  // `tick_fire` gates firing on the missile column being zero - one shot
+  // anywhere on the playfield, not one shot per lane. That gate reads like an
+  // input check rather than like missile state, which is exactly why a
+  // multi-missile change can draw three shots correctly, step three shots
+  // correctly, and still fire only one: every assertion above would pass,
+  // because each is about a shot that exists.
   //
   // The owner's account of the physical unit is the specification here - tap,
   // tap, tap and three shots stand in the three lanes, staggered by column:
