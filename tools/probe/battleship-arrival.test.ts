@@ -1105,19 +1105,53 @@ describe('the crossing is announced by a sustained buzz', () => {
     // See docs/evidence/audio-reference.md, battleshipBuzz.
     //
     // Continuity is asserted two ways, because on this machine either alone
-    // would pass on a broken sound. Every window of the crossing has to read the
+    // would pass on a broken sound. The crossing's windows have to read the
     // buzz's rate - a buzz that stopped half way would leave the back half's
     // windows out of band while a single reading over the crossing stayed in it.
     // And the speaker may not hold still for longer than a note, since a note
     // stops the sweep and the buzz stops with it - that is one core and one pin,
     // not a gap in the sound.
+    //
+    // ## Why a *run* of windows, and not every window on its own
+    //
+    // The windows are a half-window hop apart, so they overlap by half and every
+    // instant of the crossing falls inside exactly two of them. A note is one
+    // such instant as far as this measurement goes - ~72 ms against a 0.34 s
+    // window - and while it is sounding `combPeriodicityHz` scores its edges
+    // together with the buzz's and reads lower than either. **So the shortest
+    // disturbance there is already shows up in two consecutive windows**, and
+    // where the pair falls moves with the sweep length.
+    //
+    // That is what made asserting an empty stray list a bet on the sweep being
+    // exactly 889 instructions. At 893 a crossing read ... 101 **62** 94.25 ...
+    // and at 894 ... 101.25 **61.75 60.25** 95.5 ... - the same intact buzz,
+    // one note, and a window grid that had shifted under it. Both crossings kept
+    // their longest silence at 42.1 ms against the 150 ms limit.
+    //
+    // Two is therefore the tightest bound that is not a phase bet, and it is not
+    // a free parameter: `MAX_BUZZ_HOLE_MS` is 150 ms and the hop is 171 ms, so
+    // any interruption this test is willing to tolerate at all is shorter than
+    // one hop and cannot reach a third consecutive window. Anything that does
+    // reach one has already failed the silence assertion below.
+    //
+    // **The bar for the defect this guards is unchanged.** One note at the
+    // arrival and then silence puts every window of the back half out of band -
+    // a run of a dozen, not two - and trips `longestSilenceMs` besides.
     for (const crossing of found) {
       const end = crossing.toCycle;
       if (end === null || ms(end - crossing.fromCycle) < 1000) continue;
       const readings = buzzWindowsIn(edges, crossing.fromCycle, end);
       expect(readings.length).toBeGreaterThan(10);
-      const strays = readings.filter((hz) => hz < BUZZ_MIN_HZ || hz > BUZZ_MAX_HZ);
-      expect(strays).toEqual([]);
+      let run = 0;
+      let longestRun = 0;
+      for (const hz of readings) {
+        run = hz < BUZZ_MIN_HZ || hz > BUZZ_MAX_HZ ? run + 1 : 0;
+        longestRun = Math.max(longestRun, run);
+      }
+      expect(
+        longestRun,
+        `the buzz left its band for ${longestRun} windows running: ${JSON.stringify(readings)}`,
+      ).toBeLessThan(3);
       expect(longestSilenceMs(edges, crossing.fromCycle, end)).toBeLessThan(MAX_BUZZ_HOLE_MS);
     }
   });

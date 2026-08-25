@@ -163,11 +163,12 @@ function missileCol(ram: Uint8Array, lane: number): number {
  *
  * The three gates below are all "is the barrel free?", and with one missile that
  * is the same question as "is this lane free?". It is deliberately still the
- * whole-playfield question: these drives are instruments, and their measurements
- * - 58 scoring events, 3 boat kills in 27 crossings - are of a player who fires
- * one shot at a time. Loosening them to fire per lane changes what is being
- * measured, so it belongs in the task that gives the ROM a rank to fire, not in
- * the one that moves the address.
+ * whole-playfield question: these drives are instruments, and their measurement
+ * of a player - 58 scoring events, and boat kills rare enough that the hunt has
+ * to play 27 games to be sure of one - is of a player who fires one shot at a
+ * time. Loosening them to fire per lane changes what is being measured, so it
+ * belongs in the task that gives the ROM a rank to fire, not in the one that
+ * moves the address.
  */
 function missileInFlight(ram: Uint8Array): boolean {
   return [0, 1, 2].some((lane) => missileCol(ram, lane) !== 0);
@@ -228,22 +229,62 @@ const BOAT_TOP_LANE = 0;
 const BOAT_LEAD_LANE = 2;
 
 /**
+ * How long after the boat reaches the top lane each crossing's shot is fired,
+ * in `SAMPLE_CYCLES` slices, cycled through across crossings.
+ *
+ * **The lead is a window in time, and this samples it instead of betting on one
+ * point in it.** The boat holds the top lane for about 1.29 s and a shot needs
+ * about 3.0 s to reach the horizon, so whether a shot connects depends on where
+ * inside that dwell it was released. The hunt used to fire the instant it saw
+ * the boat arrive - one point, sampled 27 times - which made the whole
+ * assertion a bet that this one reaction time lands inside the window.
+ *
+ * It is a bet the sweep length settles, because the drive observes the arrival
+ * on a 5 ms sample while the game advances the boat and the shot on sweeps. Ten
+ * instructions added anywhere in the sweep re-phase the two against each other
+ * and move the release point within the window. Measured by padding the sweep
+ * on an otherwise unmodified ROM, the old drive scored kills at 889 and 894
+ * instructions and none at 890, 891, 892, 893, 895, 896 or 897 - and firing the
+ * same instant across twice as many games still scored none, which is what says
+ * this is a misplaced release rather than too few samples.
+ *
+ * Sixteen offsets at 60 ms spacing cover the first 0.9 s of the dwell, so a
+ * cadence change moves *which* offsets land in the window rather than moving
+ * the drive out of it altogether.
+ */
+const LEAD_DELAY_SAMPLES = [0, 12, 24, 36, 48, 60, 72, 84, 96, 108, 120, 132, 144, 156, 168, 180];
+
+/**
  * Hunt the battleship across several games, one shot per crossing, led by two.
  *
  * Separate from the census drive because a boat kill is a low-probability event
  * that has to be sought rather than encountered: see the comment on the
- * assertion that uses this. `tools/probe/drives/battleship-lead.ts` is the same
- * strategy as a standalone instrument and measures 3 kills in 27 crossings.
+ * assertion that uses this, which also explains how the release point is walked
+ * across the lead window rather than fixed.
+ *
+ * `tools/probe/drives/battleship-lead.ts` is the same strategy as a standalone
+ * instrument. **Its recorded figure of 3 kills in 27 crossings no longer
+ * reproduces** - it scores none on an unmodified `main` as well as here, so it
+ * drifted before this change rather than because of it, and it fires at the one
+ * fixed release point this function stopped relying on. It is not run by
+ * `npm test`; correcting it is tracked separately.
  */
 function boatHunt(): { attempts: number; kills: Kill[] } {
   const kills: Kill[] = [];
   let attempts = 0;
+  // Advances across games, so successive crossings take successive offsets and
+  // the whole hunt walks the lead window rather than each game repeating it.
+  let crossingIndex = 0;
   for (const skill of [1, 2, 3] as const) {
-    for (const seed of [0, 1, 2]) {
+    for (const seed of [0, 1, 2, 3, 4, 5, 6, 7, 8]) {
       const machine = new Tms1370Machine();
       machine.setContacts({ skill, lane: seed, fire: false });
       let score = scoreOf(machine.ram);
       let firedThisCrossing = false;
+      // -1 while the boat is anywhere but the top lane; counts samples of the
+      // dwell once it arrives.
+      let sinceTop = -1;
+      let leadDelay = 0;
       while (machine.cycles < seconds(300)) {
         machine.step(SAMPLE_CYCLES);
         let ram = machine.ram;
@@ -266,6 +307,7 @@ function boatHunt(): { attempts: number; kills: Kill[] } {
         const boat = ram[FILE_STATE * 16 + NIB_BSLANE] as number;
         if (boat !== BOAT_TOP_LANE) {
           firedThisCrossing = false;
+          sinceTop = -1;
           // ## Between crossings the hunt has to defend, or it never sees a
           // ## second one
           //
@@ -306,8 +348,40 @@ function boatHunt(): { attempts: number; kills: Kill[] } {
           }
           continue;
         }
+        // First sample of this crossing's dwell: take the next lead offset.
+        if (sinceTop < 0) {
+          leadDelay = LEAD_DELAY_SAMPLES[
+            crossingIndex % LEAD_DELAY_SAMPLES.length
+          ] as number;
+          crossingIndex += 1;
+          sinceTop = 0;
+        } else {
+          sinceTop += 1;
+        }
         if (firedThisCrossing || missileInFlight(ram)) continue;
-        machine.setContacts({ lane: BOAT_LEAD_LANE, fire: true });
+        if (sinceTop < leadDelay) continue;
+        // **Do not fire into a lane a jet is standing in.** `missile_step` tests
+        // the cell before the shot leaves it, so a jet anywhere down the lead
+        // lane takes the shot and scores as a jet - the shot never reaches the
+        // horizon and the crossing is spent. Measured, that is how most led
+        // shots died: 23 attempts produced 5 arrivals at the horizon.
+        //
+        // Waiting for the lane to clear is the same led shot, taken when it can
+        // survive to the boat's row. It raises the hit rate rather than lowering
+        // the bar, and it is what a player who has learned the lead does - which
+        // is the player this drive is meant to be.
+        if ((ram[FILE_JETS * 16 + BOAT_LEAD_LANE] as number) !== 0) continue;
+        // **Aim a sweep before the fire edge**, the same as the defending shot
+        // above and for the same reason: the ROM samples the lever and the
+        // button in one pass, so a lever moved in the same call as the press can
+        // arrive after `tick_fire` has already read the button, and the shot
+        // goes down whatever lane the lever was in before. This shot used to set
+        // both together, which left it firing down the *defending* shot's lane
+        // whenever the two fell in the same sweep - the drive's own header
+        // states the rule that the boat shot was not following.
+        machine.setContacts({ lane: BOAT_LEAD_LANE });
+        machine.step(SAMPLE_CYCLES);
+        machine.setContacts({ fire: true });
         machine.step(FIRE_HOLD_CYCLES);
         machine.setContacts({ fire: false });
         firedThisCrossing = true;
@@ -531,6 +605,22 @@ const UNREACHABLE = 5;
 const DRIVE_TIMEOUT_MS = 60_000;
 
 /**
+ * The same ceiling for `boatHunt`, which is far the longest drive here.
+ *
+ * The hunt plays 27 games of 300 emulated seconds - it has to, because a boat
+ * kill is rare enough that fewer games leave the assertion resting on chance
+ * again - and measures 23 s on an idle developer machine. The note on
+ * `DRIVE_TIMEOUT_MS` records this file going from 4.4 s locally to 15.3 s on
+ * CI, so a runner several times slower puts this drive past the 60 s that
+ * covers the others.
+ *
+ * Sized against that ratio with room to spare, for the reason the note above
+ * gives: it is a ceiling on the harness, not a horizon on the machine, and
+ * nothing about the ROM is asserted by it.
+ */
+const HUNT_TIMEOUT_MS = 180_000;
+
+/**
  * A drive's scoring events, split at the winning add.
  *
  * **This is not an exclusion for a known bug**, and the split is written out
@@ -644,9 +734,8 @@ describe("the printed ruler", () => {
     expect(unnamed).toEqual([]);
   });
 
-  // Nine 300 s games, so it needs the drive budget rather than the 5 s default:
-  // it cost 4.4 s locally and 15.3 s on CI, which is how it went green here and
-  // red there.
+  // Twenty-seven 300 s games, so it needs `HUNT_TIMEOUT_MS` rather than the 5 s
+  // default: it cost 4.4 s locally and 15.3 s on CI when it played nine.
   it(
     "still pays the battleship its ten",
     () => {
@@ -655,8 +744,7 @@ describe("the printed ruler", () => {
       // **Driven separately, because the census cannot reliably reach a boat.**
       // The battleship has to be led by two lanes - it descends one lane per
       // 1.29 s and a shot needs 3.0 s to reach the horizon - and it can only be led
-      // from the top lane, which it holds for 1.29 s of a 3.9 s crossing. A shot
-      // fired into that window connects about one time in nine.
+      // from the top lane, which it holds for 1.29 s of a 3.9 s crossing.
       //
       // The census sees roughly ten such windows before the drive wins, so it
       // expects about one kill with wide variance, and it measured zero. That is
@@ -666,21 +754,42 @@ describe("the printed ruler", () => {
       //
       // ## Earnable, and rare. Both, or the record is misleading.
       //
-      // This hunt lands **3 kills in 27 led shots**, the same one-in-nine as the
-      // standalone control in `tools/probe/drives/battleship-lead.ts`. Twenty-four
-      // of the twenty-seven miss.
+      // Most led shots still miss. "The boat must be led" invites the reading
+      // that leading works, and it mostly does not: a player who has learned the
+      // lead still walks away from most crossings with nothing. The ten points
+      // are earnable *and* rare, which is a different claim from earnable, and
+      // it is the one the machine supports.
       //
-      // Both halves belong in the record. "The boat must be led" invites the
-      // reading that leading works, and it mostly does not: a player who has
-      // learned the lead still walks away from most crossings with nothing. The
-      // ten points are earnable *and* rare, which is a different claim from
-      // earnable, and it is the one the machine supports.
+      // It is also why this assertion tolerates a miss rather than expecting a
+      // hit per crossing. A drive that could not miss would pass on something
+      // other than the mechanic - the same condition the dodging rotor drive is
+      // held to.
       //
-      // It is also why this assertion is written to tolerate a miss rather than
-      // to expect a hit per crossing. A drive that could not miss would pass on
-      // something other than the mechanic - the same condition the dodging rotor
-      // drive is held to. If a change ever makes this reliable, that is a
-      // behaviour change worth noticing, not a test getting better.
+      // ## Why the hunt is sized and aimed the way it is
+      //
+      // **A rare event asserted once is an assertion about phase, not about the
+      // mechanic.** The hunt used to fire the instant it saw the boat reach the
+      // top lane, once per crossing, over nine games. That is one release point
+      // sampled 27 times, and whether that point falls inside the lead window is
+      // settled by how the drive's 5 ms sampling happens to sit against a sweep
+      // the game counts in instructions. Padding an otherwise unmodified ROM to
+      // move the sweep showed it plainly: kills at 889 and 894 instructions and
+      // none at 890, 891, 892, 893, 895, 896 or 897. Doubling the games at a
+      // losing cadence still scored none, which is what says the release point
+      // was misplaced rather than merely under-sampled.
+      //
+      // Three things fix that, and none of them lowers the bar:
+      //   - `LEAD_DELAY_SAMPLES` walks the release across the dwell, so a
+      //     cadence change moves which offsets land in the window instead of
+      //     moving the drive out of it;
+      //   - the shot aims a sweep before its fire edge, which the drive's own
+      //     header always required and this one shot was not doing;
+      //   - it waits for the lead lane to be clear, so the shot can survive to
+      //     the boat's row instead of being eaten by a jet on the way.
+      //
+      // Sized at 27 games because 18 still failed at one cadence in the padding
+      // sweep. With all three, 893 through 898 pass - the range tasks 4-6 will
+      // move the sweep through as the rank lands.
       const boat = boatHunt();
       expect(
         boat.attempts,
@@ -696,7 +805,7 @@ describe("the printed ruler", () => {
         );
       }
     },
-    DRIVE_TIMEOUT_MS,
+    HUNT_TIMEOUT_MS,
   );
 
   it.each(REACHABLE)(
