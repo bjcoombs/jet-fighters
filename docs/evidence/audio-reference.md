@@ -634,6 +634,16 @@ rejects, because another event at ~27.451 s overlaps its attack. That does not r
 the prefix model - contamination cannot move a reading *down* to 92 Hz - but its 744 Hz
 should not be quoted as a clean figure.
 
+**These three numbers do not replace `dominantHzRange`, and are not a correction of
+it.** They sit lower than the pooled 455 / 455 / 544 for reasons that are all method
+and not disagreement: this pass divides by a background where v1 did not, restricts to
+150-1350 Hz where v1 read the whole spectrum, and reports the strongest partial of a
+10 ms *transient* rather than of the event. A piezo click that short is broadband -
+look at the -3 dB spans, which run 148 to 292 Hz wide - so its "dominant" is a weak
+pitch estimate by construction. **What the per-beep pass is good for is the shape of
+the sequence, not the value of any one beep**, and the shape is what the question was
+about. The 455-545 Hz acceptance band in the summary below stands unchanged.
+
 #### The positive control, which is what makes the negative mean anything
 
 The same method, the same file, run on the loss sound itself. A method that cannot find
