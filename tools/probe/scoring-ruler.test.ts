@@ -59,6 +59,7 @@
 // change, which is why every delta below is a single number and not a pair.
 
 import { beforeAll, describe, expect, it } from "vitest";
+import { SWEEP_INSTRUCTIONS } from "../../src/machine/board/tms1370-cadence.js";
 import { CYCLE_HZ } from "../../src/machine/cpu/tms1370/timing.js";
 import { Tms1370Machine } from "./tms1370-probe.js";
 
@@ -90,6 +91,18 @@ const GRID_COL_LAST = 5;
  * same correction the march and the battleship pairs carry.
  */
 const MISSILE_COLUMN_SWEEPS = 32;
+
+/**
+ * Sweeps the boat spends in one lane: `BSHIP_STEP_HI * 16 + BSHIP_STEP_LO + 1`,
+ * which is 4 * 16 + 0 + 1. Three of them is the 3.9 s crossing measured in
+ * `asm/jetfighter.asm`'s battleship header.
+ *
+ * Stated in sweeps rather than as the 1.29 s it currently comes to, for the
+ * reason CLAUDE.md gives about horizons in tests of a machine whose sweep moves:
+ * the lead window is a count of sweeps in the ROM, so a cadence change should
+ * move the seconds and leave this alone.
+ */
+const BOAT_LANE_STEP_SWEEPS = 65;
 
 /** Seconds of emulated time, as the cycle count the probe takes. */
 const seconds = (value: number): number => Math.round(value * CYCLE_HZ);
@@ -248,11 +261,26 @@ const BOAT_LEAD_LANE = 2;
  * same instant across twice as many games still scored none, which is what says
  * this is a misplaced release rather than too few samples.
  *
- * Sixteen offsets at 60 ms spacing cover the first 0.9 s of the dwell, so a
- * cadence change moves *which* offsets land in the window rather than moving
- * the drive out of it altogether.
+ * **The offsets have to cover the whole dwell, and the first version of this did
+ * not.** Sixteen written-out offsets at 60 ms spacing reached 0.9 s of the
+ * 1.29 s dwell, leaving the last 30% of the window unsampled - a narrower bet
+ * than firing on arrival, but the same kind of bet. It held from 889 to 897 and
+ * then went red when task 4 landed the missile rank at 898: the hunt still got
+ * its shots away, and not one of them connected.
+ *
+ * So the offsets are derived from the dwell rather than written out - every
+ * release point from arrival to the end of it, at half the old spacing. A
+ * cadence change now moves *which* offsets fall in the lead window, and there is
+ * no longer any part of the window it can move them all out of.
  */
-const LEAD_DELAY_SAMPLES = [0, 12, 24, 36, 48, 60, 72, 84, 96, 108, 120, 132, 144, 156, 168, 180];
+const LEAD_DELAY_STEP_SAMPLES = 6;
+const BOAT_TOP_DWELL_SAMPLES = Math.round(
+  (BOAT_LANE_STEP_SWEEPS * SWEEP_INSTRUCTIONS) / SAMPLE_CYCLES,
+);
+const LEAD_DELAY_SAMPLES = Array.from(
+  { length: Math.ceil(BOAT_TOP_DWELL_SAMPLES / LEAD_DELAY_STEP_SAMPLES) },
+  (_unused, index) => index * LEAD_DELAY_STEP_SAMPLES,
+);
 
 /**
  * Hunt the battleship across several games, one shot per crossing, led by two.
@@ -269,7 +297,8 @@ const LEAD_DELAY_SAMPLES = [0, 12, 24, 36, 48, 60, 72, 84, 96, 108, 120, 132, 14
  * fixed release point this function stopped relying on. It is not run by
  * `npm test`; correcting it is tracked separately.
  */
-function boatHunt(): { attempts: number; kills: Kill[] } {
+function boatHunt(): { attempts: number; kills: Kill[]; used: number[] } {
+  const used: number[] = [];
   const kills: Kill[] = [];
   let attempts = 0;
   // Advances across games, so successive crossings take successive offsets and
@@ -353,6 +382,7 @@ function boatHunt(): { attempts: number; kills: Kill[] } {
           leadDelay = LEAD_DELAY_SAMPLES[
             crossingIndex % LEAD_DELAY_SAMPLES.length
           ] as number;
+          used.push(crossingIndex % LEAD_DELAY_SAMPLES.length);
           crossingIndex += 1;
           sinceTop = 0;
         } else {
@@ -389,7 +419,7 @@ function boatHunt(): { attempts: number; kills: Kill[] } {
       }
     }
   }
-  return { attempts, kills };
+  return { attempts, kills, used };
 }
 
 const ST_OVER = 1;
@@ -791,6 +821,16 @@ describe("the printed ruler", () => {
       // sweep. With all three, 893 through 898 pass - the range tasks 4-6 will
       // move the sweep through as the rank lands.
       const boat = boatHunt();
+      // **The coverage the offsets claim has to be coverage the hunt performs.**
+      // One offset is taken per crossing, wrapping, so a hunt with fewer
+      // crossings than offsets would sample a prefix of the dwell and leave the
+      // late window untried - which is the fault the list was widened to fix,
+      // reappearing one level up. Measured: 119 crossings across the 27 games
+      // against 33 offsets, so every offset is taken about three times.
+      expect(
+        [...new Set(boat.used)].sort((left, right) => left - right),
+        "the hunt never reached some lead offset, so part of the dwell is untried",
+      ).toEqual(LEAD_DELAY_SAMPLES.map((_unused, index) => index));
       expect(
         boat.attempts,
         "the hunt never got a shot into the lead window",
