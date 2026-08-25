@@ -3019,6 +3019,13 @@ rd_rk_draw:
 ; through `COMC / LDP P_LEAF / CALL lane_bit / COMC` and this reaches it through
 ; an immediate. Measured on a played run: 915.4 cycles before, 898.5 after.
 ;
+; **So the repetition below is load-bearing, and folding it back into a loop will
+; take the sweep rate red.** Three arms differing only in a nibble index and an
+; immediate look exactly like something a tidy-up should collapse, and the page
+; has the words to spare - 32 of 64 - but not the cycles. If you are here to
+; shorten this, the measurement to beat is in `sweep-timing.test.ts`, and it is
+; the assertion that fails last and reads least like the change that caused it.
+;
 ; So the bit-then-lane hazard `rd_jets` carries - `NIB_RBIT` is 11, `NIB_RLNE`
 ; is 12, `TCMIY` steps Y up, and writing them the other way round lands the
 ; second store in nibble 13 where nothing reads it - **cannot arise here, because
