@@ -291,6 +291,38 @@ for (const [ms, label] of stages) {
   console.log(`  ${String(ms).padStart(8)}   ${(peakBin * binHz).toFixed(0).padStart(11)}   ${label}`);
 }
 
-console.log('\nRead the three together. The prefix model requires beep 2 to be the');
+// --- 4. event shape: is the warning continuous, the way a melody is? ---------
+
+console.log('\n--- 4. Event shape ---------------------------------------------------');
+console.log('300-1300 Hz level per 2 ms frame, as a fraction of each event that sits');
+console.log('more than 15 dB below that event\'s own peak. A melody played straight');
+console.log('through has no such frames; a train of separated beeps is mostly them.\n');
+
+function shape(t0: number, durS: number, label: string): void {
+  const frames: number[] = [];
+  for (let t = t0; t < t0 + durS; t += 0.002) frames.push(bandDb(spectrumAt(x, t, 0.008), 300, 1300));
+  const peak = Math.max(...frames);
+  const quiet = frames.filter((v) => v < peak - 15).length;
+  // Longest unbroken run within 15 dB of the peak, in ms.
+  let run = 0;
+  let bestRun = 0;
+  for (const v of frames) {
+    run = v >= peak - 15 ? run + 1 : 0;
+    bestRun = Math.max(bestRun, run);
+  }
+  console.log(
+    `  ${label.padEnd(34)} ${((quiet / frames.length) * 100).toFixed(0).padStart(3)}% quiet   ` +
+      `longest continuous run ${(bestRun * 2).toFixed(0).padStart(4)} ms of ${(durS * 1000).toFixed(0)} ms`,
+  );
+}
+// Matched lengths. Comparing an 88 ms window against a 1.1 s one would compare
+// each event's peak to a different part of itself: over the whole loss sound the
+// peak is the 240 Hz rasp body, 20 dB above the collapse that precedes it, and
+// the statistic would then report the collapse as "quiet".
+const span = onsets[2] + 0.015 - onsets[0];
+shape(onsets[0], span, 'warning, whole three-beep group');
+shape(lossOnset, span, 'loss, same length from its onset');
+
+console.log('\nRead the four together. The prefix model requires beep 2 to be the');
 console.log('collapse; the collapse is what the loss sound shows at +30 dB or better on');
 console.log('this statistic, and what beep 2 shows the opposite sign of.');
