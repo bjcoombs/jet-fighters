@@ -66,7 +66,6 @@ import { Tms1370Machine } from "./tms1370-probe.js";
 const FILE_STATE = 4;
 const FILE_TIME = 5;
 const FILE_JETS = 6;
-const NIB_MCOL = 5;
 const NIB_RCOL = 7;
 const NIB_RLANE = 8;
 const NIB_BSLANE = 9;
@@ -139,6 +138,39 @@ interface Kill {
   /** The score before and after, which is what makes the 199 cap recognisable. */
   readonly from: number;
   readonly to: number;
+}
+
+/**
+ * The grid the player's shot in `lane` stands on, and 0 for no shot in that lane.
+ *
+ * **The only thing in this file that knows where missile state lives**, and it is
+ * a function rather than a nibble constant because that address is about to move.
+ * Today the ROM holds one shot as a column and a lane, so at most one lane can
+ * answer non-zero; the rank the owner describes is three columns with the lane
+ * implied by which nibble holds it (`docs/evidence/owner-entity-model.md`). The
+ * nibble numbers are from the RAM map at the head of `asm/jetfighter.asm`.
+ */
+function missileCol(ram: Uint8Array, lane: number): number {
+  const NIB_MCOL = 5;
+  const NIB_MLANE = 6;
+  return (ram[FILE_STATE * 16 + NIB_MLANE] as number) === lane
+    ? (ram[FILE_STATE * 16 + NIB_MCOL] as number)
+    : 0;
+}
+
+/**
+ * True while the player has a shot anywhere on the playfield.
+ *
+ * The three gates below are all "is the barrel free?", and with one missile that
+ * is the same question as "is this lane free?". It is deliberately still the
+ * whole-playfield question: these drives are instruments, and their measurements
+ * - 58 scoring events, 3 boat kills in 27 crossings - are of a player who fires
+ * one shot at a time. Loosening them to fire per lane changes what is being
+ * measured, so it belongs in the task that gives the ROM a rank to fire, not in
+ * the one that moves the address.
+ */
+function missileInFlight(ram: Uint8Array): boolean {
+  return [0, 1, 2].some((lane) => missileCol(ram, lane) !== 0);
 }
 
 /** The three BCD nibbles as one number. */
@@ -252,7 +284,7 @@ function boatHunt(): { attempts: number; kills: Kill[] } {
           // top lane.** A shot takes 3.0 s to reach the horizon and the top lane
           // is held for 1.29 s of a 3.9 s crossing, so a missile launched at a
           // jet mid-crossing is still in flight when the lead window opens and
-          // `NIB_MCOL` blocks the shot that matters. Defending only while
+          // the one-shot gate blocks the shot that matters. Defending only while
           // `BS_NONE` keeps the barrel free for the boat.
           if (boat === BS_NONE) {
             let deepest = -1;
@@ -264,7 +296,7 @@ function boatHunt(): { attempts: number; kills: Kill[] } {
                 target = candidate;
               }
             }
-            if (deepest > 0 && (ram[FILE_STATE * 16 + NIB_MCOL] as number) === 0) {
+            if (deepest > 0 && !missileInFlight(ram)) {
               machine.setContacts({ lane: target });
               machine.step(SAMPLE_CYCLES);
               machine.setContacts({ fire: true });
@@ -274,11 +306,7 @@ function boatHunt(): { attempts: number; kills: Kill[] } {
           }
           continue;
         }
-        if (
-          firedThisCrossing ||
-          (ram[FILE_STATE * 16 + NIB_MCOL] as number) !== 0
-        )
-          continue;
+        if (firedThisCrossing || missileInFlight(ram)) continue;
         machine.setContacts({ lane: BOAT_LEAD_LANE, fire: true });
         machine.step(FIRE_HOLD_CYCLES);
         machine.setContacts({ fire: false });
@@ -369,7 +397,7 @@ function aimedDrive(forSeconds: number, aim: Aim, skill = 1): Drive {
     // So while a shot flies, step out of the way of anything about to arrive.
     // This is not making the drive good at the game; it is stopping it standing
     // still in front of the one thing that can end the run.
-    if ((ram[FILE_STATE * 16 + NIB_MCOL] as number) !== 0) {
+    if (missileInFlight(ram)) {
       const inbound = [0, 1, 2].map(
         (lane) => ram[FILE_JETS * 16 + lane] as number,
       );
