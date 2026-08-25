@@ -206,6 +206,13 @@
 .EQU NIB_FIREP,      4          ; fire contact last sweep - firing is edge triggered
 .EQU NIB_MCOL,       5          ; player missile grid, 0 = none in flight
 .EQU NIB_MLANE,      6          ; player missile lane
+                                ; Nibbles 5-6 are reserved once the rank retires
+                                ; these two: the second plane needs a row and a
+                                ; column of its own, and this adjacent pair is
+                                ; where they go - docs/evidence/owner-entity-
+                                ; model.md line 38, "Two planes need a row and a
+                                ; column each - four nibbles". Do not hand them
+                                ; to anything else in the meantime.
 .EQU NIB_RCOL,       7          ; jet rocket grid, 0 = none in flight
 .EQU NIB_RLANE,      8          ; jet rocket lane
 .EQU NIB_BSLANE,     9          ; battleship lane, or BS_NONE when not crossing
@@ -241,17 +248,41 @@
 .EQU NIB_STEP_HI,   14          ;   "                                high
 .EQU NIB_CAPTURE,   15          ; sweeps the capture burst stays lit
 
-; --- FILE_MISS: the player's shot ------------------------------------------
+; --- FILE_MISS: the rank of three shots, one per lane ------------------------
 ;
-; A whole file for two nibbles today, and that is deliberate: the flight timer
-; needs a pair rather than the single nibble it had, FILE_TIME had no seventeenth
-; nibble to give it, and the rank of three missiles the owner describes wants
-; per-lane state in one place rather than scattered across the files that had a
-; gap. Nothing here selects an R line, so file 7 is as good as any - see the
-; header's note on why the display files have to be 0-3.
+; Three load-bearing facts about this layout, in the order they constrain it.
+;
+; **The nibble index IS the lane.** There is no NIB_MLANE here and there is not
+; going to be one: lane 0's column is nibble 0, lane 1's nibble 1, lane 2's
+; nibble 2. That is why the columns must start at 0 and not anywhere else. A
+; lane number already in A reaches Y with a bare `TAY`, and a lane number sitting
+; in RAM reaches Y with a bare `TMY`; start the block at 2 instead and every one
+; of those sites pays an `A2AAC` first, and the `TMY` case stops working
+; altogether because there is nowhere to add the offset on the way through.
+;
+; **One countdown serves the whole rank.** NIB_M_LO/NIB_M_HI are not per lane.
+; The rank steps together on one shared pair, so a shot fired later is not
+; separately timed - it joins the cadence already running. Three private pairs
+; would cost six nibbles and three decrements a sweep to buy a difference the
+; glass cannot show.
+;
+; **NIB_MWORK is in RAM rather than in Y** because the kill arm crosses into
+; chapter 1, and Y does not survive the trip intact - the walk index has to be
+; somewhere it can be read back on the far side.
+;
+; Nibble 2 is lane 2's column and not a general-purpose nibble, which is the
+; mistake this paragraph exists to stop. The free ones are 6-15 - the whole of
+; what the rank does not claim - and of those only 15 is already spoken for
+; (NIB_LAUNCH_FROZEN, declared below), so 6-14 in practice. Anything wanting a
+; nibble in this file, an entropy source included, takes it from 6 upward and
+; never from 0-5. Nothing here selects an R line, so file 7 is as good as any;
+; see the header's note on why the display files have to be 0-3.
 
-.EQU NIB_M_LO,       0          ; sweeps until the shot advances a column, low
-.EQU NIB_M_HI,       1          ;   "                                     high
+.EQU NIB_MC,         0          ; lane 0's column, 0 = no shot in that lane;
+                                ;   +1 is lane 1, +2 is lane 2
+.EQU NIB_M_LO,       3          ; sweeps until the rank advances a column, low
+.EQU NIB_M_HI,       4          ;   "                                     high
+.EQU NIB_MWORK,      5          ; the walk's lane index, held across chapter 1
 
 ; Nibble 15, deliberately at the far end of the file and away from the missile
 ; rank this header describes: mr-ram-map's plan wants 0-5 (three lanes' worth
