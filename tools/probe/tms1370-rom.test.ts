@@ -180,8 +180,24 @@ const SKILLS = [1, 2, 3] as const;
  * Nine parked-lever games is about 26 million emulated cycles, which is past
  * Vitest's 5 s default. Named rather than inlined for the reason every horizon
  * in these suites is: it moves when the drive does, not when a rule does.
+ *
+ * **This is a wall-clock budget for the runner, not an emulated-time horizon**,
+ * so it is sized against how slow CI is rather than against a measured game
+ * constant - the distinction CLAUDE.md's timeout note turns on. At 30 s it was
+ * the only long drive in the tree below 60 s, and it sat *under* where CI
+ * actually lands: the drive takes ~8.9 s locally and was measured at 33.2 s on
+ * a GitHub runner, a ~3.7x ratio in line with the slowdown the other suites
+ * budget for. That is why it failed intermittently rather than never, and it
+ * cost a rerun on unrelated PRs repeatedly - the failure always being this one
+ * test timing out at exactly its own limit with everything else green.
+ *
+ * 60 s is what every other long drive here uses (`LONG_RUN_TIMEOUT_MS` in
+ * `launcher-lives` and `game-lifetime`, `DRIVE_TIMEOUT_MS` in `scoring-ruler`
+ * and `render-fidelity`), which keeps ~1.8x headroom over the measured CI
+ * figure. A drive that genuinely hangs still fails, just not on the runner
+ * being ordinarily slow.
  */
-const ROTOR_SWEEP_TIMEOUT_MS = 30_000;
+const ROTOR_SWEEP_TIMEOUT_MS = 60_000;
 
 /**
  * Fail loudly when a comparison has nothing left to compare.
