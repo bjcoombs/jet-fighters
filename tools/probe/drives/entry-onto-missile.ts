@@ -7,9 +7,24 @@
 // assertion started failing about once in twenty-four coincidences.
 //
 // This isolates why. For every coincidence it records whether the jet was
-// already standing there in the previous frame or **appeared in this one**, so
-// a pass-through caused by a spawn can be told from a pass-through caused by a
-// collision test that missed.
+// already standing there in the previous frame, **marched onto it**, or
+// **appeared on it**, so a pass-through caused by a spawn can be told from a
+// pass-through caused by a collision test that missed.
+//
+// ## The three classes are resolved per slot, not per row
+//
+// The first version of this drive asked the row a question the row cannot
+// answer: "was some plane on this cell a frame ago, or one grid further out?"
+// Two planes can share a row, so a *new* plane at column 2 with an *older* plane
+// at column 1 reads as the column-1 plane having marched - and the spawn is then
+// counted as a march and its pass-through blamed on the collision test.
+//
+// A slot is the identity that survives a frame. `slotsOf` returns both slots in
+// slot order, empties included, the ROM writes an entry into one slot and clears
+// only the column when a plane dies, and the sampling interval here is a third
+// of a sweep - so following slot `s` from one frame to the next follows one
+// plane. The row is used for one thing only: deciding that a shot and a jet are
+// on the same cell at all.
 //
 // Paths in this file are relative to the repository root.
 
@@ -45,6 +60,7 @@ interface Frame {
 
 let coincidences = 0;
 let passedAfterSpawn = 0;
+let passedAfterMarch = 0;
 let passedWithSettledJet = 0;
 let freshByMarch = 0;
 let freshBySpawn = 0;
@@ -65,14 +81,20 @@ for (const block of BLOCKS) {
     if ((ram[STATE] as number) !== 0) break;
     frames.push({
       shots: [0, 1, 2].map((lane) => ram[FILE_MISS * 16 + NIB_MC + lane] as number),
-      planes: slotsOf(ram, SQUADRON).filter((plane) => plane.column !== 0),
+      // Slot-indexed, deliberately NOT filtered: index IS the slot, and losing
+      // that is what made the classifier below wrong. See the note there.
+      planes: slotsOf(ram, SQUADRON),
       kills: ram[KILLS] as number,
     });
   }
 
   // A coincidence: a shot and a jet on the same row and column. Resolve it when
   // the shot's column next changes.
-  const open: ({ column: number; fresh: boolean } | undefined)[] = [undefined, undefined, undefined];
+  const open: ({ column: number; arrival: 'settled' | 'march' | 'spawn' } | undefined)[] = [
+    undefined,
+    undefined,
+    undefined,
+  ];
   for (let i = 1; i < frames.length; i += 1) {
     const previous = frames[i - 1] as Frame;
     const current = frames[i] as Frame;
@@ -82,32 +104,61 @@ for (const block of BLOCKS) {
       if (pending !== undefined && shot !== pending.column) {
         const killed = shot === 0 && current.kills !== previous.kills;
         if (!killed && shot !== 0 && shot < pending.column) {
-          if (pending.fresh) passedAfterSpawn += 1;
+          // Split by HOW the jet got there. The first draft lumped march
+          // arrivals and spawn arrivals together as "fresh", so a marching jet
+          // that a shot walked away from would have been reported as a spawn
+          // escape - which is the difference between a spawn gap and a
+          // collision-test defect.
+          if (pending.arrival === 'spawn') passedAfterSpawn += 1;
+          else if (pending.arrival === 'march') passedAfterMarch += 1;
           else passedWithSettledJet += 1;
         }
         open[lane] = undefined;
       }
       if (shot === 0 || open[lane] !== undefined) continue;
-      const here = current.planes.some((plane) => plane.row === lane && plane.column === shot);
-      if (!here) continue;
-      // Was that same jet standing on that same cell in the previous frame?
-      const settled = previous.planes.some((plane) => plane.row === lane && plane.column === shot);
-      if (!settled) {
-        // It arrived this frame. A march would have moved it from one grid
-        // further out in the same row; anything else is a spawn.
-        const marched = previous.planes.some(
-          (plane) => plane.row === lane && plane.column === shot - 1,
+      // **Resolved by SLOT, and the first draft of this was wrong for want of
+      // that.** It asked whether *any* plane had been one grid further out in
+      // this row, which a second plane satisfies: a plane settled at column 1
+      // and a new plane spawning at column 2 in the same row read as the first
+      // one having marched, so the spawn was booked as `freshByMarch` and never
+      // reached `freshBySpawn`. The `planes` array is slot-indexed above and is
+      // no longer filtered, so the same slot can be followed across frames.
+      //
+      // Both slots are considered, and the strongest class wins: a settled jet
+      // and a spawn can stand on one cell together, and that coincidence is a
+      // question about the settled jet - the collision test had a target there
+      // before the spawn arrived. Taking the first matching slot would exclude
+      // it as a spawn and lose the evidence.
+      const arrivals = current.planes
+        .map((plane, slot) => ({ plane, was: previous.planes[slot] as Plane }))
+        .filter((pair) => pair.plane.column === shot && pair.plane.row === lane)
+        .map(({ was }) =>
+          was.row === lane && was.column === shot
+            ? 'settled'
+            : was.row === lane && was.column === shot - 1
+              ? 'march'
+              : 'spawn',
         );
+      if (arrivals.length === 0) continue;
+      const settled = arrivals.includes('settled');
+      const marched = !settled && arrivals.includes('march');
+      if (!settled) {
+        // This slot arrived on the cell this frame. A march moves the same slot
+        // one grid inward in the same row; a spawn fills a slot that was empty.
         if (marched) freshByMarch += 1;
         else freshBySpawn += 1;
       }
       coincidences += 1;
-      open[lane] = { column: shot, fresh: !settled };
+      open[lane] = {
+        column: shot,
+        arrival: settled ? 'settled' : marched ? 'march' : 'spawn',
+      };
     }
   }
 }
 
 console.log(`coincidences: ${coincidences}`);
 console.log(`shots that walked away, jet already settled on the cell: ${passedWithSettledJet}`);
-console.log(`shots that walked away, jet arrived on the cell that frame: ${passedAfterSpawn}`);
+console.log(`shots that walked away, jet MARCHED onto the cell that frame: ${passedAfterMarch}`);
+console.log(`shots that walked away, jet SPAWNED onto the cell that frame: ${passedAfterSpawn}`);
 console.log(`fresh coincidences by march: ${freshByMarch}, by spawn: ${freshBySpawn}`);
