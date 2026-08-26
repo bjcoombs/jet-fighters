@@ -219,6 +219,31 @@ is unidentified: that recording has no picture to check against, so the row is
 withdrawn rather than reinterpreted. 205 ms is a real repetition rate of something
 real, and nothing here says what.
 
+**Update, 2026-08-26: it is not a march beep, because there is no march beep -
+and it may not be the machine at all.** Two things have changed under this
+paragraph.
+
+The owner, asked directly: *"the jet fighters do not beep as they go from left to
+right"*, and *"no marching sound"*. The recordings agree with him. The withdrawn
+`jetMarch` section of `audio-reference.md` measures, at the very timestamp the
+600-650 Hz row was read from, a dominant frequency scattering **883 Hz** across
+ten consecutive events. Those are 3-8 ms broadband transients: a 71.8 ms note
+reads one frequency, and these read whatever the window happened to catch.
+
+The owner has since gone further: *"remember the sound might also be me hitting
+buttons, not from the device electronics."* The click train in his skill-3 video
+stops dead for **3.2 s and 4.6 s** at a stretch, which a marching squadron does
+not do and a thumb does.
+
+So the 205 ms row is not merely unattributed - **the thing it timed may be the
+player's hand.** Nothing here should treat it as a machine cadence, and it cannot
+be a squadron step rate under the current rules in any case: the ROM's fastest
+possible step is 488 ms. Whether ~205 ms is anything of the machine's is task
+24's question, not this section's.
+
+Re-derive the transient measurements with
+`tools/probe/drives/march-tone-identity.ts`.
+
 **A method note worth keeping, because it nearly produced a wrong answer twice.**
 The 205 ms analysis peak-picked the band envelope with a 120 ms refractory window.
 Re-run on this video's audio, that method produces a large population of intervals
@@ -743,7 +768,7 @@ Two of these are worth separating from the rest.
 **`asm/jetfighter.asm:762` is now wrong twice over.** It declines to move
 `STEP_HI_MIN` on the grounds that the floor is 488 ms and 205 ms is a rate the unit
 never beat. The first half fails on this ROM - the ladder reaches 16 sweeps, not 32,
-and `open-questions.md` §16 has the mechanism - and the second half rests on the
+and `open-questions.md` §18 has the mechanism - and the second half rests on the
 withdrawn row. The conclusion may still be the right one; neither premise supports
 it now.
 

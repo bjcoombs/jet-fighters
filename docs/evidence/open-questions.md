@@ -96,7 +96,7 @@ chosen.~~ Everything else remains marked `PROVISIONAL`.
 **Struck through: that row is withdrawn.** The beep is not on the squadron step's
 clock - `timing-analysis.md`, "What the audio row does and does not say" - and what
 the 205 ms period actually is remains unidentified in two separate recordings, which
-is §15 below. **T1 is now measured from the picture instead**, at a skill the owner
+is §17 below. **T1 is now measured from the picture instead**, at a skill the owner
 states: 267, 300 and 467 ms at skill 3, n = 3. See
 `timing-analysis.md`, "The skill-3 clip".
 
@@ -1207,7 +1207,117 @@ decision is made in any case.
 for this reason, and carries an assertion that the exclusion stays a corner of the file
 rather than most of it.
 
-## 15. What repeats at 208 ms in both audio recordings of the unit
+## 15. A real 625 Hz tone nobody can name
+
+`assets/reference/gameplay-audio.m4a` and `assets/reference/skill3-video-audio.m4a` -
+two separate sessions on the same unit - both carry a **625 Hz tone with six
+consecutive partials** (625 / 1252 / 1877 / 2509 / 3129 / 3755 Hz), running **unbroken
+for 405-417 ms**, three times in 130 s and twice in 23 s.
+
+It is the machine and not the room. Its sixth partial sits in the piezo resonance the
+`battleshipBuzz` section of `audio-reference.md` measures at 3.7-4.5 kHz; it scores
+10.9-17.8 dB on a harmonic comb where room silence in the same file scores 4.7 dB; and
+the same detector finds nothing across 24 s of `battleship-interval.m4a`, which contains
+two full boat arrivals and no squadron.
+
+It is also not the periodic clicks in those recordings, which the owner has suggested may
+be his own thumb on the controls. Two of the video's tone episodes - 14.10-14.51 s and
+17.70-18.11 s - fall *inside* the 3.2 s and 4.6 s silences in that recording's click
+train.
+
+### What the score does across an episode
+
+A sound that blanks the tube and is followed by a changed score would be a scoring event,
+so the video was read frame by frame to test exactly that. The result is **suggestive and
+does not close it**, and why it does not is the useful part.
+
+| Time | Score readout | Relation to a tone episode |
+| --- | --- | --- |
+| 13.30 s | **SCORE 18**, a red plane and cyan sprites on the glass | 0.8 s before episode 2 |
+| 13.70 s | not lit | before |
+| 14.05 s | not lit | before |
+| 14.55 s | not lit | just after |
+| **14.70 s** | **SCORE 20** | 0.2 s after |
+| 15.00 s | SCORE 20 | - |
+| 16.50 s | SCORE 20, a squadron of cyan jets | 1.2 s before episode 3 |
+| 17.00 - 22.50 s | not lit at any sample | spans episode 3 |
+
+**The score rises by two across the 14.10 s episode.** Two is `SCORE_JET_MID`, a jet shot
+in the ruler's `2` band, so a jet kill is the right size of event.
+
+Three things stop that closing the question:
+
+1. **n = 1.** The readout is unlit at every sample from 17.00 s to the end of the video,
+   so the 17.70 s episode cannot be tested at all, and the three episodes in
+   `gameplay-audio.m4a` have no picture to read.
+2. **The converse is untestable here.** "The score never rises without an episode" needs
+   a readout legible most of the time, and this one is dark for more of the video than it
+   is lit. The 18 could have become 20 anywhere in the 1.4 s between the two legible
+   frames.
+3. **It runs against owner-confirmed testimony.** The `missileFire` section of
+   `audio-reference.md` records, as Owner-confirmed, that a missile *hitting* a jet makes
+   the same ~20 ms beep as firing and that there is **no separate explosion sound**. A
+   410 ms tone is not that. Either the tone is not a kill, or a claim the owner confirmed
+   is wrong, and one score reading is nowhere near enough to prefer the second.
+
+The same frame-by-frame read killed a different claim, recorded in `audio-reference.md`:
+the tube is *not* specifically dark during the tone. It is also dark from 13.70 s, four
+tenths of a second before the episode starts, and for the whole 17.00-23.20 s stretch.
+
+**What is unresolved**: what game event fires it. Nothing in the ROM emits a 410 ms tone,
+and no rule in the PRD predicts one. The episode times in `gameplay-audio.m4a` are
+12.60, 28.80 and 116.10 s; in the video, 1.10, 14.10 and 17.70 s.
+
+**What would settle it**: a video where the tube stays legible - the owner's unit filmed
+in a darker room, or anything that stops the readout going dark for seconds at a time -
+covering several episodes. The score table above then becomes a census instead of one
+row. Failing that, two questions to the owner: what makes a sound about half a second
+long, and whether shooting a jet sounds different from firing at one. The second is a
+direct re-test of the `missileFire` row that point 3 collides with.
+
+Re-derive every audio figure here with `tools/probe/drives/march-tone-identity.ts`. The
+score readings come from the owner's video and are **not** re-derivable from the
+committed audio; the timestamps are given so they can be re-read from the source file.
+
+## 16. The real machine blinks about once a second and nothing we model explains it
+
+`vfd-appearance.md` §5 measures, off video of the owner's unit, **complete whole-display
+blanking on 14-17% of all frames during active play**, in runs of **4-5 frames (133-167
+ms)**, at roughly one per 1.1 s. It calls that "the loudest thing this document has to
+say about the look", and the mechanism is not in doubt: the chip bit-bangs the speaker in
+timed delay loops and is not sweeping the tube while it does, so every sound is a blink.
+
+**Nothing we have identified sounds at that rate for that long.**
+
+- The march note, at 71.8 ms a step, is the emulator's main source of blanking - but it
+  is 71.8 ms, and the observed runs are 133-167 ms. It never matched the thing it was
+  supposed to explain. And on the evidence in the withdrawn `jetMarch` section of
+  `audio-reference.md`, plus the owner's "no marching sound", the real unit does not
+  play it at all.
+- The 625 Hz tone of §15 is 410 ms and fires a handful of times a game.
+- `missileFire` is ~20 ms, under one video frame.
+- The two-beep launcher warning measures 141.7 ms of blank on the running machine, which
+  *is* in the observed range - but a warning costs a launcher, and there are three of
+  those in a game, not one a second.
+
+So the arithmetic does not close, and it is worth stating the size of the gap: removing
+`jm_beep` takes the emulator's dark-frame fraction to **1.55%** in `sweep-timing.test.ts`
+and **0.73%** in `blank-to-glass.test.ts`, against a machine measured at 14-17%.
+
+**What is unresolved**: what the real unit is sounding roughly once a second for about
+150 ms during play. It is not the squadron marching, on the owner's own testimony.
+
+**What would settle it**: the video those blanking figures came from, analysed the way
+§15's tone was - locating each dark run and asking what is in the audio at that instant,
+with the same tone-versus-transient tests. That analysis has not been done; the blanking
+pass counted dark frames and never looked at the sound underneath them.
+
+**Why this blocks a removal.** `jm_beep` should come out - the evidence for it is
+withdrawn. But taking it out silently leaves the emulator contradicting a measured figure
+in a second document, and the honest order is to answer this question first, or at least
+to own it in the same change. See "what removing it costs" in `audio-reference.md`.
+
+## 17. What repeats at 208 ms in both audio recordings of the unit
 
 **Two recordings of the same machine, made months apart, each carry a repetition at
 about 205 ms that nothing has identified.** That is the whole of the finding, and its
@@ -1268,7 +1378,7 @@ two measurements is of something else. Not resolved here, and flagged rather tha
 changed: `audio-reference.md` is measured from the owner's isolated recordings and one
 video-side reading is not grounds to move it.
 
-## 16. The cadence ladder reaches a rung below the floor its own constants document
+## 18. The cadence ladder reaches a rung below the floor its own constants document
 
 `asm/jetfighter.asm` documents `STEP_HI_MIN` as "the floor: 32 sweeps, 488 ms" and
 reasons from that figure in the cadence header. `step_reload` computes the rung with

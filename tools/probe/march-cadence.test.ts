@@ -40,12 +40,26 @@
 //
 // ## Why the countdown and not the march note
 //
-// A march step is audible - `jm_beep` sounds jetMarch, 627 Hz for ~72 ms - but
-// the beep is emitted from the walk's end too, so the capture step is silent and
-// the speaker reports the collapse as one 176-sweep gap rather than a 160 and a
-// 16. The countdown pair is where the rule actually lives, and it is game state
-// in the emulated RAM as CLAUDE.md requires all game state to be, put there by
-// the program. Reading it names the defect; reading the speaker averages it away.
+// On this ROM a march step is audible - `jm_beep` sounds jetMarch, 627 Hz for
+// ~72 ms - but the beep is emitted from the walk's end too, so the capture step
+// is silent and the speaker reports the collapse as one 176-sweep gap rather than
+// a 160 and a 16. The countdown pair is where the rule actually lives, and it is
+// game state in the emulated RAM as CLAUDE.md requires all game state to be, put
+// there by the program. Reading it names the defect; reading the speaker averages
+// it away.
+//
+// **That choice has since been vindicated for a second reason: the real machine
+// does not make this sound.** The owner, 2026-08-26 - "the jet fighters do not
+// beep as they go from left to right", and "no marching sound" - and the
+// recordings agree with him; see the withdrawn `jetMarch` section of
+// `docs/evidence/audio-reference.md`. `jm_beep` is still in the ROM only because
+// taking it out costs something that has to be owned rather than inherited,
+// which that section sets out under "what removing it costs".
+//
+// **Nothing in this file depends on the note.** Every assertion below reads the
+// countdown pair out of RAM, and the squadron's stepping is observable with no
+// sound at all - in that pair, and on the glass as a column change. When
+// `jm_beep` goes, this file does not move.
 //
 // The pair is read as one number, `STEP_HI * 16 + STEP_LO`. It falls by one on
 // every sweep, so the sweep on which it *rises* is a march step and there is no
@@ -319,32 +333,54 @@ interface FastLadderRun {
 }
 
 /**
- * Play a skill-3 game blindly until it ends, recording every rung reloaded.
+ * Firing cadences the skill-3 run is pooled over.
+ *
+ * **One phase decides one answer, and here it decided it with no margin.** A
+ * single drive at period 37 reaches exactly {@link DEEPEST_KILLS} kills and then
+ * loses its third launcher, so the guard below passed on the last kill the game
+ * had to give: any change that made the blind drive marginally worse would drop
+ * it to three and turn the guard red for a reason that has nothing to do with
+ * the ladder. Measured across these six periods, every one reaches the rung and
+ * three reach a kill beyond it - 4, 5, 5, 4, 5, 4 - which is the margin.
+ *
+ * They are odd and coprime with the sixteen-sweep entropy counter for the reason
+ * `timing-analysis.md` records under the rocket's lane: a press period sharing a
+ * factor with sixteen can only ever latch half the residues.
+ */
+const FIRING_PERIODS = [37, 45, 53, 61, 29, 71] as const;
+
+/**
+ * Play skill-3 games blindly until they end, recording every rung reloaded.
  *
  * The lever sweeps the lanes and fire is tapped - not to play well, but to score
  * enough that `NIB_KILLS` walks the ladder to its bottom. That is the only way
- * to reach the rung the `it.fails()` above is about without writing to RAM, and
+ * to reach the rung the `it.fails()` below is about without writing to RAM, and
  * a rung reached by playing is the one worth asserting on.
  */
 function fastLadderRun(): FastLadderRun {
-  const machine = new Tms1370Machine();
-  machine.setContacts({ skill: FASTEST_SKILL, lane: 1, fire: false });
   const written: number[] = [];
   let peakKills = 0;
-  let previousPair: number | undefined;
-  for (let tick = 0; tick < FAST_LADDER_SWEEPS; tick += 1) {
-    machine.setContacts({ lane: (Math.floor(tick / 37) % 3) as 0 | 1 | 2, fire: tick % 37 < 4 });
-    machine.runSweeps(1, SWEEP_WAIT_CYCLES);
-    const ram = machine.ram;
-    if ((ram[ADDRESS.hits] as number) >= LAUNCHERS) break;
-    peakKills = Math.max(peakKills, ram[ADDRESS.kills] as number);
-    const stepHi = ram[ADDRESS.stepHi] as number;
-    const pair = stepHi * NIBBLES_PER_FILE + (ram[ADDRESS.stepLo] as number);
-    // The pair rises on the sweep it is reloaded, and `STEP_HI` read on that
-    // sweep is what `step_reload` just wrote. Sampling anywhere but a sweep
-    // boundary would catch the low nibble's own wrap and read it as a reload.
-    if (previousPair !== undefined && pair > previousPair) written.push(stepHi);
-    previousPair = pair;
+  for (const period of FIRING_PERIODS) {
+    const machine = new Tms1370Machine();
+    machine.setContacts({ skill: FASTEST_SKILL, lane: 1, fire: false });
+    let previousPair: number | undefined;
+    for (let tick = 0; tick < FAST_LADDER_SWEEPS; tick += 1) {
+      machine.setContacts({
+        lane: (Math.floor(tick / period) % 3) as 0 | 1 | 2,
+        fire: tick % period < 4,
+      });
+      machine.runSweeps(1, SWEEP_WAIT_CYCLES);
+      const ram = machine.ram;
+      if ((ram[ADDRESS.hits] as number) >= LAUNCHERS) break;
+      peakKills = Math.max(peakKills, ram[ADDRESS.kills] as number);
+      const stepHi = ram[ADDRESS.stepHi] as number;
+      const pair = stepHi * NIBBLES_PER_FILE + (ram[ADDRESS.stepLo] as number);
+      // The pair rises on the sweep it is reloaded, and `STEP_HI` read on that
+      // sweep is what `step_reload` just wrote. Sampling anywhere but a sweep
+      // boundary would catch the low nibble's own wrap and read it as a reload.
+      if (previousPair !== undefined && pair > previousPair) written.push(stepHi);
+      previousPair = pair;
+    }
   }
   return { written, peakKills };
 }

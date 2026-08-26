@@ -63,6 +63,40 @@ const RECORDING_S = 80;
  */
 const BURSTS = 10;
 
+/**
+ * How far section 6's per-beep dominant must still move across its 35 readings.
+ *
+ * **Measured: 1088, 1196 and 699 Hz.** Two hundred is a floor well under all
+ * three. This one is the odd assertion in the file, because the drive's finding
+ * *is* the spread: a per-beep pitch is not a determined quantity here. A reader
+ * that returned the same number for every window - a spectrum function handed an
+ * empty slice, say - would print a spread of 0 Hz and that would read as the
+ * opposite conclusion, tidily and wrongly.
+ */
+const DOMINANT_SPREAD_HZ = 200;
+
+/**
+ * Separation the tonality control must keep, in dB.
+ *
+ * **Measured: 12.9 dB for the win jingle against 4.7 dB for room silence, a
+ * separation of 8.2.** Five is the floor. Section 7 concludes that the loss
+ * sound has no pitch by scoring near the silence control; if the ruler stops
+ * separating a known tone from a known silence, that conclusion is being read
+ * off nothing.
+ */
+const TONALITY_SEPARATION_DB = 5;
+
+/**
+ * Candidate burst groups section 9 must still find in `gameplay-audio.m4a`.
+ *
+ * **Measured: 22 at the +15 dB setting the drive is tuned to.** Three is the
+ * floor. Section 9 exists to answer whether "n = 1" in `loss-audio.m4a` is a
+ * blind detector or a limitation of that recording, and it answers "not blind"
+ * by finding groups in the other file. A detector that found none there would
+ * make the section say the opposite of what it measured.
+ */
+const GAMEPLAY_GROUPS = 3;
+
 describe('the loss warning partials drive', () => {
   const ffmpeg = hasFfmpeg();
 
@@ -120,6 +154,51 @@ describe('the loss warning partials drive', () => {
         'n = 0: no beep group before the loss sound, which is the sample every ' +
           'figure in audio-reference.md is drawn from',
       ).toBeGreaterThanOrEqual(1);
+
+      // 5. Section 6 still moved the window and got different answers.
+      const spread = /Per-beep spread: ([\d.]+) Hz, ([\d.]+) Hz, ([\d.]+) Hz/.exec(stdout);
+      expect(spread, `section 6 printed no spread summary:\n${stdout}`).not.toBeNull();
+      for (const value of (spread as RegExpExecArray).slice(1)) {
+        expect(
+          Number(value),
+          'a per-beep dominant that does not move when the window moves. Section 6 ' +
+            'concludes the reading is undetermined *because* it swings by ~1 kHz; a ' +
+            'spread of zero is what a spectrum of an empty slice produces, and it ' +
+            'would read as the opposite finding',
+        ).toBeGreaterThan(DOMINANT_SPREAD_HZ);
+      }
+
+      // 6. Section 7's ruler still separates a known tone from known silence.
+      const jingle = /CONTROL gameplay 121\.00 s, the win jingle\s+\d+ Hz\s+(-?[\d.]+) dB/.exec(stdout);
+      const quiet = /CONTROL gameplay 43\.60 s, room silence\s+\d+ Hz\s+(-?[\d.]+) dB/.exec(stdout);
+      expect(jingle, `section 7 printed no tone control:\n${stdout}`).not.toBeNull();
+      expect(quiet, `section 7 printed no silence control:\n${stdout}`).not.toBeNull();
+      expect(
+        Number((jingle as RegExpExecArray)[1]) - Number((quiet as RegExpExecArray)[1]),
+        'the comb score no longer separates the win jingle from room silence, so ' +
+          'section 7\'s "the loss sound has no pitch" is being read off a broken ruler',
+      ).toBeGreaterThan(TONALITY_SEPARATION_DB);
+
+      // 7. Section 8 still segmented the loss sound into something.
+      const maxima = /(\d+) maxima within 25 dB of the peak, (\d+) counting the tail/.exec(stdout);
+      expect(maxima, `section 8 printed no segmentation:\n${stdout}`).not.toBeNull();
+      expect(
+        Number((maxima as RegExpExecArray)[1]),
+        'the envelope segmenter found no maxima in the loss sound - it is then ' +
+          'reporting a note count for a window it heard nothing in',
+      ).toBeGreaterThanOrEqual(2);
+
+      // 8. Section 9 still found groups in the *other* recording.
+      const gameplayRow = /\+15 dB\s+(\d+)\s+(\d+)\s+(\d+)\s/.exec(
+        stdout.slice(stdout.indexOf('9. The same detector')),
+      );
+      expect(gameplayRow, `section 9 printed no sweep of gameplay-audio.m4a:\n${stdout}`).not.toBeNull();
+      expect(
+        Number((gameplayRow as RegExpExecArray)[3]),
+        'the detector found no groups in gameplay-audio.m4a. Section 9 concludes it ' +
+          'is not blind by finding some there; with none, the section asserts the ' +
+          'opposite of what it measured',
+      ).toBeGreaterThanOrEqual(GAMEPLAY_GROUPS);
     },
     DRIVE_TIMEOUT_MS,
   );
