@@ -596,22 +596,38 @@ order. The question needs one window per beep.
 #### Method
 
 `tools/probe/drives/loss-warning-partials.ts`, standalone, run against
-`assets/reference/loss-audio.m4a`. Decoded to mono 48 kHz; 10 ms Hann windows -
-`beepDurationMs` above - zero-padded to 65536, giving 0.73 Hz bins. **The bin grid is
-not the uncertainty**: a 10 ms Hann mainlobe is ~400 Hz wide, so each reading below
-carries its own -3 dB span and those spans are the honest error bars. Spectra are
-divided by the mean of nine background windows taken from the gaps between and before
-the beeps, and read over 150-1350 Hz: above the recording's table rumble, below the
-continuous 1400-1700 Hz whine that is present in every quiet stretch of the file at
-~24 dB over the local median. That whine is what "whine-notched" means above.
+`assets/reference/loss-audio.m4a`. **Nothing runs it automatically** - `npm test` never
+reaches `tools/probe/drives/`, and it needs `ffmpeg` on PATH to decode the m4a, which it
+checks for and names. Every figure in this section is printed by that drive; where a
+figure is not, this section says so.
 
-**n = 1.** A shape-based sweep of all 88 s - isolated bursts of 4-16 ms, 15 dB over a
-2 s running median, with 12 ms of near-silence on both sides, grouped at 25-50 ms
-spacing - returns exactly one beep group inside the gameplay, the one at 27.4 s this
-document already cites. The rest of the recording is dense overlapping play. So every
-figure below is a sample of size one, and the beep *counts* in the table above remain
-Owner-confirmed rather than measured: this recording contains one warning event, not
-one of each kind.
+Decoded to mono 48 kHz; 10 ms Hann windows - `beepDurationMs` above - zero-padded to
+65536, giving 0.73 Hz bins. **The bin grid is not the uncertainty**: a 10 ms Hann
+mainlobe is ~400 Hz wide, so each reading below carries its own -3 dB span and those
+spans are the honest error bars. Spectra are divided by the mean of nine background
+windows taken from the gaps between and before the beeps, and read over 150-1350 Hz:
+above the recording's table rumble, below the continuous 1400-1700 Hz whine. The whine
+is what "whine-notched" means above; in the five quietest 200 ms windows of the file it
+peaks at 1463-1631 Hz, **15.3 to 20.6 dB** over the median level of the surrounding
+1000-2200 Hz (drive section 5b).
+
+**n = 1.** A shape-based sweep of all 88 s - a zero-phase 300-1300 Hz envelope at 1 ms
+frames, bursts being runs of 4-16 ms more than 15 dB over the median of the 500 ms
+around them, isolated if no other burst-level energy falls within 12 ms either side,
+grouped at 25-50 ms spacing - returns **one** beep group in play, the one at 27.383 s
+this document already cites: three bursts, 43 and 32 ms apart. The rest of the
+recording is dense overlapping play. One further group sits at 86.143 s, which is
+*inside* the loss sound (`gameOver.timestampRangeSec` 85.86-86.99) rather than a
+warning.
+
+That count is not perfectly threshold-stable, and the drive prints the grid rather than
+the one setting: the 27.383 s group is returned at every threshold from +11 to +19 dB,
+but a second two-burst candidate near 28.05-28.07 s appears at +13, +17 and +19 dB and
+not at +11 or +15. It has not been examined and nothing here rests on it.
+
+So every figure below is a sample of size one, and the beep *counts* in the table above
+remain Owner-confirmed rather than measured: this recording contains one warning event,
+not one of each kind.
 
 #### Per-beep, never pooled
 
@@ -621,18 +637,26 @@ one of each kind.
 | 2 | 27.4270 | **319** | 231-523 | +19.8 dB | -13.7 dB |
 | 3 | 27.4580 | **744** | 675-837 | +18.3 dB | -12.2 dB |
 
-Onset to onset: 42.0 ms and 31.0 ms. The group spans 73 ms, 88 ms including beep 3's
-decay. LOW-MID is the 80-110 Hz level minus the 420-560 Hz level - the collapse band
+Onset to onset: 42.0 ms and 31.0 ms - spectral peak centres, which is why they differ
+by a millisecond from the 43 and 32 ms the 1 ms envelope sweep above reports for the
+same three beeps. The group spans 73 ms, 88 ms including beep 3's decay. LOW-MID is the 80-110 Hz level minus the 420-560 Hz level - the collapse band
 against the opening band.
 
 **They do not descend.** The prefix model requires 466 -> 92 -> 240 Hz. The reading
 rises, and beep 2 - the one that would have to *be* the 92 Hz collapse - sits at 319 Hz
 with 13.7 dB **less** energy in the collapse band than in the opening band.
 
-Beep 3 is the least trustworthy of the three: it is the one the isolation sweep
-rejects, because another event at ~27.451 s overlaps its attack. That does not rescue
-the prefix model - contamination cannot move a reading *down* to 92 Hz - but its 744 Hz
-should not be quoted as a clean figure.
+Beep 3 is the least trustworthy of the three, on the two figures the drive prints for
+it: the lowest excess over background (+18.3 dB against beep 1's +29.6) and the
+shortest run in the isolation sweep (5 ms, against 9 and 7 ms). Its 744 Hz should not
+be quoted as a clean figure. That does not rescue the prefix model either way - a weak
+reading cannot be moved *down* to 92 Hz by being weak.
+
+*Corrected*: an earlier revision of this section said the sweep rejected beep 3 because
+another event at ~27.451 s overlapped its attack. **That does not reproduce.** The
+committed sweep calls all three beeps isolated and finds no separate burst between beep
+2 and beep 3. The original claim came from a script that was never committed, which is
+exactly the failure `tools/probe/drives/README.md` exists to prevent.
 
 **These three numbers do not replace `dominantHzRange`, and are not a correction of
 it.** They sit lower than the pooled 455 / 455 / 544 for reasons that are all method
@@ -679,13 +703,20 @@ whatever a spectrum says.
 
 #### The conflict, stated
 
-**The measurement contradicts the testimony, and the current ROM is right.** The
-launcher-hit warning in this recording is a train of short, roughly equal, separated
-beeps - the repetition model - and not a growing prefix of the loss melody. **No ROM
-change is proposed.** `SND_WARN_*` and the `lw_beep` loop stand as they are.
+**The measurement and the testimony conflict, and this section prefers neither.** What
+is measured is narrower than the question: *in this recording*, the warning event at
+27.383 s is a train of short, roughly equal, separated beeps - the repetition model -
+and not a growing prefix of the loss melody. The owner, playing a physical unit,
+reports a growing prefix. One recording of one event cannot decide between a
+misdescription and a different machine.
 
-Both facts are kept here rather than one, because the owner is describing a real unit
-and this analysis cannot say which of these is true:
+**No ROM change is proposed** - not because the testimony has been refuted, but because
+nothing here gives a measured target to change it *to*. `SND_WARN_*` and the `lw_beep`
+loop stand as they are, and the entry in the table above stays "owner says yes; the
+recording says no" rather than collapsing to either.
+
+Both accounts are kept because the owner is describing a real unit and this analysis
+cannot say which of these is true:
 
 - **He is describing the same phenomenon in different words.** The warning's pitch
   really is `gameOver`'s opening note, the beep count really does grow 2 -> 3 -> whole
