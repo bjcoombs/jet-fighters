@@ -104,6 +104,7 @@ import {
 } from '../../src/machine/board/tms1370-cadence.js';
 import { CYCLE_HZ } from '../../src/machine/cpu/tms1370/timing.js';
 import { Tms1370Machine, assembleGame, type SegmentDuty, type SpeakerEdge } from './tms1370-probe.js';
+import { HORIZON_FACTOR, PARKED_HORIZON_S } from './game-horizons.js';
 
 /**
  * Where `NIB_HITS` lives, read from the assembly rather than written here.
@@ -216,65 +217,24 @@ const PLATE_JET = [0, 1, 2];
 const PLATE_DART = [6, 7, 8];
 
 /**
- * The latest a parked-lever game ends, in seconds of emulated time.
+ * Emulated seconds each run below is driven for: the parked ending, widened.
  *
- * **Re-measured on this machine** after the capture rule was settled, by running
- * each of the three lanes to silence: the last speaker edge falls at **24.5 s**
- * with the lever in lane 1, **36.4 s** in lane 0 and **36.9 s** in lane 2. The
- * lanes differ because the squadron's entries and the rocket's lane rotation are
- * not symmetric about the lever, not because one lane is played better - nobody
- * is playing.
+ * **The ending used to be measured here and is now `game-horizons.ts`'.** It had
+ * to move: `lever-after-game-over.test.ts` needed the same figure, kept a copy,
+ * and the copy went stale at 43.2 s against the 36.9 s this file had re-measured
+ * to. Nothing went red, because a horizon that is too long only costs wall
+ * clock - which is why that drift is the kind that survives. The measurement,
+ * the three lanes' endings, why the constant sits above them and why the factor
+ * is 1.4 rather than 1.5 are all recorded there, and
+ * `tools/probe/drives/parked-endings.ts` re-derives them.
  *
- * The figure this replaces was **45.4 s**, taken while `jm_capture` still let a
- * jet crossing any lane but the lever's through for nothing. Removing that
- * condition - `open-questions.md` section 6, the rule the owner settled - makes
- * every lane lethal, so all three endings came in. Lane 1 is shortest because it
- * loses a launcher to a rocket as well as to two captures; lanes 0 and 2 lose all
- * three to captures.
- *
- * Loss spacing with the settled rule: **11.6 and 12.4 s** in lane 0, **11.7 and
- * 12.7 s** in lane 2, **5.7 and 6.4 s** in lane 1. The spacing is what the wave
- * retreat was changed for and it is intact.
- *
- * **Unchased observation, recorded because the middle lane is where a player
- * naturally sits.** Lane 1 ends a third sooner than either neighbour and at
- * roughly half the spacing, because it is the only lane in these runs reached by
- * both threats: lanes 0 and 2 lose all three launchers to captures, lane 1 loses
- * two and one to a rocket. Whether the centre is *systematically* more lethal or
- * these three runs simply caught a rotor that served lane 1 is not established -
- * `rocket_fire`'s rotor does reach all three lanes, so a longer sample would
- * settle it. Nobody has taken that sample.
- *
- * It is named and measured for the reason CLAUDE.md gives: a literal horizon in
- * a test about a machine that stops is a bet on when it stops, and the v2 figure
- * this replaces moved three times in one day. Every run below is a multiple of
- * this, so a cadence change moves one number.
- *
- * It has moved twice more since, both times because a rule changed and not
- * because it was fitted. Restoring the capture rule shortened every lane, since
- * the two that used to let most of the squadron past for nothing stopped doing
- * so. The wave retreating on a capture then lengthened them again, because the
- * next capture has to cross the whole field rather than arrive on the next march
- * step. The two land it near where it began, which is arithmetic rather than a
- * sign that nothing happened: what the rules were changed for is the *spacing*
- * between the three losses, and that went from 2.7 s to 12.7-13.4 s.
+ * **Loss spacing, which is this file's own subject and stays here**: 11.6 and
+ * 12.4 s in lane 0, 11.7 and 12.7 s in lane 2, 5.7 and 6.4 s in lane 1. It went
+ * from 2.7 s to 12.7-13.4 s when the capture rule was settled and the wave was
+ * made to retreat, which is the change those two rules were made for, and it is
+ * intact.
  */
-const PARKED_GAME_END_S = 36.9;
-
-/**
- * Emulated seconds each run below is driven for.
- *
- * Two fifths again as long as the latest of the three endings: 60.5 s against a
- * 43.2 s ending, so every run carries 17.3 s past the last edge it is meant to
- * observe and cannot quietly stop short of it, which is exactly how the v2
- * horizon failed. Short enough that three of them stay cheap.
- *
- * The factor is 1.4 rather than 1.5 because 1.4 is what the measurement asks
- * for: the slack it buys is two fifths of a whole parked game, far wider than
- * the spread between the three lanes' endings (24.6 s, 36.3 s, 43.2 s), and
- * widening it further would buy wall-clock time rather than evidence.
- */
-const HORIZON_S = PARKED_GAME_END_S * 1.4;
+const HORIZON_S = PARKED_HORIZON_S;
 
 /**
  * The ceiling `runSweeps` is given when it waits for one sweep to complete.
@@ -513,7 +473,8 @@ function standStill(lane: number): Game {
  * sloppy either time, and neither reading survived contact with the settled rule.
  *
  * With a capture costing a launcher in any lane, the played figure is once again
- * *shorter* than the parked one - 35.7 s against `PARKED_GAME_END_S` at 36.9 s.
+ * *shorter* than the parked one - 35.7 s against `PARKED_GAME_END_S` in
+ * `game-horizons.ts`, which is 36.9 s.
  * Tapping fire clears one lane of three and the other two still kill you, so it
  * buys no measurable survival at all. That is the reversal section 6 predicted.
  */
@@ -535,7 +496,7 @@ function playingOn(lane: number): Game {
   let seenHits = 0;
   let endedAt = 0;
   let everFired = false;
-  const target = Math.round(PLAYED_GAME_END_S * 1.4 * CYCLE_HZ);
+  const target = Math.round(PLAYED_GAME_END_S * HORIZON_FACTOR * CYCLE_HZ);
   for (let sweep = 0; machine.cycles < target; sweep += 1) {
     machine.setContacts({ fire: sweep % 16 < 8 });
     machine.runSweeps(1, SWEEP_CEILING_CYCLES);
@@ -1040,7 +1001,7 @@ describe('an ending during a battleship crossing stops the buzz', () => {
     const edges: SpeakerEdge[] = [];
     let endedAt = 0;
     let bshipLaneAtEnd = 0;
-    const target = Math.round(PLAYED_GAME_END_S * 1.4 * CYCLE_HZ);
+    const target = Math.round(PLAYED_GAME_END_S * HORIZON_FACTOR * CYCLE_HZ);
     for (let sweep = 0; machine.cycles < target; sweep += 1) {
       machine.setContacts({ fire: sweep % 32 < 16 });
       machine.runSweeps(1, SWEEP_CEILING_CYCLES);
