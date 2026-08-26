@@ -37,9 +37,10 @@
 // ## What this does not claim
 //
 // It says nothing about *how often* either arrangement occurs, or about the rule
-// that decides an entry row. `jet_enter` takes the row from a rotor today and
-// takes it from `NIB_ENT` at task 14; both are covered by the same assertions
-// here, because both have to keep producing the arrangements or this goes red.
+// that decides an entry position. `jet_enter` took the row from a plain rotor and
+// now takes both row and column from `NIB_ENT` and the release count; both are
+// covered by the same assertions here, because both have to keep producing the
+// arrangements or this goes red.
 //
 // Node-side test: no DOM, no browser globals.
 
@@ -819,14 +820,34 @@ describe('a capture sends the survivors back to the far end', () => {
           (after.slots[slot] as Plane).column === 0,
       );
       if (crossed.length === 0) continue;
+      // **`NIB_KILLS` not having moved in this one frame pair is not enough to
+      // say the plane crossed rather than died, and one misread is one survivor
+      // asserted over that never had a retreat coming.** The nibble lags the
+      // column clear the same way `NIB_HITS` does, by less than the 5 ms sample
+      // interval: measured, a plane shot down at four kills read as a capture
+      // here because the column had gone to zero and the count moved in the next
+      // sample. So a capture is confirmed by what it costs - a launcher - and
+      // `NIB_HITS` rising inside the settle window is the positive signal. A kill
+      // never moves it.
+      const settle = frames.slice(index + 1, index + 1 + RETREAT_SETTLE_SAMPLES);
+      if (!settle.some((frame) => frame.hits !== before.hits)) continue;
       for (const slot of slotIndices) {
         if (crossed.includes(slot)) continue;
         const at = (after.slots[slot] as Plane).column;
         if (at <= GRID_COL_FIRST) continue; // empty, or nowhere to go
+        // **A survivor is a plane that was already airborne when the capture
+        // happened.** It has to be said outright now that `jet_enter` can place
+        // a plane at grid 2 as well as grid 1: a plane that entered *during* the
+        // capture is not a survivor, has nothing to retreat from, and sits where
+        // it entered until its next march step - which reads exactly like a
+        // survivor that refused to retreat, and did, once. The old
+        // `at <= GRID_COL_FIRST` line filtered fresh entries out by accident,
+        // because every entry landed on grid 1; that accident is over.
+        if ((before.slots[slot] as Plane).column !== at) continue;
         // The first column this slot reads as, other than the one it was
         // standing on when the capture happened. A run that ends before it moves
         // contributes `undefined` and is reported rather than ignored.
-        const window = frames.slice(index + 1, index + 1 + RETREAT_SETTLE_SAMPLES);
+        const window = settle;
         // **A capture that took the third launcher ends the run**, so the
         // survivor is frozen where it stood and has no next move to read. That
         // is the machine stopping rather than the retreat failing, and a short
@@ -844,9 +865,12 @@ describe('a capture sends the survivors back to the far end', () => {
   });
 
   it('produced a capture with a survivor forward of the far column, or this proves nothing', () => {
-    // A squadron of two marching on one countdown is in lockstep 66% of the
-    // time - measured - so most captures take both planes together and leave
-    // nothing to send back. This floor is what says the rule was exercised at
+    // A squadron of two marching on one countdown used to be in lockstep 66% of
+    // the time - measured, when every plane entered at grid 1 - so most captures
+    // took both planes together and left nothing to send back. Entry positions
+    // drawn from the entropy nibble moved that to 36% zero, 54% one grid apart
+    // and 10% two (`tools/probe/drives/entry-spread.ts`), so survivors are more
+    // common than they were. This floor is what says the rule was exercised at
     // all, and it is the one that fails if a later change makes the two planes
     // arrive together every time.
     expect(

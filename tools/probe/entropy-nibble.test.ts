@@ -9,6 +9,9 @@
 // variety available is *when the player presses fire*. `if_down` accumulates
 // NIB_TICK into `NIB_ENT` on each rising edge.
 //
+// `jet_enter` is the single consumer, and the last test in this file is what
+// keeps it single.
+//
 // Two properties have to hold together, and they pull in opposite directions:
 //
 //   - **It must vary with the player.** A source that lands on the same value
@@ -136,26 +139,48 @@ describe('the entropy nibble is stirred by the player and by nothing else', () =
     ).toBeGreaterThan(11);
   });
 
-  it('is not read by anything yet, so no consumer can have crept in', () => {
-    // The source lands before its consumer on purpose. v2's defect was one
-    // nibble read by four things, and the harm was in the sharing - so the read
-    // sites are counted here, at the task that introduces the write.
+  it('has exactly one writer and one reader, so no second consumer can creep in', () => {
+    // **v2's defect was one nibble read by four things, and the harm was in the
+    // sharing.** Parking the lever made two lanes permanently safe, because a
+    // source that steered the jets also steered the rockets - see
+    // `docs/evidence/open-questions.md` section 3d. So the guard is a counting
+    // guard: two sites in the whole program, the write in `if_down` and the read
+    // in `jet_enter`, and a third fails this whatever it is for.
+    //
+    // The one that would do the damage is the rocket's lane. PRD lines 285-291
+    // require it to be independent of the player's press pattern and `NIB_ROTOR`
+    // is a plain round robin; contract criterion V7 in `launcher-lives.test.ts`
+    // is the behavioural test that catches it, and this is the structural one.
     //
     // Word-boundary matched: `NIB_ENTRY_LO`/`NIB_ENTRY_HI` are unrelated nibbles
     // that a bare substring grep for NIB_ENT also matches, which would make this
-    // assertion read as five sites the moment anyone trusted it.
+    // assertion read as six sites the moment anyone trusted it.
     const rom = readFileSync(resolve(import.meta.dirname, '..', '..', 'asm/jetfighter.asm'), 'utf8');
-    const sites = rom
-      .split('\n')
-      .filter((line) => /\bNIB_ENT\b/.test(line))
+    const lines = rom.split('\n');
+    const sites = lines
+      .map((line, index) => ({ line, index }))
       // Drop the `.EQU` that declares it and any comment-only line: what is
       // being counted is instructions that name the nibble.
-      .filter((line) => !/^\s*[;.]/.test(line));
+      .filter(({ line }) => /\bNIB_ENT\b/.test(line) && !/^\s*[;.]/.test(line));
     expect(
-      sites.length,
-      `expected exactly one NIB_ENT site (the write in if_down), found:\n${sites.join('\n')}`,
-    ).toBe(1);
-    expect(sites[0], 'the one site should be the TCY that addresses it').toMatch(/TCY\s+NIB_ENT/);
+      sites.map(({ line }) => line.trim()),
+      'expected exactly two NIB_ENT sites: the write in if_down and the read in jet_enter',
+    ).toHaveLength(2);
+    for (const site of sites) {
+      expect(site.line, 'a site should be the TCY that addresses the nibble').toMatch(
+        /TCY\s+NIB_ENT/,
+      );
+    }
+    // ...and they must be the two routines named, not any two. The label a site
+    // belongs to is the nearest one above it.
+    const routineOf = (index: number): string => {
+      for (let scan = index; scan >= 0; scan -= 1) {
+        const label = /^([a-z_][a-z0-9_]*):/.exec(lines[scan] as string);
+        if (label !== null) return label[1] as string;
+      }
+      return '(no label)';
+    };
+    expect(sites.map(({ index }) => routineOf(index)).sort()).toEqual(['if_down', 'jet_enter']);
   });
 });
 
