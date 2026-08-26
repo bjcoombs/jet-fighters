@@ -1199,3 +1199,78 @@ decision is made in any case.
 `missile-rank.test.ts` excludes spawn-created coincidences from its pass-through tallies
 for this reason, and carries an assertion that the exclusion stays a corner of the file
 rather than most of it.
+
+## 15. A real 625 Hz tone nobody can name
+
+`assets/reference/gameplay-audio.m4a` and `assets/reference/skill3-video-audio.m4a` -
+two separate sessions on the same unit - both carry a **625 Hz tone with six
+consecutive partials** (625 / 1252 / 1877 / 2509 / 3129 / 3755 Hz), running **unbroken
+for 405-417 ms**, three times in 130 s and twice in 23 s.
+
+It is the machine and not the room. Its sixth partial sits in the piezo resonance the
+`battleshipBuzz` section of `audio-reference.md` measures at 3.7-4.5 kHz; it scores
+10.9-17.8 dB on a harmonic comb where room silence in the same file scores 4.7 dB; and
+the same detector finds nothing across 24 s of `battleship-interval.m4a`, which contains
+two full boat arrivals and no squadron.
+
+It is also not the periodic clicks in those recordings, which the owner has suggested may
+be his own thumb on the controls. Two of the video's tone episodes - 14.10-14.51 s and
+17.70-18.11 s - fall *inside* the 3.2 s and 4.6 s silences in that recording's click
+train.
+
+One further observation, from the video's picture rather than its sound and therefore
+**not re-derivable from the committed audio**: through 14.10-14.51 s the glass shows
+nothing but its printed overlay, and at 14.63 s - just after the tone stops - `SCORE 20`
+is lit. That is `note` refusing to sweep the tube for the length of a burst, which is the
+behaviour `vfd-appearance.md` §5 measures.
+
+**What is unresolved**: what game event fires it. Nothing in the ROM emits a 410 ms tone,
+and no rule in the PRD predicts one. The episode times in `gameplay-audio.m4a` are
+12.60, 28.80 and 116.10 s; in the video, 14.10 and 17.70 s.
+
+**What would settle it**: a video of one crossing or one game where the tube is legible
+frame by frame, so the sound can be put beside what changed on the glass. The 23 s video
+is nearly enough - it is what produced the `SCORE 20` observation - but its display is
+dark for most of its length and one episode is not a pattern. Failing that, the owner
+being asked directly what makes a sound about half a second long: he has been able to
+answer questions of that shape before.
+
+Re-derive every figure here with `tools/probe/drives/march-tone-identity.ts`.
+
+## 16. The real machine blinks about once a second and nothing we model explains it
+
+`vfd-appearance.md` §5 measures, off video of the owner's unit, **complete whole-display
+blanking on 14-17% of all frames during active play**, in runs of **4-5 frames (133-167
+ms)**, at roughly one per 1.1 s. It calls that "the loudest thing this document has to
+say about the look", and the mechanism is not in doubt: the chip bit-bangs the speaker in
+timed delay loops and is not sweeping the tube while it does, so every sound is a blink.
+
+**Nothing we have identified sounds at that rate for that long.**
+
+- The march note, at 71.8 ms a step, is the emulator's main source of blanking - but it
+  is 71.8 ms, and the observed runs are 133-167 ms. It never matched the thing it was
+  supposed to explain. And on the evidence in the withdrawn `jetMarch` section of
+  `audio-reference.md`, plus the owner's "no marching sound", the real unit does not
+  play it at all.
+- The 625 Hz tone of §15 is 410 ms and fires a handful of times a game.
+- `missileFire` is ~20 ms, under one video frame.
+- The two-beep launcher warning measures 141.7 ms of blank on the running machine, which
+  *is* in the observed range - but a warning costs a launcher, and there are three of
+  those in a game, not one a second.
+
+So the arithmetic does not close, and it is worth stating the size of the gap: removing
+`jm_beep` takes the emulator's dark-frame fraction to **1.55%** in `sweep-timing.test.ts`
+and **0.73%** in `blank-to-glass.test.ts`, against a machine measured at 14-17%.
+
+**What is unresolved**: what the real unit is sounding roughly once a second for about
+150 ms during play. It is not the squadron marching, on the owner's own testimony.
+
+**What would settle it**: the video those blanking figures came from, analysed the way
+§15's tone was - locating each dark run and asking what is in the audio at that instant,
+with the same tone-versus-transient tests. That analysis has not been done; the blanking
+pass counted dark frames and never looked at the sound underneath them.
+
+**Why this blocks a removal.** `jm_beep` should come out - the evidence for it is
+withdrawn. But taking it out silently leaves the emulator contradicting a measured figure
+in a second document, and the honest order is to answer this question first, or at least
+to own it in the same change. See "what removing it costs" in `audio-reference.md`.

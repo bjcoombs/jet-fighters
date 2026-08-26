@@ -128,12 +128,18 @@ and the small downward step reproduces the blip's audible pitch fall.
 Contract criterion V5 asserts the emulated speaker output's dominant frequency falls
 inside `missileFire.dominantHzRange` and that the burst is shorter than 150 ms.
 
-## jetMarch - withdrawn
+## jetMarch - withdrawn as evidence, still in the ROM
 
 **There is no per-step march sound.** This section used to record one, at
 600-650 Hz with a 70 ms step, marked *Measured* off `gameplay-audio.m4a` at
-~66 s, and the ROM emitted a 71.8 ms note per squadron step on the strength of
-it. The sound was removed from `asm/jetfighter.asm` on 2026-08-26.
+~66 s, and the ROM emits a 71.8 ms note per squadron step on the strength of it.
+
+**The evidence for it is withdrawn here. The `jm_beep` note is still in
+`asm/jetfighter.asm`**, and the gap between those two sentences is deliberate:
+removing it turns out to break something else that was also measured. See
+[what removing it costs](#what-removing-it-costs) at the end of this section,
+which is written so that whoever does the removal starts from the measurement
+rather than from this section's conclusion.
 
 **Owner-reported**, verbatim, 2026-08-26, playing the physical unit:
 
@@ -193,7 +199,7 @@ be wrong. Both recordings carry a genuine **625 Hz tone**:
 | `deviceTone625.durationMs` | **405, 416, 417** (gameplay); **414, 416** (video) | Measured, unbroken run within 12 dB of each episode's own peak |
 | `deviceTone625.continuity` | continuous - no gap anywhere in an episode | Measured |
 | `deviceTone625.episodeCount` | 3 in 130 s; 2 in 23 s | Measured |
-| `deviceTone625.trigger` | **unknown** | See `open-questions.md` §12 |
+| `deviceTone625.trigger` | **unknown** | See `open-questions.md` §15 |
 | `deviceTone625.method` | narrow-line excess to locate, harmonic comb to confirm, narrow-band envelope for continuity | - |
 
 Four things make this the machine rather than the room:
@@ -226,9 +232,56 @@ exists to answer:
 4. None of them is anywhere near 66 s.
 
 **What game event fires it is unresolved** and is recorded in
-`open-questions.md` §12 with what would settle it. The band is kept in this
+`open-questions.md` §15 with what would settle it. The band is kept in this
 document under its own name rather than deleted, because a real sound that
 nobody has identified is worth more written down than forgotten.
+
+### What removing it costs
+
+The removal was written, assembled and measured before being held back, so this
+is a report rather than a worry. `jm_beep`, the four `SND_MARCH_*` constants,
+`NIB_J_MOVED` - which nothing else reads - and the `jm_lane_done` branch all
+come out cleanly; the ROM assembles at 1619 words with no change in page
+pressure. Two things then break, and neither can be fixed by relaxing a bound.
+
+**1. The emulated tube stops blinking.** `note` parks the sweep for the whole of
+every burst, so on this machine as on the real one every sound is a blink. At
+71.8 ms per squadron step the march note was by a wide margin the emulator's
+main source of that. Without it:
+
+| Probe | Dark-frame fraction with `jm_beep` | Without it | Its own measured floor |
+| --- | --- | --- | --- |
+| `tools/probe/sweep-timing.test.ts` | passes | 1.55% | 3% |
+| `tools/probe/blank-to-glass.test.ts` | passes | 0.73% | 2% |
+
+And the real unit runs the other way. `vfd-appearance.md` §5 measures **complete
+whole-display blanking on 14-17% of all frames during active play**, in runs of
+**4-5 frames (133-167 ms)**, at roughly one per 1.1 s, and calls it "the loudest
+thing this document has to say about the look". Removing the march leaves the
+emulator with almost no blanking source at all while the machine it copies
+blinks constantly.
+
+**That is not an argument for keeping the march**, because 133-167 ms was never
+71.8 ms - the observed blank runs never matched the note that was supposed to
+cause them - and it is not the 625 Hz tone's 410 ms either. What it says is that
+**something on that unit sounds for about 150 ms roughly once a second during
+play, and the owner has told us it is not the jets marching.** That is
+`open-questions.md` §16.
+
+**2. Three battleship constants need re-deriving, and they do not behave as
+their comments say.** Sweeps run about 12% more often without the note, so any
+sweep-counted duration shrinks in wall time: the boat's arrival falls to
+**3.486 s** against the 3.5-4.5 s bound taken from the owner's isolated
+recording. `BSHIP_STEP`, `BSHIP_GAP` and `BSHIP_OPEN` all carry "MEASURED off
+the running machine" comments for exactly this reason, so re-deriving them is
+expected work. What is not expected is that raising `BSHIP_STEP` from 65 to 73
+sweeps - the +12% the arithmetic asks for - moves the measured arrival from
+3.4861 s to **3.4866 s**. Whatever bounds that duration is not the constant
+whose comment says it does, and finding out what does is its own piece of work.
+
+So the removal is correct on the evidence in this section and is not a tidy-up.
+It should be done deliberately, with the blanking question owned rather than
+inherited.
 
 ## battleshipBuzz
 
