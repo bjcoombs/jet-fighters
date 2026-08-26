@@ -2465,6 +2465,19 @@ jr_low_left:
 ; near end. Whether the unit's own range is wider than two columns is
 ; unresolved - see `docs/evidence/open-questions.md`.
 ;
+; **A zero entropy nibble has to mean the far end, and getting that backwards
+; made the game harder for the player who was doing least.** `NIB_ENT` is 0 out
+; of the power-on clear and only moves when the fire contact closes, so the top
+; bit reads 0 for a player who has not fired yet and for ever for one who never
+; does. A first draft mapped the clear bit to the near column, which meant that
+; machine released *every* plane one grid in - the quietest player getting the
+; shortest game, and the three parked-lever runs behind contract criterion V7
+; diverging from the ROM they were written against. It is self-reinforcing in a
+; probe, too: a drive that cannot find a jet at grid 1 never fires, so the nibble
+; never moves, so no jet ever enters at grid 1. Clear means the far end, which is
+; where every plane entered before this routine drew for it, so a machine nobody
+; has touched behaves exactly as it did.
+;
 ; ## The column flag rides in the accumulator's spare bit, and never in RAM
 ;
 ; The machine has one accumulator, one Y and a status that survives a single
@@ -2507,8 +2520,12 @@ jr_low_left:
 jet_enter:
         LDX  FILE_JETS
         TCY  NIB_J_SENT
-        TMA                     ; A <- jets released this wave, 0..5: the
-                                ;   rotation, stepping one per entry
+        IMAC                    ; A <- jets released this wave plus one, 1..6:
+                                ; the rotation, stepping one per entry. `IMAC`
+                                ; and not `TMA` for the plus one, which costs
+                                ; nothing and is not decoration - it puts the
+                                ; first plane of a game in row 1, where the rotor
+                                ; this replaced put it. The nibble is not written
         LDX  FILE_MISS
         TCY  NIB_ENT            ; ** the one and only read of the entropy nibble
                                 ;    in this program - see the note above **
@@ -2525,9 +2542,12 @@ je_mod3:
                                 ; now the entry row, 0..2
         TBIT1 3                 ; the entropy nibble's top bit picks the column,
                                 ; and Y still names it
-        BR   je_look            ; set: the far column, and A is the row alone
-        A4AAC                   ; clear: bit 2 is the "one grid nearer" flag, and
-                                ; rides to je_place in the accumulator's spare bit
+        BR   je_look            ; set: one grid nearer, and the flag stays clear
+        A4AAC                   ; clear: bit 2 is the "far end" flag, and rides to
+                                ; je_place in the accumulator's spare bit. **The
+                                ; polarity is this way round on purpose** - see
+                                ; the header: a nibble nobody has stirred is 0,
+                                ; and 0 has to mean the far end
 je_look:                        ; A holds row + 4 * flag, and nothing below
                                 ; disturbs it: LDX, TCY, MNEZ and BR all leave A
                                 ; alone, which is what carries it to je_place
@@ -2543,16 +2563,16 @@ je_busy:
 je_place:                       ; Y names the free slot's column, A row + 4 * flag
         A12AAC                  ; twelve is minus four: the flag comes off A and
                                 ; the carry is what it was
-        BR   je_near
         BR   je_far
-je_near:
-        TCMIY GRID_COL_FIRST + 1 ; one grid nearer - still the far half. TCMIY
-                                ; steps Y on, which je_row walks back
-        BR   je_row
+        BR   je_near
 je_far:
+        TCMIY GRID_COL_FIRST    ; the far end of the field, beside the horizon.
+                                ; TCMIY steps Y on, which je_row walks back
+        BR   je_row
+je_near:
         A4AAC                   ; the flag was clear, so the twelve took four too
                                 ; many off - put them back. A is the row again
-        TCMIY GRID_COL_FIRST    ; the far end of the field, beside the horizon
+        TCMIY GRID_COL_FIRST + 1 ; one grid nearer - still the far half
 je_row:                         ; Y names the nibble after the column
         DYN                     ; Y <- the column
         DYN                     ; Y <- that slot's own row nibble

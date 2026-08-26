@@ -749,9 +749,22 @@ describe('the two arrangements are not the same run of luck', () => {
       }
     }
     expect([...rows].sort(), 'the squadron never used every row').toEqual([0, 1, 2]);
-    expect([...columns].sort((a, b) => a - b), 'the squadron never used every column').toEqual(
-      [1, 2, 3, 4, 5],
-    );
+    // **`GRID_COL_LAST + 1` is a real value to read and it is not a column.**
+    // `jm_move` increments a plane's column, writes it, and only then tests
+    // whether it has stepped past grid 5 - so a plane on its way over the G line
+    // holds 6 for the two instructions before `jm_capture` clears it. Nothing in
+    // the ROM reads it there and the tube never draws it, but a sampler working
+    // out of band can land on it, and one did. So the claim asserted is that the
+    // squadron covered the playfield, not that no sample ever caught a crossing
+    // mid-write.
+    const playfield = [...columns].filter((column) => column <= GRID_COL_LAST);
+    expect(playfield.sort((a, b) => a - b), 'the squadron never used every column').toEqual([
+      1, 2, 3, 4, 5,
+    ]);
+    expect(
+      [...columns].filter((column) => column > GRID_COL_LAST + 1),
+      'a plane read as a column past the one jm_move writes on its way over the G line',
+    ).toEqual([]);
   });
 
   it('kept two planes airborne for a real share of the run', () => {
@@ -843,7 +856,13 @@ describe('a capture sends the survivors back to the far end', () => {
         // survivor that refused to retreat, and did, once. The old
         // `at <= GRID_COL_FIRST` line filtered fresh entries out by accident,
         // because every entry landed on grid 1; that accident is over.
-        if ((before.slots[slot] as Plane).column !== at) continue;
+        //
+        // The test is that the slot held *something* before, not that it held
+        // something at the same column: a survivor marches in the same step that
+        // carries the other plane over the G line, so its own column moves too -
+        // measured, four of the five captures with a survivor had it step from
+        // grid 4 to grid 5 as the crossing happened.
+        if ((before.slots[slot] as Plane).column === 0) continue;
         // The first column this slot reads as, other than the one it was
         // standing on when the capture happened. A run that ends before it moves
         // contributes `undefined` and is reported rather than ignored.
