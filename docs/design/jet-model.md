@@ -61,9 +61,11 @@ and it is tempting, but it makes the shadow in task 11 impossible: the old rank
 and the new positions have to coexist for one task, and they cannot if they
 occupy the same nibbles. Use 10-13; delete 0-2 in task 12 and leave them free.
 
-Current occupancy for reference - `FILE_JETS` 3-9 are `NIB_J_SENT`, `NIB_J_ROTOR`,
-`NIB_J_WORK`, `NIB_J_LOST`, `NIB_J_MOVED`, `NIB_J_TMP`, `NIB_J_SCR`, and 14-15
-stay free.
+Current occupancy for reference - `FILE_JETS` 3-9 are `NIB_J_SENT`, `NIB_J_WORK`,
+`NIB_J_LOST`, `NIB_J_MOVED`, `NIB_J_TMP`, `NIB_J_SCR`, and 14-15 stay free.
+Nibble 4 was `NIB_J_ROTOR` and is free from task 14: it existed only to step the
+entry row one place per entry, which is what `NIB_J_SENT` at nibble 3 already
+does, so `jet_enter` takes the rotation from the release count.
 
 ---
 
@@ -197,11 +199,18 @@ will not show up as a word-count problem.
 ## (g) The entry position, and the nibble it must not share
 
 `NIB_ENT` (`FILE_MISS` nibble 6) landed in task 9. It accumulates `NIB_TICK` on
-each fire rising edge, and **nothing reads it yet** - a test asserts exactly one
-site in the whole program.
+each fire rising edge. `jet_enter` is its **single consumer**, from task 14,
+deriving both the entry row and the entry column from it - a test asserts
+exactly two sites in the whole program, the write in `if_down` and that read,
+and names the two routines they must sit in.
 
-`jet_enter` becomes its **single consumer**, in task 14, deriving both the entry
-row and the entry column from it.
+The row is `(NIB_J_SENT + 1 + NIB_ENT) mod 3` and the column is
+`GRID_COL_FIRST` plus the nibble's top bit. Both halves of the row are
+load-bearing: the release count supplies a rotation that never repeats a row on
+consecutive entries when the player is quiet, and the nibble supplies the
+offset. **A zero nibble has to mean the far end**, because that is the state a
+machine nobody has fired at is in, and a draft with that polarity reversed gave
+the quietest player the shortest game.
 
 **The rocket's rotor must never read it.** PRD lines 285-291 require the rocket's
 lane to be independent of the player's press pattern, and contract criterion V7

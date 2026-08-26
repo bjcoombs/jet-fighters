@@ -336,9 +336,19 @@ permanently safe.
 
 **The clause is satisfied, and more thoroughly than it asks. `NIB_RAND` does not exist in
 this ROM.** The only occurrence of the name in `asm/jetfighter.asm` is the historical
-comment describing the v2 defect. Both rotors - `NIB_ROTOR` for rockets, `NIB_J_ROTOR` for
-jet entry - are round robins advanced by the routines that own them, with nothing on the
-input path touching either.
+comment describing the v2 defect. `NIB_ROTOR`, the rocket's lane, is a round robin
+advanced by the routine that owns it, with nothing on the input path touching it - which
+is the half of the clause that matters, and contract criterion V7 is the test that
+catches it if it stops being true.
+
+**Jet entry is the deliberate exception, and it reads the entropy nibble by design.**
+`NIB_J_ROTOR` is retired: from task 14 `jet_enter` takes the entry row from
+`(NIB_J_SENT + 1 + NIB_ENT) mod 3` and the entry column from that nibble's top bit, so
+where a plane appears does depend on the player's press pattern. That is the point - the
+owner reports that a plane can appear anywhere on the board, and the machine has no other
+source of variety. What v2 got wrong was **sharing** one such nibble between four
+readers, so a parked lever made two lanes permanently safe; `jet_enter` is `NIB_ENT`'s
+only consumer and `entropy-nibble.test.ts` counts the sites.
 
 **Measured across four press patterns at skill 1:**
 
