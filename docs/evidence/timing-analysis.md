@@ -560,7 +560,11 @@ unknown.
 
 What it does supply that `IMG_6113.mov` does not is a **stated** skill and a
 legible score throughout. Read from magnified crops: 0 at t=1-3, 1 at t=4, 3 at
-t=6-8, 6 at t=10, **17 at t=11.7 and 18 at t=11.9**, 20 from t=15 to the end. The
+t=6-8, 6 at t=10, **17 at t=11.7 and 18 at t=11.9**, and 20 from t=15 onwards. Each of
+those is read at a frame confirmed lit by pixel count rather than at a wall-clock sample,
+which matters because the readout is dark for more of this clip than it is lit. The one
+reading that is *not* 20 after t=15 is the clip's final flash at 21.93 s, whose tens digit
+is a 3 - see `open-questions.md` §15, where it is recorded and not explained. The
 game runs 0 to 20 in sixteen seconds, so every figure below is taken **early in a
 game**, with one or two aircraft airborne rather than a full squadron. The 17-to-18
 transition is read frame by frame rather than sampled, which is what makes the jump
