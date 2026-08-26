@@ -54,8 +54,25 @@ const COVERAGE: Readonly<Record<string, Coverage>> = {
       'skip in CI - .github/workflows/ci.yml installs ffmpeg if the runner lacks it, ' +
       'and the test fails rather than skips when CI is set and ffmpeg is missing.',
   },
+  'march-tone-identity.ts': {
+    test: 'march-tone-identity.test.ts',
+    note:
+      'Covered, with the same ffmpeg caveat as loss-warning-partials.ts. Its floors ' +
+      'are unusual in one way worth knowing: the drive reaches a negative conclusion, ' +
+      'and a broken decoder reaches the same one for free, so the test floors what the ' +
+      'drive still *finds* and adds a ceiling on the negative control.',
+  },
   'parked-endings.ts': { test: 'parked-endings.test.ts' },
   'playability-audit.ts': { test: 'playability-audit.test.ts' },
+  'recording.ts': {
+    test: null,
+    note:
+      'Not a drive. It is the ffmpeg decoder and the spectral helpers the two drives ' +
+      'that measure a recording share - loss-warning-partials.ts and ' +
+      'march-tone-identity.ts - and it prints nothing and decides nothing. Both of ' +
+      'those tests exercise it, and a fault in it fails them rather than passing ' +
+      'quietly here.',
+  },
   'render-drive.ts': {
     test: 'render-drive.test.ts',
     note:
