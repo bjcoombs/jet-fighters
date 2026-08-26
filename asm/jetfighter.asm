@@ -504,6 +504,16 @@
                                 ; length every cadence constant below converts
                                 ; through, written down beside them rather than
                                 ; left in a comment.
+                                ;
+                                ; MEASURED AT 897 as of the missile rank, and
+                                ; deliberately NOT updated here - see task 20.
+                                ; The figure is stale by 0.9%, well inside the
+                                ; 10% tolerance tms1370-timing.test.ts holds it
+                                ; to, and moving it shifts BURST_GAP_CYCLES,
+                                ; which decides where the speaker stream splits
+                                ; into notes. Re-deriving it is its own change
+                                ; with its own blast radius, not a line item in
+                                ; the rank's closeout.
 
 ; --- The battleship's buzz ---------------------------------------------------
 ;
