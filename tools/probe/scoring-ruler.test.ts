@@ -514,14 +514,26 @@ const FIRST_RELEASE_CYCLES = (() => {
  *
  * `if_down` reads the contact once a sweep and stirs `NIB_ENT` on the *rising
  * edge*, so a press has to be seen closed on one sweep and open on an earlier
- * one. Two sweeps each way is the smallest that does not depend on where the
- * press falls within a sweep. The gap then cycles 2-3-4-5 so the presses land at
- * different points of `NIB_TICK`, which wraps every sixteen sweeps: pressing at a
- * fixed period is the latch trap `entropy-nibble.test.ts` documents, one level
- * up.
+ * one. Two sweeps each way is the smallest that does not depend on where within
+ * a sweep the contact moves, and it is chosen for that and for one other reason:
+ * **the window is fixed, so the cheapest safe press is the one that fits the most
+ * distinct entropy states into it**. Measured against the pre-release window,
+ *
+ * | schedule | primings that fit | distinct `NIB_ENT` |
+ * | --- | --- | --- |
+ * | hold 2, gap 2 | 0-15 | 10 of 16 |
+ * | hold 2, gap 2-3-4-5 | 0-11 | 9 of 12 |
+ * | the schedule this replaced | 0-11, and 11 overran | 6 of 12 |
+ *
+ * A four-sweep period is not the latch trap `entropy-nibble.test.ts` documents
+ * one level up. That trap is a press period which is a multiple of the sixteen
+ * sweeps `NIB_TICK` wraps in, so every press contributes the same tick and the
+ * nibble walks one arithmetic sequence. Four divides sixteen the other way: the
+ * presses land on four different ticks in turn, which is what the ten distinct
+ * values above are.
  */
 const PRIME_HOLD_SWEEPS = 2;
-const primeGapSweeps = (press: number): number => 2 + (press % 4);
+const PRIME_GAP_SWEEPS = 2;
 
 /**
  * Presses fire `priming` times before the drive starts playing, which is the
@@ -539,18 +551,19 @@ const primeGapSweeps = (press: number): number => 2 + (press % 4);
  * did not.** The earlier schedule held for 3,000 cycles and lengthened the gap by
  * one sample per press, which at `priming = 11` came to 58,696 cycles against a
  * first release at {@link FIRST_RELEASE_CYCLES}. So the longest-primed games
- * began with a plane already airborne and marched, and one of them could have had
- * a priming shot kill it - which makes priming a knob on the squadron as well as
- * on the entropy, and the twelve games no longer twelve samples of one variable.
- * Held in sweeps and bounded here instead, and the bound is checked rather than
- * asserted in a comment.
+ * began with a plane already airborne and marched, and a priming shot could have
+ * killed it - which makes priming a knob on the squadron as well as on the
+ * entropy, and the primed games no longer samples of one variable. Held in
+ * sweeps and bounded here instead, and the bound is *checked* rather than
+ * asserted in a comment: overrunning the window throws, and so does returning
+ * with a plane on the board.
  */
 function primeEntropy(machine: Tms1370Machine, priming: number): void {
   for (let press = 0; press < priming; press += 1) {
     machine.setContacts({ fire: true });
     machine.step(PRIME_HOLD_SWEEPS * SWEEP_INSTRUCTIONS);
     machine.setContacts({ fire: false });
-    machine.step(primeGapSweeps(press) * SWEEP_INSTRUCTIONS);
+    machine.step(PRIME_GAP_SWEEPS * SWEEP_INSTRUCTIONS);
   }
   if (machine.cycles > FIRST_RELEASE_CYCLES) {
     throw new Error(
@@ -772,11 +785,13 @@ const DRIVE_TIMEOUT_MS = 90_000;
 /**
  * Entropy primings the aimed-column drive plays a game at, one game each.
  *
- * Sized at twelve because grid 1 - the only column that needs more than the
- * first game - converts six of them, so the row is not resting on one shot. See
- * the test that uses it.
+ * **Sized by the window, not chosen.** Every priming has to finish before the
+ * first plane is released - see {@link primeEntropy} - and at the two-sweeps-each-
+ * way press above, sixteen is what fits. Taking all of them rather than a round
+ * dozen is free: grid 1 is the only column that needs more than the first game
+ * and it plays every one of them regardless.
  */
-const PRIMINGS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const;
+const PRIMINGS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] as const;
 
 /**
  * Kills on the aimed column that are enough to stop playing further games.
@@ -1020,10 +1035,19 @@ describe("the printed ruler", () => {
       // `docs/evidence/open-questions.md` section 11a: an assertion passing
       // because its input was barely produced.
       //
-      // So the input is made reliable rather than the bar lowered. Twelve games
-      // are played with different entropy primings; six of them land a grid-1
-      // kill where one game landed a coin flip. The other columns reach their
+      // So the input is made reliable rather than the bar lowered. Sixteen games
+      // are played with different entropy primings; **7 of them land a grid-1
+      // kill** where one game landed a coin flip. The other columns reach their
       // quota on the first game and pay for none of it.
+      //
+      // That 7 is a re-measurement and the old figure is worth recording, because
+      // it shows how little the count says about the priming design. The schedule
+      // this replaced overran the pre-release window and reached only 6 distinct
+      // entropy states in twelve games, yet converted 6; a schedule that fitted
+      // the window but cost more sweeps per press reached 9 distinct states in
+      // twelve and converted 2. **Whether a given game offers its one grid-1 shot
+      // is a matter of a sweep or two of phase**, as the paragraph above says, so
+      // the defence is the number of games and not any one of them.
       const kills: Kill[] = [];
       for (const priming of PRIMINGS) {
         kills.push(
