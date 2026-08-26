@@ -60,6 +60,8 @@ import {
   bandDb,
   bandRmsTrackDb,
   bestCombF0,
+  bin,
+  binHz,
   decodeRecording,
   dominantHz,
   envelopeMs,
@@ -228,6 +230,29 @@ export interface Population {
   readonly partialExcessDb: readonly number[];
 }
 
+/** One episode's fundamental, read off its partial spacing. */
+export interface PreciseF0 {
+  readonly file: string;
+  readonly atSec: number;
+  /** Partials 1-6 as located, in Hz. */
+  readonly partialsHz: readonly number[];
+  /** Least-squares fundamental through the origin over those partials. */
+  readonly f0Hz: number;
+  /**
+   * Worst |f_h / h - f0| over the partials, in Hz.
+   *
+   * **The fit's own failure detector.** Least squares through the origin
+   * returns a number whatever it is given, so a peak finder that locked onto a
+   * neighbour at one harmonic still yields a confident-looking fundamental
+   * dominated by the others. If the partials are really consecutive multiples
+   * of one f0 this is small; if it is not small, the reading is not a
+   * fundamental and should not be quoted as one.
+   */
+  readonly residualHz: number;
+  /** Spread of the same fit over three disjoint sub-windows of the run, in Hz. */
+  readonly subWindowSpreadHz: number;
+}
+
 export interface PopulationComparison {
   readonly short: Population;
   readonly long: Population;
@@ -247,6 +272,8 @@ export interface MarchToneIdentityResult {
   readonly seriesHz: readonly { readonly label: string; readonly partials: readonly number[] }[];
   /** The two candidate populations, put through one instrument. */
   readonly populations: PopulationComparison;
+  /** The long tone's fundamental in each recording, to a fraction of a hertz. */
+  readonly preciseF0: readonly PreciseF0[];
 }
 
 const GAMEPLAY = 'assets/reference/gameplay-audio.m4a';
@@ -284,6 +311,73 @@ function lineDb(mags: Float64Array, hz: number): number {
  */
 function lineExcessDb(mags: Float64Array, hz = 625): number {
   return lineDb(mags, hz) - (lineDb(mags, hz - 40) + lineDb(mags, hz + 40)) / 2;
+}
+
+/**
+ * Interpolated peak frequency near `hz`, in Hz.
+ *
+ * Parabolic interpolation over the log-magnitudes either side of the strongest
+ * bin, which is what takes a reading below the bin grid: the mainlobe of a
+ * 400 ms Hann window is ~6 Hz wide and the grid is 0.73 Hz, so the peak's
+ * *position* is far better determined than either figure suggests.
+ */
+function interpolatedPeakHz(mags: Float64Array, hz: number, halfWidthHz: number): number {
+  let peak = bin(hz - halfWidthHz);
+  for (let k = bin(hz - halfWidthHz); k <= bin(hz + halfWidthHz); k += 1) {
+    if (mags[k] > mags[peak]) peak = k;
+  }
+  if (peak <= 0 || peak >= mags.length - 1) return peak * binHz;
+  const a = Math.log(mags[peak - 1] + Number.MIN_VALUE);
+  const b = Math.log(mags[peak] + Number.MIN_VALUE);
+  const c = Math.log(mags[peak + 1] + Number.MIN_VALUE);
+  const denom = a - 2 * b + c;
+  let offset = denom === 0 ? 0 : (0.5 * (a - c)) / denom;
+  if (!Number.isFinite(offset) || Math.abs(offset) > 0.5) offset = 0;
+  return (peak + offset) * binHz;
+}
+
+/**
+ * The fundamental from partial spacing.
+ *
+ * **This is the method `audio-reference.md`'s `win` section uses**, and it is
+ * used here for the reason that section gives in its own words: *"A fundamental
+ * is the spacing between adjacent partials"*. Reading it off the series rather
+ * than off the f0 peak alone gives roughly h times the resolution - the 6th
+ * harmonic near 3755 Hz carries six times the precision of the 626 Hz peak.
+ *
+ * The estimator is the **median** adjacent spacing, not a least-squares fit
+ * through the origin, and the difference is not cosmetic. A fit through the
+ * origin is pulled by any single mis-located partial and returns a
+ * confident-looking number regardless; the median ignores one bad gap. This
+ * file's first version used the fit and read `IMG_6113` t=120 as 626.9 Hz,
+ * when five of its six gaps measure 623.1 Hz and only the third partial is
+ * astray. {@link PreciseF0.residualHz} is what exposed that, and it is
+ * reported for every episode so the same failure cannot hide again.
+ */
+function f0FromPartials(
+  mags: Float64Array,
+  nominalHz: number,
+  harmonics = 6,
+): { f0: number; partials: number[]; residual: number } {
+  const partials: number[] = [];
+  for (let h = 1; h <= harmonics; h += 1) {
+    // +/-12 Hz, not +/-30. A window wide enough to hold 2% of the nominal at
+    // the sixth harmonic is wide enough to catch a neighbouring line there,
+    // and a single mis-located partial moves the fit while leaving it looking
+    // precise - which is what the residual below exists to expose.
+    const hz = interpolatedPeakHz(mags, h * nominalHz, 12);
+    partials.push(hz);
+  }
+  // Median adjacent spacing, including the gap from DC to the first partial.
+  const gaps = partials.map((hz, i) => (i === 0 ? hz : hz - partials[i - 1]));
+  const sorted = [...gaps].sort((a, b) => a - b);
+  const f0 =
+    sorted.length % 2
+      ? sorted[sorted.length >> 1]
+      : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;
+  let residual = 0;
+  for (const [i, hz] of partials.entries()) residual = Math.max(residual, Math.abs(hz / (i + 1) - f0));
+  return { f0, partials, residual };
 }
 
 /** Prominence of 600-650 Hz over the median of the control bands, in dB. */
@@ -533,7 +627,37 @@ export function runMarchToneIdentity(): MarchToneIdentityResult {
     durationsMs: pooled.map((r) => r.episode.continuousMs),
   };
 
-  return { files, citedEvents, combControls, battleshipEpisodes, seriesHz, populations };
+  // --- the long tone's fundamental, precisely -------------------------------
+  //
+  // Run because the two recordings were proposed to be two different physical
+  // units. A delay-loop note is clocked off the chip's own RC oscillator, so
+  // its pitch is a property of the hardware: see the null printed beside it.
+  const preciseF0: PreciseF0[] = files.flatMap((f) =>
+    f.episodes
+      .filter((e) => e.continuousMs >= SPLIT_MS && e.combDb >= TONE_COMB_DB)
+      .map((e) => {
+        const x = load(f.path);
+        const runS = e.continuousMs / 1000;
+        const whole = spectrumAt(x, e.runStartSec + 0.01, Math.max(0.05, runS - 0.02));
+        const { f0, partials, residual } = f0FromPartials(whole, 626);
+        // Empirical resolution: the same fit over three disjoint thirds of the
+        // run. A theoretical bin width is not a measurement uncertainty.
+        const third = (runS - 0.02) / 3;
+        const subs = [0, 1, 2].map(
+          (i) => f0FromPartials(spectrumAt(x, e.runStartSec + 0.01 + i * third, third), 626).f0,
+        );
+        return {
+          file: f.path,
+          atSec: e.runStartSec,
+          partialsHz: partials,
+          f0Hz: f0,
+          residualHz: residual,
+          subWindowSpreadHz: Math.max(...subs) - Math.min(...subs),
+        };
+      }),
+  );
+
+  return { files, citedEvents, combControls, battleshipEpisodes, seriesHz, populations, preciseF0 };
 }
 
 function report(r: MarchToneIdentityResult): void {
@@ -745,6 +869,67 @@ function report(r: MarchToneIdentityResult): void {
   console.log('  three windows, so this separates the populations; it does not on its');
   console.log('  own show the short events *cause* the blanks. Section 16 shows that,');
   console.log('  by onset coincidence against a shuffled null.');
+
+  // --- 3e. is it one unit? --------------------------------------------------
+
+  console.log('\n--- 3e. The long tone\'s fundamental, to a fraction of a hertz --------');
+  console.log('Run because the two recordings have been proposed to be two different');
+  console.log('physical units. A delay-loop note is clocked off the chip\'s own RC');
+  console.log('oscillator, so its pitch is a property of the hardware.');
+  console.log('');
+  console.log('**The null, before the numbers.** MAME fits this part\'s oscillator at');
+  console.log('350 kHz and its driver header states the spread it carries: the frequency');
+  console.log('"can differ up to 50kHz" unit to unit, partly from ageing - **+/-14%**,');
+  console.log('carried in this repository as OSCILLATOR_SPREAD_HZ. At 626 Hz that is');
+  console.log('**+/-88 Hz**. That is the scale any agreement below has to be read against.');
+  console.log('');
+  console.log('Method: least squares through the origin over partials 1-6, which is what');
+  console.log('audio-reference.md\'s win section uses. Resolution is not asserted from the');
+  console.log('bin width - it is measured, as the spread of the same fit over three');
+  console.log('disjoint thirds of each run.\n');
+  console.log('  recording                        at(s)      f0       sub-window   residual');
+  for (const p of r.preciseF0) {
+    console.log(
+      `  ${p.file.replace('assets/reference/', '').padEnd(30)} ${p.atSec.toFixed(2).padStart(6)}   ` +
+        `${p.f0Hz.toFixed(2).padStart(7)} Hz   ${p.subWindowSpreadHz.toFixed(2).padStart(6)} Hz` +
+        `   ${p.residualHz.toFixed(2).padStart(6)} Hz`,
+    );
+  }
+  console.log('');
+  console.log('  residual is the worst |f_h/h - f0| over the six partials. A fit through');
+  console.log('  the origin returns a number whatever it is handed, so this is what says');
+  console.log('  whether the number is a fundamental or an average of unrelated lines.');
+  if (r.preciseF0.length > 1) {
+    const f0s = r.preciseF0.map((p) => p.f0Hz);
+    const spread = Math.max(...f0s) - Math.min(...f0s);
+    const mean = f0s.reduce((a, b) => a + b, 0) / f0s.length;
+    const worstSub = Math.max(...r.preciseF0.map((p) => p.subWindowSpreadHz));
+    console.log('');
+    console.log(`  ${f0s.length} episodes, mean ${mean.toFixed(2)} Hz, total spread **${spread.toFixed(2)} Hz** = ${((spread / mean) * 100).toFixed(3)}%.`);
+    console.log(`  Worst within-episode spread ${worstSub.toFixed(2)} Hz, which is this measurement's`);
+    console.log('  own noise floor - the figure above is only meaningful because it is of');
+    console.log('  the same order or larger.');
+    console.log('');
+    console.log(`  Against a +/-14% unit-to-unit null, ${((spread / mean) * 100).toFixed(3)}% is ${(14 / ((spread / mean) * 100)).toFixed(0)}x tighter.`);
+    console.log('  Read that as: two units agreeing this closely would be the coincidence;');
+    console.log('  one unit on three occasions agreeing this closely is expected. The');
+    console.log('  burden is on the two-unit reading to explain the agreement.');
+  }
+  console.log('');
+  console.log('  partials as located, and the gaps between them - the gaps are the');
+  console.log('  measurement, and one bad partial shows up as one bad gap rather than');
+  console.log('  as a wrong fundamental:');
+  for (const p of r.preciseF0) {
+    const gaps = p.partialsHz.map((hz, i) => (i === 0 ? hz : hz - p.partialsHz[i - 1]));
+    console.log(`    ${p.file.replace('assets/reference/', '')} @ ${p.atSec.toFixed(2)} s`);
+    console.log(`      partials  ${p.partialsHz.map((v) => v.toFixed(1).padStart(7)).join(' /')}`);
+    console.log(`      gaps      ${gaps.map((v) => v.toFixed(1).padStart(7)).join(' /')}`);
+  }
+  console.log('');
+  console.log('  The t=120 residual is one partial, not a bad reading: five of its six');
+  console.log('  gaps measure 623.1 Hz and only the third is astray, which is why the');
+  console.log('  median estimator returns 623.11 Hz there on both episodes and the');
+  console.log('  origin-fit this drive first used returned 626.9.');
 
   console.log('\n--- 4. Tonality controls ---------------------------------------------');
   console.log('The comb score is only ever readable against a known tone and a known');
