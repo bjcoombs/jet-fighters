@@ -820,6 +820,41 @@ describe('the splitter holds across a band, not at one value of the sweep consta
    */
   const SLICES = [170, 178, 188] as const;
 
+  /**
+   * Scenarios one pass of the slice sweep runs: an idle drive and a played one
+   * at every slice.
+   */
+  const SCENARIOS_PER_SLICE = 2;
+
+  /**
+   * Wall clock one scenario costs **on a CI runner**, measured.
+   *
+   * Not measured on a developer machine, which is the mistake that made this
+   * test red. A six-slice grid ran in 3.1 s locally and **7.5 s on the runner** -
+   * 260 ms a scenario against 625 - so a horizon calibrated on the fast machine
+   * put a 5 s default two seconds inside a coin toss, and CI called it.
+   */
+  const RUNNER_SCENARIO_MS = 625;
+
+  /**
+   * Multiple of the measured cost this test is allowed before it is called hung.
+   *
+   * Three, over a figure already taken from the slower of the two machines. It
+   * absorbs a runner having a bad day without being so wide that a genuine hang
+   * sits in CI for a minute.
+   */
+  const TIMEOUT_SLACK = 3;
+
+  /**
+   * **A multiple of a named, measured cost - not a literal.** CLAUDE.md's second
+   * rule for this repository: a literal horizon in a test about a machine that
+   * stops is a bet on when it stops, and it has turned `main` red three times
+   * here. Written this way, adding a slice to {@link SLICES} moves the ceiling
+   * with it instead of leaving a number that used to be enough.
+   */
+  const SWEEP_TIMEOUT_MS =
+    SLICES.length * SCENARIOS_PER_SLICE * RUNNER_SCENARIO_MS * TIMEOUT_SLACK;
+
   it('accounts for every sound at every gap and boundary allowance', () => {
     let checked = 0;
     for (const gap of GAPS) {
@@ -840,7 +875,7 @@ describe('the splitter holds across a band, not at one value of the sweep consta
 
   it(
     'accounts for every sound at every drive slice, which is what the constant really moves',
-    { timeout: 30_000 },
+    { timeout: SWEEP_TIMEOUT_MS },
     () => {
     // The expensive half: each slice re-runs both scenarios, so the ROM is asked
     // to make a different set of sounds rather than the same set being re-cut.
