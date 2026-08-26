@@ -33,12 +33,26 @@
 //
 // ## Why the countdown and not the march note
 //
-// A march step is audible - `jm_beep` sounds jetMarch, 627 Hz for ~72 ms - but
-// the beep is emitted from the walk's end too, so the capture step is silent and
-// the speaker reports the collapse as one 176-sweep gap rather than a 160 and a
-// 16. The countdown pair is where the rule actually lives, and it is game state
-// in the emulated RAM as CLAUDE.md requires all game state to be, put there by
-// the program. Reading it names the defect; reading the speaker averages it away.
+// On this ROM a march step is audible - `jm_beep` sounds jetMarch, 627 Hz for
+// ~72 ms - but the beep is emitted from the walk's end too, so the capture step
+// is silent and the speaker reports the collapse as one 176-sweep gap rather than
+// a 160 and a 16. The countdown pair is where the rule actually lives, and it is
+// game state in the emulated RAM as CLAUDE.md requires all game state to be, put
+// there by the program. Reading it names the defect; reading the speaker averages
+// it away.
+//
+// **That choice has since been vindicated for a second reason: the real machine
+// does not make this sound.** The owner, 2026-08-26 - "the jet fighters do not
+// beep as they go from left to right", and "no marching sound" - and the
+// recordings agree with him; see the withdrawn `jetMarch` section of
+// `docs/evidence/audio-reference.md`. `jm_beep` is still in the ROM only because
+// taking it out costs something that has to be owned rather than inherited,
+// which that section sets out under "what removing it costs".
+//
+// **Nothing in this file depends on the note.** Every assertion below reads the
+// countdown pair out of RAM, and the squadron's stepping is observable with no
+// sound at all - in that pair, and on the glass as a column change. When
+// `jm_beep` goes, this file does not move.
 //
 // The pair is read as one number, `STEP_HI * 16 + STEP_LO`. It falls by one on
 // every sweep, so the sweep on which it *rises* is a march step and there is no
