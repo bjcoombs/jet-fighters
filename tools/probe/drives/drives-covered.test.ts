@@ -62,6 +62,16 @@ const COVERAGE: Readonly<Record<string, Coverage>> = {
       'and a broken decoder reaches the same one for free, so the test floors what the ' +
       'drive still *finds* and adds a ceiling on the negative control.',
   },
+  'march-wall-clock.ts': { test: 'march-wall-clock.test.ts' },
+  'missile-transit.ts': {
+    test: 'missile-transit.test.ts',
+    note:
+      'The only drive here that measures the physical unit rather than the emulated ' +
+      'machine. It reads assets/reference/skill3-video-cells.csv, which the tracer ' +
+      'produces from the owner recording - the drive itself needs no ffmpeg, NumPy or ' +
+      'video decode, which is deliberate: loss-warning-partials.ts could not run in a ' +
+      'clean checkout for exactly that reason.',
+  },
   'parked-endings.ts': { test: 'parked-endings.test.ts' },
   'playability-audit.ts': { test: 'playability-audit.test.ts' },
   'recording.ts': {

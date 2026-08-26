@@ -69,6 +69,13 @@ outlines, in Python, needing NumPy, SciPy and Pillow. Nothing in `src/` imports 
 `npm test` never runs it, but **a playfield outline is changed there and regenerated, not
 edited by hand** - `src/machine/tube/ATLAS-COORDINATES.md`, "Tracing workflow".
 
+`tools/video/` is the same kind of thing for the owner's *gameplay* recordings: it
+registers a handheld clip against the printed silkscreen and times what the squadron and
+the missile do on the glass. Same dependencies, plus `ffmpeg`. The recordings are not
+committed and are referenced by path. Every figure it produces is quoted in
+`docs/evidence/timing-analysis.md` with the run that produced it, and **a cadence figure
+taken from a video is changed there and re-run, not typed into a comment**.
+
 The rules that keep it honest:
 
 - **Nothing owns a clock except `src/main.ts`.** The board advances only when stepped.

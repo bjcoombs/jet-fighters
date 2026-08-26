@@ -88,10 +88,17 @@ Blocks the measured-timing table in `timing-analysis.md`. Rows T2 to T10 -
 battleship crossing interval, rocket travel, thin-out curve, post-hit recovery -
 have no measured values and cannot get them from stills or from the audio.
 
-T1 (the march step) is the exception and **has** now been measured, from the march
+~~T1 (the march step) is the exception and **has** now been measured, from the march
 beep onsets in `gameplay-audio.m4a`: 205.1 ms mean, sd 22.1, n=21 across five
 uninterrupted runs. That is the only cadence figure in the ROM derived rather than
-chosen. Everything else remains marked `PROVISIONAL`.
+chosen.~~ Everything else remains marked `PROVISIONAL`.
+
+**Struck through: that row is withdrawn.** The beep is not on the squadron step's
+clock - `timing-analysis.md`, "What the audio row does and does not say" - and what
+the 205 ms period actually is remains unidentified in two separate recordings, which
+is §17 below. **T1 is now measured from the picture instead**, at a skill the owner
+states: 267, 300 and 467 ms at skill 3, n = 3. See
+`timing-analysis.md`, "The skill-3 clip".
 
 **Partly relieved by `IMG_6113.mov`**, the owner's 407.9 s recording of real play at 30 fps
 real time. It supplies, at one unknown skill level: one aircraft advancing one cell every
@@ -1272,6 +1279,46 @@ Re-derive every audio figure here with `tools/probe/drives/march-tone-identity.t
 score readings come from the owner's video and are **not** re-derivable from the
 committed audio; the timestamps are given so they can be re-read from the source file.
 
+### Added from §17's pass over the same clip: episode 3 *can* be tested, and it says no
+
+Point 1 above rests on "the readout is unlit at every sample from 17.00 s to the end of
+the video". **That is a sampling artefact.** Read frame by frame from the registered
+stack rather than at half-second samples, the score digits are lit in **nine separate
+windows after 17.00 s**: 17.03-17.07, and then 19.93-20.17, 20.33-20.43, 20.60-20.70,
+20.87-20.97, 21.13-21.23, 21.40-21.50, 21.67-21.77 and 21.93-21.97. The last seven are a
+regular ~270 ms flash, which is the end-of-game display rather than play.
+
+Every one of them reads **20**. So episode 3 (17.70-18.11 s) has a legible score 0.6 s
+before it and a legible score 1.8 s after it, and **the score did not change across it**:
+
+| Time | Score readout | Relation to episode 3 |
+| --- | --- | --- |
+| 16.60 s | SCORE 20 | 1.1 s before |
+| 17.03 - 17.07 s | **SCORE 20** | 0.6 s before |
+| 19.93 - 20.33 s | **SCORE 20** | 1.8 s after, tube now flashing |
+| 21.33 s | SCORE 20 | after |
+
+**The census is therefore n = 2, one for and one against**, not n = 1 suggestive.
+Episode 2 has the score rising by two across it; episode 3 has it flat across it. That
+does not settle the question either, but it moves it: a tone that fires on a scoring
+event should not fire when no score is scored, so the reading that survives both rows is
+that the tone is **not** a kill - which is the reading point 3 already preferred on the
+owner's testimony.
+
+**One correction to point 3's own footing, from the other direction.** It leans on
+`audio-reference.md`'s `missileFire` row, 1480-1632 Hz, being what a fire and a hit both
+sound like. Measured in *this* recording, the unit's fire blip is a **2577 Hz** tone, sd
+7.6 Hz over sixteen events, each leading a visible missile launch by a median 50 ms - see
+§17 and `timing-analysis.md`, "The skill-3 clip". 2577 is not a harmonic of 1520. So the
+band that point 3 reasons from may not describe this unit, and the collision it worries
+about is softer than it looks. That is a reason to re-measure `missileFire`, not a reason
+to prefer the kill reading.
+
+Method and re-derivation: `tools/video/clip.py` then `tools/video/measure.py` for the
+audio figures; the score windows come from thresholding cyan excess in the digit box of
+the registered stack, which is the same colour-excess rule the rest of this analysis
+uses. The tube-blank question in §16 is untouched by any of this.
+
 ## 16. The real machine blinks about once a second and nothing we model explains it
 
 `vfd-appearance.md` §5 measures, off video of the owner's unit, **complete whole-display
@@ -1309,3 +1356,111 @@ pass counted dark frames and never looked at the sound underneath them.
 withdrawn. But taking it out silently leaves the emulator contradicting a measured figure
 in a second document, and the honest order is to answer this question first, or at least
 to own it in the same change. See "what removing it costs" in `audio-reference.md`.
+
+## 17. What repeats at 208 ms in both audio recordings of the unit
+
+**Two recordings of the same machine, made months apart, each carry a repetition at
+about 205 ms that nothing has identified.** That is the whole of the finding, and its
+history is worth more than the number, because the number has now been given two
+confident explanations and both were wrong.
+
+`assets/reference/gameplay-audio.m4a` gave **205.1 ms, sd 22.1, n = 21** across five
+uninterrupted runs of onsets in the 585-660 Hz `jetMarch` band. It was read as the
+squadron's step rate and the ROM's cadence floor was derived from it. That reading is
+**withdrawn**, on `IMG_6113.mov`: in the one window where both can be measured against
+each other the column steps run 1067-1200 ms while the same band repeats at 763 ms, and
+the step onsets land on troughs of that envelope. `timing-analysis.md` carries the
+detail.
+
+The owner's skill-3 clip gives the same period again - envelope autocorrelation peaking
+unambiguously at **lag 208-213 ms, r = 0.35**. That was read as the squadron's step rate
+a second time, and a "the ROM is 2.4x too slow" figure was drawn from it. The owner then
+said: *"the sound might also be me hitting buttons, not from the device electronics."*
+That reading is withdrawn too.
+
+**This is a different sound from §15's, and the two sections must not be collapsed.**
+§15's is a *tone*: 625 Hz with six partials, sustained unbroken for 405-417 ms, a handful
+of times a game. This one is a *train of transients* about 208 ms apart, running for most
+of the clip, with no tonal peak at all - the same onset times fall out of band envelopes
+at 380-470, 590-740, 1620-1760, 2500-2660 and 2780-2960 Hz. They are also separable in
+time: two of §15's episodes fall inside stretches where this train goes quiet. Three
+unexplained sounds are now on the record in one recording - that tone, this train, and
+the 2577 Hz fire blip below, which is the only one of the three that is identified.
+
+**Known.** It is real: an envelope autocorrelation over 23 s is not something a
+refractory window manufactures. It is **broadband** - the same onset times fall out of
+band envelopes at 380-470, 590-740, 1620-1760, 2500-2660 and 2780-2960 Hz, which is a
+transient's signature and not a note's. And it keeps time with nothing visible: tested
+against missile launches, missile column steps and jet column steps, each against a null
+built by sliding the same event list to a random phase, only the launch row clears its
+95th percentile and it does so because the machine's fire tone is inside the train.
+
+**Also known, and it forecloses the easiest answer.** The recording *does* contain
+device audio. Sixteen onsets carry a tone at **2577 Hz, sd 7.6 Hz**, and fourteen sit
+within 100 ms of a visible missile launch, leading it by a median 50 ms. A thumb does
+not do that. So "it is all handling noise" cannot be asserted merely because handling
+noise is present.
+
+**Not known.** Whether the 208 ms train is the owner's thumb, the lever's detents, the
+case, or a sound the machine makes that has no visible correlate. The two candidates the
+picture can offer - firing and moving the launcher between lanes - together reach 52%
+against a 47% p95 at +/-100 ms, which is not an identification.
+
+### What would settle it
+
+**A recording of the unit with nobody touching it.** Power on, set it down, let a game
+play itself out. If the 208 ms train survives, it is the machine; if it stops, it is the
+hand. That is one minute of the owner's time and it closes a question that has produced
+two wrong ROM-facing inferences.
+
+Failing that: the same clip re-recorded with the phone on a support and the unit on a
+table, so handling is removed while play continues.
+
+### A second thing the skill-3 clip found, recorded here because it is the same shape
+
+The unit's missile-fire blip in that recording is **2577 Hz**. `audio-reference.md`
+records `missileFire.dominantHzRange` as 1480-1632 Hz from `gameplay-audio.m4a`. 2577 is
+not a harmonic of 1520. Either the two recordings caught different sounds, or one of the
+two measurements is of something else. Not resolved here, and flagged rather than
+changed: `audio-reference.md` is measured from the owner's isolated recordings and one
+video-side reading is not grounds to move it.
+
+## 18. The cadence ladder reaches a rung below the floor its own constants document
+
+`asm/jetfighter.asm` documents `STEP_HI_MIN` as "the floor: 32 sweeps, 488 ms" and
+reasons from that figure in the cadence header. `step_reload` computes the rung with
+`SAMAN` and takes the floor branch **only when that subtraction borrows**:
+
+```text
+        SAMAN                   ; A <- STEP_HI_MAX - A
+        BR   sr_ok              ; taken when it did not borrow
+        CLA
+        A1AAC                   ; the floor: one high nibble
+sr_ok:
+```
+
+Zero does not borrow. At skill 3 with four kills, `STEP_HI_MAX - kills - STEP_SKILL *
+(skill - 1)` is exactly `8 - 4 - 4 = 0`, so `sr_ok` is reached with A = 0, `STEP_HI` is
+written as zero, and the squadron steps every **16 sweeps** - half the documented floor.
+Measured by `tools/probe/drives/march-wall-clock.ts`: 16 sweeps asked, 16 run, **325 ms**
+of wall clock. A fifth kill floors the ladder back up to 32 sweeps, so the descent is not
+monotonic either.
+
+**Why it survived.** `tools/probe/march-cadence.test.ts` already asserted "never takes a
+step the cadence ladder cannot ask for" - but every run in that file is at skill 1 with
+fire never pressed, so `NIB_KILLS` stays 0 and the assertion has never been within four
+rungs of the floor. The file's own header called 16 sweeps "a cadence no skill setting
+and no score can produce". It can.
+
+**Not fixed here**, because the task that found it was measuring the video and was
+forbidden to touch `asm/`. The fix is one instruction. It is recorded in two assertions
+of opposite polarity so it cannot be lost: `march-cadence.test.ts` carries the rule as an
+`it.fails()`, and `march-wall-clock.test.ts` asserts the sub-floor rung is still
+reachable. A fix turns both red at once.
+
+**One consequence to weigh before fixing it.** That accidental rung is the *only* one on
+the skill-3 ladder inside the range the owner's skill-3 clip actually shows - 267 to
+467 ms, median 300. Raising it to the documented 488 ms makes the ROM slower at exactly
+the point the owner says it is already too slow. The right order is to re-derive
+`STEP_SKILL` against the video first and repair the floor second, so the repair is not
+mistaken for the pace change.

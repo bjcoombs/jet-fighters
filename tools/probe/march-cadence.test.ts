@@ -26,10 +26,17 @@
 // not merely the bottom of the ladder - it is *below* it. The ladder floors
 // `STEP_HI` at `STEP_HI_MIN`, so the shortest step the rule can ask for is
 // {@link LADDER_FLOOR_SWEEPS} sweeps; an unreloaded countdown gives
-// {@link UNRELOADED_SWEEPS}, a cadence no skill setting and no score can
-// produce. That is what makes this a control-flow defect rather than an
-// aggressive rung: the squadron took a free step the rules never granted it,
-// immediately after the moment the player was least able to answer it.
+// {@link UNRELOADED_SWEEPS}. That is what makes this a control-flow defect
+// rather than an aggressive rung: the squadron took a free step the rules never
+// granted it, immediately after the moment the player was least able to answer
+// it.
+//
+// **This comment used to end "a cadence no skill setting and no score can
+// produce", and that turned out to be false.** `step_reload` writes `STEP_HI` as
+// zero at skill 3 with four kills, so 16 sweeps is a rung the ladder reaches on
+// its own. The claim survived because every run in this file is at skill 1 with
+// nothing pressed, which never goes near the floor. The last `describe` in this
+// file is the assertion that was missing, in the polarity that says so.
 //
 // ## Why the countdown and not the march note
 //
@@ -141,10 +148,28 @@ function ladderSweeps(skill: number, kills: number): number {
 /** The skill the runs below are driven at: the dial's slowest, gentlest setting. */
 const SKILL = 1;
 
+/**
+ * The dial's fastest setting, and the deepest thin-out the ladder's arithmetic
+ * reaches before it underflows.
+ *
+ * Not a run condition - the coordinates of the rung the `it.fails()` at the foot
+ * of this file is about. `STEP_HI_MAX - kills - STEP_SKILL * (skill - 1)` is
+ * `8 - 4 - 4 = 0` here: the one place in the whole ladder where the expression
+ * lands on zero rather than going under it.
+ */
+const FASTEST_SKILL = 3;
+const DEEPEST_KILLS = gameSymbol('STEP_HI_MAX') - gameSymbol('STEP_SKILL') * (FASTEST_SKILL - 1);
+
 /** 160 sweeps - the top rung, which is where a run with no kills stays. */
 const LADDER_TOP_SWEEPS = ladderSweeps(SKILL, 0);
 
-/** 32 sweeps - the fastest step the ladder can ask for, at any skill or score. */
+/**
+ * 32 sweeps - the fastest step the ladder's *rule* can ask for.
+ *
+ * Not the fastest step the ROM takes. `step_reload` applies the floor only when
+ * its subtraction borrows, and one rung lands on exactly zero without borrowing;
+ * see the last `describe` in this file.
+ */
 const LADDER_FLOOR_SWEEPS = sweepsFor(gameSymbol('STEP_HI_MIN'));
 
 /**
@@ -152,7 +177,10 @@ const LADDER_FLOOR_SWEEPS = sweepsFor(gameSymbol('STEP_HI_MIN'));
  *
  * `jet_march` leaves the pair at `0:15` on the sweep it steps, so a step that
  * misses `step_reload` runs on that instead of on a rung. It is below
- * {@link LADDER_FLOOR_SWEEPS}, so no rule can produce it.
+ * {@link LADDER_FLOOR_SWEEPS} - and, separately from the capture defect this
+ * file is about, it is also what `step_reload` writes at skill 3 with four
+ * kills, which is why the assertions below stay at skill 1 where the two cannot
+ * be confused.
  */
 const UNRELOADED_SWEEPS = sweepsFor(0);
 
@@ -176,6 +204,18 @@ const PARKED_GAME_MARCH_STEPS = 18;
  * than passing quietly.
  */
 const SWEEP_CEILING = 2 * PARKED_GAME_MARCH_STEPS * LADDER_TOP_SWEEPS;
+
+/**
+ * Sweeps the skill-3 run is given to walk the ladder down.
+ *
+ * A multiple of the top rung rather than a count of seconds, for the reason
+ * `SWEEP_CEILING` above gives: this is a machine that stops, and the run ends on
+ * the third launcher long before this. **Measured: the rung under test is
+ * reached in every run, twelve intervals deep** - the ordinary `it()` beside the
+ * `it.fails()` is what says so out loud if that ever stops being true.
+ */
+const FAST_LADDER_SWEEPS = 40 * LADDER_TOP_SWEEPS;
+
 
 /**
  * The cycle ceiling one `runSweeps` call is given.
@@ -286,6 +326,65 @@ function intervalsSpanningACapture(game: Game): { atCycleSweep: number; sweeps: 
 
 const games = new Map(LEVERS.map(({ lane }) => [lane, standStill(lane)]));
 
+/** Every `STEP_HI` a played skill-3 game saw written, and how far it thinned out. */
+interface FastLadderRun {
+  readonly written: readonly number[];
+  readonly peakKills: number;
+}
+
+/**
+ * Firing cadences the skill-3 run is pooled over.
+ *
+ * **One phase decides one answer, and here it decided it with no margin.** A
+ * single drive at period 37 reaches exactly {@link DEEPEST_KILLS} kills and then
+ * loses its third launcher, so the guard below passed on the last kill the game
+ * had to give: any change that made the blind drive marginally worse would drop
+ * it to three and turn the guard red for a reason that has nothing to do with
+ * the ladder. Measured across these six periods, every one reaches the rung and
+ * three reach a kill beyond it - 4, 5, 5, 4, 5, 4 - which is the margin.
+ *
+ * They are odd and coprime with the sixteen-sweep entropy counter for the reason
+ * `timing-analysis.md` records under the rocket's lane: a press period sharing a
+ * factor with sixteen can only ever latch half the residues.
+ */
+const FIRING_PERIODS = [37, 45, 53, 61, 29, 71] as const;
+
+/**
+ * Play skill-3 games blindly until they end, recording every rung reloaded.
+ *
+ * The lever sweeps the lanes and fire is tapped - not to play well, but to score
+ * enough that `NIB_KILLS` walks the ladder to its bottom. That is the only way
+ * to reach the rung the `it.fails()` below is about without writing to RAM, and
+ * a rung reached by playing is the one worth asserting on.
+ */
+function fastLadderRun(): FastLadderRun {
+  const written: number[] = [];
+  let peakKills = 0;
+  for (const period of FIRING_PERIODS) {
+    const machine = new Tms1370Machine();
+    machine.setContacts({ skill: FASTEST_SKILL, lane: 1, fire: false });
+    let previousPair: number | undefined;
+    for (let tick = 0; tick < FAST_LADDER_SWEEPS; tick += 1) {
+      machine.setContacts({
+        lane: (Math.floor(tick / period) % 3) as 0 | 1 | 2,
+        fire: tick % period < 4,
+      });
+      machine.runSweeps(1, SWEEP_WAIT_CYCLES);
+      const ram = machine.ram;
+      if ((ram[ADDRESS.hits] as number) >= LAUNCHERS) break;
+      peakKills = Math.max(peakKills, ram[ADDRESS.kills] as number);
+      const stepHi = ram[ADDRESS.stepHi] as number;
+      const pair = stepHi * NIBBLES_PER_FILE + (ram[ADDRESS.stepLo] as number);
+      // The pair rises on the sweep it is reloaded, and `STEP_HI` read on that
+      // sweep is what `step_reload` just wrote. Sampling anywhere but a sweep
+      // boundary would catch the low nibble's own wrap and read it as a reload.
+      if (previousPair !== undefined && pair > previousPair) written.push(stepHi);
+      previousPair = pair;
+    }
+  }
+  return { written, peakKills };
+}
+
 describe('the squadron keeps its march cadence across a launcher loss', () => {
   it('states a floor no rung can reach, so the signature is unambiguous', () => {
     // Not a property of the machine - a property of the two numbers the
@@ -349,6 +448,11 @@ describe('the squadron keeps its march cadence across a launcher loss', () => {
       it('never takes a step the cadence ladder cannot ask for', () => {
         // The rule from underneath, and the form that survives a ladder change:
         // no interval may be shorter than the shortest rung, whatever the rung.
+        //
+        // **Every run in this file is at skill 1 with fire never pressed, so
+        // `speed_index` never leaves the top rung and this assertion has never
+        // been near the floor.** The `it.fails()` below is the same rule at the
+        // other end of the ladder, where it does not hold.
         const measured = intervals(game());
         expect(measured.length, 'march intervals measured').toBeGreaterThan(0);
         for (const interval of measured) {
@@ -359,4 +463,77 @@ describe('the squadron keeps its march cadence across a launcher loss', () => {
       });
     });
   }
+});
+
+describe('the ladder floor holds at the fast end as well as the slow one', () => {
+  // ## This is `it.fails()` because the floor does not hold, and the red is the point
+  //
+  // `it.fails()` here means "expected to fail *because the ROM is wrong*", in the
+  // sense `tools/probe/render-fidelity.test.ts` sets out: the body is live,
+  // executable and un-weakened, it runs every time the suite runs, and Vitest
+  // fails the run if it ever *passes*. What it records is a fact about the ROM,
+  // not a fact about the assertion. The moment `step_reload` is fixed this test
+  // starts passing, the `.fails` starts failing, and the branch that fixed it
+  // goes red until the `.fails` comes off. **The failure mode being guarded
+  // against is somebody reading that red as a regression and suppressing it.**
+  //
+  // ## What is wrong
+  //
+  // `asm/jetfighter.asm` documents `STEP_HI_MIN` as "the floor: 32 sweeps,
+  // 488 ms", and the ladder header reasons from it: "the floor is still 488 ms
+  // against the 205 ms the unit was never observed to beat". `step_reload`
+  // computes `STEP_HI_MAX - kills - STEP_SKILL * (skill - 1)` with `SAMAN` and
+  // takes the floor branch **only when that subtraction borrows**:
+  //
+  //     SAMAN                   ; A <- STEP_HI_MAX - A
+  //     BR   sr_ok              ; taken when it did not borrow
+  //     CLA
+  //     A1AAC                   ; the floor: one high nibble
+  //     sr_ok:
+  //
+  // Zero does not borrow. At skill 3 with four kills the expression is exactly
+  // `8 - 4 - 4 = 0`, so `sr_ok` is reached with A = 0, `STEP_HI` is written as
+  // zero, and the squadron steps every 16 sweeps - **half the documented floor**,
+  // and the same 16 sweeps this file's opening comment calls "a cadence no skill
+  // setting and no score can produce". It can. One rung produces it, and a fifth
+  // kill floors the ladder back up to 32, so the descent is not even monotonic.
+  //
+  // Measured on this ROM by `tools/probe/drives/march-wall-clock.ts`: skill 3,
+  // kills 4, 16 sweeps asked and 16 run, **325 ms of wall clock** against the
+  // 488 ms nominal the constants claim as the fastest possible.
+  //
+  // ## Why it is only recorded here
+  //
+  // The fix is one instruction in `asm/jetfighter.asm` and the task that found
+  // this was forbidden to touch `asm/`. `march-wall-clock.test.ts` carries the
+  // paired assertion in the opposite polarity - that the sub-floor rung is still
+  // *reachable* - so a fix turns both red at once and neither can be forgotten.
+  //
+  // ## The vacuity guard is a separate `it()`, and it has to be
+  //
+  // **`it.fails()` passes when its body throws for any reason at all**, so a
+  // precondition asserted inside one is worse than no precondition: a run that
+  // never reached the rung would throw on the guard and the `.fails` would go
+  // green while measuring nothing. The guard is therefore an ordinary test
+  // beside it, which is `open-questions.md`'s rule about stating a precondition
+  // out loud as its own named test, applied where it bites hardest.
+  //
+  // Nothing is poked. A skill-3 game is played until the ladder walks down on
+  // its own, so what is asserted is a rung the machine reaches by its own rules.
+  const run = fastLadderRun();
+
+  it('reaches the rung whose arithmetic lands on zero', () => {
+    expect(
+      run.peakKills,
+      `kills reached at skill ${FASTEST_SKILL} - the rung under test needs ${DEEPEST_KILLS}`,
+    ).toBeGreaterThanOrEqual(DEEPEST_KILLS);
+    expect(run.written.length, 'reloads observed').toBeGreaterThan(0);
+  });
+
+  it.fails('floors STEP_HI at STEP_HI_MIN when the rung lands on zero', () => {
+    expect(
+      Math.min(...run.written),
+      `the lowest STEP_HI step_reload wrote at skill ${FASTEST_SKILL}`,
+    ).toBeGreaterThanOrEqual(gameSymbol('STEP_HI_MIN'));
+  });
 });
