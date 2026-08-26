@@ -449,11 +449,6 @@ function stretchesOf(sound: Sound): (readonly [from: number, to: number])[] {
   return stretches;
 }
 
-/** True when `cycle` falls in a stretch of `sound` where the pin was idle. */
-function inHole(sound: Sound, cycle: number): boolean {
-  return sound.holes.some(([from, to]) => cycle > from && cycle < to);
-}
-
 /** Milliseconds for a cycle count, at the midpoint instruction rate. */
 function ms(cycles: number): number {
   return (cycles / CYCLE_HZ) * 1000;
@@ -847,15 +842,25 @@ describe('the blank reaches the renderer (D1)', () => {
 
   /**
    * Reads that fall inside `sound` while the pin was actually being toggled,
-   * once the refresh timeout has expired. Reads inside an internal hole are
-   * excluded - see {@link Sound.holes}.
+   * once the refresh timeout has expired.
+   *
+   * **The timeout is charged against every stretch, not only against the first
+   * one.** A sound with a sweep inside it (see {@link Sound.holes}) restarts its
+   * blank when that sweep ends, and the tube coming out of the sweep is still
+   * being handed to the renderer for exactly as long as it is at the head of the
+   * sound. Stepping around the hole but not around the decay after it left a
+   * window a read could land in and see segments the ROM had already stopped
+   * driving - which frames fall in that window is settled by where the read
+   * clock sits against a sweep the ROM counts in instructions, so it was a coin
+   * this file flipped every run rather than a property of any ROM.
+   * `blank-to-glass.test.ts` carries the same correction and the measurement
+   * behind it.
    */
   function readsDuring(sound: Sound): RenderSample[] {
-    return samples.filter(
-      (sample) =>
-        sample.cycle >= sound.firstEdge + REFRESH_TIMEOUT_CYCLES &&
-        sample.cycle <= sound.lastEdge &&
-        !inHole(sound, sample.cycle),
+    return stretchesOf(sound).flatMap(([from, to]) =>
+      samples.filter(
+        (sample) => sample.cycle >= from + REFRESH_TIMEOUT_CYCLES && sample.cycle <= to,
+      ),
     );
   }
 

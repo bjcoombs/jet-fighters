@@ -348,9 +348,24 @@ function splitSounds(edgeCycles: readonly number[]): Sound[] {
   return sounds;
 }
 
-/** True when `cycle` falls in a stretch of `sound` where the pin was idle. */
-function inHole(sound: Sound, cycle: number): boolean {
-  return sound.holes.some(([from, to]) => cycle > from && cycle < to);
+/**
+ * The contiguous sounded stretches of one sound: the sound, cut at its holes.
+ *
+ * The unit every blanking assertion is really about, and the same helper
+ * `sweep-timing.test.ts` carries. A sound with no hole in it is one stretch and
+ * reads exactly as it did before; a sound the ROM slipped a sweep into is two,
+ * and the blank is asserted over each of them rather than through the lit sweep
+ * between.
+ */
+function stretchesOf(sound: Sound): (readonly [from: number, to: number])[] {
+  const stretches: (readonly [number, number])[] = [];
+  let from = sound.firstEdge;
+  for (const [holeFrom, holeTo] of sound.holes) {
+    stretches.push([from, holeFrom]);
+    from = holeTo;
+  }
+  stretches.push([from, sound.lastEdge]);
+  return stretches;
 }
 
 /**
@@ -497,15 +512,28 @@ describe('the blank the ROM makes reaches the glass (D1)', () => {
   /**
    * Frames drawn while `sound` was playing, once the refresh timeout has run
    * out. The first sweep of a blank is the threshold's cost and is not what this
-   * asserts about; everything after it is. Frames inside an internal hole are
-   * excluded - see {@link Sound.holes}.
+   * asserts about; everything after it is.
+   *
+   * **The timeout is charged against every stretch, not only against the first
+   * one.** A sound with a sweep inside it (see {@link Sound.holes}) restarts the
+   * blank when that sweep ends, and the phosphor coming out of it is at full
+   * brightness for exactly as long as it is at the start of the sound - it decays
+   * at one rate and does not care which blank it is decaying into. Skipping the
+   * hole itself but not the decay after it left a window a frame could land in
+   * and read a lit tube that the ROM had already stopped driving: measured, one
+   * frame 199 cycles past the end of a 1004-cycle hole, against a 889-cycle
+   * timeout that had been spent 5 ms earlier at the head of the sound. Which
+   * frames fall in that window is settled by where the 16.7 ms frame clock sits
+   * against a sweep the ROM counts in instructions, so it is a coin this file
+   * was flipping on every run rather than a property of any ROM. Splitting the
+   * sound and charging the timeout per stretch is the same assertion, made where
+   * the blank actually is.
    */
   function framesDuring(sound: Sound): Painted[] {
-    return frames.filter(
-      (frame) =>
-        frame.cycle >= sound.firstEdge + REFRESH_TIMEOUT_CYCLES &&
-        frame.cycle <= sound.lastEdge &&
-        !inHole(sound, frame.cycle),
+    return stretchesOf(sound).flatMap(([from, to]) =>
+      frames.filter(
+        (frame) => frame.cycle >= from + REFRESH_TIMEOUT_CYCLES && frame.cycle <= to,
+      ),
     );
   }
 
