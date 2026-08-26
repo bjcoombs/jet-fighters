@@ -609,13 +609,29 @@ describe('the blank the ROM makes reaches the glass (D1)', () => {
     //
     // Measured on this machine, the first lit frame after a note comes back at
     // duty 1.4e-2 against a normal 8.0e-3 and a brightness of a flat 1.0.
+    //
+    // **A note the run ends on has no "after" to measure and is not asserted
+    // over.** The window is a whole number of march steps, so the last note in
+    // it can fall at the very edge: measured, the first four notes are followed
+    // by 455 to 791 painted frames and the fifth by none at all. That is the
+    // horizon rather than the tube, and it is told apart from the fault by
+    // counting frames rather than lit frames - a ROM that came back dim, or not
+    // at all, still paints them. The floor below keeps the exclusion honest.
+    let checked = 0;
     for (const note of marchNotes) {
       const after = frames.filter((frame) => frame.cycle > note.lastEdge);
+      if (after.length === 0) {
+        continue;
+      }
+      checked += 1;
       const firstLit = after.find((frame) => frame.reported > 0) as Painted;
-      expect(firstLit).toBeDefined();
+      expect(firstLit, 'the tube never came back after a note').toBeDefined();
       expect(firstLit.peakBrightness).toBeGreaterThanOrEqual(LIT_BRIGHTNESS);
       expect(firstLit.emitting).toBeGreaterThan(0);
     }
+    // The same three this file's other assertions are held to - see the floor on
+    // `marchNotes` above, and the reason it is three.
+    expect(checked, 'no march note in the window had a frame after it').toBeGreaterThanOrEqual(3);
   });
 
   it('leaves the tube dark for a real share of the frames a viewer sees', () => {

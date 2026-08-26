@@ -69,6 +69,7 @@ const FILE_MISS = symbol('FILE_MISS');
 const NIB_MC = symbol('NIB_MC');
 const FILE_STATE = symbol('FILE_STATE');
 const NIB_KILLS = symbol('NIB_KILLS');
+const NIB_HITS = symbol('NIB_HITS');
 const NIB_STATE = symbol('NIB_STATE');
 const FILE_D0 = symbol('FILE_D0');
 const GRID_COL_FIRST = symbol('GRID_COL_FIRST');
@@ -133,6 +134,8 @@ interface Frame {
   readonly near: readonly number[];
   /** `NIB_KILLS`, which tells a shot-down plane from one that simply left. */
   readonly kills: number;
+  /** `NIB_HITS`, the launchers lost - a capture or a rocket takes one. */
+  readonly hits: number;
   /** The tube is being refreshed, so the near nibbles are a picture. */
   readonly refreshing: boolean;
 }
@@ -148,6 +151,7 @@ function frameOf(machine: Tms1370Machine): Frame {
       (_unused, grid) => ram[FILE_D0 * 16 + grid] as number,
     ),
     kills: ram[FILE_STATE * 16 + NIB_KILLS] as number,
+    hits: ram[FILE_STATE * 16 + NIB_HITS] as number,
     refreshing: machine.isRefreshing(),
   };
 }
@@ -267,12 +271,77 @@ function drifting(): readonly Frame[] {
   return frames;
 }
 
+/**
+ * The staggering drive: break the squadron's lockstep, then let one through.
+ *
+ * **A squadron of two marching on one countdown arrives together**, which is the
+ * awkward fact the retreat assertion ran into: the drifting drive's only capture
+ * had both planes on grid 5, so both crossed, nothing survived, and the rule
+ * about what survivors do was never exercised. Neither shooting drive helps -
+ * they are too good, and shoot everything down before it arrives.
+ *
+ * So this one shoots exactly once per lockstep: when both planes stand on the
+ * same column it takes one of them, which brings a replacement in at the far end
+ * while the other carries on. From then the two are a whole entry apart, the
+ * deep one reaches the G line alone, and the capture has something left to send
+ * back. It fires at nothing else, so the plane that is going to cross is never
+ * the one it shoots at.
+ */
+function staggering(skill: 1 | 2 | 3): readonly Frame[] {
+  const machine = new Tms1370Machine();
+  machine.setContacts({ skill, lane: 0, fire: false });
+  const frames: Frame[] = [];
+  const until = DRIVE_SECONDS * CYCLE_HZ;
+  let releaseAt = -1;
+  let fireAt = -1;
+  while (machine.cycles < until) {
+    machine.step(SAMPLE_CYCLES);
+    if (over(machine)) break;
+    const frame = frameOf(machine);
+    frames.push(frame);
+
+    if (releaseAt > 0 && machine.cycles >= releaseAt) {
+      machine.setContacts({ fire: false });
+      releaseAt = -1;
+      continue;
+    }
+    if (releaseAt > 0) continue;
+    if (fireAt > 0 && machine.cycles >= fireAt) {
+      machine.setContacts({ fire: true });
+      releaseAt = machine.cycles + FIRE_HOLD_CYCLES;
+      fireAt = -1;
+      continue;
+    }
+    if (fireAt > 0) continue;
+    if (frame.missiles.some((column) => column !== 0)) continue;
+
+    const planes = flying(frame);
+    // Only a lockstep is worth a shot, and only while the pair is still far
+    // enough out that the missile can reach them before they step again.
+    if (planes.length !== 2) continue;
+    if ((planes[0] as Plane).column !== (planes[1] as Plane).column) continue;
+    if ((planes[0] as Plane).column > GRID_COL_LAST - 1) continue;
+    machine.setContacts({ lane: (planes[0] as Plane).row as 0 | 1 | 2 });
+    fireAt = machine.cycles + AIM_AHEAD_CYCLES;
+  }
+  return frames;
+}
+
 const ROVED: readonly (readonly Frame[])[] = BLOCKS.map(roving);
+const STAGGERED: readonly (readonly Frame[])[] = ([1, 2, 3] as const).map(staggering);
 const HUNTED: readonly Frame[] = hunting();
 const DRIFTED: readonly Frame[] = drifting();
 
+/** Every drive as its own run, for the claims that are about independence. */
+const ALL_DRIVES: readonly (readonly Frame[])[] = [
+  ...ROVED,
+  HUNTED,
+  DRIFTED,
+  ...STAGGERED,
+];
+
 /** Every frame of every drive, for the claims that are about the pool. */
-const FRAMES: readonly Frame[] = [...ROVED.flat(), ...HUNTED, ...DRIFTED];
+const FRAMES: readonly Frame[] = ALL_DRIVES.flat();
 
 /** The airborne planes of a frame, empties dropped. */
 function flying(frame: Frame): readonly Plane[] {
@@ -328,6 +397,28 @@ function sameCell(frame: Frame): boolean {
  */
 const STALE_SAMPLES = 3;
 
+/**
+ * Samples to look back over for the squadron shrinking around a lost launcher.
+ *
+ * Six samples is 30 ms, about two sweeps at the measured rate. `jm_capture`
+ * clears the crossing plane's column inside the march walk and `launcher_down`
+ * increments `NIB_HITS` after the walk finishes, so the two land in the same
+ * *sweep* but not reliably in the same 5 ms sample.
+ */
+/**
+ * Samples to wait for the retreat to land after a plane crosses the G line.
+ *
+ * **The retreat is not in the same sweep as the crossing**, and the gap is a
+ * sound rather than slack: `jm_capture` clears the column inside the march walk,
+ * and `sr_lost` is reached only after the walk finishes and `jm_beep` has played
+ * the 70.2 ms march note. Thirty samples is 150 ms, comfortably past it and far
+ * short of the next march step.
+ */
+const RETREAT_SETTLE_SAMPLES = 30;
+
+/** The plane slots, by index, so a walk over them reads from the ROM's count. */
+const slotIndices = [...Array(SQUADRON.count).keys()];
+
 /** An arrangement's identity, so a run of samples holding it can be grouped. */
 function arrangementKey(frame: Frame): string {
   return frame.slots.map((plane) => `${plane.row}:${plane.column}`).join('|');
@@ -357,21 +448,23 @@ describe('two planes can stand in one row', () => {
     expect(rows.length, `the arrangement only ever occurred in row(s) ${rows}`).toBeGreaterThan(1);
   });
 
-  it('reaches it on every firing cadence, not just a lucky phase', () => {
-    // Per run rather than pooled. A single cadence fixes the phase between the
-    // entry countdown and everything else, and a floor over the pool would let
-    // two of the three contribute nothing.
-    for (const [index, frames] of ROVED.entries()) {
-      expect(
-        frames.filter(sharesRow).length,
-        `cadence ${BLOCKS[index]} never put two planes in one row`,
-      ).toBeGreaterThan(0);
-    }
-    expect(HUNTED.filter(sharesRow).length, 'the hunting drive never saw one').toBeGreaterThan(0);
-    // `drifting` is deliberately not required to see one. It never fires, so it
-    // loses three launchers in about twenty-five seconds and the window it gives
-    // is a quarter of the others'; it is pooled for the breadth floor below and
-    // for nothing else.
+  it('reaches it on more than one independent drive, not one lucky phase', () => {
+    // **Counted per drive, and deliberately not per firing cadence.** Which
+    // entries land on the same rotor value is emergent: the rotor advances once
+    // a sweep while both slots are busy, so the row a plane gets depends on the
+    // phase between the entry countdown, the march and the drive's own schedule.
+    // An earlier form of this required every roving cadence to reach the
+    // arrangement, and a change to `rd_jets` that altered the sweep by three
+    // instructions - a *rendering* change, with no gameplay in it - moved two of
+    // the three to zero. That floor was measuring the phase, not the model.
+    //
+    // What is worth asserting is that the arrangement is not the property of one
+    // drive. Measured, four of the eight runs here reach it and four do not.
+    const reaching = ALL_DRIVES.filter((frames) => frames.some(sharesRow)).length;
+    expect(
+      reaching,
+      `only ${reaching} of ${ALL_DRIVES.length} drives ever put two planes in one row`,
+    ).toBeGreaterThan(1);
   });
 
   it('lets a shot take either one of them and leave the other flying', () => {
@@ -447,6 +540,100 @@ describe('two planes can stand in one row', () => {
 
 describe('two planes can stand in one column', () => {
   const shared = FRAMES.filter(sharesColumn);
+
+  it('draws two planes in one cell as that cell, and never as a far index', () => {
+    // ## The case the near nibble cannot be *added* into
+    //
+    // Two planes in the same cell - one row, one column - is a state the layout
+    // admits and `jet_enter` reaches, and it is where `rd_jets` adding each
+    // plane's plate bit stops being an OR. The near nibble is an index into the
+    // O PLA whose 0-7 are the bitmaps of plates 0-2, so adding the same bit
+    // twice carries: 1 and 1 make 2, 2 and 2 make 4, and 4 and 4 make **8**,
+    // which is outside the near group altogether and selects a FAR mask.
+    //
+    // Measured on the ROM that added: **2569 of 2674** lit samples with two
+    // planes in one cell drew the wrong plate. `render-fidelity.test.ts` did not
+    // report it, because its own justification window ORs over recent samples
+    // and a plane that had lately been in the neighbouring row justifies the
+    // wrong bit; and the draw test above deliberately excludes same-cell pairs,
+    // because a cell has one plate and "both drawn" is not a question it can
+    // answer. So this is the assertion that owns the case.
+    const lit = FRAMES.filter((frame) => frame.refreshing && sameCell(frame));
+    expect(
+      lit.length,
+      'no lit sample ever had two planes in one cell, so nothing here is tested',
+    ).toBeGreaterThan(0);
+
+    // **The far index is absolute and takes no lag allowance.** A near nibble
+    // above seven is not a stale near value, it is not a near value at all - it
+    // selects a FAR mask and paints the attackers' rockets into cells no rocket
+    // is in. No render lag can produce one from a legal history, so a single
+    // occurrence is a fault.
+    const farIndex = lit
+      .filter((frame) => (frame.near[(flying(frame)[0] as Plane).column] as number) > NEAR_INDEX_MAX)
+      .map((frame) => {
+        const plane = flying(frame)[0] as Plane;
+        return `two planes in row ${plane.row} on grid ${plane.column} drove the near pass a ` +
+          `far index of ${frame.near[plane.column]}`;
+      });
+    expect(
+      farIndex.slice(0, 5),
+      `${farIndex.length} of ${lit.length} same-cell samples left the near group`,
+    ).toEqual([]);
+
+    // **That the cell is lit at all is asserted per stay**, for the reason
+    // STALE_SAMPLES gives: the sample in which the march produced an
+    // arrangement is a sample of the previous frame, so a per-sample form would
+    // report the render's own lag as a fault.
+    const undrawn: string[] = [];
+    let checked = 0;
+    let key = '';
+    let want = -1;
+    let grid = 0;
+    let drawable = 0;
+    let drawn = false;
+    const closeStay = (): void => {
+      if (want >= 0 && drawable >= STALE_SAMPLES) {
+        checked += 1;
+        if (!drawn) {
+          undrawn.push(
+            `two planes stood in row ${want} on grid ${grid} for ${drawable} lit samples ` +
+              'and that plate was never lit',
+          );
+        }
+      }
+    };
+    FRAMES.forEach((frame) => {
+      const now = sameCell(frame) ? arrangementKey(frame) : '';
+      if (now !== key) {
+        closeStay();
+        key = now;
+        drawable = 0;
+        drawn = false;
+        const plane = flying(frame)[0];
+        const onField =
+          now !== '' &&
+          (plane as Plane).column >= GRID_COL_FIRST &&
+          (plane as Plane).column <= GRID_COL_LAST;
+        want = onField ? (plane as Plane).row : -1;
+        grid = onField ? (plane as Plane).column : 0;
+      }
+      if (want < 0 || !frame.refreshing) return;
+      const near = frame.near[grid] as number;
+      if (near > NEAR_INDEX_MAX) return; // asserted absolutely above
+      drawable += 1;
+      if (((near >> want) & 1) !== 0) drawn = true;
+    });
+    closeStay();
+    expect(
+      checked,
+      'no two-planes-in-one-cell arrangement was held long enough to be drawn',
+    ).toBeGreaterThan(0);
+    expect(
+      undrawn.slice(0, 5),
+      `${undrawn.length} of ${checked} same-cell stays never lit their own plate`,
+    ).toEqual([]);
+  });
 
   it('reaches the arrangement through the spawn path', () => {
     expect(
@@ -572,5 +759,128 @@ describe('the two arrangements are not the same run of luck', () => {
     // above a handful of samples. Measured, both slots are full for most of it.
     const both = FRAMES.filter((frame) => flying(frame).length === 2).length;
     expect(both / FRAMES.length, 'the second slot was almost never in use').toBeGreaterThan(0.25);
+  });
+});
+
+describe('a capture sends the survivors back to the far end', () => {
+  // ## The rule, and why it needs an assertion of its own
+  //
+  // OWNER-CONFIRMED, and recorded at `sr_lost`: when a jet takes a launcher,
+  // every jet still airborne returns to the far side of the field, so the next
+  // capture costs the squadron a whole fresh advance rather than the next march
+  // step. Without it the three launchers go on three consecutive steps, which is
+  // a cascade rather than a difficulty.
+  //
+  // **Nothing asserted the rule until now, only the spacing it produces**, and
+  // the spacing assertions are about which lane lost a launcher rather than
+  // about where the survivors ended up. That is how `sr_retreat` came through
+  // the move to positioned planes still walking the retired lane rank at nibbles
+  // 0-2: it wrote `GRID_COL_FIRST` into three nibbles nothing reads, the retreat
+  // stopped happening, and the whole suite stayed green. CodeRabbit caught it on
+  // the pull request; this is what would have.
+  //
+  // ## The capture is read off the squadron, not off `NIB_HITS`
+  //
+  // **`NIB_HITS` is about 70 ms too late**, and that is a march beep rather than
+  // a sampling artefact. `jm_capture` clears the crossing plane's column inside
+  // the walk; the walk then finishes, plays the 70.2 ms march note, reloads the
+  // countdown, and only then reaches `sr_lost` and `launcher_down`. So by the
+  // time the launcher count moves, the retreat has already happened - keying on
+  // it looks at the state afterwards and reports that nothing was ever forward.
+  // Measured on a run where the pair was at grid 5 and grid 4: the crossing
+  // shows at t=11.24 s with the survivor still on 5, and `NIB_HITS` moves at
+  // t=11.31 s with it already back on 1.
+  //
+  // So a capture is "a slot's column went to zero while `NIB_KILLS` did not
+  // move" - a plane that left the field rather than one that was shot down.
+  // **What is asserted is the survivor's next move, not its column at a fixed
+  // offset.** A fixed offset cannot work here and the reason is worth writing
+  // down: too short and the retreat has not landed (it is a march note away);
+  // too long and the survivor has taken its next march step, so a plane that
+  // correctly went back to grid 1 reads as grid 2 and the assertion fails on a
+  // ROM that is right. Both failures were measured before this shape was
+  // settled on. The rule itself is about a transition - the first thing a
+  // survivor does after a capture is go back to the far column - so that is what
+  // is read.
+  //
+  // Only survivors that were *forward* of the far column are asserted over. One
+  // already standing on grid 1 has nowhere to retreat to and proves nothing;
+  // counting it would let this pass on a ROM with no retreat at all, which is
+  // the state this branch shipped in for one commit.
+  const captures = ALL_DRIVES.flatMap((frames) => {
+    const found: { from: number; next: number | undefined }[] = [];
+    for (let index = 1; index < frames.length; index += 1) {
+      const before = frames[index - 1] as Frame;
+      const after = frames[index] as Frame;
+      if (after.kills !== before.kills) continue; // shot down, or a fresh wave
+      const crossed = slotIndices.filter(
+        (slot) =>
+          (before.slots[slot] as Plane).column !== 0 &&
+          (after.slots[slot] as Plane).column === 0,
+      );
+      if (crossed.length === 0) continue;
+      for (const slot of slotIndices) {
+        if (crossed.includes(slot)) continue;
+        const at = (after.slots[slot] as Plane).column;
+        if (at <= GRID_COL_FIRST) continue; // empty, or nowhere to go
+        // The first column this slot reads as, other than the one it was
+        // standing on when the capture happened. A run that ends before it moves
+        // contributes `undefined` and is reported rather than ignored.
+        const window = frames.slice(index + 1, index + 1 + RETREAT_SETTLE_SAMPLES);
+        // **A capture that took the third launcher ends the run**, so the
+        // survivor is frozen where it stood and has no next move to read. That
+        // is the machine stopping rather than the retreat failing, and a short
+        // window is exactly how it presents - so it is dropped here rather than
+        // reported as a straggler. Every drive stops sampling at `ST_OVER`, so a
+        // window that is short is a window that ran into the ending.
+        if (window.length < RETREAT_SETTLE_SAMPLES) continue;
+        const next = window
+          .map((frame) => (frame.slots[slot] as Plane).column)
+          .find((column) => column !== at);
+        found.push({ from: at, next });
+      }
+    }
+    return found;
+  });
+
+  it('produced a capture with a survivor forward of the far column, or this proves nothing', () => {
+    // A squadron of two marching on one countdown is in lockstep 66% of the
+    // time - measured - so most captures take both planes together and leave
+    // nothing to send back. This floor is what says the rule was exercised at
+    // all, and it is the one that fails if a later change makes the two planes
+    // arrive together every time.
+    expect(
+      captures.length,
+      'no capture left a plane standing forward of the far column, so the retreat was never reached',
+    ).toBeGreaterThan(0);
+    // ...and the ones that were shot down inside the window do not count toward
+    // it, or the floor above could be met entirely by planes the rule never
+    // touched.
+    const retreating = captures.filter(({ next }) => next !== 0).length;
+    expect(
+      retreating,
+      `all ${captures.length} survivors left the field before the retreat could land`,
+    ).toBeGreaterThan(0);
+  });
+
+  it('sends every one of them back to the far column, and nowhere else', () => {
+    // **A survivor that left the field before the retreat landed is not this
+    // rule's business.** The retreat is a march note behind the crossing, and a
+    // player's missile can reach the survivor inside that window - measured, one
+    // did, from grid 2. It reads as a column of 0, which is a plane that was shot
+    // down rather than one that marched on, so excluding it cannot hide the
+    // failure this test is for: a ROM with no retreat leaves the survivor
+    // *marching*, at a column one further in, never at zero.
+    const wrong = captures
+      .filter(({ next }) => next !== GRID_COL_FIRST && next !== 0)
+      .map(({ from, next }) =>
+        next === undefined
+          ? `a survivor on grid ${from} never moved again`
+          : `a survivor on grid ${from} went to ${next} rather than ${GRID_COL_FIRST}`,
+      );
+    expect(
+      wrong.slice(0, 5),
+      `${wrong.length} of ${captures.length} survivors did not retreat`,
+    ).toEqual([]);
   });
 });

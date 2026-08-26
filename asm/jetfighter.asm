@@ -394,6 +394,15 @@
 ; Values
 ; ============================================================================
 
+; **One use left, and the count of them is the design's point rather than a
+; tidiness note.** The playfield is still three rows and always will be - the
+; tube has three. What changed is that a row stopped being a *slot*: the render
+; walk used to run `YNEC LANE_COUNT` because it drew one jet per lane, and it now
+; walks two plane slots instead; `jet_enter` used to try three lanes for a free
+; one, and now tries two slots; `sr_retreat` used to walk three. All three were
+; counting entities and reaching for the geometry because the two were the same
+; number. The one that remains is `rocket_fire`'s rotor, which is counting rows
+; because the rocket really does fly down one of three - geometry, not entities.
 .EQU LANE_COUNT,     3          ; three lanes, 0..2
 .EQU BS_NONE,       15          ; NIB_BSLANE when no crossing is in progress
 ;
@@ -3416,12 +3425,26 @@ render:
 ; planes in one column need no new subset for exactly that reason, and the O PLA
 ; does not move for this walk.
 ;
-; **The walk is over two plane slots and not over three lanes, and the bit is now
-; derived rather than stepped.** The rank this replaced held one jet per lane, so
+; **The walk is over two plane slots and not over three lanes, and the plate is
+; now derived rather than stepped.** The rank this replaced held one jet per lane, so
 ; the lane was the loop counter and the lane bit could be doubled - 1, 2, 4 -
 ; alongside it. A slot no longer names a row: the row is a nibble the plane
 ; carries, two planes can be in the same one, and neither is a function of the
 ; loop index. So each plane's bit comes off `lane_bit` from its own row.
+;
+; **The plate is SET and not ADDED, and that is the second fault this routine has
+; had in one task.** The near nibble is an index into the O PLA and the near
+; group's 0-7 are exactly the bitmaps of plates 0-2, so adding a row's bit reads
+; as an OR for as long as no two planes share the bit. Two planes in one *cell* -
+; one row, one column, which the layout admits and `jet_enter` reaches - add the
+; same bit twice: 1 and 1 make 2, 2 and 2 make 4, and 4 and 4 make **8**, which
+; leaves the near group entirely and indexes FAR. Measured on the ROM that did
+; it: **2569 of 2674** lit samples with two planes in one cell drew the wrong
+; plate. `SBIT` is idempotent and costs the same three words the add did.
+;
+; The walk still *adds* in the sense that matters - it never clears - because
+; `render` blanks every display nibble before this runs and each arm only ever
+; sets its own bit.
 ;
 ; **That retires the bit-then-lane hazard this routine used to carry**, and the
 ; hazard is worth recording because of how it failed rather than how it was
@@ -3463,36 +3486,25 @@ rd_jet_draw:
         BR   rd_jet_bit2        ; `lane_bit`: this is `lane_bit`'s own three-way
         TBIT1 0                 ; test with the call, the two chapter flips and
         BR   rd_jet_bit1        ; the NIB_RLNE round trip taken out, which is
-        TCY  1                  ; sixteen instructions a plane on a walk that
-        TYA                     ; runs every sweep - see the sweep-budget note at
-        BR   rd_jet_add         ; `plane_at`. Row 0 lights plate 0
+        LDX  FILE_D3            ; sixteen instructions a plane on a walk that
+        TCY  NIB_RGRID          ; runs every sweep - see the sweep-budget note at
+        TMY                     ; `plane_at`
+        LDX  FILE_D0
+        SBIT 0                  ; row 0 lights plate 0
+        BR   rd_jet_next
 rd_jet_bit1:
-        TCY  2
-        TYA
-        BR   rd_jet_add
-rd_jet_bit2:
-        TCY  4
-        TYA                     ; **The bit is carried through Y and not built
-                                ; with `CLA` and an `AnAAC`.** `TCY` and `TYA`
-                                ; write no status, so the three branches above
-                                ; are the unconditional ones they read as.
-                                ; Written as an add, the carry that a bit small
-                                ; enough to fit a nibble never produces left
-                                ; status at 0, every arm fell through into the
-                                ; next, and every plane drew on plate 2 -
-                                ; reported by the atlas conformance suite as
-                                ; "jet: [2], expected [0, 1, 2]". The assembler's
-                                ; status analysis refuses the obvious repair of
-                                ; a load between the add and the branch, which
-                                ; is right: the test has to go rather than be
-                                ; worked around
-rd_jet_add:
         LDX  FILE_D3
         TCY  NIB_RGRID
-        TMY                     ; Y <- the grid, with the bit untouched in A
+        TMY
         LDX  FILE_D0
-        AMAAC
-        TAM
+        SBIT 1
+        BR   rd_jet_next
+rd_jet_bit2:
+        LDX  FILE_D3
+        TCY  NIB_RGRID
+        TMY
+        LDX  FILE_D0
+        SBIT 2
 rd_jet_next:
         LDX  FILE_D3
         LDP  C1_REND2           ; the loop below branches within this page
@@ -3990,25 +4002,35 @@ sr_after:
 ; countdown next expires. That figure is not tuned toward the recording and must
 ; not be: what is implemented is the rule he described, and the spacing is
 ; whatever the rule produces.
+; **Two slots walked straight through, and it is shorter than the loop it
+; replaced.** This walked the lane rank at nibbles 0-2 until the squadron became
+; two positioned planes, and it is the one reader of that rank the design's own
+; table of readers did not list - so it kept writing `GRID_COL_FIRST` into three
+; nibbles nothing reads, and the retreat above silently stopped happening.
+; Nothing went red for it: no test asserted the rule, only the spacing it
+; produces, and the spacing assertions are about lanes rather than distances.
+; `positioned-planes.test.ts` asserts the rule itself now.
+
 sr_lost:
         LDX  FILE_JETS
         TCY  NIB_J_LOST
         TCMIY 0                 ; one launcher a step, however many arrived
-        CLA
-        TAY                     ; Y <- lane 0, and walk the three
-sr_retreat:
-        LDX  FILE_JETS
-        MNEZ                    ; is there a survivor in this lane?
-        BR   sr_back
-        BR   sr_next
-sr_back:
-        TCMIY GRID_COL_FIRST    ; back to the far end - and TCMIY steps Y on,
-        BR   sr_test            ; which is the walk this arm owes the loop
-sr_next:
-        IYC                     ; the empty arm has to step Y itself
-sr_test:
-        YNEC LANE_COUNT
-        BR   sr_retreat
+        TCY  NIB_P_COL0
+        MNEZ                    ; did slot 0 survive the step?
+        BR   sr_back0
+        BR   sr_slot1
+sr_back0:
+        TCMIY GRID_COL_FIRST    ; back to the far end. TCMIY steps Y on, and the
+                                ; arm below sets it again rather than relying on
+                                ; where it landed
+sr_slot1:
+        TCY  NIB_P_COL1
+        MNEZ                    ; did slot 1?
+        BR   sr_back1
+        BR   sr_out
+sr_back1:
+        TCMIY GRID_COL_FIRST
+sr_out:
         LDP  C1_LOSE
         BR   launcher_down
 

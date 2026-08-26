@@ -839,12 +839,19 @@ describe('a kill is credited to the lane the shot was flying down', () => {
           return;
         }
         // The lane that lost a plane across this sample is the one to attribute
-        // the kill to. `jets` is a bitmap of the grids that lane holds, so
-        // "lost one" is a bit that was set and now is not - which stays right
-        // when a lane holds two planes and only one of them is shot down.
-        const emptied = [0, 1, 2].filter(
-          (lane) => ((before.jets[lane] as number) & ~(shot.jets[lane] as number)) !== 0,
-        );
+        // the kill to, and it is read **per slot** rather than off the per-lane
+        // bitmap. Two planes can stand in the same cell, and `jets` merges them
+        // into one bit: killing one of the pair leaves the bitmap identical, the
+        // kill looks like nothing happened, and it is skipped without ever being
+        // attributed. A slot going from flying to empty is the event itself.
+        const emptied = [
+          ...new Set(
+            shot.slots
+              .map((plane, slot) => ({ plane, was: before.slots[slot] as Plane }))
+              .filter(({ plane, was }) => was.column !== 0 && plane.column === 0)
+              .map(({ was }) => was.row),
+          ),
+        ];
         if (emptied.length === 0) {
           return; // the wave reset in the same sample; nothing to attribute
         }

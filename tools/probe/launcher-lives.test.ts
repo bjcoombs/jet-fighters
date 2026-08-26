@@ -1001,22 +1001,33 @@ describe('an ending during a battleship crossing stops the buzz', () => {
   // and moved that ending out of one**, and the search was redone then: skill 2,
   // lane 0, tapping, ending at 32.5 s.
   //
-  // **The squadron becoming two positioned planes moved it a second time**, and
-  // in the direction the first move predicts - a game with two attackers instead
-  // of three lasts differently, so an end time that was never deliberately
-  // placed lands somewhere else. Re-searched over the same eighteen combinations
-  // of three skills, three lanes, and parked against tapping: **two land inside
-  // a crossing**, skill 3 lane 1 tapping ending at 13.1 s and skill 3 lane 2
-  // tapping at 12.9 s, both with `NIB_BSLANE` naming lane 1. The first is what
-  // this drive is.
+  // **The squadron becoming two positioned planes moved it twice more in one
+  // task**, which is the useful thing this comment now records. First the model
+  // change itself, then a defect fix inside the same branch - `sr_retreat` was
+  // still walking the retired lane rank, so the wave stopped retreating after a
+  // capture and every game's length moved again. Neither had anything to do with
+  // the battleship.
   //
-  // Two in eighteen is worth stating plainly rather than presenting as a choice.
-  // The boat is present for roughly four seconds of every twenty, so a game whose
-  // end time is not deliberately placed has about a one-in-five chance of landing
-  // in a crossing, and eighteen samples finding two is consistent with that. The
-  // guard below is what makes this safe: if the ending stops landing in a
-  // crossing again, the assertion fails loudly and names the reason instead of
-  // the real test passing over an absent event. It has now done that twice.
+  // **The search space had to be widened to find one at all.** The original
+  // eighteen combinations - three skills, three lanes, parked against tapping -
+  // now contain *none*: every one of them ends with `NIB_BSLANE` at `BS_NONE`.
+  // Adding the tapping *period* as a fourth dimension (4, 8, 16, 32 and 64
+  // sweeps) finds three, and this drive is the first: skill 1, lane 2, fire held
+  // for half of every 32 sweeps, ending at 34.1 s with the boat in lane 2.
+  //
+  // Three in fifty-four is worth stating plainly rather than presenting as a
+  // choice. The boat is present for roughly four seconds of every twenty, so a
+  // game whose end time is not deliberately placed has about a one-in-five
+  // chance of landing in a crossing; finding three where twenty would be
+  // expected says the end times are not independent of the boat's phase, which
+  // is unsurprising - both are driven off the same sweep.
+  //
+  // **This assertion has now fired three times on cadence changes that had
+  // nothing to do with what it tests**, and each time the fix was a re-search.
+  // It is doing its job - it refuses to pass over an absent event - but a reader
+  // arriving at a fourth failure should consider pinning the boat's phase
+  // directly rather than hunting for a drive whose ending happens to coincide
+  // with it.
   // Driven on first use, not at collection time - see `gameFor` above for why a
   // drive in a `describe` body escapes every timeout in the file.
   let driven: { endedAt: number; bshipLaneAtEnd: number; lastEdgeAt: number } | undefined;
@@ -1025,13 +1036,13 @@ describe('an ending during a battleship crossing stops the buzz', () => {
       return driven;
     }
     const machine = new Tms1370Machine();
-    machine.setContacts({ skill: 3, lane: 1 });
+    machine.setContacts({ skill: 1, lane: 2 });
     const edges: SpeakerEdge[] = [];
     let endedAt = 0;
     let bshipLaneAtEnd = 0;
     const target = Math.round(PLAYED_GAME_END_S * 1.4 * CYCLE_HZ);
     for (let sweep = 0; machine.cycles < target; sweep += 1) {
-      machine.setContacts({ fire: sweep % 16 < 8 });
+      machine.setContacts({ fire: sweep % 32 < 16 });
       machine.runSweeps(1, SWEEP_CEILING_CYCLES);
       edges.push(...machine.takeSpeakerEdges());
       if (endedAt === 0 && (machine.ram[STATE_ADDRESS] as number) !== 0) {
