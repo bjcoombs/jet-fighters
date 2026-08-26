@@ -74,36 +74,14 @@ import { PLAYER_SLICE_CYCLES, SWEEP_HZ } from '../../src/machine/board/tms1370-c
 import { GRID_COUNT } from '../../src/machine/cpu/tms1370/ports.js';
 import { CYCLE_HZ } from '../../src/machine/cpu/tms1370/timing.js';
 import { Tms1370Machine, type SpeakerEdge } from './tms1370-probe.js';
+// The ending this file's every horizon is a multiple of. It moved to a module of
+// its own once a second file needed it and kept a copy that went stale.
+import { UNATTENDED_SILENCE_S } from './game-horizons.js';
 
 /** Seconds of emulated time, in instruction cycles. */
 function seconds(count: number): number {
   return Math.round(count * CYCLE_HZ);
 }
-
-/**
- * The moment the unattended machine falls silent, in seconds.
- *
- * Not a target: it is where the capture rule and this machine's cadence
- * constants happen to land today, and it moves whenever those constants do. It
- * is named because it is the figure that started the misdiagnosis, and every
- * horizon below is stated as a multiple of it.
- *
- * **24.6 s is measured on the TMS1370**, by driving a machine with no contact
- * closed at all for ninety seconds of emulated time and timing two things: the
- * last speaker edge lands at **24.556 s** and the last change of picture at
- * **24.579 s**. Nothing happens on either surface over the remaining sixty-five
- * seconds. Both landing together is the point - a machine that had wedged would
- * show the picture freezing without the sound having finished a phrase.
- *
- * The v2 figure was 20.6 s and it reached that only after two wrong answers:
- * 5.66 s while a single capture ended the game, then an *estimated* 10.92 s
- * offered as "roughly twice" it, which was short of the ending the horizons were
- * meant to contain and turned main red. This one is measured for that reason,
- * and it is not the v2 figure rescaled - the instruction rate, the sweep length
- * and the cadence ladder all moved with the core, so the only honest way to get
- * it was to run this machine and look.
- */
-const UNATTENDED_SILENCE_S = 24.6;
 
 /**
  * Margin past the ending, in seconds: a fifth of the silence horizon.

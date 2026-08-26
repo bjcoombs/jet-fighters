@@ -41,7 +41,17 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { CYCLE_HZ } from '../../src/machine/cpu/tms1370/timing.js';
-import { Tms1370Machine, assembleGame, slotsOf, type Plane } from './tms1370-probe.js';
+import {
+  Tms1370Machine,
+  assembleGame,
+  slotsOf,
+  squadronMap,
+  type Plane,
+} from './tms1370-probe.js';
+// Was restated here, on the reasoning that a test file's constants are not an
+// interface. That was right, and the answer was to give the figure a module
+// rather than a copy - `game-lifetime.test.ts` had since re-measured it.
+import { UNATTENDED_SILENCE_S } from './game-horizons.js';
 
 const ASM = assembleGame();
 const symbol = (name: string): number => {
@@ -50,28 +60,13 @@ const symbol = (name: string): number => {
   return found.value;
 };
 
-const SQUADRON = {
-  base: symbol('FILE_JETS') * 16 + symbol('NIB_P_BASE'),
-  stride: symbol('PLANE_STRIDE'),
-  count: symbol('PLANE_COUNT'),
-};
+const SQUADRON = squadronMap(ASM);
 const STATE = symbol('FILE_STATE') * 16 + symbol('NIB_STATE');
 const GRID_COL_FIRST = symbol('GRID_COL_FIRST');
 const GRID_COL_LAST = symbol('GRID_COL_LAST');
 
 /** Sampling interval. A march step is 32 sweeps at its fastest, far coarser. */
 const SAMPLE_CYCLES = Math.round(CYCLE_HZ / 200);
-
-/**
- * The moment an untouched machine falls silent, in seconds.
- *
- * Measured, not estimated - `tools/probe/game-lifetime.test.ts` carries the
- * measurement and the note on why estimating it turned `main` red. Restated here
- * rather than imported because a test file's constants are not an interface;
- * what the project rule asks for is that a horizon be a multiple of a named
- * measured figure rather than a literal, and {@link DRIVE_SECONDS} is one.
- */
-const UNATTENDED_SILENCE_S = 24.6;
 
 /**
  * Emulated seconds one drive plays: four times the silence horizon.

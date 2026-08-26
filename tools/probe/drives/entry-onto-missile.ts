@@ -28,7 +28,13 @@
 //
 // Paths in this file are relative to the repository root.
 
-import { Tms1370Machine, assembleGame, slotsOf, type Plane } from '../tms1370-probe.js';
+import {
+  Tms1370Machine,
+  assembleGame,
+  slotsOf,
+  squadronMap,
+  type Plane,
+} from '../tms1370-probe.js';
 import { CYCLE_HZ } from '../../../src/machine/cpu/tms1370/timing.js';
 
 const ASM = assembleGame();
@@ -38,11 +44,7 @@ const symbol = (name: string): number => {
   return found.value;
 };
 
-const SQUADRON = {
-  base: symbol('FILE_JETS') * 16 + symbol('NIB_P_BASE'),
-  stride: symbol('PLANE_STRIDE'),
-  count: symbol('PLANE_COUNT'),
-};
+const SQUADRON = squadronMap(ASM);
 const FILE_MISS = symbol('FILE_MISS');
 const NIB_MC = symbol('NIB_MC');
 const STATE = symbol('FILE_STATE') * 16 + symbol('NIB_STATE');

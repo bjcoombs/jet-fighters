@@ -78,6 +78,7 @@ import {
   STEP_CYCLES,
 } from '../../src/machine/board/tms1370-cadence.js';
 import { Tms1370Machine, assembleGame, combPeriodicityHz, type SpeakerEdge } from './tms1370-probe.js';
+import { UNATTENDED_SILENCE_ANY_SKILL_S } from './game-horizons.js';
 
 /** Seconds of emulated time, as the cycle count the probe counts in. */
 const seconds = (value: number): number => Math.round(value * CYCLE_HZ);
@@ -376,15 +377,15 @@ function bandOf(run: Run, sound: Sound): Band | undefined {
 }
 
 /**
- * Emulated seconds the unattended machine takes to fall silent.
+ * Emulated seconds the unattended machine takes to fall silent, whatever the
+ * skill dial says.
  *
- * **Measured off this ROM**, not estimated - the mistake CLAUDE.md records as
- * having turned `main` red three times in one day. A machine nobody plays loses
- * all three launchers and the loss sound is the last thing it makes: the last
- * speaker edge lands at 24.6 s with no contact closed, 24.5 s on skill 1 and
- * 26.1 s on skill 3, over 40 s drives.
+ * A ceiling over all three settings, which is **not** the same quantity as the
+ * no-contact ending `game-lifetime.test.ts` works to - and it carried the same
+ * *name* as that one at a different value, in a third file, which is how the two
+ * get confused. The measurement and both figures are in `game-horizons.ts` now.
  */
-const UNATTENDED_SILENCE_S = 26.2;
+const UNATTENDED_SILENCE_S = UNATTENDED_SILENCE_ANY_SKILL_S;
 
 /**
  * The idle window: the silence horizon with a fifth again of margin.

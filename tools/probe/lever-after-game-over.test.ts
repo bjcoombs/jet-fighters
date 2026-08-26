@@ -19,6 +19,7 @@
 import { describe, it, expect } from 'vitest';
 import { CYCLE_HZ } from '../../src/machine/cpu/tms1370/timing.js';
 import { Tms1370Machine, assembleGame } from './tms1370-probe.js';
+import { PARKED_HORIZON_S } from './game-horizons.js';
 
 function symbolValue(name: string): number {
   const asm = assembleGame();
@@ -33,12 +34,16 @@ const ST_PLAY = symbolValue('ST_PLAY');
 const GRID_PLAYER = symbolValue('GRID_PLAYER');
 
 /**
- * Latest a parked-lever game ends, widened the same 1.4x that
- * launcher-lives.test.ts uses over its own three measured endings (24.6 s,
- * 36.3 s, 43.2 s) - the "still coming" ceiling, not an estimate of when the
- * game ends.
+ * Latest a parked-lever game ends, widened - the "still coming" ceiling, not an
+ * estimate of when the game ends.
+ *
+ * **This was `43.2 * 1.4`**, and the 43.2 was a copy of a figure
+ * `launcher-lives.test.ts` had already re-measured to 36.9 s. Neither file owned
+ * it, so it moved in one and not the other and nothing went red - the horizon
+ * was simply longer than it needed to be, which is the failure mode that hides.
+ * It is imported now, and `tools/probe/drives/parked-endings.ts` re-derives it.
  */
-const HORIZON_S = 43.2 * 1.4;
+const HORIZON_S = PARKED_HORIZON_S;
 
 /** `runSweeps`' ceiling while waiting for one sweep - a sound parks it. */
 const SWEEP_CEILING_CYCLES = Math.round(0.7 * CYCLE_HZ);

@@ -44,7 +44,7 @@
 
 import { beforeAll, describe, it, expect } from 'vitest';
 import { CAPTURE_WINDOW_CYCLES } from '../../src/machine/board/tms1370-cadence.js';
-import { Tms1370Machine } from './tms1370-probe.js';
+import { Tms1370Machine, assembleGame, planesOf, squadronMap } from './tms1370-probe.js';
 import { loadAtlas, getSegmentByAddress } from '../../src/machine/tube/atlas.js';
 
 /** The three lever detents, as the lane nibble the K matrix returns. */
@@ -112,8 +112,18 @@ interface Scenario {
   readonly sweeps: number;
 }
 
-/** `FILE_JETS`, whose first three nibbles hold each lane's jet. */
-const JETS_FILE = 6;
+/**
+ * Where the squadron lives, from the assembled program's own symbols.
+ *
+ * **This replaces a `JETS_FILE = 6` that had stopped meaning anything.** It was
+ * read as `ram[JETS_FILE * 16 + lane]` - the lane rank, one nibble per lane,
+ * the nibble being the column. The rank was deleted when the squadron became
+ * two `(row, column)` pairs at nibbles 10-13, and the ROM's own map now says of
+ * nibbles 0-2 that they "are free... nothing reads them now". So {@link guarding}
+ * was reading three nibbles that are always zero, and the coverage search stayed
+ * green because a lever that never moves is still a lever.
+ */
+const SQUADRON = squadronMap(assembleGame());
 /** `FILE_STATE`, and the jets' rocket within it. */
 const STATE_FILE = 4;
 const ROCKET_COLUMN = 7;
@@ -172,7 +182,7 @@ const SCENARIO_SWEEPS = 1500;
  *
  * This is what a player does, and since the settled capture rule it is what any
  * scenario needing more than about thirty seconds of game has to do. It reads
- * `FILE_JETS`, which is the same latitude the other drives in `tools/probe/`
+ * the squadron, which is the same latitude the other drives in `tools/probe/`
  * take to decide where to aim - the lever still reaches the game only by
  * closing a contact on the K matrix.
  */
@@ -187,6 +197,19 @@ const SCENARIO_SWEEPS = 1500;
  */
 const GUARD_REFRESH_SWEEPS = 1;
 
+/**
+ * Every lane {@link guarding} has ever chosen, so a dead guard can be seen.
+ *
+ * **This exists because a dead guard was invisible for a whole tag.** The lever
+ * read the deleted lane rank, got 0 for all three lanes, and therefore stood in
+ * lane 0 for every sweep of every scenario. Nothing here failed: the coverage
+ * assertions are about what the tube lit, and the fallback scenario grid quietly
+ * supplied whatever the motionless lever stopped reaching. A drive that has
+ * stopped driving is the vacuity `tms1370-rom.test.ts` names, one level up - the
+ * opportunity count was zero and no assertion was quantified over it.
+ */
+const guardLanesChosen = new Set<Lane>();
+
 let guardCacheSweep = -1;
 let guardCacheLane: Lane = 0;
 
@@ -198,6 +221,10 @@ const guarding = (sweep: number, machine: Tms1370Machine): Lane => {
   const ram = machine.ram;
   const rocketColumn = ram[STATE_FILE * 16 + ROCKET_COLUMN] as number;
   const rocketLane = ram[STATE_FILE * 16 + ROCKET_LANE] as number;
+  // A row can hold two planes, so "how deep is this row" is a maximum over the
+  // planes standing in it and not a nibble. An empty row scores 0, which is the
+  // same value an empty slot's column carries.
+  const planes = planesOf(ram, SQUADRON);
   let best = -1;
   let lane: Lane = 0;
   for (const candidate of LANES) {
@@ -205,13 +232,17 @@ const guarding = (sweep: number, machine: Tms1370Machine): Lane => {
     // standing anywhere else is the whole defence - `rm_arrived` compares the
     // two lanes and nothing else. Guarding a jet is not worth a launcher.
     if (rocketColumn !== 0 && candidate === rocketLane) continue;
-    const grid = ram[JETS_FILE * 16 + candidate] as number;
+    const grid = planes.reduce(
+      (deepest, plane) => (plane.row === candidate ? Math.max(deepest, plane.column) : deepest),
+      0,
+    );
     if (grid > best) {
       best = grid;
       lane = candidate;
     }
   }
   guardCacheLane = lane;
+  guardLanesChosen.add(lane);
   return lane;
 };
 
@@ -412,6 +443,8 @@ interface Coverage {
   readonly plates: Map<string, Set<number>>;
   /** How many of the scenario space were needed. Reported, not asserted. */
   readonly scenariosRun: number;
+  /** Lanes the guarding lever chose across the whole search. Asserted. */
+  readonly guardLanes: readonly Lane[];
 }
 
 /**
@@ -482,7 +515,13 @@ function sweepScenarios(): Coverage {
       wanted.delete(`${family}:plate:${plate}`);
     }
   }
-  return { unmapped: [...unmapped].sort(), grids, plates, scenariosRun };
+  return {
+    unmapped: [...unmapped].sort(),
+    grids,
+    plates,
+    scenariosRun,
+    guardLanes: [...guardLanesChosen].sort(),
+  };
 }
 
 const atlas = loadAtlas();
@@ -548,6 +587,24 @@ const driven = (into: Map<string, Set<number>>, family: string): number[] =>
 // known exceptions, and a mechanism that exists will eventually be used to
 // silence something real - so it lives next to the assertions it applies to,
 // enumerated by name with a reason each, and nowhere near the strict one.
+describe('the search drove the machine rather than watching it', () => {
+  it('moved the guarding lever through every lane', () => {
+    // The floor on the drive, not on the ROM. Everything this file asserts is
+    // quantified over what the scenarios lit, so a lever that stands still still
+    // produces a coverage set - just a smaller one that the fallback grid then
+    // fills in. That is how a guard reading three nibbles the ROM had freed
+    // stayed green for a tag.
+    //
+    // All three, and not merely "more than one": the guard picks the row holding
+    // the deepest plane, planes enter in all three rows, and a guard that could
+    // only ever name two of them would be reading the model wrong again.
+    expect(
+      coverage.guardLanes,
+      'the guarding lever never left the lanes listed - it is not reading the squadron',
+    ).toEqual([0, 1, 2]);
+  });
+});
+
 describe('the ROM drives no address the tube has no segment at', () => {
   it('drives no address the tube has no segment at', () => {
     // The phantom-segment direction, and the one that has actually bitten. Not
