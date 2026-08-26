@@ -1370,14 +1370,23 @@ t=210 and t=340 together, the dark runs classify as:
 
 | Dominant at the run's onset | Runs | Blank length |
 | --- | --- | --- |
-| 624-635 Hz - the `jetMarch` band, tonality 0.57-0.77 | **25** | 133-167 ms |
+| 603-635 Hz - the `jetMarch` band, tonality 0.57-0.80 | **25** | 133-200 ms |
 | 1593 Hz - the `missileFire` band | **6** | 133-167 ms |
-| 151-668 Hz, tonality 0.18-0.48, unclassified | 10 | **33 ms - one frame each** |
+| 151-248 Hz, tonality 0.21-0.48, unclassified | 9 | **33 ms - one frame each** |
+| 1820 Hz, tonality 0.26, unclassified | **1** | **167 ms - the one exception** |
 
-Every 133-167 ms run is one of the two bands. Every unclassified run is a single frame,
-which is what sensor noise looks like. **And the blank lasts as long as the sound**:
-median blank 133 ms against median sound 132-150 ms, r = +0.63 and +0.65 in the two
-windows. The mechanism §5 states is confirmed and the sounds are named.
+**31 of the 32 runs longer than one frame are one of the two bands**, and nine of the
+ten unclassified runs are single frames, which is what sensor noise looks like. **And
+the blank lasts as long as the sound**: median blank 133 ms against median sound
+132-150 ms, r = +0.63 and +0.65 in the two windows. The mechanism §5 states is
+confirmed and the sounds are named.
+
+**The exception is left standing rather than absorbed.** One 167 ms run at t=340+19.00 s
+has its dominant at 1820 Hz with a tonality of 0.26 - just above `missileFire`'s
+1480-1632 Hz and not tonal enough to call a note. It is one run in 41 and it does not
+change the reading, but "every" was the word this section originally used and it was
+wrong by one, which is the kind of error that survives precisely because the headline
+is right.
 
 **The duration gap closes on the note, not on the blank.** The bullet above is right
 that 71.8 ms cannot produce a 133-167 ms blank. The resolution is that the real unit's
