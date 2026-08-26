@@ -219,10 +219,23 @@ describe("a plane enters at a position the player's rhythm decides", () => {
   });
 
   it('breaks the squadron out of lockstep, which is what the photograph shows', () => {
-    // Two assertions, and the second is the one a ROM with a constant entry
-    // column cannot pass however lucky the drive is. Both are shapes rather than
-    // thresholds: the exact share moves with every cadence constant, and
-    // `tools/probe/drives/entry-spread.ts` is where the figure is re-derived.
+    // Both are shapes rather than thresholds: the exact share moves with every
+    // cadence constant, and `tools/probe/drives/entry-spread.ts` is where the
+    // figure is re-derived. Measured there, over the same five rhythms:
+    //
+    // | ROM | gap 0 | gap 1 | gap 2 |
+    // | --- | --- | --- | --- |
+    // | one entry column, rotor row | 66.0% | 34.0% | never |
+    // | one entry column, drawn row | 48.7% | 50.7% | 0.6% |
+    // | drawn row and column | 41.7% | 50.1% | 8.1% |
+    //
+    // **Most of the break comes from the row, which is not where it was expected
+    // to come from**, and the middle line is a negative control that says so: a
+    // build with the column draw reverted still clears the first assertion.
+    // Drawing the row moves the squadron out of the lever's way differently, so
+    // captures and kills land on different planes and the pair stops being
+    // filled two-at-a-time. The column draw is what the assertion below is armed
+    // against, and what the two tests above cover directly.
     expect(GAPS.length, 'the two slots were rarely both full').toBeGreaterThan(1_000);
     const lockstep = GAPS.filter((gap) => gap === 0).length / GAPS.length;
     expect(
@@ -247,6 +260,13 @@ describe("a plane enters at a position the player's rhythm decides", () => {
     const second = entriesOf(60);
     expect(second).toEqual(first);
     expect(first.length, 'the schedule produced no entries to compare').toBeGreaterThan(10);
+    // ...and a *different* schedule has to give a different sequence, or the
+    // equality above is satisfied by a rule that ignores the player entirely -
+    // which is what the whole file exists to rule out.
+    expect(
+      entriesOf(45),
+      'two different press rhythms produced the same entry sequence',
+    ).not.toEqual(first);
   });
 
   it('releases every plane at the far end when nobody has touched the fire button', () => {
