@@ -27,9 +27,9 @@ FPS = S.FPS
 MISSILE_ENTRY = 4.2
 
 
-def jet_chains(red, lattice):
+def jet_chains(red, lattice, threshold=S.THRESHOLD):
     """Tracks that stepped, with the interval between consecutive steps."""
-    tracks = S.link(S.components(red, S.FIELD), direction=+1)
+    tracks = S.link(S.components(red, S.FIELD, threshold), direction=+1)
     rows = []
     for track in tracks:
         if len(track) < 6:
@@ -45,10 +45,10 @@ def jet_chains(red, lattice):
     return sorted(rows, key=lambda r: r["from"])
 
 
-def missile_flights(cyan, lattice):
+def missile_flights(cyan, lattice, threshold=45.0):
     """Launch frames and per-column step frames for every missile flight."""
     flights = []
-    for track in S.link(S.components(cyan, S.CYAN_FIELD, min_area=25), direction=-1):
+    for track in S.link(S.components(cyan, S.CYAN_FIELD, threshold, min_area=25), direction=-1):
         if len(track) < 6:
             continue
         columns = [lattice.column(c["x"]) for c in track]
@@ -98,6 +98,18 @@ def report(work: Path) -> None:
             f"{n}f x{c}" for n, c in enumerate(counts) if c))
         print(f"  median {np.median(columns)/FPS*1000:.0f} ms, "
               f"mean {columns.mean()/FPS*1000:.0f} ms per column")
+
+    print("\n## Robustness of both against the colour-excess threshold")
+    for threshold in (25.0, 30.0, 40.0):
+        rows = jet_chains(red, lattice, threshold)
+        seen = sorted(i for row in rows for i in row["intervals"])
+        print(f"  red thr {threshold:4.0f}: {sum(len(r['steps']) for r in rows)} steps, "
+              f"intervals {seen} ms")
+    for threshold in (35.0, 45.0, 55.0):
+        gaps = np.array([b - a for flight in missile_flights(cyan, lattice, threshold)
+                         for a, b in zip(flight["steps"], flight["steps"][1:])])
+        print(f"  cyan thr {threshold:4.0f}: {len(gaps)} column steps, "
+              f"median {np.median(gaps)/FPS*1000:.0f} ms")
 
     print("\n## The audio")
     signal, rate = audio.read_wav(work / "audio.wav")
