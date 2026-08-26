@@ -196,11 +196,40 @@ be wrong. Both recordings carry a genuine **625 Hz tone**:
 | --- | --- | --- |
 | `deviceTone625.fundamentalHz` | **625 Hz** | Measured (partial spacing, two recordings) |
 | `deviceTone625.partialsObserved` | 625 / 1252 / 1877 / 2509 / 3129 / 3755 Hz (gameplay); 625 / 1251 / 1875 / 2499 / 3125 / 3749 Hz (video) | Measured |
-| `deviceTone625.durationMs` | **405, 416, 417** (gameplay); **414, 416** (video) | Measured, unbroken run within 12 dB of each episode's own peak |
+| `deviceTone625.durationMs` | **405, 416, 417** (gameplay); **414, 416** (video); **699, 649** (`IMG_6113` t=120) | Measured, unbroken run within 12 dB of each episode's own peak |
 | `deviceTone625.continuity` | continuous - no gap anywhere in an episode | Measured |
-| `deviceTone625.episodeCount` | 3 in 130 s; 2 in 23 s | Measured |
+| `deviceTone625.episodeCount` | 3 in 130 s; 2 in 23 s; 2 in the 20 s at `IMG_6113` t=120 | Measured |
+| `deviceTone625.partialExcessDb` | **15.2-20.5 dB** over the neighbourhood, harmonics 2-6 | Measured |
 | `deviceTone625.trigger` | **unknown** | See `open-questions.md` §15 |
 | `deviceTone625.method` | narrow-line excess to locate, harmonic comb to confirm, narrow-band envelope for continuity | - |
+
+**This is not the sound `open-questions.md` §16 identifies as the blanking
+source, and the two were nearly conflated.** §16 measures 25 tonal runs of
+130-210 ms in the same 600-650 Hz band. Put through one instrument
+(`march-tone-identity.ts` §3c) the two populations share a fundamental and
+nothing else:
+
+| | this 625 Hz tone | §16's runs |
+| --- | --- | --- |
+| unbroken run | 405-699 ms | 126-155 ms |
+| harmonic comb, **same 100 ms window for both** | **17.4 dB** | 6.6 dB |
+| partials 2-6 over their neighbourhood | **15.2-20.5 dB** | 1.8-7.1 dB |
+| fundamental | 626 Hz, spread 9 Hz | 625 Hz, spread 26 Hz |
+
+Room silence scores 4.7 dB on that comb, so §16's runs are barely tonal by this
+measure while this tone is emphatically so. Two things are worth saying about
+that table rather than leaving it to be read. The comb is scored over **the same
+window length for both**, because a shorter window scores lower on a comb
+whatever it holds and would manufacture exactly this gap. And the partial
+*excess* is given because a partial-ratio table cannot fail - it reports the
+nearest peak to each multiple, and in noise there is always one - so the ratios
+agree for both populations and mean nothing on their own.
+
+**The discriminator is §16's own control window.** `IMG_6113` t=120 blanks
+**0.0%** and holds two of the longest tones measured anywhere, 699 and 649 ms,
+and not one short event. t=210 and t=340 blank 13.2% and 16.7% and hold sixteen
+short events and one long tone. So this tone can be present with no blanking at
+all. Whatever darkens the owner's display, it is not this.
 
 Four things make this the machine rather than the room:
 

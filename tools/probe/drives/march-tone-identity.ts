@@ -13,10 +13,22 @@
 // there was no discrete per-step beep: *"no marching sound"*.
 //
 // This drive settles the entry against the recordings rather than against
-// either account. It asks five things of two files - `gameplay-audio.m4a`,
-// which is where the entry came from, and `skill3-video-audio.m4a`, the audio
-// of the owner's skill-3 video - and every one of them can come back the other
-// way:
+// either account. It asks its questions of five files - `gameplay-audio.m4a`,
+// which is where the entry came from, `skill3-video-audio.m4a`, and the three
+// 20 s windows of `IMG_6113.mov` that `open-questions.md` §16 classified - and
+// every one of them can come back the other way:
+//
+// **What the second pass changed, and why there was one.** The first pass fixed
+// two gates at 10 dB and 200 ms, found five sustained tones of 405-417 ms, and
+// argued from that count. §16 then measured 25 tonal runs of 130-210 ms in a
+// recording this drive had never opened, and every one of those fails a 200 ms
+// continuity gate by construction. Sections 3b, 3c and 3d exist because of
+// that: the gates are swept rather than chosen, both populations go through one
+// instrument, and §16's own control window is what separates them.
+//
+// **The answer is that they are two sounds, not one at two lengths** - see 3c
+// and 3d - so the task 23 conclusion about the long tone stands, and it was
+// never about the sound §16 found.
 //
 //   1. Where the 600-650 Hz band stands out across the whole of each file, as a
 //      prominence over eight control bands. A per-step march buzz would make
@@ -80,8 +92,10 @@ const CONTROL_BANDS: readonly (readonly [number, number])[] = [
 ];
 
 export interface Episode {
-  /** Seconds into the recording. */
+  /** Seconds into the recording: where the detection span opens. */
   readonly startSec: number;
+  /** Where the unbroken run itself starts. Read the tone from here, not `startSec`. */
+  readonly runStartSec: number;
   /** Length of the unbroken run within 12 dB of the episode's own peak, ms. */
   readonly continuousMs: number;
   /** Length of the whole episode above the detection threshold, ms. */
@@ -119,13 +133,106 @@ export interface EventTest {
  * finds candidates fires on narrow-band noise as well as on notes, and the comb
  * score locks onto 624 Hz inside the win jingle because 1248 Hz is a harmonic
  * of it - so an episode has to hold up *and* stay up.
+ *
+ * **These two numbers decided this drive's first answer, and that was a
+ * defect.** The original pass fixed them at 10 dB and 200 ms, reported three
+ * sustained tones in 130 s and five across two recordings, and argued from that
+ * count that the band holds nothing on a step cadence. `open-questions.md` §16
+ * then measured 25 tonal runs of **130-210 ms** in a different recording of the
+ * same unit. Every one of those fails a 200 ms continuity gate by construction.
+ * The drive was looking for 410 ms tones and it found 410 ms tones.
+ *
+ * They survive as named constants because a test needs a cell to assert on, but
+ * they are now **one cell of {@link sweepGrid}**, which reports the count at
+ * every combination of both axes. Read the grid before either number. A count
+ * that is flat across a region and cliffs outside it is a measurement; a count
+ * taken at one setting is a property of the setting.
  */
 const TONE_COMB_DB = 10;
 const TONE_CONTINUOUS_MS = 200;
 
+/**
+ * The axes the grid is swept over.
+ *
+ * Both are swept, not just continuity. `isSustainedTone` is an AND of two gates,
+ * so sweeping one produces a curve that looks clean while remaining hostage to
+ * the other.
+ */
+const COMB_AXIS_DB = [4, 6, 8, 10, 12, 14] as const;
+const CONTINUITY_AXIS_MS = [50, 100, 150, 200, 300, 400] as const;
+
+/** Where the drive splits short from long. Chosen from the histogram, not before it. */
+const SPLIT_MS = 280;
+
+/**
+ * The window both populations are re-scored over, in ms.
+ *
+ * 100 ms fits inside the shortest episode either population contains, so both
+ * get the same frequency resolution and neither is scored on a window the other
+ * could not have supplied.
+ */
+const FIXED_COMB_MS = 100;
+
 /** True for an episode that is a sustained tone rather than a passing artefact. */
 export function isSustainedTone(e: Episode): boolean {
   return e.combDb >= TONE_COMB_DB && e.continuousMs >= TONE_CONTINUOUS_MS;
+}
+
+/** Episode counts at every (comb, continuity) combination. */
+export function sweepGrid(episodes: readonly Episode[]): number[][] {
+  return COMB_AXIS_DB.map((comb) =>
+    CONTINUITY_AXIS_MS.map(
+      (ms) => episodes.filter((e) => e.combDb >= comb && e.continuousMs >= ms).length,
+    ),
+  );
+}
+
+/**
+ * A population of episodes, summarised the ways two sounds would differ.
+ *
+ * Sharing a band is not sharing an identity. If the 130-210 ms runs and the
+ * 405-417 ms episodes are one sound at two lengths, they have to agree on more
+ * than where their energy sits: on the fundamental, on how tonal they are, and
+ * on the partial series.
+ */
+export interface Population {
+  readonly label: string;
+  readonly count: number;
+  readonly medianF0Hz: number;
+  readonly f0SpreadHz: number;
+  readonly medianCombDb: number;
+  /**
+   * The comb score again, on a window of the same length for both populations.
+   *
+   * **The confound this removes.** `medianCombDb` is measured over as much of
+   * each episode as there is, so a short episode gets a short window. A shorter
+   * window has coarser frequency resolution and scores lower on a comb whatever
+   * it contains, so a tonality gap between a short population and a long one is
+   * exactly what the method would manufacture. Scored over {@link FIXED_COMB_MS}
+   * for both, any difference that survives is the sound's, not the window's.
+   */
+  readonly fixedWindowCombDb: number;
+  readonly medianContinuousMs: number;
+  /** Ratio of each partial to the fundamental, median over the population. */
+  readonly partialRatios: readonly number[];
+  /**
+   * How far each partial stands over its own neighbourhood, in dB.
+   *
+   * **`partialRatios` alone cannot fail and must not be read without this.** It
+   * reports the strongest bin within +/-35 Hz of each multiple, and in noise
+   * there is always a bin there - so a pure hiss returns a tidy 2.00 / 3.00 /
+   * 4.00 and looks like a harmonic series. This asks what the ratio cannot: is
+   * anything actually *at* the multiple, or is the ratio naming the nearest
+   * lump of noise.
+   */
+  readonly partialExcessDb: readonly number[];
+}
+
+export interface PopulationComparison {
+  readonly short: Population;
+  readonly long: Population;
+  /** Every episode's unbroken run, pooled across the device recordings. */
+  readonly durationsMs: readonly number[];
 }
 
 export interface MarchToneIdentityResult {
@@ -138,12 +245,31 @@ export interface MarchToneIdentityResult {
   readonly battleshipEpisodes: readonly Episode[];
   /** Partial series of the first sustained tone in each file, for the record. */
   readonly seriesHz: readonly { readonly label: string; readonly partials: readonly number[] }[];
+  /** The two candidate populations, put through one instrument. */
+  readonly populations: PopulationComparison;
 }
 
 const GAMEPLAY = 'assets/reference/gameplay-audio.m4a';
 const VIDEO = 'assets/reference/skill3-video-audio.m4a';
 const BATTLESHIP = 'assets/reference/battleship-interval.m4a';
 const LOSS = 'assets/reference/loss-audio.m4a';
+
+/**
+ * The three windows `open-questions.md` §16 classified, as committed audio.
+ *
+ * §16's 25 tonal runs come from `IMG_6113.mov`, which is 579 MB and stays out of
+ * the repository - so these are the reductions, 20 s each, extracted at the same
+ * offsets `tools/video/blanking.py` uses. Committing them is what lets this
+ * drive put §16's population and this drive's own through **one** instrument.
+ * Two findings measured by two tools on two files cannot be compared, and that
+ * is most of why the disagreement looked like one.
+ *
+ * t=120 is the control of the three: §16 measures **0.0%** blanking there
+ * against 13.2% and 16.7% in the other two.
+ */
+const T120 = 'assets/reference/img6113-t120-audio.m4a';
+const T210 = 'assets/reference/img6113-t210-audio.m4a';
+const T340 = 'assets/reference/img6113-t340-audio.m4a';
 
 /** Narrow level either side of a line, for the "is this line here" statistic. */
 function lineDb(mags: Float64Array, hz: number): number {
@@ -198,14 +324,25 @@ function findEpisodes(x: Float64Array, thrDb = 12): Episode[] {
     for (let i = lo; i < hi; i += 1) peak = Math.max(peak, env[i]);
     let run = 0;
     let best = 0;
+    let bestEnd = lo;
     for (let i = lo; i < hi; i += 1) {
       run = env[i] >= peak * 0.25 ? run + 1 : 0; // 0.25 in amplitude is -12 dB
-      best = Math.max(best, run);
+      if (run > best) {
+        best = run;
+        bestEnd = i;
+      }
     }
+    // Where the unbroken run actually is, which is not where the 200 ms
+    // detection grid put the span: a span can open up to 200 ms before the tone
+    // and run on after it. Anything reading the tone itself - the fixed window
+    // in the population comparison above all - has to start from here, or on a
+    // long episode it measures whatever preceded the note.
+    const runStart = (bestEnd - best) / SR;
     const mags = spectrumAt(x, a, Math.min(0.2, b - a));
     const { f0, scoreDb } = bestCombF0(mags, 560, 700);
     return {
       startSec: a,
+      runStartSec: runStart,
       continuousMs: (best / SR) * 1000,
       spanMs: (b - a) * 1000,
       f0Hz: f0,
@@ -269,7 +406,8 @@ export function runMarchToneIdentity(): MarchToneIdentityResult {
     return decoded.get(p)!;
   };
 
-  for (const path of [GAMEPLAY, VIDEO]) {
+  // GAMEPLAY and VIDEO stay first: the tests index this array.
+  for (const path of [GAMEPLAY, VIDEO, T120, T210, T340]) {
     const x = load(path);
     const { pctiles, track } = prominenceProfile(x);
     const cited = path === GAMEPLAY
@@ -323,7 +461,79 @@ export function runMarchToneIdentity(): MarchToneIdentityResult {
     return [{ label: `${f.path} @ ${first.startSec.toFixed(3)} s`, partials }];
   });
 
-  return { files, citedEvents, combControls, battleshipEpisodes, seriesHz };
+  // --- the two populations, through one instrument --------------------------
+  //
+  // Pooled over every device recording. The battleship clip is excluded on
+  // purpose: it is the null, and folding it in here would score the control as
+  // data.
+  const pooled = files.flatMap((f) =>
+    f.episodes
+      .filter((e) => e.combDb >= 6) // tonal at all; the grid shows what this costs
+      .map((e) => ({ file: f.path, episode: e })),
+  );
+
+  const median = (xs: readonly number[]): number => {
+    if (xs.length === 0) return Number.NaN;
+    const q = [...xs].sort((a, b) => a - b);
+    return q.length % 2 ? q[q.length >> 1] : (q[q.length / 2 - 1] + q[q.length / 2]) / 2;
+  };
+
+  const summarise = (
+    label: string,
+    rows: readonly { file: string; episode: Episode }[],
+  ): Population => {
+    const f0s = rows.map((r) => r.episode.f0Hz);
+    const window = (r: { file: string; episode: Episode }) =>
+      spectrumAt(
+        load(r.file),
+        r.episode.runStartSec + 0.01,
+        Math.min(0.15, Math.max(0.03, r.episode.continuousMs / 1000)),
+      );
+    // Partial ratios, per episode against its own f0, so a population whose
+    // fundamental wanders is still comparable.
+    const ratioLists = rows.map((r) => {
+      const mags = window(r);
+      const f0 = r.episode.f0Hz;
+      const out: number[] = [];
+      for (let h = 2; h <= 6; h += 1) out.push(dominantHz(mags, h * f0 - 35, h * f0 + 35, 0) / f0);
+      return out;
+    });
+    // Is anything at the multiple, or is `partialRatios` naming noise?
+    const excessLists = rows.map((r) => {
+      const mags = window(r);
+      const f0 = r.episode.f0Hz;
+      const at = (hz: number) => bandDb(mags, hz - 12, hz + 12);
+      return [2, 3, 4, 5, 6].map((h) => at(h * f0) - (at(h * f0 - 55) + at(h * f0 + 55)) / 2);
+    });
+    // The duration confound, removed: the same window length for both.
+    const fixed = rows.map(
+      (r) =>
+        bestCombF0(
+          spectrumAt(load(r.file), r.episode.runStartSec + 0.01, FIXED_COMB_MS / 1000),
+          560,
+          700,
+        ).scoreDb,
+    );
+    return {
+      label,
+      count: rows.length,
+      medianF0Hz: median(f0s),
+      f0SpreadHz: f0s.length ? Math.max(...f0s) - Math.min(...f0s) : Number.NaN,
+      medianCombDb: median(rows.map((r) => r.episode.combDb)),
+      fixedWindowCombDb: median(fixed),
+      medianContinuousMs: median(rows.map((r) => r.episode.continuousMs)),
+      partialRatios: [0, 1, 2, 3, 4].map((i) => median(ratioLists.map((l) => l[i]))),
+      partialExcessDb: [0, 1, 2, 3, 4].map((i) => median(excessLists.map((l) => l[i]))),
+    };
+  };
+
+  const populations: PopulationComparison = {
+    short: summarise(`shorter than ${SPLIT_MS} ms`, pooled.filter((r) => r.episode.continuousMs < SPLIT_MS)),
+    long: summarise(`${SPLIT_MS} ms or longer`, pooled.filter((r) => r.episode.continuousMs >= SPLIT_MS)),
+    durationsMs: pooled.map((r) => r.episode.continuousMs),
+  };
+
+  return { files, citedEvents, combControls, battleshipEpisodes, seriesHz, populations };
 }
 
 function report(r: MarchToneIdentityResult): void {
@@ -430,6 +640,111 @@ function report(r: MarchToneIdentityResult): void {
     console.log(`    ${s.label}`);
     console.log(`      ${s.partials.map((p) => `${p.toFixed(0)} Hz`).join(' / ')}`);
   }
+
+  // --- 3b. the gate, swept rather than chosen -------------------------------
+
+  console.log('\n--- 3b. The gate, swept ----------------------------------------------');
+  console.log('Episode count at every combination of the two gates that decide it. Rows');
+  console.log('are the comb threshold in dB, columns the continuity floor in ms. The');
+  console.log(`cell at comb >= ${TONE_COMB_DB} dB, continuity >= ${TONE_CONTINUOUS_MS} ms is what this drive used to`);
+  console.log('report as the answer.\n');
+  for (const f of r.files) {
+    const grid = sweepGrid(f.episodes);
+    console.log(`  ${f.path}`);
+    console.log(`      comb\\ms  ${CONTINUITY_AXIS_MS.map((m) => String(m).padStart(5)).join('')}`);
+    for (const [i, comb] of COMB_AXIS_DB.entries()) {
+      console.log(`      >=${String(comb).padStart(2)} dB  ${grid[i].map((n) => String(n).padStart(5)).join('')}`);
+    }
+  }
+  console.log('');
+  console.log('  Read down a column and across a row before reading any single cell.');
+  console.log('  Where the count is flat over a region, that region is the measurement.');
+  console.log('  Where it cliffs, the cliff is a property of the gate and not of the');
+  console.log('  recording - and a conclusion drawn from one side of a cliff is a');
+  console.log('  conclusion about where the gate was put.');
+
+  // --- 3c. one sound or two? ------------------------------------------------
+
+  console.log('\n--- 3c. One sound or two? --------------------------------------------');
+  console.log('open-questions.md 16 measures 25 tonal runs of 130-210 ms in IMG_6113;');
+  console.log('this drive measured 405-417 ms episodes elsewhere. Sharing a band is not');
+  console.log('sharing an identity, so both go through one instrument here.\n');
+
+  const d = [...r.populations.durationsMs].sort((a, b) => a - b);
+  console.log(`  unbroken-run histogram, ${d.length} episodes pooled over the device recordings:`);
+  const EDGES = [0, 50, 100, 150, 200, 250, 300, 350, 400, 450, 10_000];
+  for (let i = 0; i < EDGES.length - 1; i += 1) {
+    const n = d.filter((v) => v >= EDGES[i] && v < EDGES[i + 1]).length;
+    const label = EDGES[i + 1] === 10_000 ? `>= ${EDGES[i]}` : `${EDGES[i]}-${EDGES[i + 1]}`;
+    console.log(`    ${label.padStart(9)} ms  ${String(n).padStart(3)}  ${'#'.repeat(n)}`);
+  }
+  console.log('');
+  console.log('  population              n   median f0   f0 spread   median comb   median run');
+  for (const p of [r.populations.short, r.populations.long]) {
+    console.log(
+      `  ${p.label.padEnd(22)} ${String(p.count).padStart(2)}   ${p.medianF0Hz.toFixed(0).padStart(7)} Hz   ` +
+        `${p.f0SpreadHz.toFixed(0).padStart(7)} Hz   ${p.medianCombDb.toFixed(1).padStart(9)} dB   ${p.medianContinuousMs.toFixed(0).padStart(7)} ms`,
+    );
+  }
+  console.log('');
+  console.log(`  the comb again over ${FIXED_COMB_MS} ms for both, which is the control on the column`);
+  console.log('  before it - a shorter window scores lower on a comb whatever it holds:');
+  for (const p of [r.populations.short, r.populations.long]) {
+    console.log(
+      `    ${p.label.padEnd(22)} ${p.fixedWindowCombDb.toFixed(1).padStart(6)} dB   (as measured: ${p.medianCombDb.toFixed(1)} dB)`,
+    );
+  }
+  console.log('');
+  console.log('  partial ratios against each episode\'s own fundamental, median over the');
+  console.log('  population. A harmonic series reads 2.00 / 3.00 / 4.00 / 5.00 / 6.00.');
+  console.log('    population              2f0    3f0    4f0    5f0    6f0');
+  for (const p of [r.populations.short, r.populations.long]) {
+    console.log(
+      `    ${p.label.padEnd(22)} ${p.partialRatios.map((v) => (Number.isFinite(v) ? v.toFixed(2) : 'n/a').padStart(6)).join(' ')}`,
+    );
+  }
+  console.log('');
+  console.log('  and how far each partial stands over its own neighbourhood, which is the');
+  console.log('  control on the table above - a ratio finds the nearest peak whether or');
+  console.log('  not there is one, so in noise it returns a tidy series regardless:');
+  console.log('    population              2f0    3f0    4f0    5f0    6f0');
+  for (const p of [r.populations.short, r.populations.long]) {
+    console.log(
+      `    ${p.label.padEnd(22)} ${p.partialExcessDb.map((v) => (Number.isFinite(v) ? v.toFixed(1) : 'n/a').padStart(6)).join(' ')}`,
+    );
+  }
+
+  // --- 3d. the discriminator, which is section 16's own control window ------
+
+  console.log('\n--- 3d. Which population blanks the tube ------------------------------');
+  console.log('open-questions.md 16 measured blanking in these same three windows, and');
+  console.log('its t=120 row is a control it put there for a different purpose. It');
+  console.log('separates the two populations cleanly.\n');
+  console.log('  window                     blanking(16)   long   short');
+  const cite: [string, string, string][] = [[T120, '0.0%', 'the control'], [T210, '13.2%', ''], [T340, '16.7%', '']];
+  for (const [path, blanking, note] of cite) {
+    const f = r.files.find((q) => q.path === path);
+    const eps = f?.episodes ?? [];
+    const long = eps.filter((e) => e.continuousMs >= SPLIT_MS).length;
+    const short = eps.filter((e) => e.continuousMs >= 100 && e.continuousMs < SPLIT_MS).length;
+    console.log(
+      `  ${path.replace('assets/reference/', '').padEnd(26)} ${blanking.padStart(6)}   ${String(long).padStart(4)}   ${String(short).padStart(5)}  ${note}`,
+    );
+  }
+  console.log('');
+  console.log('  **The short events track the blanking and the long tone does not.** The');
+  console.log('  window that blanks 0.0% holds two of the longest tones in any recording');
+  console.log('  here and not one short event. The two windows that blank 13-17% hold');
+  console.log('  sixteen short events between them and one long tone. So the long tone');
+  console.log('  can be present with no blanking at all, and blanking is present where');
+  console.log('  only the short events are.');
+  console.log('');
+  console.log('  Whatever section 16 identified as the blanking source, it is not the');
+  console.log('  sound this drive measured for task 23 - and this is section 16\'s own');
+  console.log('  control window saying so, not a new one chosen to make the point. n is');
+  console.log('  three windows, so this separates the populations; it does not on its');
+  console.log('  own show the short events *cause* the blanks. Section 16 shows that,');
+  console.log('  by onset coincidence against a shuffled null.');
 
   console.log('\n--- 4. Tonality controls ---------------------------------------------');
   console.log('The comb score is only ever readable against a known tone and a known');

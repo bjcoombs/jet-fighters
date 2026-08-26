@@ -20,6 +20,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import {
   isSustainedTone,
   runMarchToneIdentity,
+  sweepGrid,
   type MarchToneIdentityResult,
 } from './march-tone-identity.js';
 
@@ -78,14 +79,16 @@ describe.skipIf(!ffmpeg && process.env['CI'] === undefined)(
       result = runMarchToneIdentity();
     }, DRIVE_TIMEOUT_MS);
 
-    it('decoded both recordings to something', () => {
-      expect(result.files).toHaveLength(2);
+    it('decoded every recording to something', () => {
+      // Two files at first; five since the second pass added the three
+      // IMG_6113 windows open-questions.md 16 classified.
+      expect(result.files).toHaveLength(5);
       for (const f of result.files) {
         expect(
           f.durationSec,
           `${f.path} decoded to ${f.durationSec.toFixed(3)} s - every figure below it is ` +
             'then a statement about an empty buffer',
-        ).toBeGreaterThan(20);
+        ).toBeGreaterThan(19);
       }
     });
 
@@ -126,6 +129,65 @@ describe.skipIf(!ffmpeg && process.env['CI'] === undefined)(
           'which contains no squadron - so whatever it is finding elsewhere is not ' +
           'specific to what section 3 claims',
       ).toEqual([]);
+    });
+
+    it('still finds both populations, in the windows that hold them', () => {
+      // The whole second pass exists because a fixed gate hid one of these.
+      // **Measured: 8 episodes of 280 ms or longer, 6 shorter.** If either
+      // population empties, sections 3c and 3d are comparing one thing to
+      // nothing and would report "two sounds" from a sample of one.
+      expect(
+        result.populations.long.count,
+        'no long episodes - the sound task 23 measured has gone missing',
+      ).toBeGreaterThanOrEqual(3);
+      expect(
+        result.populations.short.count,
+        'no short episodes. This is the population a 200 ms gate hid the first ' +
+          'time; if the drive stops seeing it, the fix has regressed to the bug',
+      ).toBeGreaterThanOrEqual(3);
+    });
+
+    it('keeps the two populations distinguishable on partial structure', () => {
+      // The claim in 3c is that these are two sounds, and it rests on this gap:
+      // **measured 15.2-20.5 dB of partial excess for the long population
+      // against 1.8-5.2 dB for the short.** A ratio table alone cannot fail -
+      // in noise there is always a peak near a multiple - so the excess is what
+      // carries the verdict, and it has to keep separating them.
+      const longMin = Math.min(...result.populations.long.partialExcessDb);
+      const shortMax = Math.max(...result.populations.short.partialExcessDb);
+      expect(
+        longMin - shortMax,
+        'the two populations no longer separate on how far their partials stand ' +
+          'over the neighbourhood, so "two sounds" is being read off nothing',
+      ).toBeGreaterThan(5);
+    });
+
+    it('sweeps a grid that actually varies', () => {
+      // A grid whose every cell is the same number is not a sweep, and would
+      // hide exactly the sensitivity this pass was written to expose. The
+      // t=210 window is where the gate bites: **measured 9 episodes at
+      // (>=4 dB, >=50 ms) falling to 0 by (>=4 dB, >=200 ms).**
+      const t210 = result.files.find((f) => f.path.includes('t210'));
+      expect(t210, 'the t=210 window is missing').toBeDefined();
+      const grid = sweepGrid((t210 as NonNullable<typeof t210>).episodes);
+      // Both axes, separately. Asserting only that *some* cell differs passes
+      // when one axis has been collapsed and the other still moves - which is
+      // the exact failure this test was written for, and the first version of
+      // it did not catch a flattened continuity axis for that reason.
+      const rowVaries = grid.some((row) => new Set(row).size > 1);
+      const columns = grid[0].map((_, c) => grid.map((row) => row[c]));
+      const columnVaries = columns.some((col) => new Set(col).size > 1);
+      expect(
+        rowVaries,
+        'the count does not move as the continuity floor moves, so that axis of ' +
+          'the sweep is not measuring anything',
+      ).toBe(true);
+      expect(
+        columnVaries,
+        'the count does not move as the comb threshold moves, so that axis of ' +
+          'the sweep is not measuring anything',
+      ).toBe(true);
+      expect(Math.max(...grid.flat()), 'the sweep found nothing anywhere').toBeGreaterThanOrEqual(3);
     });
 
     it('keeps a tonality control that separates a tone from silence', () => {
