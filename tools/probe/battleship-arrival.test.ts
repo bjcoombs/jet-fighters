@@ -323,15 +323,39 @@ function playerControls(machine: Tms1370Machine, slice: number): void {
 /** Where the skill dial is left for the whole of both runs. */
 const SKILL_DIAL = 1;
 
+/** Sweeps between one step of the player's shot and the next. */
+const MISSILE_STEP_SWEEPS = symbol(ASM, 'MISSILE_HI') * 16 + symbol(ASM, 'MISSILE_LO') + 1;
+
+/** Sweeps a shot needs to cross the whole field, launch cell to horizon. */
+const MISSILE_FLIGHT_SWEEPS = MISSILE_STEP_SWEEPS * symbol(ASM, 'GRID_COL_LAST');
+
+/** The battleship countdown counts sixteen-sweep units - see `NIB_BS_LO`. */
+const GAP_PRESCALE_SWEEPS = 16;
+
 /**
  * Units of the battleship's countdown over which the probe stops firing.
  *
- * A missile crosses the board in `MISSILE_SWEEPS` per column over five columns;
- * the countdown ticks once every sixteen sweeps. Six units is about a hundred
- * sweeps, comfortably longer than a missile's flight, so nothing the probe
- * launched is still airborne when the boat appears.
+ * **Derived, because the literal that stood here went stale and stayed wrong for
+ * a long time without anything noticing.** It was 6, justified as "about a
+ * hundred sweeps, comfortably longer than a missile's flight" - and that was
+ * true when a shot crossed a column in `MISSILE_SWEEPS` = 2, so the whole field
+ * in ten sweeps. At the measured 500 ms a column the same flight is
+ * `MISSILE_STEP_SWEEPS` (32) x five columns = 160 sweeps, and six units is 96.
+ * The hold was shorter than the flight it exists to outlast, by two thirds.
+ *
+ * Nothing went red for it while only one shot could be airborne: the probe had
+ * to be unlucky in exactly one lane. The per-lane fire gate made three shots
+ * airborne at once, the odds tripled, and every assertion downstream of "a
+ * crossing completed" failed together - the boat was being shot down in its
+ * first lane by a shot launched before the hold began.
+ *
+ * So this is now a multiple of the measured constants rather than a number, in
+ * the shape `CLAUDE.md` requires of any horizon over a machine that moves: a
+ * cadence change moves it, and the `+ 2` is slack for the countdown's own
+ * quantisation rather than a margin anyone tuned.
  */
-const GAP_UNITS_HELD_FIRE = 6;
+const GAP_UNITS_HELD_FIRE =
+  Math.ceil(MISSILE_FLIGHT_SWEEPS / GAP_PRESCALE_SWEEPS) + 2;
 
 /**
  * Where `NIB_BSLANE` lives, and how to read it.
