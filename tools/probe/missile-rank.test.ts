@@ -26,7 +26,7 @@
 // the shot **stepping onward to a lower column** rather than clearing is a
 // pass-through, and is exactly the defect above.
 //
-// Read off `FILE_MISS` and `FILE_JETS` rather than off the kill sound, because
+// Read off `FILE_MISS` and the plane slots rather than off the kill sound, because
 // the sound says a kill happened somewhere and this file's whole question is
 // *which lane*. `NIB_KILLS` is read too, but only to distinguish a kill from a
 // shot that simply expired against the horizon.
@@ -43,7 +43,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { CYCLE_HZ } from '../../src/machine/cpu/tms1370/timing.js';
-import { Tms1370Machine, assembleGame } from './tms1370-probe.js';
+import { Tms1370Machine, assembleGame, planesOf, rowColumns, squadronMap } from './tms1370-probe.js';
 
 const ASM = assembleGame();
 const symbol = (name: string): number => {
@@ -53,11 +53,10 @@ const symbol = (name: string): number => {
 };
 
 const FILE_MISS = symbol('FILE_MISS');
-const FILE_JETS = symbol('FILE_JETS');
 const FILE_STATE = symbol('FILE_STATE');
 const NIB_MC = symbol('NIB_MC');
-const NIB_J_LANE0 = symbol('NIB_J_LANE0');
 const NIB_KILLS = symbol('NIB_KILLS');
+const SQUADRON = squadronMap(ASM);
 const LANE_COUNT = symbol('LANE_COUNT');
 
 /** Wall-clock allowance. The bounds that mean anything are all in cycles. */
@@ -89,6 +88,17 @@ const BLOCKS = [50, 60, 70] as const;
 
 interface Frame {
   readonly missiles: readonly number[];
+  /**
+   * Per lane, the grids a plane stands on in that lane, as a bitmap.
+   *
+   * A bitmap and not a column, and that is the whole of what the positioned
+   * model changed here. `FILE_JETS[lane]` used to be *the* jet in that lane,
+   * because a lane held at most one; two planes can now be in one row, and a
+   * reader that returned one column per row would drop the second - which is
+   * precisely the plane a collision test is most likely to miss. So the
+   * coincidence test below asks "is any plane standing on the shot's column"
+   * rather than "is the lane's jet on it".
+   */
   readonly jets: readonly number[];
   readonly kills: number;
 }
@@ -110,7 +120,10 @@ function drive(BLOCK: number): readonly Frame[] {
     const ram = machine.ram;
     frames.push({
       missiles: Array.from({ length: LANE_COUNT }, (_u, l) => ram[FILE_MISS * 16 + NIB_MC + l] as number),
-      jets: Array.from({ length: LANE_COUNT }, (_u, l) => ram[FILE_JETS * 16 + NIB_J_LANE0 + l] as number),
+      jets: (() => {
+        const planes = planesOf(ram, SQUADRON);
+        return Array.from({ length: LANE_COUNT }, (_u, l) => rowColumns(planes, l));
+      })(),
       kills: ram[FILE_STATE * 16 + NIB_KILLS] as number,
     });
   }
@@ -174,7 +187,7 @@ function tally(frames: readonly Frame[]): readonly LaneTally[] {
       }
       // LEAVE: the jet was already standing on the shot's column before the
       // step. ARRIVE: the jet stands on the column the shot has just entered.
-      if (nowShot === nowJet && nowJet !== 0) {
+      if ((nowJet & (1 << nowShot)) !== 0) {
         const half: 'leave' | 'arrive' = nowShot === wasShot ? 'leave' : 'arrive';
         if (pending[lane] === undefined) {
           if (half === 'leave') tallyLane.leaveSeen += 1;

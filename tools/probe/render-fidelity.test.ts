@@ -84,7 +84,15 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { CYCLE_HZ } from '../../src/machine/cpu/tms1370/timing.js';
-import { Tms1370Machine } from './tms1370-probe.js';
+import {
+  Tms1370Machine,
+  assembleGame,
+  planesOf,
+  rowColumns,
+  slotsOf,
+  squadronMap,
+  type Plane,
+} from './tms1370-probe.js';
 
 /**
  * Wall-clock allowance for every drive in this file.
@@ -112,8 +120,10 @@ const FILE_D1 = 1;
 const FILE_D2 = 2;
 const FILE_D3 = 3;
 const FILE_STATE = 4;
-const FILE_JETS = 6;
 const FILE_MISS = 7;
+
+/** Where the two plane slots live, read from the assembled program's symbols. */
+const SQUADRON = squadronMap(assembleGame());
 
 /** `FILE_STATE` nibbles. */
 const NIB_RCOL = 7;
@@ -182,8 +192,16 @@ const STALE_SAMPLES = 3;
 
 interface Sample {
   readonly seconds: number;
-  /** Grid each lane's jet stands on, 0 for an empty lane. */
+  /**
+   * Per lane, the grids a plane stands on in it, as a bitmap over the columns.
+   *
+   * A bitmap and not a column, because two positioned planes can be in one row
+   * and both of them are drawn. A reader returning one column per row would drop
+   * the second, and the second is exactly the one a render fault hides behind.
+   */
   readonly jets: readonly number[];
+  /** Both plane slots as the RAM holds them, empties included, in slot order. */
+  readonly slots: readonly Plane[];
   /** Near nibble of grids 1-5, indexed by grid. */
   readonly near: readonly number[];
   /** Far nibble of grids 1-5, indexed by grid. */
@@ -280,7 +298,8 @@ function sample(lane: number, lever?: (tap: number) => { lane: number; fire: boo
     const nibble = (file: number, index: number): number => ram[file * 16 + index] as number;
     samples.push({
       seconds: machine.cycles / CYCLE_HZ,
-      jets: Array.from({ length: LANE_COUNT }, (_unused, l) => nibble(FILE_JETS, l)),
+      jets: Array.from({ length: LANE_COUNT }, (_unused, l) => rowColumns(planesOf(ram, SQUADRON), l)),
+      slots: slotsOf(ram, SQUADRON),
       near: Array.from({ length: GRID_COL_LAST + 1 }, (_unused, g) => nibble(FILE_D0, g)),
       far: Array.from({ length: GRID_COL_LAST + 1 }, (_unused, g) => nibble(FILE_D1, g)),
       rocketCol: nibble(FILE_STATE, NIB_RCOL),
@@ -295,9 +314,19 @@ function sample(lane: number, lever?: (tap: number) => { lane: number; fire: boo
   return samples;
 }
 
-/** The lane bitmap the squadron justifies for `grid`, from `FILE_JETS` alone. */
+/** The squadron as `row:column` pairs, for a failure message a reader can use. */
+function describePlanes(shot: Sample): string {
+  return shot.slots
+    .map((plane, slot) => `${slot}=${plane.column === 0 ? 'empty' : `${plane.row}:${plane.column}`}`)
+    .join(' ');
+}
+
+/** The lane bitmap the squadron justifies for `grid`, from the plane slots alone. */
 function jetBitmap(jets: readonly number[], grid: number): number {
-  return jets.reduce((bits, standsOn, lane) => (standsOn === grid ? bits | (1 << lane) : bits), 0);
+  return jets.reduce(
+    (bits, grids, lane) => ((grids & (1 << grid)) !== 0 ? bits | (1 << lane) : bits),
+    0,
+  );
 }
 
 /**
@@ -369,7 +398,7 @@ describe('the near pass draws the squadron where the squadron is', () => {
             wrong.push(
               `t=${shot.seconds.toFixed(2)}s grid ${grid}: near nibble ${drawn} lights ` +
                 `lane(s) ${[...Array(LANE_COUNT).keys()].filter((l) => spurious & (1 << l))} ` +
-                `with jets at [${shot.jets}]`,
+                `with planes at [${describePlanes(shot)}]`,
             );
           }
         }
@@ -392,9 +421,18 @@ describe('the near pass draws the squadron where the squadron is', () => {
       // march step is 16 sweeps at its very fastest, two orders of magnitude
       // above this floor, so every stay the squadron makes by marching is
       // asserted over.
+      //
+      // **The stay is followed per plane slot and not per lane**, which is what
+      // the positioned model changes here. A lane no longer names one attacker:
+      // two planes can be in one row and a per-lane walk would collapse them into
+      // a single stay and pass while one of them was never drawn. A slot does
+      // name one attacker for as long as it holds one, so a stay is "this slot
+      // held this (row, column)" and it closes when either moves.
       const shots = sample(detent);
       const undrawn: string[] = [];
-      for (let lane = 0; lane < LANE_COUNT; lane += 1) {
+      const slotCount = shots[0]?.slots.length ?? 0;
+      for (let slot = 0; slot < slotCount; slot += 1) {
+        let stayRow = -1;
         let stayGrid = 0;
         let stayDrawn = false;
         let stayFrom = 0;
@@ -407,16 +445,17 @@ describe('the near pass draws the squadron where the squadron is', () => {
             !stayDrawn
           ) {
             undrawn.push(
-              `lane ${lane} stood on grid ${stayGrid} from t=${stayFrom.toFixed(2)}s to ` +
-                `t=${at.toFixed(2)}s and was never drawn there`,
+              `slot ${slot} stood in row ${stayRow} on grid ${stayGrid} from ` +
+                `t=${stayFrom.toFixed(2)}s to t=${at.toFixed(2)}s and was never drawn there`,
             );
           }
         };
         for (const shot of shots) {
-          const standsOn = shot.jets[lane] as number;
-          if (standsOn !== stayGrid) {
+          const held = shot.slots[slot] as Plane;
+          if (held.column !== stayGrid || held.row !== stayRow) {
             closeStay(shot.seconds);
-            stayGrid = standsOn;
+            stayRow = held.row;
+            stayGrid = held.column;
             stayDrawn = false;
             stayFrom = shot.seconds;
             stayDrawable = 0;
@@ -426,16 +465,16 @@ describe('the near pass draws the squadron where the squadron is', () => {
           }
           stayDrawable += 1;
           if (
-            standsOn >= GRID_COL_FIRST &&
-            standsOn <= GRID_COL_LAST &&
-            ((shot.near[standsOn] as number) & (1 << lane)) !== 0
+            stayGrid >= GRID_COL_FIRST &&
+            stayGrid <= GRID_COL_LAST &&
+            ((shot.near[stayGrid] as number) & (1 << stayRow)) !== 0
           ) {
             stayDrawn = true;
           }
         }
         closeStay(shots[shots.length - 1]?.seconds ?? 0);
       }
-      expect(undrawn.slice(0, 5), `${undrawn.length} jets were never drawn where they stood`).toEqual(
+      expect(undrawn.slice(0, 5), `${undrawn.length} planes were never drawn where they stood`).toEqual(
         [],
       );
     });
@@ -458,7 +497,7 @@ describe('a near nibble is a near index, and never a far one', () => {
           if (drawn > NEAR_INDEX_MAX) {
             overflows.push(
               `t=${shot.seconds.toFixed(2)}s grid ${grid}: near nibble ${drawn} is ` +
-                `OPLA_A_FAR + ${drawn - OPLA_A_FAR}, jets at [${shot.jets}]`,
+                `OPLA_A_FAR + ${drawn - OPLA_A_FAR}, planes at [${describePlanes(shot)}]`,
             );
           }
         }
@@ -799,9 +838,12 @@ describe('a kill is credited to the lane the shot was flying down', () => {
         if (before === undefined || shot.kills <= before.kills) {
           return;
         }
-        // The lane that emptied across this sample is the one that lost a jet.
+        // The lane that lost a plane across this sample is the one to attribute
+        // the kill to. `jets` is a bitmap of the grids that lane holds, so
+        // "lost one" is a bit that was set and now is not - which stays right
+        // when a lane holds two planes and only one of them is shot down.
         const emptied = [0, 1, 2].filter(
-          (lane) => (before.jets[lane] as number) !== 0 && (shot.jets[lane] as number) === 0,
+          (lane) => ((before.jets[lane] as number) & ~(shot.jets[lane] as number)) !== 0,
         );
         if (emptied.length === 0) {
           return; // the wave reset in the same sample; nothing to attribute
@@ -813,13 +855,17 @@ describe('a kill is credited to the lane the shot was flying down', () => {
           // one another, in one of the samples just before the kill.
           const met = recent.some((at) => {
             const shotAt = at.missiles[lane] as number;
-            const jetAt = at.jets[lane] as number;
-            return jetAt !== 0 && (shotAt === jetAt || shotAt === jetAt + 1);
+            const grids = at.jets[lane] as number;
+            if (shotAt === 0) return false;
+            // A plane on the shot's own grid, or on the next one in - the same
+            // one-column allowance as before, read out of the bitmap.
+            return ((grids >> shotAt) & 1) !== 0 || ((grids >> (shotAt - 1)) & 1) !== 0;
           });
           if (!met) {
             wrong.push(
               `t=${shot.seconds.toFixed(2)}s: a kill emptied lane(s) ${emptied}, and lane ` +
-                `${lane} lost the jet on grid ${before.jets[lane]} with no shot of the ` +
+                `${lane} lost a plane (grids ${before.jets[lane]} -> ${shot.jets[lane]}) ` +
+                `with no shot of the ` +
                 `player's standing on it - shots were ` +
                 recent.map((at) => `[${at.missiles}]`).join(' then '),
             );

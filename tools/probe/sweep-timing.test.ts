@@ -132,8 +132,44 @@ const SWEEP_WAIT_CYCLES = 64 * SWEEP_INSTRUCTIONS;
  * The bound is set above that with room, and still well below what a second
  * cadence would look like - an idle machine's sweep against a full playfield's,
  * or a sweep that had acquired a fixed dwell, both differ by far more.
+ *
+ * ## Re-measured at 0.35 when the squadron became two positioned planes
+ *
+ * **The change is entirely in the tail, and the mean went the other way.** The
+ * collision test is now four comparisons per shot per half of the LEAVE/ARRIVE
+ * pair where a lane rank made it one, because two planes can be in the shot's
+ * row and only one of them is where the shot is. All of that lands on the *one
+ * sweep in thirty-two* that steps the missile rank - `plane_at` is called up to
+ * six times on that pass and never on any other - so it lengthens the longest
+ * sweep and barely touches the rest. Measured over the same 300-sweep played
+ * drive, before and after:
+ *
+ *   before  mean 904.9  max 1100  worst 0.2155
+ *   after   mean 898.0  max 1165  worst 0.2973
+ *
+ * and the histogram of the 293 silent sweeps after is 825:51 850:34 875:111
+ * 900:13 925:58 950:18 975:4 1000:1 1025:1 1100:1 1150:1 - two sweeps above 1000
+ * before, four after, and the body of the distribution unmoved. The mean is
+ * *lower* because the same task took the `lane_bit` call out of `rd_jets`, which
+ * runs every sweep; `CYCLE_HZ_MAX / mean` is better than it was and that bound
+ * has not been touched.
+ *
+ * So this is a wider single population rather than a second cadence, which is
+ * what the assertion below is about. The bound is re-set the way this docstring
+ * set it the first time - from the measurement, with room - and it stays far
+ * below the discriminators named above: an idle machine's sweep against a full
+ * playfield's, or an acquired fixed dwell, differ by much more than 35%.
+ *
+ * **What would make this the wrong answer**, and it is worth writing down for
+ * whoever reads this next: inverting the missile walk to ask the question once
+ * per *plane* rather than once per lane per half would be two tests a phase
+ * instead of six and would put the tail back under the old bound. It is the
+ * architecturally right shape now that planes are entities and rows are only
+ * geometry. It was not folded into the task that widened this, because it
+ * rewrites the walk's control flow and moves when a kill lands relative to the
+ * other lanes' steps, which is what `missile-rank.test.ts` is watching.
  */
-const SWEEP_JITTER_TOLERANCE = 0.25;
+const SWEEP_JITTER_TOLERANCE = 0.35;
 
 /** The assembled game ROM, kept so symbol values are read rather than typed. */
 const GAME_ASM = assembleGame();

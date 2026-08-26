@@ -34,6 +34,8 @@ import {
 import {
   assembleGame,
   cellKey,
+  planesOf,
+  squadronMap,
   combPeriodicityHz,
   runGame,
   soundHz,
@@ -51,8 +53,31 @@ const NIB_RCOL = 7;
 const NIB_RLANE = 8;
 const NIB_STATE = 11;
 
-/** `FILE_JETS`, whose first three nibbles are the squadron's one jet per lane. */
-const FILE_JETS = 6;
+/**
+ * Where the two plane slots live, read from the assembled program's symbols.
+ *
+ * The squadron used to be one jet per lane in `FILE_JETS` 0-2 and every drive
+ * here read those nibbles directly. It is two `(row, column)` pairs now, so
+ * "what is in lane N" is a question about the pairs.
+ */
+const SQUADRON = squadronMap(assembleGame());
+
+/**
+ * Per lane, the deepest column a plane stands on in it - 0 for an empty lane.
+ *
+ * Deliberately lossy where two planes share a row: only the deeper is reported,
+ * which is right for a drive whose job is to pick the urgent lane to shoot at or
+ * step out of. Nothing in this file asserts on the return value.
+ */
+function deepestByLane(ram: ArrayLike<number>): number[] {
+  const planes = planesOf(ram, SQUADRON);
+  return [0, 1, 2].map((lane) =>
+    planes.reduce(
+      (deepest, plane) => (plane.row === lane ? Math.max(deepest, plane.column) : deepest),
+      0,
+    ),
+  );
+}
 
 /** Seconds of emulated time, as the cycle count the probe takes. */
 const seconds = (value: number): number => Math.round(value * CYCLE_HZ);
@@ -98,13 +123,14 @@ function defending(skill = 1): (machine: Tms1370Machine) => Contacts | undefined
     const ram = machine.ram;
     const rocketColumn = ram[FILE_STATE * 16 + NIB_RCOL] as number;
     const rocketLane = ram[FILE_STATE * 16 + NIB_RLANE] as number;
+    const byLane = deepestByLane(ram);
     let best = -1;
     let lane = 0;
     for (let candidate = 0; candidate < 3; candidate += 1) {
       // A rocket takes the launcher only where it arrives, so standing out of
       // its lane is the whole defence - `rm_arrived` compares the two lanes.
       if (rocketColumn !== 0 && candidate === rocketLane) continue;
-      const grid = ram[FILE_JETS * 16 + candidate] as number;
+      const grid = byLane[candidate] as number;
       if (grid > best) {
         best = grid;
         lane = candidate;
@@ -326,10 +352,11 @@ function parkedGame(
     // Dodging keeps the game alive without ever pressing fire, which is what
     // the rotor needs to be sampled past its second rung - see the union below.
     if (dodge) {
+      const byLane = deepestByLane(ram);
       let worst = -1;
       let nearest = lane;
       for (const candidate of [0, 1, 2]) {
-        const grid = ram[FILE_JETS * 16 + candidate] as number;
+        const grid = byLane[candidate] as number;
         if (grid > worst) {
           worst = grid;
           nearest = candidate;
@@ -344,7 +371,7 @@ function parkedGame(
     if (column !== 0 && !flying) {
       launches.push({
         lane: ram[FILE_STATE * 16 + NIB_RLANE] as number,
-        occupied: [0, 1, 2].filter((lane) => (ram[FILE_JETS * 16 + lane] as number) !== 0),
+        occupied: [...new Set(planesOf(ram, SQUADRON).map((plane) => plane.row))].sort(),
       });
     }
     flying = column !== 0;

@@ -998,18 +998,25 @@ describe('an ending during a battleship crossing stops the buzz', () => {
   //
   // The drive was skill 3 in lane 0, parked, which ended at 30.8 s inside a
   // crossing. **Removing the lane guard from `jm_capture` shortened every game
-  // and moved that ending out of one.** Re-searched all eighteen combinations of
-  // three skills, three lanes, and parked against tapping: **exactly one lands
-  // inside a crossing** - skill 2, lane 0, tapping, ending at 32.5 s with
-  // `NIB_BSLANE` naming lane 0.
+  // and moved that ending out of one**, and the search was redone then: skill 2,
+  // lane 0, tapping, ending at 32.5 s.
   //
-  // One in eighteen is worth stating plainly rather than presenting as a choice.
+  // **The squadron becoming two positioned planes moved it a second time**, and
+  // in the direction the first move predicts - a game with two attackers instead
+  // of three lasts differently, so an end time that was never deliberately
+  // placed lands somewhere else. Re-searched over the same eighteen combinations
+  // of three skills, three lanes, and parked against tapping: **two land inside
+  // a crossing**, skill 3 lane 1 tapping ending at 13.1 s and skill 3 lane 2
+  // tapping at 12.9 s, both with `NIB_BSLANE` naming lane 1. The first is what
+  // this drive is.
+  //
+  // Two in eighteen is worth stating plainly rather than presenting as a choice.
   // The boat is present for roughly four seconds of every twenty, so a game whose
   // end time is not deliberately placed has about a one-in-five chance of landing
-  // in a crossing, and eighteen samples finding one is consistent with that. The
+  // in a crossing, and eighteen samples finding two is consistent with that. The
   // guard below is what makes this safe: if the ending stops landing in a
   // crossing again, the assertion fails loudly and names the reason instead of
-  // the real test passing over an absent event.
+  // the real test passing over an absent event. It has now done that twice.
   // Driven on first use, not at collection time - see `gameFor` above for why a
   // drive in a `describe` body escapes every timeout in the file.
   let driven: { endedAt: number; bshipLaneAtEnd: number; lastEdgeAt: number } | undefined;
@@ -1018,7 +1025,7 @@ describe('an ending during a battleship crossing stops the buzz', () => {
       return driven;
     }
     const machine = new Tms1370Machine();
-    machine.setContacts({ skill: 2, lane: 0 });
+    machine.setContacts({ skill: 3, lane: 1 });
     const edges: SpeakerEdge[] = [];
     let endedAt = 0;
     let bshipLaneAtEnd = 0;
