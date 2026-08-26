@@ -1266,7 +1266,15 @@ tenths of a second before the episode starts, and for the whole 17.00-23.20 s st
 
 **What is unresolved**: what game event fires it. Nothing in the ROM emits a 410 ms tone,
 and no rule in the PRD predicts one. The episode times in `gameplay-audio.m4a` are
-12.60, 28.80 and 116.10 s; in the video, 1.10, 14.10 and 17.70 s.
+12.60, 28.80 and 116.10 s; in the skill-3 clip, 1.10, 14.10 and 17.70 s; and in
+`IMG_6113` t=120, at +0.60 and +6.30 s, where the runs are longer still at **699 and
+649 ms**.
+
+Those last two widen the range from 405-417 ms to **405-699 ms** and are worth their own
+line, because they arrive from the window §16 uses as its *no-blanking* control. A sound
+this long that darkens nothing is the single most useful fact recorded about it so far:
+it is what separates this tone from §16's population, and it is a constraint on any
+future guess at the trigger.
 
 **What would settle it**: a video where the tube stays legible - the owner's unit filmed
 in a darker room, or anything that stops the readout going dark for seconds at a time -
@@ -1451,6 +1459,55 @@ a once-a-second blip as "a marching sound", and a band can be occupied by someth
 is not the march. **What would settle it** is the question already queued for the owner
 in §15 - whether shooting a jet sounds different from firing at one - plus a third:
 whether he hears anything at all in step with the jets advancing.
+
+### The blanking sound is not §15's tone, and the two were nearly conflated
+
+This section and §15 both describe something in the 600-650 Hz band, and it would be
+easy to read them as one finding measured twice. They are two sounds.
+`tools/probe/drives/march-tone-identity.ts` §3c puts both through one instrument, which
+is the thing neither analysis had done - §15's came from `gameplay-audio.m4a` and the
+skill-3 clip, this one from `IMG_6113.mov`, by two different tools.
+
+| | §15's tone | this section's runs |
+| --- | --- | --- |
+| unbroken run | 405-699 ms | 126-155 ms |
+| harmonic comb, **same 100 ms window for both** | **17.4 dB** | 6.6 dB |
+| partials 2-6 over their neighbourhood | **15.2-20.5 dB** | 1.8-7.1 dB |
+| fundamental | 626 Hz, spread 9 Hz | 625 Hz, spread 26 Hz |
+
+Room silence scores 4.7 dB on that comb. So §15's tone is strongly harmonic and these
+runs are barely tonal by this measure, which is a different statistic from the 0.57-0.80
+tonality quoted above and disagrees with it; both are recorded rather than one being
+preferred.
+
+**The discriminator is this section's own t=120 control.** It blanks 0.0% and contains
+two of the longest tones measured in any recording - 699 and 649 ms - and not one short
+event. t=210 and t=340 blank 13.2% and 16.7% and contain sixteen short events between
+them and one long tone. **A long tone can be present with no blanking at all.** So the
+sound that darkens the display is this section's short population, and §15's tone is
+something else that happens to share the band.
+
+That matters for the removal. The question "is there a march" now attaches to *these*
+runs - which are at roughly the right rate and the right length - and not to §15's tone,
+whose rarity was most of the argument against it. **`jm_beep` stays in the ROM** until
+that is settled.
+
+### A note on how these two findings nearly became one
+
+Worth recording because the mechanism is general. §15's drive gated an episode at "comb
+>= 10 dB **and** unbroken run >= 200 ms", and every run in this section fails the second
+condition by construction. It reported five episodes and concluded from that count that
+the band held nothing on a step cadence. The gate had decided the answer.
+
+The fix is not a better threshold, it is **printing the sweep instead of a cell**: that
+drive's §3b now reports the count at every combination of both gates. Read as a grid, the
+count is flat across every continuity value in `gameplay-audio.m4a` and the skill-3 clip
+- so nothing was hidden *there* - and in t=210 it falls 9, 9, 1, 0 as the floor moves 50,
+100, 150, 200 ms. The cliff is where this section's population was being erased.
+
+This is the same shape as §11a, and as the `speaker-bands.test.ts` non-monotonicity found
+the same evening: **a constant nobody thought of as an input decides the result.** The
+countermeasure that works is to sweep it and publish the curve.
 
 ## 17. What repeats at 208 ms in both audio recordings of the unit
 
