@@ -8,18 +8,36 @@ recorded here because it arrived faster than it could be implemented, and
 because it describes a data model rather than a symptom - which makes it the
 most reusable thing he has said about this machine.
 
-Nothing here is implemented yet. This file is the specification, not a record of
-behaviour.
+**The missile rank is now built; the jet model is not.** This file began as a
+specification and is becoming a record as each half lands. The table below says
+which is which, and the status column is the only part that should ever move -
+the owner's account is testimony and does not change because the code caught up.
 
 ## What can be on the glass at once
 
 | Entity | This ROM today | The owner's account |
 | --- | --- | --- |
-| Player missile | **1** | **up to 3 in flight, one per row** |
-| Planes | 3, one per row by construction | **2, anywhere** |
+| Player missile | **up to 3 in flight, one per row** - BUILT | **up to 3 in flight, one per row** |
+| Planes | 3, one per row by construction - NOT YET | **2, anywhere** |
 | Battleship | 1 | 1 |
 | Jets' rocket | 1 | at least 1 - "the planes might have fired" |
 | Launcher | 1 | 1 |
+
+### What "built" means for the missile rank
+
+`FILE_MISS` holds one column nibble per lane, the nibble index *is* the lane, and
+one shared countdown steps the whole rank (`missile_walk` on `P_HIT`). Firing is
+gated on `FILE_MISS[the lever's lane]` alone, so a shot in another lane is no
+longer a refusal - which is the defect this document opened with.
+
+Measured over the same drive both sides, the refusal rate went from a flat
+**~82% however patiently the player taps** to one that tracks the physical limit:
+39.0% at one press per lane per 1.8 s, and **0% at 3.6 s**, which is what three
+lanes and a 2.5 s flight can absorb. The residual at faster cadences is correct -
+a lane whose shot has not cleared must still refuse.
+
+`tools/probe/missile-rank.test.ts` holds the collision test to every lane on both
+halves of the LEAVE/ARRIVE pair, proved against two ROM mutants.
 
 His summary: *"up to three bullets in flight but only two planes in flight but
 you can have two planes and one boat, and the planes might have fired. So one
