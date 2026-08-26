@@ -1419,17 +1419,24 @@ that 71.8 ms cannot produce a 133-167 ms blank. The resolution is that the real 
 notes in that band are **130-210 ms**, roughly twice what the ROM emits. Gated on band
 share, t=210 holds 13 such notes and t=340 holds 16.
 
-**What separates the blanking windows from the quiet one is note *length*, not the
-band being occupied.** An earlier version of this passage said "three recordings
-agree" and leaned on the skill-3 clip's absence of both notes and blanking as a
-third supporting window. That was weaker than stated, and for a sharper reason than
-the one first given: **t=120 has the band occupied and blanks 0.0%**. A window with
-real notes and no blanking is not a third agreeing case, it is the discriminator -
-and what it discriminates on is that its notes are 69-75 ms while the blanking
-windows' are 130-210 ms. The blanking attaches to the long population, full stop.
-The skill-3 clip's row is listed below for completeness and carries no weight in the
-argument: whatever it is a recording of, a clip with no notes and no blanking cannot
-distinguish between the two.
+**What separates the blanking windows from the quiet one is the length of what is in
+the band, not the band being occupied.** An earlier version of this passage said
+"three recordings agree" and leaned on the skill-3 clip's absence of both notes and
+blanking as a third supporting window. That was weaker than stated: **t=120 has the
+band occupied and blanks 0.0%**, so it is not a third agreeing case, it is the
+discriminator. The skill-3 clip's row is kept below for completeness and carries no
+weight in the argument - a clip with neither notes nor blanking cannot distinguish
+between the two, whatever it is a recording of.
+
+> **A note on the words "long" and "short", because this section and the one below
+> nearly used them for opposite things.** "The blanking attaches to the long
+> population" and "the sound that darkens the display is the short population" are
+> both defensible sentences and they mean the same thing, because each is relative to
+> a different comparator: the runs that blank are **long** against t=120's 69-75 ms
+> and **short** against §15's 405-699 ms tone. They are one population -
+> the 126-210 ms events - reported by two instruments that bracket it from opposite
+> sides. Everything below states lengths in milliseconds rather than by label, and
+> anything that reintroduces the labels should say against what.
 
 | Window | sustained 600-660 Hz notes | frames dark |
 | --- | --- | --- |
