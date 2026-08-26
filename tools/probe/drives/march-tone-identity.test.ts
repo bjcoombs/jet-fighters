@@ -169,7 +169,7 @@ describe.skipIf(!ffmpeg && process.env['CI'] === undefined)(
       // (>=4 dB, >=50 ms) falling to 0 by (>=4 dB, >=200 ms).**
       const t210 = result.files.find((f) => f.path.includes('t210'));
       expect(t210, 'the t=210 window is missing').toBeDefined();
-      const grid = sweepGrid((t210 as { episodes: never[] }).episodes);
+      const grid = sweepGrid((t210 as NonNullable<typeof t210>).episodes);
       // Both axes, separately. Asserting only that *some* cell differs passes
       // when one axis has been collapsed and the other still moves - which is
       // the exact failure this test was written for, and the first version of
