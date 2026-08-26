@@ -8,7 +8,7 @@
 // counts cannot separate them - only the per-beep spectrum and the timing can.
 //
 // This drive reads `assets/reference/loss-audio.m4a` and answers the question
-// three ways, each of which can fail:
+// five ways, each of which can fail:
 //
 //   1. Per-beep dominant frequency, one window per beep, never pooled. The
 //      pooled figure in docs/evidence/audio-reference.md (455, 455, 544 Hz)
@@ -21,12 +21,29 @@
 //   3. The loss sound itself, through the identical statistic, as the positive
 //      control. A method that cannot see the collapse where it is known to be
 //      proves nothing about where it is not.
+//   4. Event shape: what fraction of each event sits far below its own peak.
+//   5. The isolation sweep over all 88 s, which is **where n comes from**, plus
+//      the whine level that section 1's band choice is justified by. Both were
+//      quoted in audio-reference.md before anything committed here computed
+//      them; sections 5 and 5b are what make them re-derivable, and the
+//      threshold grid in section 5 is there because a sample size that only
+//      reads 1 at one setting is a property of the setting.
 //
-// **Nothing runs this automatically.** It is not imported by any suite and
-// `npm test` never reaches it. It needs `ffmpeg` on PATH to decode the m4a, and
-// it writes one temporary WAV under the system temp directory.
+// **Nothing runs this automatically.** It is not imported by any suite, no test
+// file references it, and `npm test` never reaches it. Run it by hand:
 //
 //   npx vite-node tools/probe/drives/loss-warning-partials.ts
+//
+// **Prerequisite: `ffmpeg` on PATH.** The reference recording is AAC in an MP4
+// container, and decoding that is not something this repository can do for
+// itself - so a clean checkout cannot run this drive until ffmpeg is installed
+// (`brew install ffmpeg`, `apt-get install ffmpeg`). It is checked for up front
+// and the failure names the fix rather than surfacing as ENOENT from a spawn.
+// This is the same standing as `tools/trace/`, which needs Python with NumPy,
+// SciPy and Pillow: both sit outside the build, neither is reachable from
+// `src/`, and the zero-runtime-dependency rule in CLAUDE.md is about what ships,
+// not about what an instrument may shell out to. The drive writes one temporary
+// WAV under the system temp directory and removes it again.
 //
 // Paths below are relative to the repository root. Every frequency it prints is
 // read off the recording; no figure here is transcribed from anywhere else.
@@ -43,7 +60,30 @@ const PAD = 1 << 16; // 0.73 Hz bins, so the mainlobe rather than the grid limit
 
 // --- the recording -----------------------------------------------------------
 
+/** Fail with the fix rather than with an ENOENT out of a spawn. */
+function requireFfmpeg(): void {
+  try {
+    execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' });
+  } catch {
+    console.error(
+      [
+        'loss-warning-partials: `ffmpeg` was not found on PATH.',
+        '',
+        `This drive decodes ${RECORDING} (AAC in an MP4 container), which it cannot do`,
+        'without an external decoder. Install one and re-run:',
+        '',
+        '  macOS:  brew install ffmpeg',
+        '  Debian: sudo apt-get install ffmpeg',
+        '',
+        'Nothing else in the repository needs it - no build, test or dev command does.',
+      ].join('\n'),
+    );
+    process.exit(1);
+  }
+}
+
 function decode(): Float64Array {
+  requireFfmpeg();
   const dir = mkdtempSync(join(tmpdir(), 'jf-loss-'));
   const wav = join(dir, 'loss.wav');
   const src = resolve(import.meta.dirname, '..', '..', '..', RECORDING);
@@ -113,9 +153,9 @@ function rmsDb(x: Float64Array, t0: number, durS: number): number {
  * Energy in 300-1300 Hz per 1 ms hop, over 8 ms windows.
  *
  * The band matters. Below 300 Hz the recording carries table rumble and handling
- * noise; above 1350 Hz sits a continuous 1400-1700 Hz whine (present in every
- * quiet stretch of the file, ~24 dB over the local median) which is what
- * audio-reference.md means by "whine-notched".
+ * noise; above 1350 Hz sits a continuous 1400-1700 Hz whine, which is what
+ * audio-reference.md means by "whine-notched". Section 5b measures it rather
+ * than asserting it.
  */
 function bandTrack(x: Float64Array, t0: number, t1: number): { t: number; db: number }[] {
   const out: { t: number; db: number }[] = [];
@@ -220,8 +260,8 @@ console.log(
     .map((t, i) => `${((t - onsets[i]) * 1000).toFixed(1)} ms`)
     .join(', ')};  group spans ${((onsets[2] - onsets[0]) * 1000).toFixed(1)} ms`,
 );
-console.log('  n = 1 warning event. This is the only beep group in the 88 s recording');
-console.log('  that separates cleanly from the gameplay around it.\n');
+console.log('  Whether this is the only such group in the recording is not asserted');
+console.log('  here - section 5 sweeps all 88 s and counts them.\n');
 
 // --- 2 and 3. the band statistic, warning against loss ------------------------
 
@@ -323,6 +363,277 @@ const span = onsets[2] + 0.015 - onsets[0];
 shape(onsets[0], span, 'warning, whole three-beep group');
 shape(lossOnset, span, 'loss, same length from its onset');
 
-console.log('\nRead the four together. The prefix model requires beep 2 to be the');
+// --- 5. the isolation sweep, and the whine ----------------------------------
+
+// Where n comes from. An earlier port of this sweep read band energy off 8 ms
+// FFT frames and found nothing at 27.4 s: an 8 ms window smears a 10 ms burst
+// past a 4-16 ms run gate. So the envelope here is time-domain - a zero-phase
+// band-pass, rectified and smoothed - and never leaves the sample grid.
+
+interface Biquad {
+  b0: number;
+  b1: number;
+  b2: number;
+  a1: number;
+  a2: number;
+}
+
+/** RBJ cookbook, normalised by a0. */
+function lowpassBq(fc: number, q = Math.SQRT1_2): Biquad {
+  const w = (2 * Math.PI * fc) / SR;
+  const cos = Math.cos(w);
+  const alpha = Math.sin(w) / (2 * q);
+  const a0 = 1 + alpha;
+  return {
+    b0: ((1 - cos) / 2) / a0,
+    b1: (1 - cos) / a0,
+    b2: ((1 - cos) / 2) / a0,
+    a1: (-2 * cos) / a0,
+    a2: (1 - alpha) / a0,
+  };
+}
+
+function highpassBq(fc: number, q = Math.SQRT1_2): Biquad {
+  const w = (2 * Math.PI * fc) / SR;
+  const cos = Math.cos(w);
+  const alpha = Math.sin(w) / (2 * q);
+  const a0 = 1 + alpha;
+  return {
+    b0: ((1 + cos) / 2) / a0,
+    b1: (-(1 + cos)) / a0,
+    b2: ((1 + cos) / 2) / a0,
+    a1: (-2 * cos) / a0,
+    a2: (1 - alpha) / a0,
+  };
+}
+
+function runBq(input: Float64Array, bq: Biquad, reverse: boolean): Float64Array {
+  const out = new Float64Array(input.length);
+  let x1 = 0;
+  let x2 = 0;
+  let y1 = 0;
+  let y2 = 0;
+  for (let n = 0; n < input.length; n += 1) {
+    const i = reverse ? input.length - 1 - n : n;
+    const x0 = input[i];
+    const y0 = bq.b0 * x0 + bq.b1 * x1 + bq.b2 * x2 - bq.a1 * y1 - bq.a2 * y2;
+    x2 = x1;
+    x1 = x0;
+    y2 = y1;
+    y1 = y0;
+    out[i] = y0;
+  }
+  return out;
+}
+
+/** Forward then backward: zero phase, so a burst keeps its position and length. */
+function filtfilt(input: Float64Array, stages: Biquad[]): Float64Array {
+  let y = input;
+  for (const bq of stages) y = runBq(runBq(y, bq, false), bq, true);
+  return y;
+}
+
+/**
+ * Peak envelope of 300-1300 Hz, in dB, one frame per millisecond.
+ *
+ * Same band as `bandTrack`: above the table rumble, below the 1400-1700 Hz
+ * whine. Rectified and smoothed at 120 Hz, which settles inside ~3 ms and so
+ * still resolves a 10 ms burst; the per-frame maximum is taken rather than the
+ * mean, for the same reason.
+ */
+function envelopeMs(input: Float64Array): Float64Array {
+  const band = filtfilt(input, [highpassBq(300), lowpassBq(1300)]);
+  for (let i = 0; i < band.length; i += 1) band[i] = Math.abs(band[i]);
+  const smoothed = filtfilt(band, [lowpassBq(120)]);
+  const hop = SR / 1000;
+  const frames = Math.floor(smoothed.length / hop);
+  const out = new Float64Array(frames);
+  for (let f = 0; f < frames; f += 1) {
+    let peak = 0;
+    for (let i = f * hop; i < (f + 1) * hop; i += 1) peak = Math.max(peak, smoothed[i]);
+    out[f] = 20 * Math.log10(peak + 1e-12);
+  }
+  return out;
+}
+
+const BURST_MIN_MS = 4;
+const BURST_MAX_MS = 16;
+const OVER_MEDIAN_DB = 15; // a frame is "loud" this far over its local median
+// A burst is isolated if nothing else reaches that same threshold within
+// FLANK_MS either side. Not "silence": a 10 ms piezo click rings for another
+// 10-15 ms, so a rule demanding the flanks return to the floor rejects all
+// three beeps of a group that is audibly three separate beeps. What isolation
+// has to mean here is that no *other* event is inside the flank.
+const FLANK_MS = 12;
+const GROUP_MIN_MS = 25;
+const GROUP_MAX_MS = 50;
+
+const env = envelopeMs(x);
+
+// The floor a burst is measured against is the median of the half second
+// around it, resampled every 50 ms.
+//
+// A whole-file or per-2 s median does not work here, and the way it fails is
+// worth recording: this recording's floor moves by more than 10 dB between
+// quiet stretches and dense play, so a 2 s median puts the beeps' own ringing
+// 18 dB above the threshold. Every run then measures ~34 ms and is thrown out
+// by the 4-16 ms gate - the sweep reports zero bursts at 27.4 s while the
+// envelope plainly shows three.
+const FLOOR_WIN_MS = 500;
+const FLOOR_STEP_MS = 50;
+const floors = new Float64Array(Math.ceil(env.length / FLOOR_STEP_MS));
+for (let b = 0; b < floors.length; b += 1) {
+  const mid = b * FLOOR_STEP_MS;
+  const lo = Math.max(0, mid - FLOOR_WIN_MS / 2);
+  const hi = Math.min(env.length, mid + FLOOR_WIN_MS / 2);
+  const block = Array.from(env.subarray(lo, hi)).sort((p, q) => p - q);
+  floors[b] = block[block.length >> 1];
+}
+const medianAt = (frame: number) => floors[Math.min(floors.length - 1, Math.round(frame / FLOOR_STEP_MS))];
+
+interface Burst {
+  startMs: number;
+  lenMs: number;
+  peakDb: number;
+  isolated: boolean;
+}
+
+function findBursts(overDb: number): Burst[] {
+  const found: Burst[] = [];
+  let runStart = -1;
+  for (let f = 0; f <= env.length; f += 1) {
+    const loud = f < env.length && env[f] > medianAt(f) + overDb;
+    if (loud && runStart < 0) runStart = f;
+    if (!loud && runStart >= 0) {
+      const len = f - runStart;
+      if (len >= BURST_MIN_MS && len <= BURST_MAX_MS) {
+        let peak = -Infinity;
+        for (let k = runStart; k < f; k += 1) peak = Math.max(peak, env[k]);
+        let isolated = runStart >= FLANK_MS && f + FLANK_MS <= env.length;
+        for (let k = runStart - FLANK_MS; isolated && k < runStart; k += 1) {
+          if (env[k] > medianAt(k) + overDb) isolated = false;
+        }
+        for (let k = f; isolated && k < f + FLANK_MS; k += 1) {
+          if (env[k] > medianAt(k) + overDb) isolated = false;
+        }
+        found.push({ startMs: runStart, lenMs: len, peakDb: peak, isolated });
+      }
+      runStart = -1;
+    }
+  }
+  return found;
+}
+
+/** Isolated bursts spaced GROUP_MIN_MS-GROUP_MAX_MS apart, in runs of 2 or more. */
+function groupBursts(found: Burst[]): Burst[][] {
+  const groups: Burst[][] = [];
+  for (const b of found.filter((q) => q.isolated)) {
+    const last = groups.at(-1);
+    const prev = last?.at(-1);
+    const gap = prev ? b.startMs - prev.startMs : Infinity;
+    if (last && gap >= GROUP_MIN_MS && gap <= GROUP_MAX_MS) last.push(b);
+    else groups.push([b]);
+  }
+  return groups.filter((g) => g.length >= 2);
+}
+
+const bursts = findBursts(OVER_MEDIAN_DB);
+const isolated = bursts.filter((b) => b.isolated);
+const multi = groupBursts(bursts);
+
+console.log('\n--- 5. Isolation sweep over the whole recording ----------------------');
+console.log(`Zero-phase 300-1300 Hz envelope, 1 ms frames. A burst is a run of`);
+console.log(
+  `${BURST_MIN_MS}-${BURST_MAX_MS} ms more than ${OVER_MEDIAN_DB} dB over the median of the ${FLOOR_WIN_MS} ms around it; isolated if the`,
+);
+console.log(`${FLANK_MS} ms either side holds no other event over it. Bursts ${GROUP_MIN_MS}-${GROUP_MAX_MS} ms apart`);
+console.log('are one group. This is the whole basis of the "n =" figure.\n');
+// gameOver.timestampRangeSec, from the table in audio-reference.md: a group
+// found inside it is part of the loss sound, not a warning.
+const LOSS_SPAN = [85.86, 86.99] as const;
+const inPlay = (g: Burst[]) => g[0].startMs / 1000 < LOSS_SPAN[0];
+
+console.log(`  bursts in range: ${bursts.length};  isolated: ${isolated.length};  groups of 2+: ${multi.length}`);
+for (const g of multi) {
+  const at = g[0].startMs / 1000;
+  const gaps = g
+    .slice(1)
+    .map((b, i) => `${b.startMs - g[i].startMs}`)
+    .join(', ');
+  const where = at < LOSS_SPAN[0] ? 'in play' : at <= LOSS_SPAN[1] ? 'inside the loss sound' : 'after the loss sound';
+  console.log(
+    `    ${at.toFixed(3)} s  ${String(g.length).padStart(2)} bursts` +
+      `   gaps ${gaps} ms   peak ${Math.max(...g.map((b) => b.peakDb)).toFixed(1)} dB   ${where}`,
+  );
+}
+console.log(`\n  n = ${multi.filter(inPlay).length} beep group(s) in play, before the loss sound at ${LOSS_SPAN[0]} s.`);
+
+// n is the figure everything else in this section is a sample of, so it is
+// worth knowing whether it survives the threshold being moved. If n only reads
+// 1 at one setting, it is a property of the setting.
+console.log('\n  n against the detection threshold:');
+for (const overDb of [11, 13, 15, 17, 19]) {
+  const g = groupBursts(findBursts(overDb));
+  const play = g.filter(inPlay);
+  console.log(
+    `    +${String(overDb).padStart(2)} dB: ${play.length} group(s) in play` +
+      `${play.length ? ` at ${play.map((q) => `${(q[0].startMs / 1000).toFixed(3)} s (${q.length} bursts)`).join(', ')}` : ''}` +
+      `;  ${g.length - play.length} at or after the loss sound`,
+  );
+}
+console.log('');
+
+// Which of section 1's three beeps the sweep is willing to call isolated - the
+// reason one of them is quoted with a caveat there.
+console.log('  Section 1\'s beeps against this sweep:');
+for (const [i, r] of beepRows.entries()) {
+  const near = bursts.filter((b) => Math.abs(b.startMs / 1000 - (r.t + LEAD)) < 0.02);
+  const seen = near.map((b) => `${(b.startMs / 1000).toFixed(3)} s ${b.lenMs} ms ${b.isolated ? 'isolated' : 'NOT isolated'}`);
+  console.log(`    beep ${i + 1} (${r.t.toFixed(4)} s): ${seen.length ? seen.join('; ') : 'no burst in range'}`);
+}
+const between = bursts.filter((b) => b.startMs / 1000 > 27.43 && b.startMs / 1000 < 27.46);
+console.log(
+  `    bursts between beep 2 and beep 3: ${
+    between.length ? between.map((b) => `${(b.startMs / 1000).toFixed(3)} s (${b.lenMs} ms)`).join(', ') : 'none'
+  }`,
+);
+
+// --- the whine, which is why section 1 reads 150-1350 Hz ---------------------
+
+console.log('\n--- 5b. The 1400-1700 Hz whine --------------------------------------');
+console.log('Peak bin in 1400-1700 Hz over the median bin level of 1000-2200 Hz outside');
+console.log('it, in the quietest 200 ms windows of the file. This is what justifies the');
+console.log('band limit in section 1 and the word "whine-notched" in the summary table.\n');
+
+// The quietest windows, found rather than assumed: lowest broadband envelope.
+const QUIET_MS = 200;
+const quietStarts: number[] = [];
+{
+  const scored: { at: number; db: number }[] = [];
+  for (let f = 0; f + QUIET_MS < env.length; f += QUIET_MS) {
+    let sum = 0;
+    for (let k = f; k < f + QUIET_MS; k += 1) sum += env[k];
+    scored.push({ at: f, db: sum / QUIET_MS });
+  }
+  scored.sort((a, b) => a.db - b.db);
+  quietStarts.push(...scored.slice(0, 5).map((s) => s.at / 1000));
+}
+for (const t of quietStarts) {
+  const mags = spectrumAt(x, t, QUIET_MS / 1000);
+  let peakBin = bin(1400);
+  for (let k = bin(1400); k < bin(1700); k += 1) if (mags[k] > mags[peakBin]) peakBin = k;
+  const around: number[] = [];
+  for (let k = bin(1000); k < bin(2200); k += 1) {
+    if (k < bin(1350) || k >= bin(1750)) around.push(mags[k]);
+  }
+  around.sort((a, b) => a - b);
+  const med = around[around.length >> 1];
+  console.log(
+    `  ${t.toFixed(3)} s: peak ${(peakBin * binHz).toFixed(0).padStart(4)} Hz, ` +
+      `${(20 * Math.log10(mags[peakBin] / med)).toFixed(1).padStart(5)} dB over the local median`,
+  );
+}
+
+console.log('\nRead the five together. The prefix model requires beep 2 to be the');
 console.log('collapse; the collapse is what the loss sound shows at +30 dB or better on');
 console.log('this statistic, and what beep 2 shows the opposite sign of.');
