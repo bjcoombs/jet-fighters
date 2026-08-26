@@ -105,9 +105,9 @@ def coincidence(clicks: np.ndarray, events: np.ndarray, window: float) -> float:
 def chance(clicks, events, window, span, trials=2000, seed=3):
     """The same fraction with the events slid to a random phase.
 
-    **Without this the coincidence rate means nothing.** 75 onsets over 23 s put
-    a click every 310 ms, so a +/-100 ms window covers two thirds of the
-    timeline and a rate of 60% is what *any* event list would score.
+    **Without this the coincidence rate means nothing.** 120 onsets over 23.2 s
+    put one every 194 ms, so a +/-100 ms window covers most of the timeline and
+    a high rate is what *any* event list would score.
     """
     rng = np.random.default_rng(seed)
     scores = [coincidence(clicks, np.sort((events + rng.uniform(0, span)) % span), window)

@@ -513,6 +513,222 @@ So the real machine's squadron does not step on a metronome, and a table of peri
 cannot say so. Recorded as a known divergence and deliberately not encoded; what
 would settle it is footage in which jets can be tracked individually and counted.
 
+## The skill-3 clip: the first cadence measured at a stated skill
+
+A second owner recording exists - `~/Downloads/jetfighers video.mov`, 697 frames at
+30 fps, 23.24 s, 1620x1080, not committed. The owner sent it with a complaint and a
+setting: *"i still feel the game needs to be faster to align with the video, notice
+it's on speed 3."*
+
+`tools/video/clip.py` registers it against the printed silkscreen and
+`tools/video/measure.py` prints every figure below. The whole run is two commands
+and about three minutes.
+
+### What the clip is, and the one thing it is not
+
+The skill dial is **not in frame**. Both the left-hand slider and the right-hand
+switch are under the owner's thumbs in every one of the 697 frames. The `3` that is
+legible on the tube is the **score** - it reads `SCORE 3` at t=6.7 s and `SCORE 20`
+at t=20.0 s - so anyone reading skill off the picture is reading the score. Skill 3
+here is the owner's testimony and nothing else, exactly as `IMG_6113.mov`'s skill is
+unknown.
+
+What it does supply that `IMG_6113.mov` does not is a **stated** skill and a
+legible score throughout. Read from magnified crops: 0 at t=1-3, 1 at t=4, 3 at
+t=6-8, 6 at t=10, **17 at t=11.7 and 18 at t=11.9**, 20 from t=15 to the end. The
+game runs 0 to 20 in sixteen seconds, so every figure below is taken **early in a
+game**, with one or two aircraft airborne rather than a full squadron. The 17-to-18
+transition is read frame by frame rather than sampled, which is what makes the jump
+from 6 a fast climb rather than Trap 3 - an `8` partially detected reads as `3`, and
+here both digits are seen.
+
+### Registration, and how it is known to have worked
+
+The unit is handheld. The frames are registered on the **print** - the cell boxes,
+the ruler and the zone labels silkscreened on the glass - never on the sprites,
+which is `tools/trace/lattice.py`'s rule applied to video. Lit pixels are replaced
+by the local neutral level before correlating, so a jet that stepped between two
+frames contributes nothing to the alignment between them.
+
+Measured drift: 74 px in x, 43 px in y across the clip. Three frames sit at the
+search bound, all after t=22.4 s where the owner lowers the unit and the tube is
+already dark; nothing is measured there.
+
+**The check that the registration worked is the mean stack's edge energy**, and it
+is worth saying why that one rather than a printed feature's spread. A feature has
+to be chosen, and choosing it after the fact is how a registration gets graded on
+the thing it happened to do well. The mean of 697 correctly registered frames is
+sharp and the mean of misregistered ones is blurred, over the whole picture, with
+nothing picked: **1.585 unregistered against 3.348 registered**.
+
+> **The two failures that check caught**, both of which had produced numbers.
+> First, *phase* correlation - which whitens the spectrum, and on a mostly-dark
+> tube face amplifies sensor noise until the alignment is worse than doing
+> nothing. It moved a printed rule's spread from 2.3 px to 6.3 px. Second, a sign
+> error in applying the shift, which doubled the drift instead of removing it.
+> Both produced a full set of plausible per-frame offsets and neither announced
+> itself. The stack is what showed them.
+
+### The lattice
+
+Fitted per clip from the sprites' own centres, robustly, and **never written down**:
+the registered window's origin depends on which frame the registration anchored to,
+so a pitch and an origin carried from another run are coordinates for a different
+picture. An earlier pass hard-coded them and every lane label came out one lane
+wrong when the reference frame moved.
+
+Fitted: **pitch 39.08 px, three lanes 21.25 px apart, largest residual 2.20 px over
+15 sprite centres.** That is a fourteenth of a cell. The fit is over-determined and
+allowed to fail, which is what stops it being a lattice the sprites invented for
+themselves.
+
+Two centres are excluded by the robust fit rather than by hand, and they are the
+two `IMG_6113.mov` warns about: the battleship, which is wider than a cell and sits
+half a column out, and a burst spanning two cells.
+
+### The squadron's step, at skill 3
+
+A step is a track advancing exactly one column, the step frame being the first
+frame the sprite is measured at the new column. Ten such handoffs are found. Three
+of them are the **second** step of the same aircraft, which is what makes them
+intervals rather than fragments:
+
+| video t | lane | columns | interval |
+| --- | --- | --- | --- |
+| 3.73 -> 4.00 s | 2 | 1 -> 2 -> 3 | **267 ms** |
+| 15.07 -> 15.37 s | 1 | 2 -> 3 -> 4 | **300 ms** |
+| 16.40 -> 16.87 s | 0 | 2 -> 3 -> 4 | **467 ms** |
+
+**Median 300 ms, mean 345 ms, range 267-467 ms, n = 3**, each reading carrying the
++/- 33 ms a 30 fps camera quantises to. Identical at colour-excess thresholds 25, 30
+and 40: the handoff count is 12, 10 and 10 at those thresholds and the three
+intervals do not move at all.
+
+**n = 3 is thin and is not padded.** Four further handoffs are single steps - the
+aircraft was shot before it stepped twice - and a single handoff times the gap from
+when the track was *first seen* to when it stepped, which is a fraction of a period
+and not a period. They are reported as handoffs and excluded from the interval
+statistics.
+
+The 267 ms reading is at score 0-1. It is the fastest of the three, at the point in
+the game where the ladder should be at its **slowest** for that dial setting.
+
+### The player's missile, at skill 3
+
+**133 ms a column, median over 51 column steps in 20 flights** (mean 162 ms; the
+mode is 4 frames, 26 of the 51). Unchanged at thresholds 35, 45 and 55.
+
+This is the figure that makes the clip worth trusting, because it was reached twice
+by two pipelines that share no code: `tools/probe/drives/missile-transit.ts` reduces
+a cropped re-encode of the same clip to per-cell cyan brightness and links lit runs
+into traverses, with a shuffled negative control, and gets **133 ms over 21 shots**.
+Same answer, different route, same recording.
+
+**It disagrees with `IMG_6113.mov` by 3.8x.** That clip's missile is the most solid
+number in this document - 500 ms a column over 744 adjacent steps. Both cannot
+describe the same machine at the same setting, so the missile's speed is either a
+function of the skill dial or of something else that differed between the two takes.
+`docs/evidence/open-questions.md` carries it; T7's "skill-independent if the missile
+speed is fixed" was always a conditional and this is the evidence against the
+condition.
+
+### What it says about the ladder
+
+The ROM's own pace is re-derived rather than quoted, by
+`tools/probe/drives/march-wall-clock.ts`, which times every march step against the
+cycle counter at each skill. At skill 3:
+
+| kills | STEP_HI | sweeps | nominal | measured |
+| --- | --- | --- | --- | --- |
+| 0 | 4 | 80 | 1219 ms | **1364 ms** |
+| 1 | 3 | 64 | 975 ms | 1340 ms |
+| 2 | 2 | 48 | 732 ms | 845 ms |
+| 3 | 1 | 32 | 488 ms | 689 ms |
+| 4 | **0** | **16** | 244 ms | **325 ms** - below the documented floor |
+
+Against a video whose slowest reading is 467 ms and whose median is 300:
+
+1. **The top of the skill-3 ladder is 2.9x to 5.1x too slow.** 1364 ms measured
+   against 467 ms and 267 ms. This needs no assumption about which rung the video
+   was on, because 1364 ms is the *slowest* the dial can produce at skill 3 and the
+   video never shows anything within 2.9x of it.
+2. **The descent is spent in the wrong place.** The video's 267 ms is at score 0-1
+   and its 467 ms at score 20, so if anything the unit was *faster* early. The ROM
+   is at its slowest there and needs four kills to reach the video's range.
+3. **The owner is right, and the size of it is about 4x.** Two independent
+   quantities give the same factor: the squadron steps 4.5x too slowly (1364
+   against 300) and the missile flies 3.8x too slowly (500 against 133). Two
+   unrelated measurements agreeing on one ratio is a stronger claim than either.
+
+The recommendation, which this task does not implement: **`STEP_SKILL` is the
+constant that is wrong, not `STEP_HI_MAX`.** `STEP_HI_MAX` is anchored on
+`IMG_6113.mov`'s 2033/2050 ms slow march and the owner accepted the top end; what
+the dial is worth per notch is what fails here. At `STEP_SKILL` 2 the dial buys 4
+rungs across its whole travel, and skill 3 lands at 1364 ms against a measured 300.
+Any change to it must be **measured rather than extrapolated**, for the reason
+`asm/jetfighter.asm`'s own cadence header gives: a faster march sounds its beep more
+often, each beep suspends the sweep, and the ladder partly resists being sped up -
+rungs 8 and 7 are 244 ms apart nominally and 83 ms apart measured.
+
+### The audio, and the 205 ms question
+
+The clip's audio was read first, before any of the above, and it produced a wrong
+answer that is worth recording because the correction came from the owner rather
+than from the method.
+
+**What is in it.** Forty to 120 short transients depending on the threshold, and an
+envelope autocorrelation with an unambiguous peak at **lag 208-213 ms, r = 0.35**.
+The ~205 ms repetition in this clip is real and metronomic; it is not an artefact of
+a refractory window.
+
+**The inference drawn from it was that the squadron steps at 205 ms and the ROM is
+2.4x too slow. The owner then said: "the sound might also be me hitting buttons, not
+from the device electronics."** The inference is withdrawn. What replaces it is
+narrower and rests on the picture.
+
+**The machine is audible in this recording, and the proof is a pitch.** Sixteen
+onsets carry a tone at **2577 Hz, sd 7.6 Hz**, with 47-88% of the band's energy
+inside +/-10% of the peak. Fourteen of the sixteen fall within 100 ms of a visible
+missile launch, and the offsets are consistently *negative*: the tone **leads the
+launch by a median 50 ms**, which is the order a fire press, a piezo and a sprite
+reaching the glass happen in. A thumb on a case does not produce a pure tone stable
+to 8 Hz across sixteen events and sixteen seconds. That settles that the phone
+captures device audio.
+
+**The 205 ms train is not that sound, and is not identified.** It is *broadband*:
+the same onset times come out of band envelopes at 380-470, 590-740, 1620-1760,
+2500-2660 and 2780-2960 Hz, which is the signature of a transient rather than of a
+note. The machine's fire blip, by contrast, is narrow-band. And it keeps time with
+nothing visible - each rate below is against a null built by sliding the same event
+list to a random phase, because **without that null the rates mean nothing**: 120
+onsets over 23.2 s put one every 194 ms, so a +/-100 ms window covers most of the
+timeline and any event list at all would score well.
+
+| the train against | +/-50 ms | chance (p95) | +/-100 ms | chance (p95) |
+| --- | --- | --- | --- | --- |
+| missile launches (n=20) | 14% | 9% (14%) | 35% | 17% (25%) |
+| missile column steps (n=71) | 34% | 25% (37%) | 52% | 39% (55%) |
+| jet column steps (n=10) | 5% | 4% (7%) | 13% | 9% (12%) |
+
+Only the launch row clears its 95th percentile, and it clears it because the fire
+tone is inside the train - the 14 launches already accounted for above. **Nothing
+in this clip identifies what repeats at 208 ms**, and `open-questions.md` carries
+it with what would settle it.
+
+**Consequence for the 205 ms figure in `gameplay-audio.m4a`.** They are different
+recordings and this clip cannot speak for that one. That figure - 205.1 ms, n = 21,
+sd 22.1 - was **already withdrawn** as a squadron-step measurement earlier in this
+document, on video evidence, before the owner's correction. Nothing here reinstates
+it and nothing here shows it to be tapping either. What this clip adds is that a
+~205 ms broadband repetition is present in a *second*, independent recording of the
+same unit, unexplained in both.
+
+Three places still cite it as a live justification and should be read against this
+section: `asm/jetfighter.asm` (the `FILE_JETS` header, the cadence-block header, and
+the `jet_march` comment), `docs/contract/v3-entities.contract.md` (E3's action and
+observation), and `docs/design/jet-model.md`. The **cadence value** those texts
+defend may still be right; the **argument** they defend it with is a withdrawn row.
+
 ## Evidence gap
 
 **Still blocked on: the owner-supplied per-skill gameplay video, 15-20 s per skill
@@ -531,10 +747,13 @@ than anything else on this list.
 Consequently the following **cannot be stated** and must not be written into the ROM
 as if measured:
 
-- Jet step cadence **at a known skill level** (T1). The audio row bounds how fast the
-  squadron was ever seen to step and the video row gives one aircraft's step at one
-  unknown skill; neither gives a per-skill cadence, and `PAT_STEP` entries 0-14 are still
-  v1 approximations.
+- **Partly closed: jet step cadence at a stated skill (T1).** The owner's skill-3
+  clip gives three same-aircraft intervals - 267, 300 and 467 ms - at a skill he
+  states and a score that is legible, which is the first cadence reading with either.
+  It is **stated** rather than observed: the dial is under his thumb in all 697
+  frames, so this is testimony resting on one recording with n = 3, not a per-skill
+  ladder. Skills 1 and 2 remain unmeasured. See
+  [The skill-3 clip](#the-skill-3-clip-the-first-cadence-measured-at-a-stated-skill).
 - The thin-out speed-up curve, including whether it is linear (T2). Detection in
   this footage is not clean enough to count jets per wave, so the thin-out term and
   the per-wave term cannot be separated. `WAVE_LAST` bounds their *combined* reach
@@ -627,6 +846,20 @@ compared against the video in wall clock: at 740 ms nominal the old entry 0 look
 2.8x short of the observed 2040 ms march, when in wall clock it was 1.9x.
 
 ## Wall-clock pace of the current ROM, measured
+
+> **The table below is stale and is kept as the record of what it replaced.** It
+> was taken at a 13.46 ms sweep against a `PAT_STEP` that no longer exists; the
+> ladder is now `STEP_HI_MAX` / `STEP_HI_MIN` / `STEP_SKILL` and the sweep constant
+> has moved twice since. **Nothing re-derived it and nothing went red**, which is
+> the failure `tools/probe/drives/README.md` describes and the reason
+> `tools/probe/drives/march-wall-clock.ts` now exists: run it for the current
+> figures rather than reading them here.
+>
+> Current, from that drive: skill 1 fresh **2249 ms**, skill 2 fresh **1769 ms**,
+> skill 3 fresh **1289 ms** idle; the ladder's documented floor is 32 sweeps /
+> 488 ms and the fastest rung a played game actually reaches is **16 sweeps,
+> 325 ms**, which is below it. See
+> [The skill-3 clip](#the-skill-3-clip-the-first-cadence-measured-at-a-stated-skill).
 
 Taken off the tube (`Board.getLitSegments()` per completed frame, tracking the jet
 and rocket dots by grid and plate), power-on to game over, no player input. Nominal

@@ -1199,3 +1199,104 @@ decision is made in any case.
 `missile-rank.test.ts` excludes spawn-created coincidences from its pass-through tallies
 for this reason, and carries an assertion that the exclusion stays a corner of the file
 rather than most of it.
+
+## 15. What repeats at 208 ms in both audio recordings of the unit
+
+**Two recordings of the same machine, made months apart, each carry a repetition at
+about 205 ms that nothing has identified.** That is the whole of the finding, and its
+history is worth more than the number, because the number has now been given two
+confident explanations and both were wrong.
+
+`assets/reference/gameplay-audio.m4a` gave **205.1 ms, sd 22.1, n = 21** across five
+uninterrupted runs of onsets in the 585-660 Hz `jetMarch` band. It was read as the
+squadron's step rate and the ROM's cadence floor was derived from it. That reading is
+**withdrawn**, on `IMG_6113.mov`: in the one window where both can be measured against
+each other the column steps run 1067-1200 ms while the same band repeats at 763 ms, and
+the step onsets land on troughs of that envelope. `timing-analysis.md` carries the
+detail.
+
+The owner's skill-3 clip gives the same period again - envelope autocorrelation peaking
+unambiguously at **lag 208-213 ms, r = 0.35**. That was read as the squadron's step rate
+a second time, and a "the ROM is 2.4x too slow" figure was drawn from it. The owner then
+said: *"the sound might also be me hitting buttons, not from the device electronics."*
+That reading is withdrawn too.
+
+### What is now known about it, and what is not
+
+**Known.** It is real: an envelope autocorrelation over 23 s is not something a
+refractory window manufactures. It is **broadband** - the same onset times fall out of
+band envelopes at 380-470, 590-740, 1620-1760, 2500-2660 and 2780-2960 Hz, which is a
+transient's signature and not a note's. And it keeps time with nothing visible: tested
+against missile launches, missile column steps and jet column steps, each against a null
+built by sliding the same event list to a random phase, only the launch row clears its
+95th percentile and it does so because the machine's fire tone is inside the train.
+
+**Also known, and it forecloses the easiest answer.** The recording *does* contain
+device audio. Sixteen onsets carry a tone at **2577 Hz, sd 7.6 Hz**, and fourteen sit
+within 100 ms of a visible missile launch, leading it by a median 50 ms. A thumb does
+not do that. So "it is all handling noise" cannot be asserted merely because handling
+noise is present.
+
+**Not known.** Whether the 208 ms train is the owner's thumb, the lever's detents, the
+case, or a sound the machine makes that has no visible correlate. The two candidates the
+picture can offer - firing and moving the launcher between lanes - together reach 52%
+against a 47% p95 at +/-100 ms, which is not an identification.
+
+### What would settle it
+
+**A recording of the unit with nobody touching it.** Power on, set it down, let a game
+play itself out. If the 208 ms train survives, it is the machine; if it stops, it is the
+hand. That is one minute of the owner's time and it closes a question that has produced
+two wrong ROM-facing inferences.
+
+Failing that: the same clip re-recorded with the phone on a support and the unit on a
+table, so handling is removed while play continues.
+
+### A second thing the skill-3 clip found, recorded here because it is the same shape
+
+The unit's missile-fire blip in that recording is **2577 Hz**. `audio-reference.md`
+records `missileFire.dominantHzRange` as 1480-1632 Hz from `gameplay-audio.m4a`. 2577 is
+not a harmonic of 1520. Either the two recordings caught different sounds, or one of the
+two measurements is of something else. Not resolved here, and flagged rather than
+changed: `audio-reference.md` is measured from the owner's isolated recordings and one
+video-side reading is not grounds to move it.
+
+## 16. The cadence ladder reaches a rung below the floor its own constants document
+
+`asm/jetfighter.asm` documents `STEP_HI_MIN` as "the floor: 32 sweeps, 488 ms" and
+reasons from that figure in the cadence header. `step_reload` computes the rung with
+`SAMAN` and takes the floor branch **only when that subtraction borrows**:
+
+```text
+        SAMAN                   ; A <- STEP_HI_MAX - A
+        BR   sr_ok              ; taken when it did not borrow
+        CLA
+        A1AAC                   ; the floor: one high nibble
+sr_ok:
+```
+
+Zero does not borrow. At skill 3 with four kills, `STEP_HI_MAX - kills - STEP_SKILL *
+(skill - 1)` is exactly `8 - 4 - 4 = 0`, so `sr_ok` is reached with A = 0, `STEP_HI` is
+written as zero, and the squadron steps every **16 sweeps** - half the documented floor.
+Measured by `tools/probe/drives/march-wall-clock.ts`: 16 sweeps asked, 16 run, **325 ms**
+of wall clock. A fifth kill floors the ladder back up to 32 sweeps, so the descent is not
+monotonic either.
+
+**Why it survived.** `tools/probe/march-cadence.test.ts` already asserted "never takes a
+step the cadence ladder cannot ask for" - but every run in that file is at skill 1 with
+fire never pressed, so `NIB_KILLS` stays 0 and the assertion has never been within four
+rungs of the floor. The file's own header called 16 sweeps "a cadence no skill setting
+and no score can produce". It can.
+
+**Not fixed here**, because the task that found it was measuring the video and was
+forbidden to touch `asm/`. The fix is one instruction. It is recorded in two assertions
+of opposite polarity so it cannot be lost: `march-cadence.test.ts` carries the rule as an
+`it.fails()`, and `march-wall-clock.test.ts` asserts the sub-floor rung is still
+reachable. A fix turns both red at once.
+
+**One consequence to weigh before fixing it.** That accidental rung is the *only* one on
+the skill-3 ladder inside the range the owner's skill-3 clip actually shows - 267 to
+467 ms, median 300. Raising it to the documented 488 ms makes the ROM slower at exactly
+the point the owner says it is already too slow. The right order is to re-derive
+`STEP_SKILL` against the video first and repair the floor second, so the repair is not
+mistaken for the pace change.
