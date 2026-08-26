@@ -20,10 +20,18 @@ jobs:
       # shells out to ffmpeg to do it. It is the one drive a clean checkout
       # cannot run, so the decoder is installed here rather than the drive being
       # left to skip: `loss-warning-partials.test.ts` fails instead of skipping
-      # when CI is set and ffmpeg is missing. Free when the runner image already
-      # ships one.
+      # when CI is set and ffmpeg is missing.
+      #
+      # The ubuntu-24.04 runner image does not ship ffmpeg, so this does install
+      # it; the guard is there so the step costs nothing if a future image does.
+      # `--no-install-recommends` is what keeps it to the decoder rather than to
+      # a desktop media stack - nothing here needs the X11 or SDL outputs.
       - name: Ensure ffmpeg for the loss-warning-partials drive
-        run: ffmpeg -version >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y ffmpeg)
+        run: |
+          ffmpeg -version >/dev/null 2>&1 || {
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq --no-install-recommends ffmpeg
+          }
       - run: npm run lint
       - run: npm test
       - run: npm run build
