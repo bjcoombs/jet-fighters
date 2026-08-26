@@ -484,9 +484,35 @@ interface Drive {
   ended: Ending;
 }
 
-function aimedDrive(forSeconds: number, aim: Aim, skill = 1): Drive {
+/**
+ * Presses fire `priming` times before the drive starts playing, which is the
+ * only knob that gives this file a *different game* to sample.
+ *
+ * `NIB_ENT` is stirred by the fire contact and by nothing else, and `jet_enter`
+ * draws both halves of an entry position from it, so a run of presses before
+ * play begins leaves the squadron entering somewhere else for the rest of the
+ * game. Every other lever available here is absorbed: the drive is reactive, so
+ * a delayed start or a different resting lane shifts its decisions and the
+ * machine's cadences by the same amount and the game comes out identical - both
+ * were tried, and both produced twelve byte-identical runs.
+ *
+ * The intervals lengthen with each press so the presses land at different points
+ * of `NIB_TICK`, which wraps every sixteen sweeps. Pressing at a fixed period is
+ * the latch trap `entropy-nibble.test.ts` documents, one level up.
+ */
+function primeEntropy(machine: Tms1370Machine, priming: number): void {
+  for (let press = 0; press < priming; press += 1) {
+    machine.setContacts({ fire: true });
+    machine.step(3_000);
+    machine.setContacts({ fire: false });
+    machine.step(SAMPLE_CYCLES * (3 + press));
+  }
+}
+
+function aimedDrive(forSeconds: number, aim: Aim, skill = 1, priming = 0): Drive {
   const machine = new Tms1370Machine();
   machine.setContacts({ skill, lane: 0, fire: false });
+  primeEntropy(machine, priming);
 
   const kills: Kill[] = [];
   let ended: Ending = "clock";
@@ -681,7 +707,24 @@ const UNREACHABLE = 5;
  * whichever machine wrote it. It is a generous ceiling on the harness, sized so
  * that a slow runner does not fail a test that a fast one passes.
  */
-const DRIVE_TIMEOUT_MS = 60_000;
+const DRIVE_TIMEOUT_MS = 90_000;
+
+/**
+ * Entropy primings the aimed-column drive plays a game at, one game each.
+ *
+ * Sized at twelve because grid 1 - the only column that needs more than the
+ * first game - converts six of them, so the row is not resting on one shot. See
+ * the test that uses it.
+ */
+const PRIMINGS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const;
+
+/**
+ * Kills on the aimed column that are enough to stop playing further games.
+ *
+ * More than one, so the ruler check below has more than a single sample to read,
+ * and low enough that grids 2, 3 and 4 stop after their first game.
+ */
+const KILLS_WANTED = 3;
 
 /**
  * The same ceiling for `boatHunt`, which is far the longest drive here.
@@ -900,13 +943,39 @@ describe("the printed ruler", () => {
   it.each(REACHABLE)(
     "pays the ruler value for an aimed kill on grid %i",
     (column) => {
-      const kills = untilTheWin(
-        aimedDrive(COLUMN_SECONDS, { kind: "only", column }).kills,
-      ).scored;
+      // **Grid 1 is one shot a game at best, and until this pooled it was one
+      // shot a *run*.** The window is arithmetic: a shot takes
+      // `(5 - 1) * 32` = 128 sweeps to reach the far column, and the jet
+      // standing there has `NIB_STEP_HI * 16 + NIB_STEP_LO + 1` sweeps before it
+      // marches away - at most 144, and only at zero kills on skill 1. So the
+      // drive can fire at grid 1 only inside the fifteen sweeps after a
+      // countdown reload, which in practice means the moment a capture retreats
+      // a survivor to grid 1 and reloads the march together.
+      //
+      // Measured, on this ROM and on the one before it: a single game offers
+      // that shot exactly *once* and fires it at a march remainder of 143 of
+      // 144, the best there is. Whether it converts is then a matter of a sweep
+      // or two of phase - the ROM before this one converted its one shot and
+      // this one missed it, on the same margin. That is
+      // `docs/evidence/open-questions.md` section 11a: an assertion passing
+      // because its input was barely produced.
+      //
+      // So the input is made reliable rather than the bar lowered. Twelve games
+      // are played with different entropy primings; six of them land a grid-1
+      // kill where one game landed a coin flip. The other columns reach their
+      // quota on the first game and pay for none of it.
+      const kills: Kill[] = [];
+      for (const priming of PRIMINGS) {
+        kills.push(
+          ...untilTheWin(aimedDrive(COLUMN_SECONDS, { kind: "only", column }, 1, priming).kills)
+            .scored,
+        );
+        if (kills.filter((kill) => kill.grid === column).length >= KILLS_WANTED) break;
+      }
       const here = kills.filter((kill) => kill.grid === column);
       expect(
         here.length,
-        `no jet was killed on grid ${column}`,
+        `no jet was killed on grid ${column} in ${PRIMINGS.length} primed games`,
       ).toBeGreaterThan(0);
       expect([...new Set(here.map((kill) => kill.delta))]).toEqual([
         RULER_POINTS[column],
