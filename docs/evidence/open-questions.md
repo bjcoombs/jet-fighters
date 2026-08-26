@@ -1288,7 +1288,18 @@ windows after 17.00 s**: 17.03-17.07, and then 19.93-20.17, 20.33-20.43, 20.60-2
 20.87-20.97, 21.13-21.23, 21.40-21.50, 21.67-21.77 and 21.93-21.97. The last seven are a
 regular ~270 ms flash, which is the end-of-game display rather than play.
 
-Every one of them reads **20**. So episode 3 (17.70-18.11 s) has a legible score 0.6 s
+**Eight of the nine read 20.** The ninth is the last flash of the clip, 21.93-21.97 s,
+two frames, heavily overexposed - and its tens digit is unmistakably a **3**, not a 2:
+the bottom-left segment is dark and the bottom-right lit, the opposite of every reading
+before it. What it means is not established. A score cannot climb after the game has
+ended, so the candidates are a partial multiplex catch (the following frame lights the
+tens digit alone, so the two digits are being strobed separately by then), bloom on a
+saturated segment, or something the end-of-game display does that nothing here models.
+It is recorded and not explained.
+
+**It does not bear on episode 3**, which is what this addendum is about: the two
+readings that bracket the episode are 17.03-17.07 s and 19.93-20.17 s, and both are
+plainly 20. So episode 3 (17.70-18.11 s) has a legible score 0.6 s
 before it and a legible score 1.8 s after it, and **the score did not change across it**:
 
 | Time | Score readout | Relation to episode 3 |
@@ -1296,7 +1307,14 @@ before it and a legible score 1.8 s after it, and **the score did not change acr
 | 16.60 s | SCORE 20 | 1.1 s before |
 | 17.03 - 17.07 s | **SCORE 20** | 0.6 s before |
 | 19.93 - 20.33 s | **SCORE 20** | 1.8 s after, tube now flashing |
-| 21.33 s | SCORE 20 | after |
+
+Every row is a frame measured lit before it was read: 536, 564, 409, 640 and 704 lit
+pixels in the digit box against a 40-pixel floor. **A fifth row said "21.33 s, SCORE 20"
+and has been removed - that frame is dark, 0 lit pixels.** It came from misreading a
+contact sheet whose frame list contained a duplicate, so a panel was attributed to the
+wrong timestamp. Nothing else in this addendum depended on it, and the three rows that
+bracket the episode are unaffected, but it was a row of data that was never observed and
+it should not have been written.
 
 **The census is therefore n = 2, one for and one against**, not n = 1 suggestive.
 Episode 2 has the score rising by two across it; episode 3 has it flat across it. That
@@ -1319,7 +1337,7 @@ audio figures; the score windows come from thresholding cyan excess in the digit
 the registered stack, which is the same colour-excess rule the rest of this analysis
 uses. The tube-blank question in §16 is untouched by any of this.
 
-## 16. The real machine blinks about once a second and nothing we model explains it
+## 16. The real machine blinks about once a second - ANSWERED: it is the speaker, and which sounds
 
 `vfd-appearance.md` §5 measures, off video of the owner's unit, **complete whole-display
 blanking on 14-17% of all frames during active play**, in runs of **4-5 frames (133-167
@@ -1327,7 +1345,8 @@ ms)**, at roughly one per 1.1 s. It calls that "the loudest thing this document 
 say about the look", and the mechanism is not in doubt: the chip bit-bangs the speaker in
 timed delay loops and is not sweeping the tube while it does, so every sound is a blink.
 
-**Nothing we have identified sounds at that rate for that long.**
+**Nothing we had identified sounded at that rate for that long** - the reasoning that
+follows is kept because the resolution below turns on which of its premises was wrong.
 
 - The march note, at 71.8 ms a step, is the emulator's main source of blanking - but it
   is 71.8 ms, and the observed runs are 133-167 ms. It never matched the thing it was
@@ -1344,18 +1363,94 @@ So the arithmetic does not close, and it is worth stating the size of the gap: r
 `jm_beep` takes the emulator's dark-frame fraction to **1.55%** in `sweep-timing.test.ts`
 and **0.73%** in `blank-to-glass.test.ts`, against a machine measured at 14-17%.
 
-**What is unresolved**: what the real unit is sounding roughly once a second for about
-150 ms during play. It is not the squadron marching, on the owner's own testimony.
+### ANSWERED: the blanks are a 600-650 Hz tone of 130-210 ms, and a shot's blip
 
-**What would settle it**: the video those blanking figures came from, analysed the way
-§15's tone was - locating each dark run and asking what is in the audio at that instant,
-with the same tone-versus-transient tests. That analysis has not been done; the blanking
-pass counted dark frames and never looked at the sound underneath them.
+The analysis this section asked for has now been done - `tools/video/blanking.py`,
+which locates every dark run in a window of `IMG_6113.mov` and classifies it by **its
+own dominant bin**, the way `timing-analysis.md` classifies an onset rather than
+trusting the band it was found in.
 
-**Why this blocks a removal.** `jm_beep` should come out - the evidence for it is
-withdrawn. But taking it out silently leaves the emulator contradicting a measured figure
-in a second document, and the honest order is to answer this question first, or at least
-to own it in the same change. See "what removing it costs" in `audio-reference.md`.
+**The instrument was validated against this document's own census first.** Run on the
+same windows §5 of `vfd-appearance.md` measured, it returns 0.0% at t=120 against their
+0/600, 13.2% at t=210 against their 13.8%, and 16.7% at t=340 against their 16.7%. The
+t=25 window is excluded: the unit sits differently there and a glare patch falls inside
+the fixed tube box, so the frame never reads dark and the tool returns 0.7% against
+their 6.5%. That is the tool's limit, stated - the box is fractional and fixed, which
+holds within a window and not across windows where the unit was repositioned.
+
+**It is the speaker, confirmed rather than assumed.** 82% of dark runs have an audio
+onset within +/-50 ms against a phase-shuffled null of 45% (p95 64%). `P(dark | loud)`
+is 0.39-0.51 against `P(dark | quiet)` of 0.05, reproducing this document's 0.37-0.46
+against 0.04.
+
+**Which sound: every long blank is one of two, and both are already modelled.** Over
+t=210 and t=340 together, the dark runs classify as:
+
+| Dominant at the run's onset | Runs | Blank length |
+| --- | --- | --- |
+| 603-635 Hz - the `jetMarch` band, tonality 0.57-0.80 | **25** | 133-200 ms |
+| 1593 Hz - the `missileFire` band | **6** | 133-167 ms |
+| 151-248 Hz, tonality 0.21-0.48, unclassified | 9 | **33 ms - one frame each** |
+| 1820 Hz, tonality 0.26, unclassified | **1** | **167 ms - the one exception** |
+
+**31 of the 32 runs longer than one frame are one of the two bands**, and nine of the
+ten unclassified runs are single frames, which is what sensor noise looks like. **And
+the blank lasts as long as the sound**: median blank 133 ms against median sound
+132-150 ms, r = +0.63 and +0.65 in the two windows. The mechanism §5 states is
+confirmed and the sounds are named.
+
+**The exception is left standing rather than absorbed.** One 167 ms run at t=340+19.00 s
+has its dominant at 1820 Hz with a tonality of 0.26 - just above `missileFire`'s
+1480-1632 Hz and not tonal enough to call a note. It is one run in 41 and it does not
+change the reading, but "every" was the word this section originally used and it was
+wrong by one, which is the kind of error that survives precisely because the headline
+is right.
+
+**The duration gap closes on the note, not on the blank.** The bullet above is right
+that 71.8 ms cannot produce a 133-167 ms blank. The resolution is that the real unit's
+notes in that band are **130-210 ms**, roughly twice what the ROM emits. Gated on band
+share, t=210 holds 13 such notes and t=340 holds 16.
+
+**Three recordings agree, which is what makes it more than one window.** Sustained
+notes in that band and blanking appear and disappear together:
+
+| Window | sustained 600-660 Hz notes | frames dark |
+| --- | --- | --- |
+| `IMG_6113` t=210 | 13, durations 130-210 ms | 13.2% |
+| `IMG_6113` t=340 | 16, durations 103-288 ms | 16.7% |
+| `IMG_6113` t=120 | 14, but durations **69-75 ms** | **0.0%** |
+| the owner's skill-3 clip | **none** - the band never exceeds 11% share | ~0% (5%, all single frames) |
+
+t=120 is the informative row. It has real energy in the band, at **69-75 ms** - which
+is the length `audio-reference.md` synthesises and the ROM emits - and it does not blank
+at all. So a note of the ROM's length does not produce a measurable blank at 30 fps, and
+the emulator's dark-frame fraction was never going to reach 14-17% by emitting one.
+
+### What this does and does not settle for the removal
+
+**It removes the blocking reason.** This section blocked taking `jm_beep` out on the
+grounds that the blanking would then be unexplained. It is now explained, and the
+explanation says the emulator's 71.8 ms note is not the thing that produces the measured
+blanking in any case - the t=120 row is a note of exactly that length blanking nothing.
+Removing it costs the emulator a dark-frame fraction it was never entitled to claim.
+
+**It does not settle whether the sound is the march.** What is measured is a tone in
+the `jetMarch` band, at the blanking rate, long enough to blank. Whether it is *tied to
+the squadron's step* is a further claim and this does not establish it: the intervals
+between long notes run 0.15-3.17 s with medians of 1.15 s and 1.39 s in the two windows,
+against a per-aircraft step measured at 1.2-1.9 s median 1.4 s. The medians sit inside
+that range and the spread does not, so a clean one-note-per-step reading is not
+supported.
+
+**It does sit against the owner's testimony, and that has to be said plainly.** He
+reports no marching sound, and the `jetMarch` row of `audio-reference.md` was withdrawn
+on that basis. The band is nevertheless occupied in his own recording, by a tone with a
+tonality of 0.57-0.77, 25 times across 40 s, and it is what darkens his display. One of
+those two things is wrong, and this analysis cannot say which: a player may not describe
+a once-a-second blip as "a marching sound", and a band can be occupied by something that
+is not the march. **What would settle it** is the question already queued for the owner
+in §15 - whether shooting a jet sounds different from firing at one - plus a third:
+whether he hears anything at all in step with the jets advancing.
 
 ## 17. What repeats at 208 ms in both audio recordings of the unit
 
