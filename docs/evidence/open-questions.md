@@ -1389,7 +1389,7 @@ t=210 and t=340 together, the dark runs classify as:
 | Dominant at the run's onset | Runs | Blank length |
 | --- | --- | --- |
 | 603-635 Hz - the `jetMarch` band, tonality 0.57-0.80 | **25** | 133-200 ms |
-| 1593 Hz - the `missileFire` band | **6** | 133-167 ms |
+| 1593 Hz - the `missileFire` band | **6**, of which 4 corroborated - see below | 133-167 ms |
 | 151-248 Hz, tonality 0.21-0.48, unclassified | 9 | **33 ms - one frame each** |
 | 1820 Hz, tonality 0.26, unclassified | **1** | **167 ms - the one exception** |
 
@@ -1425,6 +1425,41 @@ t=120 is the informative row. It has real energy in the band, at **69-75 ms** - 
 is the length `audio-reference.md` synthesises and the ROM emits - and it does not blank
 at all. So a note of the ROM's length does not produce a measurable blank at 30 fps, and
 the emulator's dark-frame fraction was never going to reach 14-17% by emitting one.
+
+### The fire blip does blank the display, and two of the six labels do not survive
+
+`isBuzzOutput`'s companion question - whether the *other* blanking source is real -
+is now tested rather than asserted, by `tools/video/blanking.py`'s fire-blip pass.
+
+**A dominant bin is not a detection, and that is what the six `missileFire` labels
+rest on.** Their tonality runs 0.13-0.40 against 0.59-0.80 for the march notes, so
+the loudest bin being 1593 Hz says much less for them than it does for the march.
+Corroborating it needs the band to be *loud*, not merely top: a real blip holds
+12-18% of total energy for 20-48 ms.
+
+| Window | blips meeting that | dark runs on a blip | chance (p95) | blips that blank |
+| --- | --- | --- | --- | --- |
+| t=210 | **5** (20-48 ms) | 23% at +/-100 ms | 5% (14%) - **above chance** | **4 of 5** |
+| t=340 | **0** | - | - | - |
+
+So at t=210 the label holds twice over: four of the four runs labelled `missileFire`
+sit on an independently detected blip, dark runs land on blips above a
+phase-shuffled null, and four of the five blips blank the display. **The null is
+built for the subset shape** - blips are rarer than dark runs, so the question is
+whether a dark run lands on a blip; a one-to-one null would reject on arithmetic
+before looking at the data.
+
+**At t=340 there is no blip at all** by the same criteria, and the window's whole
+fire band holds 5 frames above 12% of energy against t=210's 68. Its two
+`missileFire` labels are therefore **uncorroborated and should be read as
+unclassified**, which takes the identified population from 31 of 32 to 29 of 32.
+The three threshold crossings that window does contain last 1, 3 and 6 ms - the
+same shape as the single-frame dark runs, and noise for the same reason.
+
+That does not weaken the section's conclusion, which rests on the march notes: 25
+of the runs are those and they are not in question. It sharpens what the second
+source is worth. The fire blip blanks the display **where it occurs**, on one
+window's evidence, and it does not occur in the other.
 
 ### What this does and does not settle for the removal
 
