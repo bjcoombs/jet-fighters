@@ -111,6 +111,52 @@ def label(hz: float) -> str:
     return "-"
 
 
+# A fire blip's band, and the share of total energy it must hold to be one.
+#
+# **A dominant bin is not a detection.** The dark runs this tool labels
+# `missileFire` do so on their loudest bin, and their tonality is 0.13-0.40
+# against 0.59-0.80 for the march notes - so the label is weak on its own and
+# needs corroborating by the band actually being loud. Measured, a real blip
+# holds 12-18% of total energy for 20-48 ms; the threshold crossings that are not
+# blips last 1-6 ms.
+FIRE_BAND = (1480, 1632)
+FIRE_MIN_SHARE = 0.12
+FIRE_MIN_MS = 15.0
+
+
+def fire_blips(signal: np.ndarray, rate: int) -> list[tuple[float, float]]:
+    """(start, duration) of every event the fire band actually carries."""
+    size, hop = 1024, 64
+    count = 1 + (len(signal) - size) // hop
+    window = np.hanning(size)
+    freq = np.fft.rfftfreq(size, 1 / rate)
+    band = (freq >= FIRE_BAND[0]) & (freq < FIRE_BAND[1])
+    share = np.empty(count)
+    for i in range(count):
+        spectrum = np.abs(np.fft.rfft(signal[i * hop : i * hop + size] * window))
+        share[i] = spectrum[band].sum() / max(spectrum.sum(), 1e-9)
+    times = np.arange(count) * hop / rate
+    on = share > FIRE_MIN_SHARE
+    found, i = [], 0
+    while i < count:
+        if on[i]:
+            j = i
+            while j < count and on[j]:
+                j += 1
+            length = (times[j - 1] - times[i]) * 1000
+            if length >= FIRE_MIN_MS:
+                found.append((float(times[i]), float(length)))
+            i = j
+        else:
+            i += 1
+    merged, last = [], -9.0
+    for start, length in found:
+        if start - last > 0.08:
+            merged.append((start, length))
+            last = start
+    return merged
+
+
 def report(video: Path, start: float, length: float) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         lit, wav = extract(video, start, length, Path(tmp))
@@ -180,6 +226,31 @@ def report(video: Path, start: float, length: float) -> None:
         print(f"    median blank {np.median(blanks):.0f} ms, "
               f"median sound {np.median(sounds):.0f} ms, "
               f"r = {np.corrcoef(blanks, sounds)[0,1]:+.2f} over {len(blanks)} runs")
+
+        # --- does the fire blip blank the display? ------------------------
+        #
+        # **The null is built for the subset shape.** Blips are rarer than dark
+        # runs, so the question is whether a dark run lands on a blip, not
+        # whether every blip has a dark run - a one-to-one null would reject on
+        # arithmetic before it looked at the data.
+        blips = fire_blips(signal, rate)
+        print(f"\n  fire blips in {FIRE_BAND[0]}-{FIRE_BAND[1]} Hz holding "
+              f">{FIRE_MIN_SHARE*100:.0f}% of energy for >{FIRE_MIN_MS:.0f} ms: {len(blips)}")
+        for at, ms in blips:
+            print(f"    {at:6.2f} s  {ms:4.0f} ms")
+        if blips:
+            times = np.array([at for at, _ in blips])
+            for window in (0.05, 0.10):
+                seen = audio.coincidence(starts, times, window)
+                expected, p95 = audio.chance(starts, times, window, span)
+                verdict = "ABOVE CHANCE" if seen > p95 else "at chance"
+                print(f"    dark runs within +/-{window*1000:3.0f} ms of a blip: "
+                      f"{seen*100:3.0f}%  chance {expected*100:3.0f}% (p95 {p95*100:3.0f}%)"
+                      f" - {verdict}")
+            covered = audio.coincidence(times, starts, 0.10)
+            print(f"    and the converse, stated because it is the stronger claim: "
+                  f"{covered*100:.0f}% of blips ({int(round(covered*len(times)))} of "
+                  f"{len(times)}) have a dark run within 100 ms")
 
 
 if __name__ == "__main__":
