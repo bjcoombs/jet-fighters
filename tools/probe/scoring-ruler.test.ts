@@ -484,9 +484,108 @@ interface Drive {
   ended: Ending;
 }
 
-function aimedDrive(forSeconds: number, aim: Aim, skill = 1): Drive {
+/**
+ * Cycles from power-on to the first plane of the game, **measured on a machine
+ * here rather than written down**.
+ *
+ * The whole of {@link primeEntropy} has to fit inside this, and the figure is a
+ * product of the ROM's entry countdown, the sweep length and the cost of the
+ * power-on clear - three things that have all moved during this project. Reading
+ * it off a fresh machine costs about sixty sweeps once per file and cannot go
+ * stale; a literal here would be the bet `CLAUDE.md` warns about, pointing the
+ * other way. Today it comes to 54,896 cycles, a little under 62 sweeps.
+ *
+ * Sampled at {@link SAMPLE_CYCLES} and not by whole sweeps, because the figure is
+ * a *budget* and a sweep of overshoot spends 889 cycles this file has not got:
+ * the longest priming below uses 60 of the 61 sweeps available.
+ */
+const FIRST_RELEASE_CYCLES = (() => {
+  const machine = new Tms1370Machine();
+  machine.setContacts({ skill: 1, lane: 0, fire: false });
+  const ceiling = seconds(5);
+  while (machine.cycles < ceiling) {
+    machine.step(SAMPLE_CYCLES);
+    if (planesOf(machine.ram).length > 0) return machine.cycles;
+  }
+  throw new Error(
+    "no plane was released in the first five seconds of a game, so primeEntropy has no window to prime in",
+  );
+})();
+
+/**
+ * Sweeps the contact is held closed for one priming press, and sweeps it is open
+ * again before the next.
+ *
+ * `if_down` reads the contact once a sweep and stirs `NIB_ENT` on the *rising
+ * edge*, so a press has to be seen closed on one sweep and open on an earlier
+ * one. Two sweeps each way is the smallest that does not depend on where within
+ * a sweep the contact moves, and it is chosen for that and for one other reason:
+ * **the window is fixed, so the cheapest safe press is the one that fits the most
+ * distinct entropy states into it**. Measured against the pre-release window,
+ *
+ * | schedule | primings that fit | distinct `NIB_ENT` |
+ * | --- | --- | --- |
+ * | hold 2, gap 2 | 0-15 | 10 of 16 |
+ * | hold 2, gap 2-3-4-5 | 0-11 | 9 of 12 |
+ * | the schedule this replaced | 0-11, and 11 overran | 6 of 12 |
+ *
+ * A four-sweep period is not the latch trap `entropy-nibble.test.ts` documents
+ * one level up. That trap is a press period which is a multiple of the sixteen
+ * sweeps `NIB_TICK` wraps in, so every press contributes the same tick and the
+ * nibble walks one arithmetic sequence. Four divides sixteen the other way: the
+ * presses land on four different ticks in turn, which is what the ten distinct
+ * values above are.
+ */
+const PRIME_HOLD_SWEEPS = 2;
+const PRIME_GAP_SWEEPS = 2;
+
+/**
+ * Presses fire `priming` times before the drive starts playing, which is the
+ * only knob that gives this file a *different game* to sample.
+ *
+ * `NIB_ENT` is stirred by the fire contact and by nothing else, and `jet_enter`
+ * draws both halves of an entry position from it, so a run of presses before
+ * play begins leaves the squadron entering somewhere else for the rest of the
+ * game. Every other lever available here is absorbed: the drive is reactive, so
+ * a delayed start or a different resting lane shifts its decisions and the
+ * machine's cadences by the same amount and the game comes out identical - both
+ * were tried, and both produced twelve byte-identical runs.
+ *
+ * **The whole sequence has to finish before the first plane is released, and it
+ * did not.** The earlier schedule held for 3,000 cycles and lengthened the gap by
+ * one sample per press, which at `priming = 11` came to 58,696 cycles against a
+ * first release at {@link FIRST_RELEASE_CYCLES}. So the longest-primed games
+ * began with a plane already airborne and marched, and a priming shot could have
+ * killed it - which makes priming a knob on the squadron as well as on the
+ * entropy, and the primed games no longer samples of one variable. Held in
+ * sweeps and bounded here instead, and the bound is *checked* rather than
+ * asserted in a comment: overrunning the window throws, and so does returning
+ * with a plane on the board.
+ */
+function primeEntropy(machine: Tms1370Machine, priming: number): void {
+  for (let press = 0; press < priming; press += 1) {
+    machine.setContacts({ fire: true });
+    machine.step(PRIME_HOLD_SWEEPS * SWEEP_INSTRUCTIONS);
+    machine.setContacts({ fire: false });
+    machine.step(PRIME_GAP_SWEEPS * SWEEP_INSTRUCTIONS);
+  }
+  if (machine.cycles > FIRST_RELEASE_CYCLES) {
+    throw new Error(
+      `priming ${priming} times took ${machine.cycles} cycles, past the first release at ` +
+        `${FIRST_RELEASE_CYCLES} - the primed games no longer vary only the entropy`,
+    );
+  }
+  if (planesOf(machine.ram).length > 0) {
+    throw new Error(
+      `priming ${priming} times left a plane airborne before the drive started`,
+    );
+  }
+}
+
+function aimedDrive(forSeconds: number, aim: Aim, skill = 1, priming = 0): Drive {
   const machine = new Tms1370Machine();
   machine.setContacts({ skill, lane: 0, fire: false });
+  primeEntropy(machine, priming);
 
   const kills: Kill[] = [];
   let ended: Ending = "clock";
@@ -494,7 +593,11 @@ function aimedDrive(forSeconds: number, aim: Aim, skill = 1): Drive {
   let releaseFireAt = -1;
   let pressFireAt = -1;
   let wanted = 1;
-  const until = seconds(forSeconds);
+  // **After the priming, not from power-on.** `forSeconds` is how long the drive
+  // plays; measured from cycle zero it would be the priming *plus* the play, so
+  // a longer priming would quietly buy a shorter game and the twelve runs below
+  // would differ in their length as well as in their entropy.
+  const until = machine.cycles + seconds(forSeconds);
 
   while (machine.cycles < until) {
     machine.step(SAMPLE_CYCLES);
@@ -681,7 +784,26 @@ const UNREACHABLE = 5;
  * whichever machine wrote it. It is a generous ceiling on the harness, sized so
  * that a slow runner does not fail a test that a fast one passes.
  */
-const DRIVE_TIMEOUT_MS = 60_000;
+const DRIVE_TIMEOUT_MS = 90_000;
+
+/**
+ * Entropy primings the aimed-column drive plays a game at, one game each.
+ *
+ * **Sized by the window, not chosen.** Every priming has to finish before the
+ * first plane is released - see {@link primeEntropy} - and at the two-sweeps-each-
+ * way press above, sixteen is what fits. Taking all of them rather than a round
+ * dozen is free: grid 1 is the only column that needs more than the first game
+ * and it plays every one of them regardless.
+ */
+const PRIMINGS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] as const;
+
+/**
+ * Kills on the aimed column that are enough to stop playing further games.
+ *
+ * More than one, so the ruler check below has more than a single sample to read,
+ * and low enough that grids 2, 3 and 4 stop after their first game.
+ */
+const KILLS_WANTED = 3;
 
 /**
  * The same ceiling for `boatHunt`, which is far the longest drive here.
@@ -900,13 +1022,48 @@ describe("the printed ruler", () => {
   it.each(REACHABLE)(
     "pays the ruler value for an aimed kill on grid %i",
     (column) => {
-      const kills = untilTheWin(
-        aimedDrive(COLUMN_SECONDS, { kind: "only", column }).kills,
-      ).scored;
+      // **Grid 1 is one shot a game at best, and until this pooled it was one
+      // shot a *run*.** The window is arithmetic: a shot takes
+      // `(5 - 1) * 32` = 128 sweeps to reach the far column, and the jet
+      // standing there has `NIB_STEP_HI * 16 + NIB_STEP_LO + 1` sweeps before it
+      // marches away - at most 144, and only at zero kills on skill 1. So the
+      // drive can fire at grid 1 only inside the fifteen sweeps after a
+      // countdown reload, which in practice means the moment a capture retreats
+      // a survivor to grid 1 and reloads the march together.
+      //
+      // Measured, on this ROM and on the one before it: a single game offers
+      // that shot exactly *once* and fires it at a march remainder of 143 of
+      // 144, the best there is. Whether it converts is then a matter of a sweep
+      // or two of phase - the ROM before this one converted its one shot and
+      // this one missed it, on the same margin. That is
+      // `docs/evidence/open-questions.md` section 11a: an assertion passing
+      // because its input was barely produced.
+      //
+      // So the input is made reliable rather than the bar lowered. Sixteen games
+      // are played with different entropy primings; **7 of them land a grid-1
+      // kill** where one game landed a coin flip. The other columns reach their
+      // quota on the first game and pay for none of it.
+      //
+      // That 7 is a re-measurement and the old figure is worth recording, because
+      // it shows how little the count says about the priming design. The schedule
+      // this replaced overran the pre-release window and reached only 6 distinct
+      // entropy states in twelve games, yet converted 6; a schedule that fitted
+      // the window but cost more sweeps per press reached 9 distinct states in
+      // twelve and converted 2. **Whether a given game offers its one grid-1 shot
+      // is a matter of a sweep or two of phase**, as the paragraph above says, so
+      // the defence is the number of games and not any one of them.
+      const kills: Kill[] = [];
+      for (const priming of PRIMINGS) {
+        kills.push(
+          ...untilTheWin(aimedDrive(COLUMN_SECONDS, { kind: "only", column }, 1, priming).kills)
+            .scored,
+        );
+        if (kills.filter((kill) => kill.grid === column).length >= KILLS_WANTED) break;
+      }
       const here = kills.filter((kill) => kill.grid === column);
       expect(
         here.length,
-        `no jet was killed on grid ${column}`,
+        `no jet was killed on grid ${column} in ${PRIMINGS.length} primed games`,
       ).toBeGreaterThan(0);
       expect([...new Set(here.map((kill) => kill.delta))]).toEqual([
         RULER_POINTS[column],

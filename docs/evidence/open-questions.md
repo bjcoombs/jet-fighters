@@ -1142,3 +1142,60 @@ window differently from the application**, is worth a note rather than a redisco
 Neither is asserted to be a defect here. What is asserted is that any claim about what
 the tube shows in the first 30 ms after power-on has to say which of the two paths it
 was measured on, because they answer differently and both are in this tree.
+
+## 14. A plane that appears on top of a live missile is not hit by it
+
+**Unresolved. A plane landing on a live shot was always reachable; what is new is that
+the shot can now walk away from one.** `jet_enter` draws an entry column of 1 or 2
+(`asm/jetfighter.asm`, "The column: the far half of the field"). The ROM before it
+entered every plane at grid 1 and **26 spawn coincidences were measured on that ROM**,
+so a plane appearing on a cell a shot already stood in is not the new thing. Grid 1 is
+where a missile expires against the horizon rather than stepping to a lower column, so
+the escape had nowhere to show. Grid 2 is a cell the shot steps *out of*, and from there
+it shows.
+
+It survives. The sweep hit-tests a collision at two moments - when the missile steps a
+column, and when the squadron marches - and a spawn is neither. The shot takes its next
+step, finds the cell it moved *into* empty, and carries on to expire against the
+horizon. The plane flies on.
+
+Measured with `tools/probe/drives/entry-onto-missile.ts` over three firing cadences and
+90 emulated seconds each, "before" being `main` at 192fefc:
+
+| | before entry positions varied | after |
+| --- | --- | --- |
+| coincidences (a shot and a jet on one cell) | 94 | 88 |
+| the jet was already settled on the cell | 19 | 18 |
+| the jet marched onto it that frame | 49 | 40 |
+| the jet spawned onto it that frame | 26 | 30 |
+| shot walked away from a settled jet | 0 | 0 |
+| shot walked away from a jet that marched on | 0 | 0 |
+| **shot walked away from a jet that spawned on** | **0** | **6** |
+
+**The collision test itself is not implicated, and the last three rows are the
+evidence**: a jet standing on a shot's cell is hit every time, before and after, and a
+jet that *marches* onto one is hit every time as well - the march does test. Only the
+spawn escapes, and only since grid 2 became an entry column.
+
+**These figures replace an earlier set, and both reasons matter.** The first ones were
+taken before the unstirred-entropy fix flipped which column an untouched machine enters
+at, so they described a ROM this branch no longer carries. They were also produced by a
+classifier that asked the *row* whether a jet had marched. A row can hold two planes, so
+a plane settled at column 1 beside a new one at column 2 answered yes and the spawn was
+booked as a march. On this ROM the row reading and the slot reading disagree about 2 of
+the 88 coincidences and in opposite directions, so the totals happened to come out the
+same - which is luck rather than a defence. Both instruments now follow a plane by its
+slot and use the row only to decide that a shot and a jet are on one cell.
+
+**Why this is recorded rather than fixed.** Whether the unit hit-tests a spawn cannot be
+settled from `assets/reference/`, from the audio, or from the owner's testimony. The
+owner's evidence about entry is that "a plane can randomly appear anywhere on the
+board" - about variety, and silent on what happens when the board already has a shot on
+that cell. Both readings are defensible: a missile fired before the plane existed
+arguably has nothing to hit, and a player watching his shot pass through a plane would
+call it a bug. `P_SPAWN` is at 63 of 64 words, so the check would not fit where the
+decision is made in any case.
+
+`missile-rank.test.ts` excludes spawn-created coincidences from its pass-through tallies
+for this reason, and carries an assertion that the exclusion stays a corner of the file
+rather than most of it.

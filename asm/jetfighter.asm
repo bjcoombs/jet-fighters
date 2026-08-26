@@ -289,7 +289,10 @@
 .EQU NIB_M_HI,       4          ;   "                                     high
 .EQU NIB_MWORK,      5          ; the walk's lane index, held across chapter 1
 .EQU NIB_ENT,        6          ; entropy: NIB_TICK accumulated on each fire
-                                ; press. **Nibble 6 and not nibble 2**, which is
+                                ; press, written by if_down and read by
+                                ; jet_enter, which is its ONLY consumer - two
+                                ; sites in this file and no more.
+                                ; **Nibble 6 and not nibble 2**, which is
                                 ; where the surveyed design put it - nibble 2 is
                                 ; lane 2's column and 0-5 are the whole rank, so
                                 ; that placement would have quietly aliased a
@@ -316,6 +319,14 @@
 ; 10-13 below. Nothing reads them now, and no name is declared for them; the
 ; reason they were not simply reused is in that header.
 ;
+; **Nibble 4 is free too, and it is a duplicate that went away.** It was
+; `NIB_J_ROTOR`, a counter maintained by `jet_enter` for the sole purpose of
+; stepping the entry row one place per entry - which is exactly what
+; `NIB_J_SENT` at nibble 3 already does, one nibble along. `jet_enter` takes the
+; rotation from the release count now, and a wave being six jets is what makes
+; that seamless across the wave reset: six divides by three, so the last entry
+; of a wave and the first of the next are still one row apart.
+;
 ; The march itself is one squadron-wide countdown rather than one per plane. That
 ; is what the only measured figure here supports: the march beep's onsets run at
 ; 205 ms (n = 21, sd 22 ms) in assets/reference/gameplay-audio.m4a, which is a
@@ -324,11 +335,11 @@
 ; produce the same picture and would additionally produce a beep rate no
 ; recording supports.
 
-.EQU NIB_J_SENT,     3          ; jets of this wave released so far, 0..6
-.EQU NIB_J_ROTOR,    4          ; the row the next plane enters in, 0..2. Three
-                                ; rows against two slots is what makes two planes
-                                ; in one row reachable through the spawn path -
-                                ; see jet_enter
+.EQU NIB_J_SENT,     3          ; jets of this wave released so far, 0..6. Also
+                                ; the entry row's rotation: three rows against
+                                ; two slots is what makes two planes in one row
+                                ; reachable through the spawn path - see jet_enter
+                                ; nibble 4 is free - see the note above
 .EQU NIB_J_WORK,     5          ; the nibble a slot walk is working on: a plane's
                                 ; row nibble, not a lane
 .EQU NIB_J_LOST,     6          ; set when a jet crossed the G line this step.
@@ -1404,11 +1415,12 @@ input_fire:
 ; it wrong - one nibble read by four things, so parking the lever made two lanes
 ; permanently safe. **The harm was in the sharing, not in the sampling.**
 ;
-; So this writes and NOTHING reads it yet. The single consumer arrives with
-; `jet_enter` (the plane's entry position). The rocket's lane must NEVER read
-; it: PRD lines 285-291 require the rocket's lane to be independent of the
+; So this writes and **`jet_enter` is the one and only thing that reads it** -
+; the plane's entry position, row and column both. The rocket's lane must NEVER
+; read it: PRD lines 285-291 require the rocket's lane to be independent of the
 ; player's press pattern, and contract criterion V7 is the test that catches it.
-; NIB_ROTOR stays a plain round robin.
+; NIB_ROTOR stays a plain round robin. `entropy-nibble.test.ts` counts the sites
+; in this file and fails on a third.
 ;
 ; **Accumulate, never latch, and the `IAC` is not decoration.**
 ; `docs/evidence/timing-analysis.md` records that a bare latch of a counter that
@@ -2389,40 +2401,157 @@ jr_low_left:
 ; rank had three lanes and one jet each, so finding a free lane *was* finding the
 ; entry position: the rotor walked lanes until it found an empty one. A slot no
 ; longer names a row, so this picks the first free slot - there are two, and
-; testing them straight-line is cheaper than any rotor over them - and takes the
-; row from `NIB_J_ROTOR` independently.
+; testing them straight-line is cheaper than any rotor over them - and derives
+; the row and the column from the release count and the entropy nibble.
 ;
-; **Three rows against two slots is what makes two planes in one row reachable.**
+; ## THIS IS THE ONLY READER OF NIB_ENT, AND THE ONLY ONE THERE WILL BE
+;
+; `if_down` (P_PAIR) accumulates `NIB_TICK` into `NIB_ENT` on each fire rising
+; edge, and this routine is where that lands. `docs/evidence/open-questions.md`
+; section 3d is the record of v2's defect: **one nibble read by four things, and
+; the harm was in the sharing, not in the sampling.** Parking the lever made two
+; lanes permanently safe there, because a source that steered the jets also
+; steered the rockets, so a player who stopped moving froze both at once.
+;
+; So the rule that keeps this honest is a counting rule, and
+; `entropy-nibble.test.ts` is what counts: `NIB_ENT` has exactly two sites in
+; this file, the write in `if_down` and the read below. **`NIB_ROTOR` - the
+; jets' rocket lane - must never be one of them.** PRD lines 285-291 require the
+; rocket's lane to be independent of the player's press pattern, and contract
+; criterion V7 (`launcher-lives.test.ts`, the launcher-hit warning in all three
+; parked-lever runs) is the test that catches it if it stops being. `NIB_ROTOR`
+; stays a plain round robin off a nibble nothing on the input path touches.
+;
+; ## The row: a rotation for separation, the entropy nibble for the offset
+;
+; `row = (NIB_J_SENT + NIB_ENT) mod 3`, and both halves are load-bearing.
+;
+; **The entropy nibble alone would not do.** It only moves when the player
+; presses fire, and two planes enter 664 ms apart (`ENTRY_HI`), so a pair
+; released between two presses would read the same value, take the same row and
+; the same column, and stand in one cell. A player who never fires at all would
+; freeze it entirely and every plane of the game would enter identically. That is
+; the v2 failure mode wearing different clothes.
+;
+; **`NIB_J_SENT` is the rotation, and it is the counter that already existed.**
+; It is the wave's release count, so it steps by exactly one per entry - which is
+; all the old `NIB_J_ROTOR` ever did, one nibble further along. Consecutive
+; entries therefore differ by `1 + delta(NIB_ENT)` rows, which is never zero when
+; the player is quiet: the rows still walk 0, 1, 2, 0 ... as they always did, and
+; the entropy shifts *where in that walk* a wave starts. The wave reset is
+; seamless because a wave is six jets and six divides by three: the last entry of
+; a wave sits at 5 and the first of the next at 0, which is still one step on.
+;
+; The `mod 3` is a subtract-three loop because there is no divide. `AMAAC` wraps
+; at sixteen and sixteen is not a multiple of three, so the carry is compensated
+; with an `IAC` before the loop runs - 16 is 1 more than 15, and 15 is a multiple
+; of three, so a wrapped sum is one short of its true residue.
+;
+; ## The column: the far half of the field, and never the capture line
+;
+; `GRID_COL_FIRST` (1) is beside the horizon and `GRID_COL_LAST` (5) is the
+; capture line; `jm_move` steps a plane one grid *closer* and carries past 5 into
+; the capture. So an entry column is a life expectancy: a plane entering at 1 has
+; five march steps of life and one entering at 5 would be captured almost
+; immediately. **The whole 1-5 range is therefore not a fair draw**, and this
+; takes the far half - column 1 or column 2, decided by the entropy nibble's top
+; bit. At the ladder's fast rungs a march step is 488 ms and the missile takes
+; about 500 ms a column, so an entry at 3 would already be inside the range where
+; a shot cannot arrive before the capture does.
+;
+; The owner's words are "a plane can randomly appear anywhere on the board".
+; That is testimony about **variety**, not a claim that planes materialise on the
+; capture line, and nothing in `assets/reference/` shows a jet appearing at the
+; near end. Whether the unit's own range is wider than two columns is
+; unresolved - see `docs/evidence/open-questions.md`.
+;
+; **A zero entropy nibble has to mean the far end, and getting that backwards
+; made the game harder for the player who was doing least.** `NIB_ENT` is 0 out
+; of the power-on clear and only moves when the fire contact closes, so the top
+; bit reads 0 for a player who has not fired yet and for ever for one who never
+; does. A first draft mapped the clear bit to the near column, which meant that
+; machine released *every* plane one grid in - the quietest player getting the
+; shortest game, and the three parked-lever runs behind contract criterion V7
+; diverging from the ROM they were written against. It is self-reinforcing in a
+; probe, too: a drive that cannot find a jet at grid 1 never fires, so the nibble
+; never moves, so no jet ever enters at grid 1. Clear means the far end, which is
+; where every plane entered before this routine drew for it, so a machine nobody
+; has touched behaves exactly as it did.
+;
+; ## The column flag rides in the accumulator's spare bit, and never in RAM
+;
+; The machine has one accumulator, one Y and a status that survives a single
+; instruction, and `NIB_ENT` and the slot's nibbles are in different RAM files.
+; Once Y has moved to the slot there is no way back to the entropy nibble without
+; losing the slot, so the column decision has to travel *with* the row. A row is
+; 0-2 and the accumulator is four bits, so it travels in bit 2: `A4AAC` sets it,
+; and at `je_place` `A12AAC` - twelve being minus four - takes it off again and
+; leaves the carry saying whether it was there. One instruction recovers the row
+; and tests the flag at the same time.
+;
+; **A draft that parked row-and-flag in RAM was measurably worse and the drive
+; caught it.** It wrote the pair into the free slot's column nibble and read the
+; flag back with `TBIT1`, which left that nibble holding 4, 5 or 6 - not a column
+; at all - for the three instructions before the real column landed on top.
+; Nothing in the ROM can see that: this routine is straight-line and calls
+; nothing, and the tube is refreshed from `sweep`, somewhere else entirely. But
+; `tools/probe/drives/entry-spread.ts` samples RAM out of band, and it duly
+; reported entries at columns 4, 5 and 6. A machine state that is only ever
+; legal between two instructions is a trap for every probe written afterwards,
+; and the accumulator costs the same ten words.
+;
+; The two column arms rejoin through a `TCMIY` rather than an `IYC`, and the
+; near arm is placed first, because an unconditional `BR` may not follow a
+; status-setting instruction here: `tools/tmsasm/analysis/status.ts` rejects it,
+; on the grounds that status is restored to 1 at the start of every instruction
+; and the branch would silently become unconditional. `TCMIY` sets no status and
+; the branch above it stops the analysis walking further back.
+;
+; ## Two planes in one row is still reachable, and that is deliberate
+;
 ; A rotor that walked slots could never place two planes in one row, because the
-; row would come from the slot. This one walks 0, 1, 2, 0 ... while the slots
-; free up in whatever order the player shoots them down, so a row repeats as soon
-; as one plane outlives two entries - which is the ordinary case, not a corner.
-; The owner reports two planes in a row from the physical unit; a spawn path that
+; row would come from the slot. This walks the rows while the slots free up in
+; whatever order the player shoots them down, so a row repeats as soon as one
+; plane outlives two entries - which is the ordinary case, not a corner. The
+; owner reports two planes in a row from the physical unit; a spawn path that
 ; cannot produce one leaves the model representable and unreachable, which is the
 ; same defect one level up.
-;
-; **It does not read NIB_ENT, and that is the point of (g) in the design.** The
-; row here is a plain round robin off a nibble nothing on the input path touches.
-; `jet_enter` becomes NIB_ENT's single consumer in task 14, which is where the
-; entry position stops being a rotor; until then the rotor is deterministic and
-; owned, and the rocket's own rotor stays independent of both.
 
 jet_enter:
         LDX  FILE_JETS
-        TCY  NIB_J_ROTOR
-        IMAC                    ; A <- the row the next plane enters in
-        TAM
-        A13AAC                  ; carry iff the rotor ran past row 2
-        BR   je_wrap
-        BR   je_look
-je_wrap:
-        CLA
-        TAM                     ; back to row 0; Y still names the rotor
-        BR   je_look
-je_look:
-        TMA                     ; A <- the entry row, and nothing below disturbs
-                                ; it: TCY, MNEZ, BR and DYN all leave A alone,
-                                ; which is what carries it to je_place
+        TCY  NIB_J_SENT
+        IMAC                    ; A <- jets released this wave plus one, 1..6:
+                                ; the rotation, stepping one per entry. `IMAC`
+                                ; and not `TMA` for the plus one, which costs
+                                ; nothing and is not decoration - it puts the
+                                ; first plane of a game in row 1, where the rotor
+                                ; this replaced put it. The nibble is not written
+        LDX  FILE_MISS
+        TCY  NIB_ENT            ; ** the one and only read of the entropy nibble
+                                ;    in this program - see the note above **
+        AMAAC                   ; A <- the release count plus the player's rhythm
+        BR   je_wrapped         ; carry: the sum ran past fifteen
+        BR   je_mod3
+je_wrapped:
+        IAC                     ; sixteen is one more than a multiple of three,
+                                ; so a wrapped sum is one short of its residue
+je_mod3:
+        A13AAC                  ; take three off while three or more remain
+        BR   je_mod3
+        A3AAC                   ; the last one went too far - put it back. A is
+                                ; now the entry row, 0..2
+        TBIT1 3                 ; the entropy nibble's top bit picks the column,
+                                ; and Y still names it
+        BR   je_look            ; set: one grid nearer, and the flag stays clear
+        A4AAC                   ; clear: bit 2 is the "far end" flag, and rides to
+                                ; je_place in the accumulator's spare bit. **The
+                                ; polarity is this way round on purpose** - see
+                                ; the header: a nibble nobody has stirred is 0,
+                                ; and 0 has to mean the far end
+je_look:                        ; A holds row + 4 * flag, and nothing below
+                                ; disturbs it: LDX, TCY, MNEZ and BR all leave A
+                                ; alone, which is what carries it to je_place
+        LDX  FILE_JETS
         TCY  NIB_P_COL0         ; slot 0's column, 0 = the slot is free
         MNEZ
         BR   je_busy
@@ -2431,12 +2560,24 @@ je_busy:
         TCY  NIB_P_COL1
         MNEZ
         BR   jr_out             ; both slots are flying - wait a sweep
-        BR   je_place
-je_place:                       ; Y names the free slot's column, A the entry row
+je_place:                       ; Y names the free slot's column, A row + 4 * flag
+        A12AAC                  ; twelve is minus four: the flag comes off A and
+                                ; the carry is what it was
+        BR   je_far
+        BR   je_near
+je_far:
+        TCMIY GRID_COL_FIRST    ; the far end of the field, beside the horizon.
+                                ; TCMIY steps Y on, which je_row walks back
+        BR   je_row
+je_near:
+        A4AAC                   ; the flag was clear, so the twelve took four too
+                                ; many off - put them back. A is the row again
+        TCMIY GRID_COL_FIRST + 1 ; one grid nearer - still the far half
+je_row:                         ; Y names the nibble after the column
+        DYN                     ; Y <- the column
         DYN                     ; Y <- that slot's own row nibble
-        TAM                     ; and the plane enters in the rotor's row
-        IYC                     ; Y <- back to the column
-        TCMIY GRID_COL_FIRST    ; the plane enters at the far end of the field
+        TAM                     ; A has held the row all the way down here:
+                                ; TCMIY, DYN and BR all leave it alone
         TCY  NIB_J_SENT
         IMAC
         TAM

@@ -43,7 +43,15 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { CYCLE_HZ } from '../../src/machine/cpu/tms1370/timing.js';
-import { Tms1370Machine, assembleGame, planesOf, rowColumns, squadronMap } from './tms1370-probe.js';
+import {
+  Tms1370Machine,
+  assembleGame,
+  planesOf,
+  rowColumns,
+  slotsOf,
+  squadronMap,
+  type Plane,
+} from './tms1370-probe.js';
 
 const ASM = assembleGame();
 const symbol = (name: string): number => {
@@ -100,6 +108,19 @@ interface Frame {
    * rather than "is the lane's jet on it".
    */
   readonly jets: readonly number[];
+  /**
+   * Both slots as the RAM holds them, empties included, **in slot order**.
+   *
+   * The bitmap above says a cell is occupied. It cannot say *which* plane is
+   * standing there, and the classifier below has to know: a plane settled at
+   * column 1 with a second plane spawning at column 2 in the same row satisfies
+   * "some plane was one grid further out a frame ago", so the spawn reads as a
+   * march and its pass-through is charged to the collision test. The slot is the
+   * identity that survives a frame - the ROM writes an entry into one slot and
+   * clears only the column when a plane dies - so the arrival test follows slot
+   * `s` from frame to frame and leaves the bitmap to answer coincidence only.
+   */
+  readonly slots: readonly Plane[];
   readonly kills: number;
 }
 
@@ -124,6 +145,7 @@ function drive(BLOCK: number): readonly Frame[] {
         const planes = planesOf(ram, SQUADRON);
         return Array.from({ length: LANE_COUNT }, (_u, l) => rowColumns(planes, l));
       })(),
+      slots: slotsOf(ram, SQUADRON),
       kills: ram[FILE_STATE * 16 + NIB_KILLS] as number,
     });
   }
@@ -138,6 +160,8 @@ interface LaneTally {
   /** Of those, the ones the shot walked away from without a kill. */
   leavePassed: number;
   arrivePassed: number;
+  /** Coincidences a spawn created, which the tallies above exclude. */
+  spawnSeen: number;
 }
 
 /**
@@ -155,11 +179,16 @@ function tally(frames: readonly Frame[]): readonly LaneTally[] {
     arriveSeen: 0,
     leavePassed: 0,
     arrivePassed: 0,
+    spawnSeen: 0,
   }));
-  // Per lane: the column a coincidence was standing on, and which half it was.
-  const pending: ({ column: number; half: 'leave' | 'arrive' } | undefined)[] = new Array(
-    LANE_COUNT,
-  ).fill(undefined);
+  // Per lane: the column a coincidence was standing on, which half it was, and
+  // whether it counts. A coincidence a spawn created is tracked but not counted
+  // - see the note where they are opened - and it has to stay tracked, or the
+  // next frame simply reopens it as a settled one.
+  const pending: (
+    | { column: number; half: 'leave' | 'arrive'; counted: boolean }
+    | undefined
+  )[] = new Array(LANE_COUNT).fill(undefined);
 
   for (let i = 1; i < frames.length; i += 1) {
     const previous = frames[i - 1] as Frame;
@@ -167,7 +196,6 @@ function tally(frames: readonly Frame[]): readonly LaneTally[] {
     for (let lane = 0; lane < LANE_COUNT; lane += 1) {
       const wasShot = previous.missiles[lane] as number;
       const nowShot = current.missiles[lane] as number;
-      const wasJet = previous.jets[lane] as number;
       const nowJet = current.jets[lane] as number;
       const tallyLane = tallies[lane] as LaneTally;
       const open = pending[lane];
@@ -175,7 +203,7 @@ function tally(frames: readonly Frame[]): readonly LaneTally[] {
       // Resolve an open coincidence the moment the shot's column moves.
       if (open !== undefined && nowShot !== open.column) {
         const killed = nowShot === 0 && current.kills !== previous.kills;
-        if (!killed && nowShot !== 0 && nowShot < open.column) {
+        if (open.counted && !killed && nowShot !== 0 && nowShot < open.column) {
           if (open.half === 'leave') tallyLane.leavePassed += 1;
           else tallyLane.arrivePassed += 1;
         }
@@ -188,14 +216,62 @@ function tally(frames: readonly Frame[]): readonly LaneTally[] {
       // LEAVE: the jet was already standing on the shot's column before the
       // step. ARRIVE: the jet stands on the column the shot has just entered.
       if ((nowJet & (1 << nowShot)) !== 0) {
+        // **A jet that materialised on the cell is not this file's business,
+        // and since task 14 it can.** `jet_enter` draws an entry column of 1 or
+        // 2 - the last two cells a missile passes through on its way to the
+        // horizon - so a plane can now appear on top of a shot already standing
+        // there. The sweep's hit tests run when the missile steps and when the
+        // squadron marches; a spawn is neither, so the shot walks on and the
+        // plane lives. Measured at **6 of the 30 spawn arrivals in 88
+        // coincidences**, and recorded as unresolved in
+        // `docs/evidence/open-questions.md` rather than invented away: whether
+        // the unit hit-tests a spawn cannot be settled from the reference
+        // assets.
+        //
+        // A jet that *marched* onto the shot's cell is a different thing and
+        // stays in: the march does hit-test, 40 such coincidences were measured
+        // and none of them let a shot through. It arrived by march if it stood
+        // one grid further out in this row a frame ago - the squadron marches
+        // toward the launcher, so toward a higher column.
+        //
+        // **Which plane arrived is a question about a slot, and asking the row
+        // bitmap gets it wrong.** `wasJet` says a cell was occupied, not by
+        // whom, so a plane settled at column 1 beside a *new* plane at column 2
+        // satisfies the march test for column 2 - the spawn is then counted as a
+        // march and its pass-through charged to the collision test. Measured on
+        // this ROM, the bitmap and the slots disagree about 2 of 88 coincidences
+        // and in both directions, one spawn read as a march and one march read
+        // as a spawn, so the two errors happened to cancel in the totals. That
+        // is luck, not a reason to keep asking the wrong question.
+        //
+        // So the arrival is resolved per slot. Every slot standing on the cell
+        // is considered and the strongest class wins: a settled jet and a spawn
+        // can share a cell, and that coincidence is a question about the settled
+        // jet, which the collision test had a target for before the spawn came.
+        const arrivals = current.slots
+          .map((plane, slot) => ({ plane, was: previous.slots[slot] as Plane }))
+          .filter((pair) => pair.plane.column === nowShot && pair.plane.row === lane)
+          .map(({ was }) =>
+            was.row === lane && was.column === nowShot
+              ? 'settled'
+              : was.row === lane && was.column === nowShot - 1
+                ? 'march'
+                : 'spawn',
+          );
+        const settled = arrivals.includes('settled');
+        const marched = arrivals.includes('march');
+        const counted = settled || marched;
         const half: 'leave' | 'arrive' = nowShot === wasShot ? 'leave' : 'arrive';
         if (pending[lane] === undefined) {
-          if (half === 'leave') tallyLane.leaveSeen += 1;
-          else tallyLane.arriveSeen += 1;
-          pending[lane] = { column: nowShot, half };
+          if (counted) {
+            if (half === 'leave') tallyLane.leaveSeen += 1;
+            else tallyLane.arriveSeen += 1;
+          } else {
+            tallyLane.spawnSeen += 1;
+          }
+          pending[lane] = { column: nowShot, half, counted };
         }
       }
-      void wasJet;
     }
   }
   return tallies;
@@ -218,6 +294,7 @@ function pooled(): readonly LaneTally[] {
     arriveSeen: 0,
     leavePassed: 0,
     arrivePassed: 0,
+    spawnSeen: 0,
   }));
   for (const block of BLOCKS) {
     const run = tally(drive(block));
@@ -228,6 +305,7 @@ function pooled(): readonly LaneTally[] {
       into.arriveSeen += from.arriveSeen;
       into.leavePassed += from.leavePassed;
       into.arrivePassed += from.arrivePassed;
+      into.spawnSeen += from.spawnSeen;
     }
   }
   return total;
@@ -270,5 +348,21 @@ describe('the collision test runs for every lane, not just lane 0', () => {
       .filter((entry) => entry.n > 0)
       .map((entry) => entry.lane);
     expect(covered, 'some lane produced no coincidence at all').toEqual([0, 1, 2]);
+  });
+
+  it('excludes spawn coincidences without excluding most of the evidence', () => {
+    // The exclusion above is the only thing in this file that declines to look
+    // at a coincidence, so it needs a bound of its own or it could quietly grow
+    // until nothing is asserted at all. A spawn onto a live missile is a corner;
+    // if it ever became the common case the guard would be hollow and this is
+    // what says so. Expressed as a share rather than a count, because the number
+    // of coincidences a drive produces moves with every cadence change.
+    const spawned = tallies.reduce((sum, t) => sum + t.spawnSeen, 0);
+    const counted = tallies.reduce((sum, t) => sum + t.leaveSeen + t.arriveSeen, 0);
+    expect(
+      spawned,
+      `${spawned} of ${spawned + counted} coincidences were created by a spawn, ` +
+        'so the exclusion is now most of the file rather than a corner of it',
+    ).toBeLessThan(counted);
   });
 });
