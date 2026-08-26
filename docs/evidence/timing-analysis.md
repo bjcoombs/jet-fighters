@@ -611,6 +611,29 @@ Two centres are excluded by the robust fit rather than by hand, and they are the
 two `IMG_6113.mov` warns about: the battleship, which is wider than a cell and sits
 half a column out, and a burst spanning two cells.
 
+**The field's shape falls out of the fit, and it matches the printed overlay.**
+Censused over the played portion only - the game-over flash lights cells that are not
+gameplay - the red sprites occupy:
+
+| Fitted column | Frames | Median lit width | What it is |
+| --- | --- | --- | --- |
+| -1 (centre -0.76, half a cell out) | 39 | 24 px | The battleship: flat, wide, stationary, and **not** the arrowhead the jets are |
+| 0, 1, 2, 3, 4 | 31, 217, 153, 112, 67 | 22 px | Jets, on integer columns |
+| +5 (centre +5.35, half a cell out) | 8 | 20 px | The launcher's own cell |
+
+Five integer jet columns between two half-column-out sprites at the ends, each wider
+than a cell. That is the printed overlay's structure exactly - `BATTLE SHIP ZONE`,
+five cells of `JET FIGHTER FLYING ZONE`, `MISSILE STATION ZONE` at the `G` line - and
+it agrees with `src/machine/tube/ATLAS-COORDINATES.md`'s "battleship alone in cell 0,
+jets in cells 1-5, the launcher alone in cell 6".
+
+**What that does and does not confirm.** It confirms the *structure* from this
+recording independently. It does not confirm the *numbering*: this lattice is anchored
+on the sprites, so its origin is arbitrary and column 0 here is cell 1 there. Mapping
+the structure onto the printed labels comes from the overlay and from the atlas, which
+agree with each other; nothing in this clip's analysis re-derives it, because the
+ruler's ticks are finer than the cells and defeat a profile finder on this footage.
+
 ### The squadron's step, at skill 3
 
 A step is a track advancing exactly one column, the step frame being the first
@@ -640,8 +663,24 @@ the game where the ladder should be at its **slowest** for that dial setting.
 
 ### The player's missile, at skill 3
 
-**133 ms a column, median over 51 column steps in 20 flights** (mean 162 ms; the
-mode is 4 frames, 26 of the 51). Unchanged at thresholds 35, 45 and 55.
+**139-144 ms a column**, and the spread between those two numbers and the 133 ms a
+naive reading gives is the point.
+
+Timed as **single steps**: median 133 ms over 51 steps in 20 flights, mean 162 ms.
+Timed as **traverses** - a flight's first step to its last, divided by the columns
+between them - median 144 ms over 17 flights, or 139 ms over the 14 that span three
+or more columns. Unchanged at thresholds 35, 45 and 55.
+
+**Prefer the traverse figure, and the frame histogram says why.** The 51 single steps
+land on 2, 3, 4, 5, 6, 7, 14 and 20 frames, with **26 of them on exactly 4** - a pile-up
+on one frame count that no physical process produces and the sampling does. The tube is
+PWM-refreshed near 70 Hz and the camera samples at 30, so a single step is timed by two
+clocks that beat against each other and the answer lands on a frame multiple; one frame
+of error on a 4-frame reading is 25%. A traverse puts fifteen to twenty frames between
+its endpoints, where the same frame is 5%. The single-step median is biased low by
+about 7% here, which is small - but it is small by luck rather than by construction,
+and the same method on a slower object is what put three earlier attempts on this
+recording onto exact frame multiples and made them look like readings.
 
 This is the figure that makes the clip worth trusting, because it was reached twice
 by two pipelines that share no code: `tools/probe/drives/missile-transit.ts` reduces
@@ -649,7 +688,7 @@ a cropped re-encode of the same clip to per-cell cyan brightness and links lit r
 into traverses, with a shuffled negative control, and gets **133 ms over 21 shots**.
 Same answer, different route, same recording.
 
-**It disagrees with `IMG_6113.mov` by 3.8x.** That clip's missile is the most solid
+**It disagrees with `IMG_6113.mov` by 3.5x.** That clip's missile is the most solid
 number in this document - 500 ms a column over 744 adjacent steps. Both cannot
 describe the same machine at the same setting, so the missile's speed is either a
 function of the skill dial or of something else that differed between the two takes.
@@ -682,7 +721,7 @@ Against a video whose slowest reading is 467 ms and whose median is 300:
    is at its slowest there and needs four kills to reach the video's range.
 3. **The owner is right, and the size of it is about 4x.** Two independent
    quantities give the same factor: the squadron steps 4.5x too slowly (1364
-   against 300) and the missile flies 3.8x too slowly (500 against 133). Two
+   against 300) and the missile flies 3.5x too slowly (500 against 142). Two
    unrelated measurements agreeing on one ratio is a stronger claim than either.
 
 The recommendation, which this task does not implement: **`STEP_SKILL` is the
@@ -694,6 +733,42 @@ Any change to it must be **measured rather than extrapolated**, for the reason
 `asm/jetfighter.asm`'s own cadence header gives: a faster march sounds its beep more
 often, each beep suspends the sweep, and the ladder partly resists being sped up -
 rungs 8 and 7 are 244 ms apart nominally and 83 ms apart measured.
+
+### The tube's blanking does not mark the squadron's step
+
+The blanking pass on this clip found the whole display dark for a large minority of
+frames during play, in short runs, and neither the march note nor the 410 ms tone of
+`open-questions.md` §15 accounts for the rate. Since the ROM does not strobe the tube
+while a note plays, and a march step emits a note, the obvious hypothesis is that the
+blank runs *are* the march steps - which would make them an independent read on the
+cadence, from a signal that needs no sprite tracking at all.
+
+**They are not.** Measured on the same registered stack, over the played portion
+(t < 17.5 s, before the game-over flash):
+
+| "dark" defined as lit pixels below | frames dark | short runs | one per | steps with a run within +/-100 ms | chance (p95) |
+| --- | --- | --- | --- | --- | --- |
+| 2% of the playing median | 11.4% | 8 | 2.19 s | 10% | 9% (20%) |
+| 10% | 11.8% | 9 | 1.94 s | 10% | 10% (30%) |
+| 25% | 12.0% | 9 | 1.94 s | 10% | 10% (30%) |
+| 40% | 12.6% | 10 | 1.75 s | 10% | 10% (30%) |
+
+At chance under every definition of dark, so the result is not an artefact of where
+the threshold was put.
+
+**And the test could have found the opposite**, which is the part that has to be
+stated for a negative to be worth anything - it is exactly the failure this document
+records twice already. Ten steps and eight to ten blank runs share the same 17.5 s: a
+one-to-one relationship would score 100% against a null whose 95th percentile is
+20-30%, so the instrument discriminates easily between the two answers. It returned
+the one it returned.
+
+What that leaves is the blanking rate still unexplained, now with one more candidate
+eliminated rather than fewer. The comparison against the audio-side pass is loose in
+one direction worth flagging: it counted 14-17% of frames in runs of 133-167 ms, one
+per 1.1 s, against 11-13% here in runs whose median is shorter. Same phenomenon,
+different detectors; the correlation result does not depend on which is preferred,
+because it holds across the whole range of definitions above.
 
 ### The audio, and the 205 ms question
 
