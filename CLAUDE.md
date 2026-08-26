@@ -70,11 +70,21 @@ outlines, in Python, needing NumPy, SciPy and Pillow. Nothing in `src/` imports 
 edited by hand** - `src/machine/tube/ATLAS-COORDINATES.md`, "Tracing workflow".
 
 `tools/video/` is the same kind of thing for the owner's *gameplay* recordings: it
-registers a handheld clip against the printed silkscreen and times what the squadron and
-the missile do on the glass. Same dependencies, plus `ffmpeg`. The recordings are not
-committed and are referenced by path. Every figure it produces is quoted in
-`docs/evidence/timing-analysis.md` with the run that produced it, and **a cadence figure
-taken from a video is changed there and re-run, not typed into a comment**.
+registers a handheld clip against the printed silkscreen, times what the squadron and the
+missile do on the glass, and asks what the audio is doing when the tube goes dark. Same
+dependencies, plus `ffmpeg`. Every figure it produces is quoted in
+`docs/evidence/timing-analysis.md` or `open-questions.md` with the run that produced it,
+and **a cadence figure taken from a video is changed there and re-run, not typed into a
+comment**.
+
+**Two ways a recording reaches this repo, and the difference is deliberate.** The full
+clips are hundreds of megabytes and are *not* committed - `IMG_6113.mov` and the owner's
+skill-3 clip are referenced by path, so a tool that reads one runs only where the file
+is. Where a figure needs to be re-derivable in a clean checkout, the *reduction* is
+committed instead: `assets/reference/skill3-video-tube.mp4` is a 1 MB crop of the tube
+face and `skill3-video-cells.csv` is that crop reduced to per-cell brightness, which is
+what lets `tools/probe/drives/missile-transit.ts` run in CI with no video decode at all.
+Prefer the second shape for anything a drive asserts on.
 
 The rules that keep it honest:
 
