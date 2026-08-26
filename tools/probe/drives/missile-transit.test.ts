@@ -8,7 +8,7 @@
 // **reading its input wrong and still producing a number**, which is exactly how
 // the four earlier attempts on this recording failed.
 //
-// So three things are floored, not one:
+// So two things are floored:
 //
 // 1. The CSV still carries a usable sample. A regenerated CSV whose registration
 //    collapsed leaves few `registered = 1` rows and the drive silently measures
@@ -17,10 +17,16 @@
 //    is the floor that matters: a linker that has stopped linking prints "0
 //    tracks" and a linker that links anything prints a track count that its own
 //    control also prints.
-// 3. The rightward direction is still *not* measured. That reads oddly as an
-//    assertion, and it is the deliberate one: the drive's second finding is a
-//    negative, and a negative that quietly turns positive because a threshold
-//    moved would be read as "the march cadence is in the recording after all".
+//
+// **A third assertion was here and has been removed, which is worth recording.**
+// It floored the *rightward* count near chance, on the reasoning that the drive's
+// second finding was a negative and a negative that quietly turns positive should
+// fail loudly. The reasoning is sound and the assertion was still wrong: the
+// tracer feeding this drive isolates cyan and the jets are red, so the rightward
+// count was never a measurement of the recording to defend. Reading the red
+// channel finds the squadron immediately, at 267-467 ms a column. Floor what an
+// instrument can resolve; a bound on what it is blind to only makes the blindness
+// load-bearing.
 
 import { beforeAll, describe, expect, it } from 'vitest';
 import { runMissileTransit, type MissileTransitResult } from './missile-transit.js';
@@ -54,16 +60,6 @@ const SHOTS = 10;
 const SHOT_CONTROL_Z = 6;
 
 /**
- * How close to chance the *rightward* count must stay.
- *
- * **Measured: z = -1.1** - one track against a control mean of 2.3 +- 1.2, which
- * is to say fewer than chance produces. Three deviations is the same bar the
- * drive prints "MEASURED" at, so this asserts the drive would not claim to have
- * found a squadron.
- */
-const MARCH_CONTROL_Z = 3;
-
-/**
  * Seconds per column, measured off the recording.
  *
  * The band is wide on purpose. What this test defends is not the third decimal
@@ -86,7 +82,7 @@ describe('the missile transit drive', () => {
   it('still has a registered sample to measure', () => {
     expect(
       result.usableFrames,
-      'the CSV carries too few registered, lit frames - re-run tools/trace/video-cells.py and check its lock rate',
+      'the CSV carries too few registered, lit frames - re-run tools/video/cells.py and check its lock rate',
     ).toBeGreaterThanOrEqual(USABLE_FRAMES);
     expect(result.frames).toBeGreaterThan(result.usableFrames);
   });
@@ -105,14 +101,6 @@ describe('the missile transit drive', () => {
       `shot tracks (${result.leftward.tracks.length}) no longer stand clear of the shuffled control ` +
         `(${result.leftward.shuffledMean.toFixed(1)}) - the linker is finding structure in noise`,
     ).toBeGreaterThan(SHOT_CONTROL_Z);
-  });
-
-  it('still declines to claim a march cadence from this recording', () => {
-    expect(
-      result.rightward.z,
-      'rightward tracks now stand above chance - if that is real the recording has a squadron in it ' +
-        'and open-questions.md is wrong, so re-derive rather than raise this bound',
-    ).toBeLessThan(MARCH_CONTROL_Z);
   });
 
   it('still measures a shot crossing a column far faster than the ROM flies one', () => {

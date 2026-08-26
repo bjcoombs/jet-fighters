@@ -4,7 +4,8 @@ Reads `assets/reference/skill3-video-tube.mp4` - a crop of the owner's skill-3
 recording around the tube - and writes `assets/reference/skill3-video-cells.csv`,
 one row per frame, one column per (playfield cell, row).
 
-This lives beside `tools/trace/atlas.py` and shares its status: **not part of the
+This lives in `tools/video/` with the other gameplay-recording tools and shares
+their status: **not part of the
 build and never run by `npm test`.** It needs NumPy, Pillow and `ffmpeg` on PATH.
 `tools/probe/drives/missile-transit.ts` reads the CSV it produces and needs none
 of those, which is deliberate - `drives/README.md` records a drive that shelled
@@ -34,7 +35,7 @@ The three steps, and why each is there:
    the BATTLE SHIP ZONE at one end and the MISSILE STATION ZONE at the other,
    which is the geometry `ATLAS-COORDINATES.md` arrived at independently.
 
-Usage: python3 tools/trace/video-cells.py [--video PATH] [--out PATH]
+Usage: python3 tools/video/cells.py [--video PATH] [--out PATH]
 """
 
 from __future__ import annotations
@@ -168,7 +169,7 @@ def main() -> None:
     del header
     lines = [
         "# Per-cell tube brightness from assets/reference/skill3-video-tube.mp4, written by",
-        "# tools/trace/video-cells.py. One row per video frame at 30 fps.",
+        "# tools/video/cells.py. One row per video frame at 30 fps.",
         "# Each cell is the summed cyan energy in a box at that cell's centre, after every",
         "# frame is registered against the tube, smoothed +-1 frame over registered frames",
         "# only, then scaled per cell to its own [p20, p99].",

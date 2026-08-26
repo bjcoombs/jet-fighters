@@ -3,7 +3,7 @@
 // This is the only drive here that measures the *device* rather than the
 // emulated machine. It reads `assets/reference/skill3-video-cells.csv` - the
 // owner's skill-3 recording reduced to one brightness number per playfield cell
-// per frame by `tools/trace/video-cells.py` - and links lit cells into tracks.
+// per frame by `tools/video/cells.py` - and links lit cells into tracks.
 //
 // The question it answers is the owner's third gameplay complaint: *the speed of
 // the bullets that I fire is currently slow*. `asm/jetfighter.asm` flies a shot
@@ -29,19 +29,24 @@
 // cell - and reports both. A direction whose real count does not stand clear of
 // its shuffled count has not been measured.
 //
-// That control is what separates the two answers this drive gives:
+// **Leftward - a shot leaving the G line: 21 tracks against 2.5 +- 1.5 shuffled,
+// z = +12.0.** Measured, and it agrees to the millisecond with a wholly separate
+// extraction that timed 51 column steps in 20 flights.
 //
-// - **Leftward (a shot leaving the G line): 21 tracks against 2.5 +- 1.5
-//   shuffled, z = +12.0.** Measured.
-// - **Rightward (a jet marching toward the G line): 1 track against 2.3 +- 1.2
-//   shuffled, z = -1.1.** Not present in this recording at any gate. Widening
-//   the gate to 3 s finds 21 rightward chains - and 18.2 +- 3.1 in the shuffled
-//   control, so they are chance links between successive shots, not a squadron.
-//   The march cadence is **not** measurable from this recording and this drive
-//   does not report one; `docs/evidence/open-questions.md` carries why.
+// ## What this drive cannot see, and why its silence is not evidence
 //
-// The recording is a firing demonstration - the owner made it to answer a
-// question about the rocket - which is the likeliest reason no jet crosses it.
+// **The jets are red. The tracer that feeds this drive isolates cyan.** So this
+// instrument is blind to the squadron by construction, and its rightward count -
+// 1 track against 2.3 +- 1.2 shuffled - says nothing whatever about whether jets
+// crossed the recording. They did: the same clip yields 12 rightward handoffs and
+// step intervals of 267, 300 and 467 ms once the red channel is read.
+//
+// An earlier version of this header reported that rightward count as a finding,
+// and an earlier version of the test asserted it. Both were wrong in the way this
+// project keeps having to relearn - a negative from an instrument that cannot
+// resolve the signal is a fact about the instrument. The drive still runs the
+// rightward control, because it is the honest denominator for the leftward one,
+// but no conclusion is drawn from it here.
 //
 // `missile-transit.test.ts` holds this drive's floors.
 //

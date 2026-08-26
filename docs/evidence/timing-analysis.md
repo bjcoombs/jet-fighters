@@ -761,7 +761,7 @@ the **argument** they defend it with is a withdrawn row.
 | `docs/contract/v3-entities.contract.md:91, 123-124` | E3's action drives "four squadron steps at the 205 ms cadence"; its observation reasons from the beep rate |
 | `docs/design/jet-model.md:106-107` | The same one-countdown argument |
 | `docs/evidence/vfd-appearance.md:90-91, 517` | `600 / 205.1 = 2.93`, read as the march sound pulsing about three times per step |
-| `docs/evidence/open-questions.md:92` | §2b still records T1 as measured from the beep onsets |
+| `docs/evidence/open-questions.md` §2b | ~~Recorded T1 as measured from the beep onsets~~ - **struck through and repointed at the picture in this pass**, so this row is closed rather than outstanding |
 
 Two of these are worth separating from the rest.
 

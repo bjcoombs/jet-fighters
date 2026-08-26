@@ -1279,6 +1279,46 @@ Re-derive every audio figure here with `tools/probe/drives/march-tone-identity.t
 score readings come from the owner's video and are **not** re-derivable from the
 committed audio; the timestamps are given so they can be re-read from the source file.
 
+### Added from §17's pass over the same clip: episode 3 *can* be tested, and it says no
+
+Point 1 above rests on "the readout is unlit at every sample from 17.00 s to the end of
+the video". **That is a sampling artefact.** Read frame by frame from the registered
+stack rather than at half-second samples, the score digits are lit in **nine separate
+windows after 17.00 s**: 17.03-17.07, and then 19.93-20.17, 20.33-20.43, 20.60-20.70,
+20.87-20.97, 21.13-21.23, 21.40-21.50, 21.67-21.77 and 21.93-21.97. The last seven are a
+regular ~270 ms flash, which is the end-of-game display rather than play.
+
+Every one of them reads **20**. So episode 3 (17.70-18.11 s) has a legible score 0.6 s
+before it and a legible score 1.8 s after it, and **the score did not change across it**:
+
+| Time | Score readout | Relation to episode 3 |
+| --- | --- | --- |
+| 16.60 s | SCORE 20 | 1.1 s before |
+| 17.03 - 17.07 s | **SCORE 20** | 0.6 s before |
+| 19.93 - 20.33 s | **SCORE 20** | 1.8 s after, tube now flashing |
+| 21.33 s | SCORE 20 | after |
+
+**The census is therefore n = 2, one for and one against**, not n = 1 suggestive.
+Episode 2 has the score rising by two across it; episode 3 has it flat across it. That
+does not settle the question either, but it moves it: a tone that fires on a scoring
+event should not fire when no score is scored, so the reading that survives both rows is
+that the tone is **not** a kill - which is the reading point 3 already preferred on the
+owner's testimony.
+
+**One correction to point 3's own footing, from the other direction.** It leans on
+`audio-reference.md`'s `missileFire` row, 1480-1632 Hz, being what a fire and a hit both
+sound like. Measured in *this* recording, the unit's fire blip is a **2577 Hz** tone, sd
+7.6 Hz over sixteen events, each leading a visible missile launch by a median 50 ms - see
+§17 and `timing-analysis.md`, "The skill-3 clip". 2577 is not a harmonic of 1520. So the
+band that point 3 reasons from may not describe this unit, and the collision it worries
+about is softer than it looks. That is a reason to re-measure `missileFire`, not a reason
+to prefer the kill reading.
+
+Method and re-derivation: `tools/video/clip.py` then `tools/video/measure.py` for the
+audio figures; the score windows come from thresholding cyan excess in the digit box of
+the registered stack, which is the same colour-excess rule the rest of this analysis
+uses. The tube-blank question in §16 is untouched by any of this.
+
 ## 16. The real machine blinks about once a second and nothing we model explains it
 
 `vfd-appearance.md` §5 measures, off video of the owner's unit, **complete whole-display
@@ -1338,7 +1378,14 @@ a second time, and a "the ROM is 2.4x too slow" figure was drawn from it. The ow
 said: *"the sound might also be me hitting buttons, not from the device electronics."*
 That reading is withdrawn too.
 
-### What is now known about it, and what is not
+**This is a different sound from §15's, and the two sections must not be collapsed.**
+§15's is a *tone*: 625 Hz with six partials, sustained unbroken for 405-417 ms, a handful
+of times a game. This one is a *train of transients* about 208 ms apart, running for most
+of the clip, with no tonal peak at all - the same onset times fall out of band envelopes
+at 380-470, 590-740, 1620-1760, 2500-2660 and 2780-2960 Hz. They are also separable in
+time: two of §15's episodes fall inside stretches where this train goes quiet. Three
+unexplained sounds are now on the record in one recording - that tone, this train, and
+the 2577 Hz fire blip below, which is the only one of the three that is identified.
 
 **Known.** It is real: an envelope autocorrelation over 23 s is not something a
 refractory window manufactures. It is **broadband** - the same onset times fall out of
