@@ -28,6 +28,16 @@ nothing here is invented.
 | Synthesized (v1) | The value v1 chose inside the measured band to drive its oscillator. Reproducible target, not itself a measurement. |
 | Test bound (v1) | The tolerance window v1's CI asserted against, wider than the measured band by design. |
 | Note label | A musical note name attached to a measured frequency afterwards. Never the source of a number. |
+| Owner-confirmed | A specific claim put to the owner about his unit, which he confirmed. |
+| Owner-reported | The owner volunteered it. Recorded verbatim, and **not** corroborated against a recording unless a row says so. |
+
+The last two are not interchangeable. `open-questions.md` §8a is the case that made
+the distinction worth drawing: the owner's "the last note is a high note" was a
+statement of fact about his machine, was read as a question about ours, and was closed
+as faithful against a document that turned out to be wrong. **Where the owner and a
+documented figure disagree about what his unit sounds like, re-derive the figure from
+the recording before concluding the owner is describing something else.** The
+`launcherHitWarning` section below is that rule applied a second time.
 
 Where the v1 source comment and the v1 test constant disagree, both are recorded and
 the discrepancy is flagged. The wider of the two is the safe acceptance window.
@@ -535,16 +545,19 @@ note - this is why both read in the same band.
 | Field | Value | Source |
 | --- | --- | --- |
 | `launcherHitWarning.dominantHzRange` | 455-545 Hz | Measured |
-| `launcherHitWarning.dominantPartialsHz` | 455, 455, 544 (whine-notched) | Measured |
+| `launcherHitWarning.dominantPartialsHz` | 455, 455, 544 (whine-notched) | Measured, **pooled - see below** |
 | `launcherHitWarning.synthesizedHz` | 466 Hz (A#4) | Synthesized (v1) |
 | `launcherHitWarning.beepDurationMs` | ~10 ms measured; 12 ms synthesized | See discrepancy |
 | `launcherHitWarning.gapMs` | 25-28 ms | Measured |
 | `launcherHitWarning.beepCountHit1` | 2 | Owner-confirmed |
 | `launcherHitWarning.beepCountHit2` | 3 | Owner-confirmed |
 | `launcherHitWarning.beepCountHit3` | n/a - plays `gameOver` | Owner-confirmed |
+| `launcherHitWarning.perBeepDominantHz` | **269, 319, 744** (one 10 ms window per beep) | Measured, n = 1 event |
+| `launcherHitWarning.beepsDescend` | **no** - the reading rises, and no beep reaches the 80-97 Hz collapse band | Measured, n = 1 event |
+| `launcherHitWarning.isLossThemePrefix` | owner says yes; the recording says no | Owner-reported **vs** Measured - see below |
 | `launcherHitWarning.recording` | `loss-audio.m4a` | - |
 | `launcherHitWarning.timestampSec` | ~27.4 (discrete triple-beep), plus the loss opening at ~85.86 | - |
-| `launcherHitWarning.method` | Windowed FFT | - |
+| `launcherHitWarning.method` | Windowed FFT; per-beep since 2026-08-25, `tools/probe/drives/loss-warning-partials.ts` | - |
 
 **Discrepancy**: the v1 measurement comments state ~10 ms beeps; the v1 constant
 `WARNING_BEEP_MS` is 12 ms. 10 ms is the measured figure, 12 ms is what v1
@@ -552,6 +565,162 @@ synthesized. v1 used a 28 ms inter-beep gap, at the top of the measured 25-28 ms
 range. Gaps follow every beep except the last.
 
 v1 envelope: peak gain 0.34, 2 ms attack, 40 ms release.
+
+### Is the warning a growing prefix of the loss melody?
+
+**Owner-reported**, verbatim, 2026-08-25, playing the physical unit:
+
+> "we have three lives, after each life is lost we play the sound, its the loosing
+> theme progressively being reveiled until upuon the loss of the third life, it plays
+> in total and the screen flashes."
+
+That is a different mechanism from the one this document and the ROM describe. Two
+models, and they are not distinguishable by the thing most easily checked:
+
+| | Beeps on hit 1 | Beeps on hit 2 | Hit 3 |
+| --- | --- | --- | --- |
+| **Prefix model** (owner) | `gameOver` stages 1-2 | `gameOver` stages 1-3 | the whole melody |
+| **Repetition model** (this document, and the ROM) | 2 copies of one 467 Hz note | 3 copies of it | the whole melody |
+
+**Both predict two beeps then three, so the counts cannot separate them.** The pitch
+of the warning already matches `gameOver`'s opening note - 467 Hz against 466 - which
+is exactly what the prefix model predicts for the *first* beep, so that agreement is
+not evidence either way. What separates them is what the **second** beep is: under the
+prefix model it must be `gameOver` stage 2, the collapse into 80-97 Hz.
+
+`dominantPartialsHz` above cannot answer it. Three partials **pooled over a whole
+warning event** discard which beep each came from, so 455, 455, 544 is equally
+consistent with three equal beeps and with a descent whose stages were sampled out of
+order. The question needs one window per beep.
+
+#### Method
+
+`tools/probe/drives/loss-warning-partials.ts`, standalone, run against
+`assets/reference/loss-audio.m4a`. Decoded to mono 48 kHz; 10 ms Hann windows -
+`beepDurationMs` above - zero-padded to 65536, giving 0.73 Hz bins. **The bin grid is
+not the uncertainty**: a 10 ms Hann mainlobe is ~400 Hz wide, so each reading below
+carries its own -3 dB span and those spans are the honest error bars. Spectra are
+divided by the mean of nine background windows taken from the gaps between and before
+the beeps, and read over 150-1350 Hz: above the recording's table rumble, below the
+continuous 1400-1700 Hz whine that is present in every quiet stretch of the file at
+~24 dB over the local median. That whine is what "whine-notched" means above.
+
+**n = 1.** A shape-based sweep of all 88 s - isolated bursts of 4-16 ms, 15 dB over a
+2 s running median, with 12 ms of near-silence on both sides, grouped at 25-50 ms
+spacing - returns exactly one beep group inside the gameplay, the one at 27.4 s this
+document already cites. The rest of the recording is dense overlapping play. So every
+figure below is a sample of size one, and the beep *counts* in the table above remain
+Owner-confirmed rather than measured: this recording contains one warning event, not
+one of each kind.
+
+#### Per-beep, never pooled
+
+| Beep | Window start (s) | Dominant Hz | -3 dB span | Excess over background | LOW-MID |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 27.3850 | **269** | 196-344 | +29.6 dB | -1.5 dB |
+| 2 | 27.4270 | **319** | 231-523 | +19.8 dB | -13.7 dB |
+| 3 | 27.4580 | **744** | 675-837 | +18.3 dB | -12.2 dB |
+
+Onset to onset: 42.0 ms and 31.0 ms. The group spans 73 ms, 88 ms including beep 3's
+decay. LOW-MID is the 80-110 Hz level minus the 420-560 Hz level - the collapse band
+against the opening band.
+
+**They do not descend.** The prefix model requires 466 -> 92 -> 240 Hz. The reading
+rises, and beep 2 - the one that would have to *be* the 92 Hz collapse - sits at 319 Hz
+with 13.7 dB **less** energy in the collapse band than in the opening band.
+
+Beep 3 is the least trustworthy of the three: it is the one the isolation sweep
+rejects, because another event at ~27.451 s overlaps its attack. That does not rescue
+the prefix model - contamination cannot move a reading *down* to 92 Hz - but its 744 Hz
+should not be quoted as a clean figure.
+
+**These three numbers do not replace `dominantHzRange`, and are not a correction of
+it.** They sit lower than the pooled 455 / 455 / 544 for reasons that are all method
+and not disagreement: this pass divides by a background where v1 did not, restricts to
+150-1350 Hz where v1 read the whole spectrum, and reports the strongest partial of a
+10 ms *transient* rather than of the event. A piezo click that short is broadband -
+look at the -3 dB spans, which run 148 to 292 Hz wide - so its "dominant" is a weak
+pitch estimate by construction. **What the per-beep pass is good for is the shape of
+the sequence, not the value of any one beep**, and the shape is what the question was
+about. The 455-545 Hz acceptance band in the summary below stands unchanged.
+
+#### The positive control, which is what makes the negative mean anything
+
+The same method, the same file, run on the loss sound itself. A method that cannot find
+the collapse where it is known to be proves nothing about where it is not.
+
+| Offset from loss onset | Dominant Hz | The stage this document already records |
+| --- | --- | --- |
+| +5 ms | 657 | stage 1, `openingHzRange` 455-545 |
+| +15 ms | 224 | the collapse in progress |
+| +25 ms | **60** | stage 2, `collapseHzRange` 80-97 |
+| +240 ms | 237 | stage 3, `bodyRaspHzRange` 200-280 |
+
+It finds all four. On LOW-MID the loss reads **+30.6, +39.4, +30.5 dB** at 10, 20 and
+30 ms past its onset. The warning, at the offsets where its own second beep sits,
+reads **-16.9 and -2.2 dB**. Same statistic, same recording, same window length: a
+swing of roughly 55 dB on the melody's single most distinctive feature.
+
+#### Event shape, which needs no spectrum at all
+
+300-1300 Hz level per 2 ms frame, as the fraction of each event more than 15 dB below
+that event's own peak, over matched 88 ms windows:
+
+| Event | Frames "quiet" | Longest continuous run |
+| --- | --- | --- |
+| The whole three-beep warning | 73% | 10 ms of 88 ms |
+| The loss sound, same length from its onset | 13% | 38 ms of 88 ms |
+
+The warning is mostly silence. The loss sound is not, because a melody played straight
+through has no holes in it. And the arithmetic is decisive on its own: **92 Hz has a
+period of 10.9 ms, which is longer than a whole warning beep.** A 10 ms burst cannot
+contain one cycle of `gameOver`'s stage 2, so no 10 ms beep can be that stage,
+whatever a spectrum says.
+
+#### The conflict, stated
+
+**The measurement contradicts the testimony, and the current ROM is right.** The
+launcher-hit warning in this recording is a train of short, roughly equal, separated
+beeps - the repetition model - and not a growing prefix of the loss melody. **No ROM
+change is proposed.** `SND_WARN_*` and the `lw_beep` loop stand as they are.
+
+Both facts are kept here rather than one, because the owner is describing a real unit
+and this analysis cannot say which of these is true:
+
+- **He is describing the same phenomenon in different words.** The warning's pitch
+  really is `gameOver`'s opening note, the beep count really does grow 2 -> 3 -> whole
+  melody, and every sound really does blank the tube (below). "The losing theme
+  progressively revealed" is a fair description of *that* from the playing side of the
+  case, without any of it being a prefix in the signal.
+- **He is describing a different unit or a different revision.** The recording is one
+  event from one session on one machine. n = 1 cannot exclude it.
+
+What would settle it is not more analysis of this file: it is an isolated recording of
+a first hit and of a second hit, made deliberately, the way `battleshipBuzz` was
+settled. Until then this section records both and prefers neither.
+
+#### "and the screen flashes" - already implemented
+
+**Yes, and it is not a separate effect.** `note` (`asm/jetfighter.asm`, page `P_LEAF`)
+stops sweeping the tube for the whole of every burst, so on this machine as on the real
+one every sound *is* a blink - `docs/evidence/vfd-appearance.md` measures complete
+blanking on 14-17% of all frames during play, against 4% while quiet, and records the
+mechanism.
+
+The blanks, measured off the running machine and recorded in that document, are
+**141.7 ms for a two-beep warning** and **636.9 ms for the loss sequence**;
+`tools/probe/blank-to-glass.test.ts` asserts the tube paints nothing for the whole of
+every sound, and `Display.getObservedFrame` is what carries the dark tube to the glass.
+So the third life already goes dark for roughly four times as long as either warning
+before the final score returns - which is the difference in kind the owner's "and the
+screen flashes" is pointing at. Nothing is missing and nothing needs adding.
+
+*Not established here*: reading `tick_burst` and `rd_burst`, the starburst
+`launcher_down` writes on the player's own grid appears to have nothing left to
+decrement its countdown once `tick` starts taking its `tk_ended` arm, which would leave
+it lit on the frozen final display. That is a code reading and **was not verified on
+the running machine** - driving a game to its third launcher hit headlessly is its own
+piece of work. Recorded so it can be checked, not relied on.
 
 ---
 
