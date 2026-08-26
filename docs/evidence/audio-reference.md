@@ -91,7 +91,7 @@ unless stated as a partial or as a noise rolloff.
 | `assets/reference/gameplay-audio.m4a` | events at ~7.30 s, ~38.31 s, ~41.89 s, ~54 s, ~120.5-122.4 s | missile fire, battleship buzz, win jingle, and the [625 Hz tone](#the-625-hz-tone-that-is-there) |
 | `assets/reference/loss-audio.m4a` | events at ~27.4 s, ~85.86-86.99 s | launcher-hit warning beeps, loss sound |
 | `assets/reference/battleship-arrival.m4a`, `battleship-interval.m4a` | one recording, trimmed twice; arrivals at 0.32-4.37 s and 20.12-23.92 s | battleship buzz - the only sound isolated from everything else the machine does |
-| `assets/reference/skill3-video-audio.m4a` | 23.24 s; tone episodes at 14.10 s and 17.70 s | the audio track of the owner's skill-3 video, extracted 2026-08-26 |
+| `assets/reference/skill3-video-audio.m4a` | 23.24 s; tone episodes at 1.10, 14.10 and 17.70 s | the audio track of the owner's skill-3 video, extracted 2026-08-26 |
 
 **The last row is a second machine-session, not a second analysis of the same
 one**, which is why it is worth its size. The owner recorded 23.2 s of video at
@@ -212,14 +212,19 @@ Four things make this the machine rather than the room:
   17.70-18.11 s - fall *inside* the 3.2 s and 4.6 s silences in that recording's
   click train. Whatever those clicks are, and the owner has since suggested they
   may be his own thumb on the controls, the tone is a separate thing.
-- **The tube goes dark for it.** In the video's frames the glass shows nothing
-  but its printed overlay throughout 14.10-14.51 s, and at 14.63 s - just after
-  the tone stops - `SCORE 20` is lit. That is `note` refusing to sweep the tube
-  for the length of a burst, which
-  [vfd-appearance.md](vfd-appearance.md) already measures. *This one rests on
-  the picture, not the sound, and is not re-derivable from the committed audio.*
 - **It is absent from the isolated battleship recording**, where the same
   detector finds no sustained tone across 24 s containing two full arrivals.
+
+**A fourth point was drafted here and withdrawn on checking, which is worth
+recording because it was persuasive.** The video's frames do show the score
+readout unlit throughout 14.10-14.51 s and lit again at 14.63 s, and that reads
+exactly like `note` refusing to sweep the tube for the length of a burst -
+[vfd-appearance.md](vfd-appearance.md) §5 measures that behaviour, so it would
+have been a tidy confirmation. **It does not survive its control.** Sampled
+every 0.2-0.5 s, the readout is also unlit from 13.70 s - four tenths of a
+second *before* the tone starts - and from 17.00 s to the end of the video at
+23.2 s, a six-second stretch containing one 410 ms episode. Darkness in this
+recording is not specific to the tone, so it is not evidence about the tone.
 
 And four things make it **not a march**, which is the question this section
 exists to answer:
@@ -232,7 +237,8 @@ exists to answer:
 4. None of them is anywhere near 66 s.
 
 **What game event fires it is unresolved** and is recorded in
-`open-questions.md` §15 with what would settle it. The band is kept in this
+`open-questions.md` §15 with what would settle it, together with a score reading
+taken across one episode. The band is kept in this
 document under its own name rather than deleted, because a real sound that
 nobody has identified is worth more written down than forgotten.
 

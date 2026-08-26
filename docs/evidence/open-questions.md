@@ -1218,24 +1218,59 @@ be his own thumb on the controls. Two of the video's tone episodes - 14.10-14.51
 17.70-18.11 s - fall *inside* the 3.2 s and 4.6 s silences in that recording's click
 train.
 
-One further observation, from the video's picture rather than its sound and therefore
-**not re-derivable from the committed audio**: through 14.10-14.51 s the glass shows
-nothing but its printed overlay, and at 14.63 s - just after the tone stops - `SCORE 20`
-is lit. That is `note` refusing to sweep the tube for the length of a burst, which is the
-behaviour `vfd-appearance.md` §5 measures.
+### What the score does across an episode
+
+A sound that blanks the tube and is followed by a changed score would be a scoring event,
+so the video was read frame by frame to test exactly that. The result is **suggestive and
+does not close it**, and why it does not is the useful part.
+
+| Time | Score readout | Relation to a tone episode |
+| --- | --- | --- |
+| 13.30 s | **SCORE 18**, a red plane and cyan sprites on the glass | 0.8 s before episode 2 |
+| 13.70 s | not lit | before |
+| 14.05 s | not lit | before |
+| 14.55 s | not lit | just after |
+| **14.70 s** | **SCORE 20** | 0.2 s after |
+| 15.00 s | SCORE 20 | - |
+| 16.50 s | SCORE 20, a squadron of cyan jets | 1.2 s before episode 3 |
+| 17.00 - 22.50 s | not lit at any sample | spans episode 3 |
+
+**The score rises by two across the 14.10 s episode.** Two is `SCORE_JET_MID`, a jet shot
+in the ruler's `2` band, so a jet kill is the right size of event.
+
+Three things stop that closing the question:
+
+1. **n = 1.** The readout is unlit at every sample from 17.00 s to the end of the video,
+   so the 17.70 s episode cannot be tested at all, and the three episodes in
+   `gameplay-audio.m4a` have no picture to read.
+2. **The converse is untestable here.** "The score never rises without an episode" needs
+   a readout legible most of the time, and this one is dark for more of the video than it
+   is lit. The 18 could have become 20 anywhere in the 1.4 s between the two legible
+   frames.
+3. **It runs against owner-confirmed testimony.** The `missileFire` section of
+   `audio-reference.md` records, as Owner-confirmed, that a missile *hitting* a jet makes
+   the same ~20 ms beep as firing and that there is **no separate explosion sound**. A
+   410 ms tone is not that. Either the tone is not a kill, or a claim the owner confirmed
+   is wrong, and one score reading is nowhere near enough to prefer the second.
+
+The same frame-by-frame read killed a different claim, recorded in `audio-reference.md`:
+the tube is *not* specifically dark during the tone. It is also dark from 13.70 s, four
+tenths of a second before the episode starts, and for the whole 17.00-23.20 s stretch.
 
 **What is unresolved**: what game event fires it. Nothing in the ROM emits a 410 ms tone,
 and no rule in the PRD predicts one. The episode times in `gameplay-audio.m4a` are
-12.60, 28.80 and 116.10 s; in the video, 14.10 and 17.70 s.
+12.60, 28.80 and 116.10 s; in the video, 1.10, 14.10 and 17.70 s.
 
-**What would settle it**: a video of one crossing or one game where the tube is legible
-frame by frame, so the sound can be put beside what changed on the glass. The 23 s video
-is nearly enough - it is what produced the `SCORE 20` observation - but its display is
-dark for most of its length and one episode is not a pattern. Failing that, the owner
-being asked directly what makes a sound about half a second long: he has been able to
-answer questions of that shape before.
+**What would settle it**: a video where the tube stays legible - the owner's unit filmed
+in a darker room, or anything that stops the readout going dark for seconds at a time -
+covering several episodes. The score table above then becomes a census instead of one
+row. Failing that, two questions to the owner: what makes a sound about half a second
+long, and whether shooting a jet sounds different from firing at one. The second is a
+direct re-test of the `missileFire` row that point 3 collides with.
 
-Re-derive every figure here with `tools/probe/drives/march-tone-identity.ts`.
+Re-derive every audio figure here with `tools/probe/drives/march-tone-identity.ts`. The
+score readings come from the owner's video and are **not** re-derivable from the
+committed audio; the timestamps are given so they can be re-read from the source file.
 
 ## 16. The real machine blinks about once a second and nothing we model explains it
 
