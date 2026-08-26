@@ -329,6 +329,53 @@
 .EQU NIB_J_TMP,      8          ; arithmetic scratch
 .EQU NIB_J_SCR,      9          ; arithmetic scratch
 
+; --- two planes as positions ------------------------------------------------
+;
+; **Declared here, read by nothing yet.** `docs/design/jet-model.md` is the
+; design; task 12 moves the march, the capture, the spawn and the collision test
+; onto these and deletes the lane rank above. Until then the rank at nibbles 0-2
+; is still the live model and these four are inert.
+;
+; **Why the model changes at all.** The nibbles 0-2 above hold one jet per lane
+; and the nibble *is* the column, so a lane carries at most one jet and the lane
+; IS the row. Two planes in one row is therefore not merely absent from this
+; program, it is **unrepresentable** - and the owner reports it from the physical
+; unit (`docs/evidence/owner-entity-model.md`, "A plane can share a row also").
+; The count is the clue and it is his: two entities at two nibbles each is four,
+; three lanes at one nibble each is three. The cheaper model is the one that
+; cannot say what he sees.
+;
+; A plane is a (row, column) pair, indexed `NIB_P_BASE + 2 * plane`, so a walk
+; over the two slots is one `A2AAC` and needs no lookup - the same property that
+; made the missile rank cheap, where the nibble index is the lane.
+;
+; Units follow the convention at the FILE_STATE header: a **column** is the grid
+; the plane stands on, 1 to 5, with **0 meaning the slot is empty** - the same
+; reading as the jets, the rocket and the player's missile. A **row** is 0 to 2,
+; top to bottom, the same as NIB_LANE.
+;
+; **Nibbles 10-13 rather than 0-2, deliberately.** Reusing the rank's own nibbles
+; would be free but would make task 12 a single unreviewable commit: the old and
+; the new cannot coexist if they share storage. 14-15 stay free.
+;
+; **NO SHADOW WRITE, and that is a decision rather than an omission.** The task
+; that scheduled this work expected one - the old and new representations kept in
+; step for a task, as `mr-ram-map` did for the missile rank. It does not carry
+; over, because the two models differ in *cardinality* and not just in layout:
+; the rank holds three jets, this holds two planes. A shadow could mirror the
+; first two placed and would then silently diverge the moment a third jet exists,
+; which is exactly the case where a positional bug would hide. A scaffold that is
+; wrong precisely where it is most needed is worse than none, so task 12 makes
+; the switch atomically and `tools/probe/missile-rank.test.ts` - which asserts
+; zero pass-throughs per lane on both halves of the collision pair, proved
+; against two ROM mutants - is what guards it.
+.EQU NIB_P_BASE,    10          ; plane 0's row, 0..2 top to bottom
+.EQU NIB_P_COL0,    11          ; plane 0's column, grid 1..5, 0 = slot empty
+.EQU NIB_P_ROW1,    12          ; plane 1's row, 0..2
+.EQU NIB_P_COL1,    13          ; plane 1's column, grid 1..5, 0 = slot empty
+.EQU PLANE_COUNT,    2          ; two planes, and the owner's count is the clue
+.EQU PLANE_STRIDE,   2          ; a row and a column each, so slot n is base + 2n
+
 ; ============================================================================
 ; Values
 ; ============================================================================
