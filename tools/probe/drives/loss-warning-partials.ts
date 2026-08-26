@@ -48,103 +48,36 @@
 // Paths below are relative to the repository root. Every frequency it prints is
 // read off the recording; no figure here is transcribed from anywhere else.
 
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
-import { hannWindow, magnitudeSpectrum } from '../../../src/machine/audio/spectrum.js';
+import {
+  PAD,
+  SR,
+  bandDb,
+  bestCombF0,
+  bin,
+  binHz,
+  decodeRecording,
+  envelopeMs,
+  filtfilt,
+  harmonicCombDb,
+  highpassBq,
+  lowpassBq,
+  requireFfmpeg,
+  rmsDb,
+  spectrumAt,
+} from './recording.js';
 
 const RECORDING = 'assets/reference/loss-audio.m4a';
-const SR = 48_000;
-const PAD = 1 << 16; // 0.73 Hz bins, so the mainlobe rather than the grid limits us
+const GAMEPLAY = 'assets/reference/gameplay-audio.m4a';
 
-// --- the recording -----------------------------------------------------------
-
-/** Fail with the fix rather than with an ENOENT out of a spawn. */
-function requireFfmpeg(): void {
-  try {
-    execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' });
-  } catch {
-    console.error(
-      [
-        'loss-warning-partials: `ffmpeg` was not found on PATH.',
-        '',
-        `This drive decodes ${RECORDING} (AAC in an MP4 container), which it cannot do`,
-        'without an external decoder. Install one and re-run:',
-        '',
-        '  macOS:  brew install ffmpeg',
-        '  Debian: sudo apt-get install ffmpeg',
-        '',
-        'Nothing else in the repository needs it - no build, test or dev command does.',
-      ].join('\n'),
-    );
-    process.exit(1);
-  }
-}
-
+/**
+ * The decode, the spectra, the band levels and the zero-phase filters live in
+ * `recording.ts` since `march-tone-identity.ts` needed the same ones. Nothing
+ * about their behaviour changed when they moved; what changed is that two
+ * drives now cannot drift apart about what "the 600-650 Hz band level" means.
+ */
 function decode(): Float64Array {
-  requireFfmpeg();
-  const dir = mkdtempSync(join(tmpdir(), 'jf-loss-'));
-  const wav = join(dir, 'loss.wav');
-  const src = resolve(import.meta.dirname, '..', '..', '..', RECORDING);
-  try {
-    execFileSync('ffmpeg', ['-y', '-v', 'error', '-i', src, '-ac', '1', '-ar', String(SR), '-c:a', 'pcm_s16le', wav]);
-    const buf = readFileSync(wav);
-    // Walk the RIFF chunk list rather than assuming a 44-byte header.
-    let at = 12;
-    while (at + 8 <= buf.length) {
-      const id = buf.toString('ascii', at, at + 4);
-      const size = buf.readUInt32LE(at + 4);
-      if (id === 'data') {
-        const n = size >> 1;
-        const out = new Float64Array(n);
-        for (let i = 0; i < n; i += 1) out[i] = buf.readInt16LE(at + 8 + i * 2) / 32768;
-        return out;
-      }
-      at += 8 + size + (size & 1);
-    }
-    throw new Error('no data chunk in the decoded WAV');
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
-
-// --- spectra -----------------------------------------------------------------
-
-/** Hann-windowed, zero-padded magnitude spectrum of `durS` seconds from `t0`. */
-function spectrumAt(x: Float64Array, t0: number, durS: number): Float64Array {
-  const a = Math.round(t0 * SR);
-  const w = Math.round(durS * SR);
-  const slice = x.subarray(a, a + w);
-  let mean = 0;
-  for (const v of slice) mean += v;
-  mean /= slice.length;
-  const win = hannWindow(slice.length);
-  const padded = new Float64Array(PAD);
-  for (let i = 0; i < slice.length; i += 1) padded[i] = (slice[i] - mean) * win[i];
-  return magnitudeSpectrum(padded, { window: false });
-}
-
-const binHz = SR / PAD;
-const bin = (hz: number) => Math.round(hz / binHz);
-
-/** Mean-square level in dB over [lo, hi) of a magnitude spectrum. */
-function bandDb(mags: Float64Array, lo: number, hi: number): number {
-  let sum = 0;
-  let n = 0;
-  for (let k = bin(lo); k < bin(hi); k += 1) {
-    sum += mags[k] * mags[k];
-    n += 1;
-  }
-  return 10 * Math.log10(sum / n + 1e-30);
-}
-
-function rmsDb(x: Float64Array, t0: number, durS: number): number {
-  const a = Math.round(t0 * SR);
-  const n = Math.round(durS * SR);
-  let sum = 0;
-  for (let i = a; i < a + n; i += 1) sum += x[i] * x[i];
-  return 20 * Math.log10(Math.sqrt(sum / n) + 1e-12);
+  requireFfmpeg('loss-warning-partials', RECORDING);
+  return decodeRecording(RECORDING);
 }
 
 // --- onsets ------------------------------------------------------------------
@@ -370,91 +303,9 @@ shape(lossOnset, span, 'loss, same length from its onset');
 // past a 4-16 ms run gate. So the envelope here is time-domain - a zero-phase
 // band-pass, rectified and smoothed - and never leaves the sample grid.
 
-interface Biquad {
-  b0: number;
-  b1: number;
-  b2: number;
-  a1: number;
-  a2: number;
-}
+// The envelope, the zero-phase filters and the biquads now live in
+// `recording.ts`, unchanged - see the note beside `decode` above.
 
-/** RBJ cookbook, normalised by a0. */
-function lowpassBq(fc: number, q = Math.SQRT1_2): Biquad {
-  const w = (2 * Math.PI * fc) / SR;
-  const cos = Math.cos(w);
-  const alpha = Math.sin(w) / (2 * q);
-  const a0 = 1 + alpha;
-  return {
-    b0: ((1 - cos) / 2) / a0,
-    b1: (1 - cos) / a0,
-    b2: ((1 - cos) / 2) / a0,
-    a1: (-2 * cos) / a0,
-    a2: (1 - alpha) / a0,
-  };
-}
-
-function highpassBq(fc: number, q = Math.SQRT1_2): Biquad {
-  const w = (2 * Math.PI * fc) / SR;
-  const cos = Math.cos(w);
-  const alpha = Math.sin(w) / (2 * q);
-  const a0 = 1 + alpha;
-  return {
-    b0: ((1 + cos) / 2) / a0,
-    b1: (-(1 + cos)) / a0,
-    b2: ((1 + cos) / 2) / a0,
-    a1: (-2 * cos) / a0,
-    a2: (1 - alpha) / a0,
-  };
-}
-
-function runBq(input: Float64Array, bq: Biquad, reverse: boolean): Float64Array {
-  const out = new Float64Array(input.length);
-  let x1 = 0;
-  let x2 = 0;
-  let y1 = 0;
-  let y2 = 0;
-  for (let n = 0; n < input.length; n += 1) {
-    const i = reverse ? input.length - 1 - n : n;
-    const x0 = input[i];
-    const y0 = bq.b0 * x0 + bq.b1 * x1 + bq.b2 * x2 - bq.a1 * y1 - bq.a2 * y2;
-    x2 = x1;
-    x1 = x0;
-    y2 = y1;
-    y1 = y0;
-    out[i] = y0;
-  }
-  return out;
-}
-
-/** Forward then backward: zero phase, so a burst keeps its position and length. */
-function filtfilt(input: Float64Array, stages: Biquad[]): Float64Array {
-  let y = input;
-  for (const bq of stages) y = runBq(runBq(y, bq, false), bq, true);
-  return y;
-}
-
-/**
- * Peak envelope of 300-1300 Hz, in dB, one frame per millisecond.
- *
- * Same band as `bandTrack`: above the table rumble, below the 1400-1700 Hz
- * whine. Rectified and smoothed at 120 Hz, which settles inside ~3 ms and so
- * still resolves a 10 ms burst; the per-frame maximum is taken rather than the
- * mean, for the same reason.
- */
-function envelopeMs(input: Float64Array): Float64Array {
-  const band = filtfilt(input, [highpassBq(300), lowpassBq(1300)]);
-  for (let i = 0; i < band.length; i += 1) band[i] = Math.abs(band[i]);
-  const smoothed = filtfilt(band, [lowpassBq(120)]);
-  const hop = SR / 1000;
-  const frames = Math.floor(smoothed.length / hop);
-  const out = new Float64Array(frames);
-  for (let f = 0; f < frames; f += 1) {
-    let peak = 0;
-    for (let i = f * hop; i < (f + 1) * hop; i += 1) peak = Math.max(peak, smoothed[i]);
-    out[f] = 20 * Math.log10(peak + 1e-12);
-  }
-  return out;
-}
 
 const BURST_MIN_MS = 4;
 const BURST_MAX_MS = 16;
@@ -468,7 +319,7 @@ const FLANK_MS = 12;
 const GROUP_MIN_MS = 25;
 const GROUP_MAX_MS = 50;
 
-const env = envelopeMs(x);
+const env = envelopeMs(x, 300, 1300);
 
 // The floor a burst is measured against is the median of the half second
 // around it, resampled every 50 ms.
@@ -481,15 +332,21 @@ const env = envelopeMs(x);
 // envelope plainly shows three.
 const FLOOR_WIN_MS = 500;
 const FLOOR_STEP_MS = 50;
-const floors = new Float64Array(Math.ceil(env.length / FLOOR_STEP_MS));
-for (let b = 0; b < floors.length; b += 1) {
-  const mid = b * FLOOR_STEP_MS;
-  const lo = Math.max(0, mid - FLOOR_WIN_MS / 2);
-  const hi = Math.min(env.length, mid + FLOOR_WIN_MS / 2);
-  const block = Array.from(env.subarray(lo, hi)).sort((p, q) => p - q);
-  floors[b] = block[block.length >> 1];
+
+/** The moving-median floor of an envelope, as a lookup by frame. */
+function floorOf(e: Float64Array): (frame: number) => number {
+  const floors = new Float64Array(Math.ceil(e.length / FLOOR_STEP_MS));
+  for (let b = 0; b < floors.length; b += 1) {
+    const mid = b * FLOOR_STEP_MS;
+    const lo = Math.max(0, mid - FLOOR_WIN_MS / 2);
+    const hi = Math.min(e.length, mid + FLOOR_WIN_MS / 2);
+    const block = Array.from(e.subarray(lo, hi)).sort((p, q) => p - q);
+    floors[b] = block[block.length >> 1];
+  }
+  return (frame: number) => floors[Math.min(floors.length - 1, Math.round(frame / FLOOR_STEP_MS))];
 }
-const medianAt = (frame: number) => floors[Math.min(floors.length - 1, Math.round(frame / FLOOR_STEP_MS))];
+
+const medianAt = floorOf(env);
 
 interface Burst {
   startMs: number;
@@ -498,23 +355,31 @@ interface Burst {
   isolated: boolean;
 }
 
-function findBursts(overDb: number): Burst[] {
+/**
+ * Bursts in any envelope, against any floor.
+ *
+ * Parameterised rather than closed over `env` because section 9 runs the
+ * identical detector over `gameplay-audio.m4a`. A detector that was only ever
+ * pointed at the file it was tuned on cannot answer whether "n = 1" is a fact
+ * about the game or a fact about the recording.
+ */
+function burstsIn(e: Float64Array, floor: (f: number) => number, overDb: number): Burst[] {
   const found: Burst[] = [];
   let runStart = -1;
-  for (let f = 0; f <= env.length; f += 1) {
-    const loud = f < env.length && env[f] > medianAt(f) + overDb;
+  for (let f = 0; f <= e.length; f += 1) {
+    const loud = f < e.length && e[f] > floor(f) + overDb;
     if (loud && runStart < 0) runStart = f;
     if (!loud && runStart >= 0) {
       const len = f - runStart;
       if (len >= BURST_MIN_MS && len <= BURST_MAX_MS) {
         let peak = -Infinity;
-        for (let k = runStart; k < f; k += 1) peak = Math.max(peak, env[k]);
-        let isolated = runStart >= FLANK_MS && f + FLANK_MS <= env.length;
+        for (let k = runStart; k < f; k += 1) peak = Math.max(peak, e[k]);
+        let isolated = runStart >= FLANK_MS && f + FLANK_MS <= e.length;
         for (let k = runStart - FLANK_MS; isolated && k < runStart; k += 1) {
-          if (env[k] > medianAt(k) + overDb) isolated = false;
+          if (e[k] > floor(k) + overDb) isolated = false;
         }
         for (let k = f; isolated && k < f + FLANK_MS; k += 1) {
-          if (env[k] > medianAt(k) + overDb) isolated = false;
+          if (e[k] > floor(k) + overDb) isolated = false;
         }
         found.push({ startMs: runStart, lenMs: len, peakDb: peak, isolated });
       }
@@ -522,6 +387,11 @@ function findBursts(overDb: number): Burst[] {
     }
   }
   return found;
+}
+
+/** The same detector, on this drive's own recording. */
+function findBursts(overDb: number): Burst[] {
+  return burstsIn(env, medianAt, overDb);
 }
 
 /** Isolated bursts spaced GROUP_MIN_MS-GROUP_MAX_MS apart, in runs of 2 or more. */
@@ -634,6 +504,250 @@ for (const t of quietStarts) {
   );
 }
 
-console.log('\nRead the five together. The prefix model requires beep 2 to be the');
+// --- 6. is a per-beep dominant a measurable quantity at all? -----------------
+
+// Sections 1 and the pooled figure in audio-reference.md disagree wildly: 269 /
+// 319 / 744 against 455 / 455 / 544. The obvious reading is that one of them
+// has its window in the wrong place. This section tests that directly, by
+// moving the window and watching what the reading does, and the answer turns
+// out not to favour either figure.
+//
+// If the quantity were real, shifting a window by 2 ms - a fifth of a beep -
+// would move it a little. What it actually does is printed below.
+
+console.log('\n--- 6. The per-beep dominant against where the window is put ----------');
+console.log('Same three beeps as section 1. Each row is one window length and one');
+console.log('processing choice; each column is where the window starts relative to the');
+console.log("beep's spectral peak. Section 1 is the '10 ms divided' row at -2 ms.\n");
+
+function domAt(t0: number, dur: number, divide: boolean, lo: number, hi: number): number {
+  const mags = spectrumAt(x, t0, dur);
+  const v = new Float64Array(mags.length);
+  for (let k = 0; k < mags.length; k += 1) {
+    v[k] = divide ? mags[k] / (background[k] + 1e-15) : mags[k];
+  }
+  const half = Math.round(50 / binHz);
+  let bestBin = bin(lo);
+  let bestVal = -Infinity;
+  for (let k = bin(lo); k <= bin(hi); k += 1) {
+    let sum = 0;
+    let n = 0;
+    for (let j = Math.max(0, k - half); j <= Math.min(v.length - 1, k + half); j += 1) {
+      sum += v[j];
+      n += 1;
+    }
+    if (sum / n > bestVal) {
+      bestVal = sum / n;
+      bestBin = k;
+    }
+  }
+  return bestBin * binHz;
+}
+
+const OFFSETS_MS = [-6, -4, -2, 0, 2, 4, 6];
+const VARIANTS: [string, number, boolean, number, number][] = [
+  ['5 ms divided ', 0.005, true, 150, 1350],
+  ['10 ms divided', 0.010, true, 150, 1350],
+  ['20 ms divided', 0.020, true, 150, 1350],
+  ['10 ms raw    ', 0.010, false, 150, 1350],
+  ['20 ms raw    ', 0.020, false, 150, 1350],
+];
+console.log(`  beep   variant        ${OFFSETS_MS.map((o) => `${o >= 0 ? '+' : ''}${o}ms`.padStart(7)).join(' ')}`);
+const beepSwing: number[] = [];
+for (const [i, p] of warnPeaks.entries()) {
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const [label, dur, divide, bLo, bHi] of VARIANTS) {
+    const row = OFFSETS_MS.map((off) => {
+      const hz = domAt(p.t + off / 1000, dur, divide, bLo, bHi);
+      lo = Math.min(lo, hz);
+      hi = Math.max(hi, hz);
+      return hz.toFixed(0).padStart(7);
+    });
+    console.log(`   ${i + 1}     ${label} ${row.join(' ')}`);
+  }
+  beepSwing.push(hi - lo);
+  console.log(`         spread across the 35 readings above: ${(hi - lo).toFixed(0)} Hz\n`);
+}
+console.log(`  Per-beep spread: ${beepSwing.map((v) => `${v.toFixed(0)} Hz`).join(', ')}.`);
+console.log('');
+console.log('  **Neither figure is right, because the quantity is not determined.** A');
+console.log('  10 ms Hann mainlobe is ~400 Hz wide and these beeps are broadband clicks,');
+console.log('  so "the dominant" is decided by where the window lands, whether a');
+console.log('  background is divided out, and how wide a band is searched - not by the');
+console.log('  beep. 269 / 319 / 744 and 455 / 455 / 544 are both inside the swing above.');
+console.log('  The honest reading is that this recording does not carry a per-beep pitch');
+console.log('  for the warning at all, and no method choice will make it.');
+console.log('');
+console.log('  Section 1 is not withdrawn - what it is good for is the *shape* of the');
+console.log('  sequence, and the LOW-MID statistic in sections 2 and 3 does not depend on');
+console.log('  a dominant. But no single figure in this table should be quoted as a pitch.');
+
+// --- 7. is the loss sound a melody at all? ----------------------------------
+
+// The question this drive was built for assumes there is a melody to be a
+// prefix of. Nobody had checked. The owner's account is of four notes; the ROM
+// has five stages; both are statements about pitch, and pitch is testable.
+//
+// The statistic is a harmonic comb: the mean level at the first eight multiples
+// of a candidate f0, minus the mean level 55 Hz either side of each. A tone
+// scores high, noise scores near zero however loud it is, and the score means
+// nothing except against controls - so a known tone and a known silence are
+// scored in the same pass.
+
+console.log('\n--- 7. Does the loss sound carry any pitch? ---------------------------');
+console.log('Harmonic-comb score over 30 ms windows: the level at the first eight');
+console.log('multiples of f0 minus the level 55 Hz either side of each. Immune to level.');
+console.log('The controls are what make the number readable.\n');
+
+const gameplay = decodeRecording(GAMEPLAY);
+console.log('  what                                           best f0   comb score');
+const TONALITY: [string, Float64Array, number, number, number][] = [
+  ['CONTROL gameplay 121.00 s, the win jingle', gameplay, 121.0, 900, 1400],
+  ['CONTROL gameplay 12.80 s, the 625 Hz tone', gameplay, 12.8, 560, 1400],
+  ['CONTROL gameplay 43.60 s, room silence', gameplay, 43.6, 560, 1400],
+  ['CONTROL loss 20.00 s, room silence', x, 20.0, 60, 800],
+  ['loss +80 ms, the opening peak', x, 85.94, 60, 800],
+  ['loss +135 ms', x, 85.995, 60, 800],
+  ['loss +315 ms, the body peak', x, 86.175, 60, 800],
+  ['loss +405 ms, the body', x, 86.265, 60, 800],
+  ['loss +535 ms, the tail', x, 86.395, 60, 800],
+  ['loss +915 ms, the tail', x, 86.775, 60, 800],
+  ['warning beep 1', x, 27.383, 150, 800],
+];
+const tonalityScores = new Map<string, number>();
+for (const [label, sig, t, lo, hi] of TONALITY) {
+  const { f0, scoreDb } = bestCombF0(spectrumAt(sig, t, 0.03), lo, hi);
+  tonalityScores.set(label, scoreDb);
+  console.log(`  ${label.padEnd(44)} ${f0.toFixed(0).padStart(5)} Hz  ${scoreDb.toFixed(1).padStart(7)} dB`);
+}
+
+console.log('\n  The specific claim, scored directly: gameOver stage 2 is 80-97 Hz.');
+console.log('  A 92 Hz square or pulse drive puts a 92 Hz comb under the piezo resonance,');
+console.log('  which is how battleshipBuzz was measured at 93.4 Hz in this same document.');
+for (const t of [85.9, 85.92, 85.94, 85.96, 85.98]) {
+  const mags = spectrumAt(x, t, 0.06);
+  const at92 = harmonicCombDb(mags, 92);
+  const bestLow = bestCombF0(mags, 80, 97, 0.25);
+  console.log(
+    `    ${t.toFixed(3)} s: 92 Hz comb ${at92.toFixed(1).padStart(6)} dB;` +
+      `  best in 80-97 Hz is ${bestLow.f0.toFixed(1)} Hz at ${bestLow.scoreDb.toFixed(1)} dB`,
+  );
+}
+
+// --- 8. how many events are in the loss sound? ------------------------------
+
+// Since section 7 finds no pitch, "how many notes" cannot be answered by
+// counting pitches. What can be counted is amplitude: a note played after
+// another note leaves a dip between them. This segments the loss sound on a
+// broadband envelope smoothed at 40 Hz - which settles in about 10 ms, so a
+// 25 ms articulation survives and a single cycle does not - and calls a
+// boundary a local maximum with at least a 3 dB dip since the last one.
+
+console.log('\n--- 8. The loss sound counted on its envelope ------------------------');
+console.log('60-6000 Hz, rectified, smoothed at 40 Hz. A maximum counts when at least');
+console.log('3 dB of dip separates it from the last one. The centroid column is what');
+console.log("audio-reference.md's stage table is describing.\n");
+
+const lossEnvRaw = filtfilt(x, [highpassBq(60), lowpassBq(6000)]);
+for (let i = 0; i < lossEnvRaw.length; i += 1) lossEnvRaw[i] = Math.abs(lossEnvRaw[i]);
+const lossEnv = filtfilt(lossEnvRaw, [lowpassBq(40)]);
+
+const SEG_FROM = 85.86;
+const SEG_TO = 87.1;
+let lossEnvPeak = 0;
+for (let i = Math.round(SEG_FROM * SR); i < Math.round(SEG_TO * SR); i += 1) {
+  lossEnvPeak = Math.max(lossEnvPeak, lossEnv[i]);
+}
+const segTrace: { t: number; db: number }[] = [];
+for (let t = SEG_FROM; t < SEG_TO; t += 0.005) {
+  segTrace.push({ t, db: 20 * Math.log10(lossEnv[Math.round(t * SR)] / lossEnvPeak + 1e-12) });
+}
+const segMax: { t: number; db: number }[] = [];
+for (let i = 1; i < segTrace.length - 1; i += 1) {
+  if (!(segTrace[i].db >= segTrace[i - 1].db && segTrace[i].db > segTrace[i + 1].db)) continue;
+  const last = segMax.at(-1);
+  if (last === undefined) {
+    segMax.push(segTrace[i]);
+    continue;
+  }
+  let dip = Infinity;
+  for (const p of segTrace) if (p.t > last.t && p.t < segTrace[i].t) dip = Math.min(dip, p.db);
+  if (Math.min(last.db, segTrace[i].db) - dip >= 3) segMax.push(segTrace[i]);
+  else if (segTrace[i].db > last.db) segMax[segMax.length - 1] = segTrace[i];
+}
+
+function centroidHz(t: number): number {
+  const mags = spectrumAt(x, t - 0.01, 0.02);
+  let num = 0;
+  let den = 0;
+  for (let k = bin(60); k < bin(4000); k += 1) {
+    const p = mags[k] * mags[k];
+    num += p * k * binHz;
+    den += p;
+  }
+  return num / den;
+}
+
+console.log('  offset(ms)   level(dB re peak)   centroid(Hz)');
+const loud = segMax.filter((p) => p.db > -25);
+for (const p of loud) {
+  console.log(
+    `  ${((p.t - SEG_FROM) * 1000).toFixed(0).padStart(10)}   ${p.db.toFixed(1).padStart(17)}   ${centroidHz(p.t).toFixed(0).padStart(12)}`,
+  );
+}
+console.log(
+  `\n  ${loud.length} maxima within 25 dB of the peak, ${segMax.length} counting the tail.`,
+);
+console.log('  Grouped by the dips that separate them, the sound is: a rise to a first');
+console.log("  peak whose centroid falls as it goes, a low stretch, a much louder body,");
+console.log('  and then a long decaying tail of small bumps whose centroid *rises* into');
+console.log("  the recording's own 1400-1700 Hz whine. That is an envelope, not a tune.");
+
+// --- 9. is n = 1 a fact about the game or about the recording? --------------
+
+// Section 5 sweeps this file and returns one warning group in 88 s. A full game
+// has three life losses, so either this recording does not contain them or the
+// detector cannot see them. The way to tell is to point the identical detector
+// at a second recording of the same machine.
+
+console.log('\n--- 9. The same detector, on gameplay-audio.m4a -----------------------');
+console.log('Identical envelope, identical floor, identical burst and grouping rules.');
+console.log('If the detector were blind, it would be blind in both files.\n');
+
+const gpEnv = envelopeMs(gameplay, 300, 1300);
+const gpFloor = floorOf(gpEnv);
+console.log('  over-median   bursts   isolated   groups of 2+   group starts (s)');
+for (const overDb of [11, 13, 15, 17, 19]) {
+  const found = burstsIn(gpEnv, gpFloor, overDb);
+  const groups: Burst[][] = [];
+  for (const b of found.filter((q) => q.isolated)) {
+    const last = groups.at(-1);
+    const prev = last?.at(-1);
+    const gap = prev ? b.startMs - prev.startMs : Infinity;
+    if (last && gap >= GROUP_MIN_MS && gap <= GROUP_MAX_MS) last.push(b);
+    else groups.push([b]);
+  }
+  const multiG = groups.filter((g) => g.length >= 2);
+  console.log(
+    `  ${`+${overDb} dB`.padStart(11)}   ${String(found.length).padStart(6)}   ` +
+      `${String(found.filter((b) => b.isolated).length).padStart(8)}   ${String(multiG.length).padStart(12)}   ` +
+      multiG.slice(0, 6).map((g) => (g[0].startMs / 1000).toFixed(2)).join(', ') +
+      (multiG.length > 6 ? ', ...' : ''),
+  );
+}
+console.log('');
+console.log('  Read this against section 5. The detector is not blind - it returns groups');
+console.log('  in both files. What it cannot do is tell a launcher-hit warning from any');
+console.log('  other pair of clicks 25-50 ms apart, and gameplay-audio.m4a is 130 s of');
+console.log('  dense overlapping play, so a count here is a count of candidates rather');
+console.log('  than of warnings. **n = 1 is a fact about what could be isolated, not a');
+console.log('  census of the warnings the machine played.** Settling the progression');
+console.log('  needs a recording made for it, not a better threshold.');
+
+console.log('\nRead the nine together. The prefix model requires beep 2 to be the');
 console.log('collapse; the collapse is what the loss sound shows at +30 dB or better on');
-console.log('this statistic, and what beep 2 shows the opposite sign of.');
+console.log('the LOW-MID statistic, and what beep 2 shows the opposite sign of. Sections');
+console.log('6 and 7 then go further than that: the warning has no measurable per-beep');
+console.log('pitch, and the loss sound has no measurable pitch of any kind, so a');
+console.log('question about which notes are played needs a different recording to answer.');
