@@ -1288,7 +1288,18 @@ windows after 17.00 s**: 17.03-17.07, and then 19.93-20.17, 20.33-20.43, 20.60-2
 20.87-20.97, 21.13-21.23, 21.40-21.50, 21.67-21.77 and 21.93-21.97. The last seven are a
 regular ~270 ms flash, which is the end-of-game display rather than play.
 
-Every one of them reads **20**. So episode 3 (17.70-18.11 s) has a legible score 0.6 s
+**Eight of the nine read 20.** The ninth is the last flash of the clip, 21.93-21.97 s,
+two frames, heavily overexposed - and its tens digit is unmistakably a **3**, not a 2:
+the bottom-left segment is dark and the bottom-right lit, the opposite of every reading
+before it. What it means is not established. A score cannot climb after the game has
+ended, so the candidates are a partial multiplex catch (the following frame lights the
+tens digit alone, so the two digits are being strobed separately by then), bloom on a
+saturated segment, or something the end-of-game display does that nothing here models.
+It is recorded and not explained.
+
+**It does not bear on episode 3**, which is what this addendum is about: the two
+readings that bracket the episode are 17.03-17.07 s and 19.93-20.17 s, and both are
+plainly 20. So episode 3 (17.70-18.11 s) has a legible score 0.6 s
 before it and a legible score 1.8 s after it, and **the score did not change across it**:
 
 | Time | Score readout | Relation to episode 3 |
@@ -1296,7 +1307,14 @@ before it and a legible score 1.8 s after it, and **the score did not change acr
 | 16.60 s | SCORE 20 | 1.1 s before |
 | 17.03 - 17.07 s | **SCORE 20** | 0.6 s before |
 | 19.93 - 20.33 s | **SCORE 20** | 1.8 s after, tube now flashing |
-| 21.33 s | SCORE 20 | after |
+
+Every row is a frame measured lit before it was read: 536, 564, 409, 640 and 704 lit
+pixels in the digit box against a 40-pixel floor. **A fifth row said "21.33 s, SCORE 20"
+and has been removed - that frame is dark, 0 lit pixels.** It came from misreading a
+contact sheet whose frame list contained a duplicate, so a panel was attributed to the
+wrong timestamp. Nothing else in this addendum depended on it, and the three rows that
+bracket the episode are unaffected, but it was a row of data that was never observed and
+it should not have been written.
 
 **The census is therefore n = 2, one for and one against**, not n = 1 suggestive.
 Episode 2 has the score rising by two across it; episode 3 has it flat across it. That
