@@ -493,14 +493,18 @@ interface Drive {
  * power-on clear - three things that have all moved during this project. Reading
  * it off a fresh machine costs about sixty sweeps once per file and cannot go
  * stale; a literal here would be the bet `CLAUDE.md` warns about, pointing the
- * other way. Today it comes to 54,850 cycles, a little under 62 sweeps.
+ * other way. Today it comes to 54,896 cycles, a little under 62 sweeps.
+ *
+ * Sampled at {@link SAMPLE_CYCLES} and not by whole sweeps, because the figure is
+ * a *budget* and a sweep of overshoot spends 889 cycles this file has not got:
+ * the longest priming below uses 60 of the 61 sweeps available.
  */
 const FIRST_RELEASE_CYCLES = (() => {
   const machine = new Tms1370Machine();
   machine.setContacts({ skill: 1, lane: 0, fire: false });
   const ceiling = seconds(5);
   while (machine.cycles < ceiling) {
-    machine.step(SWEEP_INSTRUCTIONS);
+    machine.step(SAMPLE_CYCLES);
     if (planesOf(machine.ram).length > 0) return machine.cycles;
   }
   throw new Error(
