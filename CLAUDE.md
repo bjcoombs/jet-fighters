@@ -16,6 +16,38 @@ PRD: `docs/prd/jet-fighters-v3.md` (paths in this file are relative to the repo 
 machine this one replaced, v1 for the behavioural replica before it - and are kept as the
 record of what the rules are and how they were arrived at.
 
+## This is a black-box reconstruction. Do not read the original program.
+
+The chip is identified: `MP2110`, a TI TMS1370, week 40 of 1980 - read off the
+teardown photograph, TI logo and all. That mask is the **Gakken Invader** program,
+and **a dump of it exists in MAME**. It is deliberately not consulted.
+
+The game program here is being reconstructed from the outside, and the dump is
+held back as the *check* on that reconstruction rather than used as its source. A
+reconstruction that was peeked at proves nothing about the method that produced
+it, so the comparison is only worth making if it has not happened yet. That is
+the owner's explicit decision.
+
+**Never consult, as a source of game behaviour:**
+
+- the dumped MP2110 ROM image, in MAME or anywhere else
+- MAME's driver internals for Gakken Invader / Tandy Fire Away / Galaxy Invader
+- disassemblies, reverse-engineering write-ups, or let's-plays of that program
+
+**These remain fair game**, and the line is *hardware fact* against *program
+behaviour*:
+
+- chip identification and its provenance - which part, how many pins, what year
+- TMS1000-family instruction set, timing and architecture documentation
+- everything in `assets/reference/` - photographs, audio, video of the real unit
+- the owner's own testimony
+
+If a gameplay question cannot be settled from measurement, testimony or the
+reference assets, **the honest answer is that it is unresolved**, and this project
+records unresolved questions well - `docs/evidence/open-questions.md` is what that
+looks like. Reaching for the original program to close a gap destroys the thing
+being built. An agent that does it will believe it is being helpful.
+
 ## Architecture rules
 
 TypeScript, zero runtime dependencies. Vite build, Vitest tests. Five layers, mirroring
