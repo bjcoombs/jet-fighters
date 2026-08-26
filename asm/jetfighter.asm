@@ -286,6 +286,13 @@
 .EQU NIB_M_LO,       3          ; sweeps until the rank advances a column, low
 .EQU NIB_M_HI,       4          ;   "                                     high
 .EQU NIB_MWORK,      5          ; the walk's lane index, held across chapter 1
+.EQU NIB_ENT,        6          ; entropy: NIB_TICK accumulated on each fire
+                                ; press. **Nibble 6 and not nibble 2**, which is
+                                ; where the surveyed design put it - nibble 2 is
+                                ; lane 2's column and 0-5 are the whole rank, so
+                                ; that placement would have quietly aliased a
+                                ; shot's position onto the entropy source. 6-14
+                                ; are the free ones; 15 is NIB_LAUNCH_FROZEN.
 
 ; Nibble 15, deliberately at the far end of the file and away from the missile
 ; rank this header describes: mr-ram-map's plan wants 0-5 (three lanes' worth
@@ -1228,7 +1235,49 @@ input_fire:
         TBIT1 K_BIT_FIRE
         BR   if_down
         BR   if_up
+; --- stirring the entropy nibble ------------------------------------------
+;
+; **The machine's only randomness is the player's own rhythm.** There is no
+; hardware timer on this part and no LFSR anywhere in the program: NIB_TICK is
+; the single free-running counter, and it wraps every sixteen sweeps. Sampling
+; it on the sweep the player closes the fire contact is the same source v2 had,
+; and `docs/evidence/open-questions.md` section 3d is the record of how v2 got
+; it wrong - one nibble read by four things, so parking the lever made two lanes
+; permanently safe. **The harm was in the sharing, not in the sampling.**
+;
+; So this writes and NOTHING reads it yet. The single consumer arrives with
+; `jet_enter` (the plane's entry position). The rocket's lane must NEVER read
+; it: PRD lines 285-291 require the rocket's lane to be independent of the
+; player's press pattern, and contract criterion V7 is the test that catches it.
+; NIB_ROTOR stays a plain round robin.
+;
+; **Accumulate, never latch, and the `IAC` is not decoration.**
+; `docs/evidence/timing-analysis.md` records that a bare latch of a counter that
+; wraps at sixteen reaches only half its values when the press period shares a
+; factor with sixteen - tap every four sweeps and a latch sees four values for
+; ever. Summing the old value in breaks that, and the +1 keeps a press period of
+; exactly sixteen from summing zero every time.
+;
+; Placed on the rising edge here in `if_down` and NOT at `tick_fire`, because
+; tick_fire's edge arm sits *downstream of the fire gate*: a refused press would
+; stop stirring the source, so a busy player - the one generating the most
+; rhythm - would contribute the least of it. NIB_FIREP still holds last sweep's
+; contact at this point, so a zero there is the edge.
+
 if_down:
+        LDX  FILE_STATE
+        TCY  NIB_FIREP
+        MNEZ                    ; down last sweep too? then this is a hold
+        BR   if_held
+        LDX  FILE_TIME
+        TCY  NIB_TICK
+        TMA                     ; A <- the free-running sweep counter
+        LDX  FILE_MISS
+        TCY  NIB_ENT
+        AMAAC                   ; A <- tick + what the nibble already held
+        IAC                     ; and the +1 - see the note above
+        TAM
+if_held:
         LDX  FILE_STATE
         TCY  NIB_FIRE
         TCMIY 1
