@@ -1419,8 +1419,17 @@ that 71.8 ms cannot produce a 133-167 ms blank. The resolution is that the real 
 notes in that band are **130-210 ms**, roughly twice what the ROM emits. Gated on band
 share, t=210 holds 13 such notes and t=340 holds 16.
 
-**Three recordings agree, which is what makes it more than one window.** Sustained
-notes in that band and blanking appear and disappear together:
+**What separates the blanking windows from the quiet one is note *length*, not the
+band being occupied.** An earlier version of this passage said "three recordings
+agree" and leaned on the skill-3 clip's absence of both notes and blanking as a
+third supporting window. That was weaker than stated, and for a sharper reason than
+the one first given: **t=120 has the band occupied and blanks 0.0%**. A window with
+real notes and no blanking is not a third agreeing case, it is the discriminator -
+and what it discriminates on is that its notes are 69-75 ms while the blanking
+windows' are 130-210 ms. The blanking attaches to the long population, full stop.
+The skill-3 clip's row is listed below for completeness and carries no weight in the
+argument: whatever it is a recording of, a clip with no notes and no blanking cannot
+distinguish between the two.
 
 | Window | sustained 600-660 Hz notes | frames dark |
 | --- | --- | --- |
@@ -1468,6 +1477,16 @@ That does not weaken the section's conclusion, which rests on the march notes: 2
 of the runs are those and they are not in question. It sharpens what the second
 source is worth. The fire blip blanks the display **where it occurs**, on one
 window's evidence, and it does not occur in the other.
+
+**And one fire sound has never been tested against blanking at all.** The owner's
+skill-3 clip fires at **2577 Hz** - sixteen events, sd 7.6 Hz, each leading a visible
+missile launch by a median 50 ms, which is as well established as anything here. It
+is not the 1593 Hz measured above, and it has no blanking result because **that clip
+has almost no blanking to test it against**: 5% of its timeline dark, all of it in
+single frames. So the finding above is about the fire sound in `IMG_6113` and says
+nothing either way about the one in the skill-3 clip. That holds whatever the two
+recordings turn out to be recordings of, which is why it is stated in terms of the
+clips rather than in terms of units.
 
 ### What this does and does not settle for the removal
 
