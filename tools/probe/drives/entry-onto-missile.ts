@@ -4,7 +4,7 @@
 // same column in the same row, and asserts the shot never walks away from one.
 // Once `jet_enter` could place a plane at column 2 as well as column 1 - the
 // last two cells a missile passes through on its way to the horizon - that
-// assertion started failing about once in twenty-four coincidences.
+// assertion started failing - measured here at 6 of 88 coincidences.
 //
 // This isolates why. For every coincidence it records whether the jet was
 // already standing there in the previous frame, **marched onto it**, or
