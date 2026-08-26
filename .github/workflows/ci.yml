@@ -15,6 +15,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # `tools/probe/drives/loss-warning-partials.ts` decodes
+      # assets/reference/loss-audio.m4a, which is AAC in an MP4 container, and
+      # shells out to ffmpeg to do it. It is the one drive a clean checkout
+      # cannot run, so the decoder is installed here rather than the drive being
+      # left to skip: `loss-warning-partials.test.ts` fails instead of skipping
+      # when CI is set and ffmpeg is missing. Free when the runner image already
+      # ships one.
+      - name: Ensure ffmpeg for the loss-warning-partials drive
+        run: ffmpeg -version >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y ffmpeg)
       - run: npm run lint
       - run: npm test
       - run: npm run build
