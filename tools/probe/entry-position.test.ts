@@ -41,7 +41,13 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { CYCLE_HZ } from '../../src/machine/cpu/tms1370/timing.js';
-import { Tms1370Machine, assembleGame, slotsOf, type Plane } from './tms1370-probe.js';
+import {
+  Tms1370Machine,
+  assembleGame,
+  slotsOf,
+  squadronMap,
+  type Plane,
+} from './tms1370-probe.js';
 
 const ASM = assembleGame();
 const symbol = (name: string): number => {
@@ -50,11 +56,7 @@ const symbol = (name: string): number => {
   return found.value;
 };
 
-const SQUADRON = {
-  base: symbol('FILE_JETS') * 16 + symbol('NIB_P_BASE'),
-  stride: symbol('PLANE_STRIDE'),
-  count: symbol('PLANE_COUNT'),
-};
+const SQUADRON = squadronMap(ASM);
 const STATE = symbol('FILE_STATE') * 16 + symbol('NIB_STATE');
 const GRID_COL_FIRST = symbol('GRID_COL_FIRST');
 const GRID_COL_LAST = symbol('GRID_COL_LAST');

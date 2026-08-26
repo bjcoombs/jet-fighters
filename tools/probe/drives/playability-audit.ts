@@ -13,14 +13,37 @@
 // that aims without dodging parks the lever in the lane it just fired at, which
 // is where a capture lands, and dies faster than one that taps blindly.
 
-import { Tms1370Machine } from '../tms1370-probe.js';
-const FILE_STATE = 4, FILE_TIME = 5, FILE_JETS = 6, FILE_MISS = 7, CYCLE_HZ = 58333, DODGE = 4;
+import { Tms1370Machine, assembleGame, planesOf, squadronMap } from '../tms1370-probe.js';
+const FILE_STATE = 4, FILE_TIME = 5, FILE_MISS = 7, CYCLE_HZ = 58333, DODGE = 4;
 const at = (f: number, n: number, r: Uint8Array) => r[f * 16 + n];
 // The shot's column lives in FILE_MISS, one nibble per lane, so the lane is the
 // nibble holding it rather than a nibble of its own. One shot at a time still,
 // so at most one lane answers - and -1 means no shot, as `prevM.lane` expects.
 const shotLane = (r: Uint8Array) =>
   [0, 1, 2].find((l) => at(FILE_MISS, l, r) !== 0) ?? -1;
+// **This drive used to read `ram[FILE_JETS * 16 + lane]`**, the lane rank, where
+// the nibble was the column and a lane held at most one jet. The rank is gone -
+// the squadron is two (row, column) pairs and those nibbles are free - so every
+// read returned 0: `steps` and `releases` printed 0 on all three skills and the
+// crossing test, which is this drive's whole subject, compared zeroes. The four
+// numbers in the header were taken before that and are not re-derivable from the
+// version that printed them.
+//
+// `deepestByRow` is the replacement and it is lossy in the one way the model
+// allows: two planes can share a row and only the deeper is reported. That is
+// right for a drive, whose job is to pick a row to shoot at and should pick the
+// urgent one. It is not right for an assertion about the squadron, and nothing
+// here makes one.
+const SQUADRON = squadronMap(assembleGame());
+const deepestByRow = (r: Uint8Array) => {
+  const planes = planesOf(r, SQUADRON);
+  return [0, 1, 2].map((row) =>
+    planes.reduce((deep, p) => (p.row === row ? Math.max(deep, p.column) : deep), 0),
+  );
+};
+/** The row holding a plane on exactly `column`, or -1. Both slots are searched. */
+const planeRowOn = (r: Uint8Array, column: number) =>
+  planesOf(r, SQUADRON).find((plane) => plane.column === column)?.row ?? -1;
 
 for (const skill of [1, 2, 3]) {
   const m = new Tms1370Machine();
@@ -31,7 +54,7 @@ for (const skill of [1, 2, 3]) {
   let crossings = 0, sameCell = 0, flights = 0;
   for (let i = 0; i < 20 * 400 && over === 0; i++) {
     const ram = m.ram;
-    const jets = [0, 1, 2].map((l) => at(FILE_JETS, l, ram));
+    const jets = deepestByRow(ram);
     const mlane = shotLane(ram);
     const mcol = mlane >= 0 ? (at(FILE_MISS, mlane, ram) as number) : 0;
     // march steps and releases
@@ -56,7 +79,7 @@ for (const skill of [1, 2, 3]) {
       const safe = [0, 1, 2].find((l) => (jets[l] as number) < DODGE && l !== rl);
       if (safe !== undefined) m.setContacts({ lane: safe, fire: false });
     } else {
-      const pref = jets.indexOf(wanted); wanted = (wanted % 5) + 1;
+      const pref = planeRowOn(ram, wanted); wanted = (wanted % 5) + 1;
       const boat = at(FILE_STATE, 9, ram);
       const lane = pref >= 0 ? pref : boat !== 15 ? boat : jets.findIndex((g) => g !== 0);
       if (lane >= 0) m.setContacts({ lane, fire: true });

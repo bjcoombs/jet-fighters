@@ -44,7 +44,7 @@
 
 import { beforeAll, describe, it, expect } from 'vitest';
 import { CAPTURE_WINDOW_CYCLES } from '../../src/machine/board/tms1370-cadence.js';
-import { Tms1370Machine } from './tms1370-probe.js';
+import { Tms1370Machine, assembleGame, planesOf, squadronMap } from './tms1370-probe.js';
 import { loadAtlas, getSegmentByAddress } from '../../src/machine/tube/atlas.js';
 
 /** The three lever detents, as the lane nibble the K matrix returns. */
@@ -112,8 +112,18 @@ interface Scenario {
   readonly sweeps: number;
 }
 
-/** `FILE_JETS`, whose first three nibbles hold each lane's jet. */
-const JETS_FILE = 6;
+/**
+ * Where the squadron lives, from the assembled program's own symbols.
+ *
+ * **This replaces a `JETS_FILE = 6` that had stopped meaning anything.** It was
+ * read as `ram[JETS_FILE * 16 + lane]` - the lane rank, one nibble per lane,
+ * the nibble being the column. The rank was deleted when the squadron became
+ * two `(row, column)` pairs at nibbles 10-13, and the ROM's own map now says of
+ * nibbles 0-2 that they "are free... nothing reads them now". So {@link guarding}
+ * was reading three nibbles that are always zero, and the coverage search stayed
+ * green because a lever that never moves is still a lever.
+ */
+const SQUADRON = squadronMap(assembleGame());
 /** `FILE_STATE`, and the jets' rocket within it. */
 const STATE_FILE = 4;
 const ROCKET_COLUMN = 7;
@@ -172,7 +182,7 @@ const SCENARIO_SWEEPS = 1500;
  *
  * This is what a player does, and since the settled capture rule it is what any
  * scenario needing more than about thirty seconds of game has to do. It reads
- * `FILE_JETS`, which is the same latitude the other drives in `tools/probe/`
+ * the squadron, which is the same latitude the other drives in `tools/probe/`
  * take to decide where to aim - the lever still reaches the game only by
  * closing a contact on the K matrix.
  */
@@ -198,6 +208,10 @@ const guarding = (sweep: number, machine: Tms1370Machine): Lane => {
   const ram = machine.ram;
   const rocketColumn = ram[STATE_FILE * 16 + ROCKET_COLUMN] as number;
   const rocketLane = ram[STATE_FILE * 16 + ROCKET_LANE] as number;
+  // A row can hold two planes, so "how deep is this row" is a maximum over the
+  // planes standing in it and not a nibble. An empty row scores 0, which is the
+  // same value an empty slot's column carries.
+  const planes = planesOf(ram, SQUADRON);
   let best = -1;
   let lane: Lane = 0;
   for (const candidate of LANES) {
@@ -205,7 +219,10 @@ const guarding = (sweep: number, machine: Tms1370Machine): Lane => {
     // standing anywhere else is the whole defence - `rm_arrived` compares the
     // two lanes and nothing else. Guarding a jet is not worth a launcher.
     if (rocketColumn !== 0 && candidate === rocketLane) continue;
-    const grid = ram[JETS_FILE * 16 + candidate] as number;
+    const grid = planes.reduce(
+      (deepest, plane) => (plane.row === candidate ? Math.max(deepest, plane.column) : deepest),
+      0,
+    );
     if (grid > best) {
       best = grid;
       lane = candidate;

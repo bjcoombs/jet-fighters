@@ -51,6 +51,7 @@ import {
   Tms1370Machine,
   assembleGame,
   slotsOf,
+  squadronMap,
   type Plane,
 } from './tms1370-probe.js';
 
@@ -61,11 +62,7 @@ const symbol = (name: string): number => {
   return found.value;
 };
 
-const SQUADRON = {
-  base: symbol('FILE_JETS') * 16 + symbol('NIB_P_BASE'),
-  stride: symbol('PLANE_STRIDE'),
-  count: symbol('PLANE_COUNT'),
-};
+const SQUADRON = squadronMap(ASM);
 const FILE_MISS = symbol('FILE_MISS');
 const NIB_MC = symbol('NIB_MC');
 const FILE_STATE = symbol('FILE_STATE');

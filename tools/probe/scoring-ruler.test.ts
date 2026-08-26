@@ -61,12 +61,11 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { SWEEP_INSTRUCTIONS } from "../../src/machine/board/tms1370-cadence.js";
 import { CYCLE_HZ } from "../../src/machine/cpu/tms1370/timing.js";
-import { Tms1370Machine } from "./tms1370-probe.js";
+import { Tms1370Machine, assembleGame, planesOf, squadronMap } from "./tms1370-probe.js";
 
-/** `FILE_STATE`, `FILE_TIME` and `FILE_JETS`, from the RAM map in the ROM source. */
+/** `FILE_STATE`, `FILE_TIME` and `FILE_MISS`, from the RAM map in the ROM source. */
 const FILE_STATE = 4;
 const FILE_TIME = 5;
-const FILE_JETS = 6;
 const FILE_MISS = 7;
 const NIB_RCOL = 7;
 const NIB_RLANE = 8;
@@ -78,38 +77,28 @@ const NIB_SC_T = 11;
 const NIB_SC_H = 12;
 
 /**
- * The squadron: two `(row, column)` pairs at `FILE_JETS` 10-13.
+ * Where the squadron lives, from the assembled program's own symbols.
  *
- * Written out in the same style as the nibbles above rather than read from the
- * assembled symbols, because this file deliberately keeps its RAM map local -
- * see the block comment on `FILE_STATE`.
+ * The nibbles above are written out locally, in the style this file has always
+ * used. The squadron is not, and the difference is that the squadron *moved*:
+ * `squadronMap` in `tms1370-probe.js` is now the one place in `tools/probe/`
+ * that turns the ROM's symbols into an address, so a further change to the model
+ * touches that function rather than every file that had copied the numbers. A
+ * copy here would have been a second place to forget.
  */
-const NIB_P_BASE = 10;
-const PLANE_STRIDE = 2;
-const PLANE_COUNT = 2;
-
-/** Every airborne plane's `(row, column)`. A column of 0 is an empty slot. */
-function planesOf(ram: ArrayLike<number>): { row: number; column: number }[] {
-  const planes: { row: number; column: number }[] = [];
-  for (let slot = 0; slot < PLANE_COUNT; slot += 1) {
-    const at = FILE_JETS * 16 + NIB_P_BASE + slot * PLANE_STRIDE;
-    const column = ram[at + 1] as number;
-    if (column !== 0) planes.push({ row: ram[at] as number, column });
-  }
-  return planes;
-}
+const SQUADRON = squadronMap(assembleGame());
 
 /**
  * Per lane, the deepest column a plane stands on in it - 0 for an empty lane.
  *
- * This is what every `ram[FILE_JETS * 16 + lane]` in this drive used to be, and
+ * This is what every per-lane squadron read in this drive used to be, and
  * it is deliberately lossy in the one way the model allows: two planes can share
  * a row and only the deeper is reported. That is right for a *drive*, whose job
  * is to pick a lane to shoot down and should pick the urgent one; assertions
  * about the squadron read the pairs themselves.
  */
 function deepestByLane(ram: ArrayLike<number>): number[] {
-  const planes = planesOf(ram);
+  const planes = planesOf(ram, SQUADRON);
   return [0, 1, 2].map((lane) =>
     planes.reduce((deepest, plane) => (plane.row === lane ? Math.max(deepest, plane.column) : deepest), 0),
   );
@@ -117,7 +106,7 @@ function deepestByLane(ram: ArrayLike<number>): number[] {
 
 /** A lane holding a plane on exactly `column`, or -1. Both slots are searched. */
 function laneStandingOn(ram: ArrayLike<number>, column: number): number {
-  return planesOf(ram).find((plane) => plane.column === column)?.row ?? -1;
+  return planesOf(ram, SQUADRON).find((plane) => plane.column === column)?.row ?? -1;
 }
 
 /** `NIB_BSLANE` when no crossing is in progress. */
@@ -505,7 +494,7 @@ const FIRST_RELEASE_CYCLES = (() => {
   const ceiling = seconds(5);
   while (machine.cycles < ceiling) {
     machine.step(SAMPLE_CYCLES);
-    if (planesOf(machine.ram).length > 0) return machine.cycles;
+    if (planesOf(machine.ram, SQUADRON).length > 0) return machine.cycles;
   }
   throw new Error(
     "no plane was released in the first five seconds of a game, so primeEntropy has no window to prime in",
@@ -575,7 +564,7 @@ function primeEntropy(machine: Tms1370Machine, priming: number): void {
         `${FIRST_RELEASE_CYCLES} - the primed games no longer vary only the entropy`,
     );
   }
-  if (planesOf(machine.ram).length > 0) {
+  if (planesOf(machine.ram, SQUADRON).length > 0) {
     throw new Error(
       `priming ${priming} times left a plane airborne before the drive started`,
     );
