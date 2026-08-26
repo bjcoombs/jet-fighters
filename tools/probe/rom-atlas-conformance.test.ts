@@ -118,6 +118,8 @@ const JETS_FILE = 6;
 const STATE_FILE = 4;
 const ROCKET_COLUMN = 7;
 const ROCKET_LANE = 8;
+/** `NIB_BSLANE` within `FILE_STATE`: the boat's lane, or `BS_NONE` (15). */
+const BSHIP_LANE = 9;
 
 const cycling =
   (dwell: number) =>
@@ -213,7 +215,50 @@ const guarding = (sweep: number, machine: Tms1370Machine): Lane => {
   return lane;
 };
 
+/**
+ * A lever that hunts the battleship: it stands in the boat's own lane.
+ *
+ * **Added because the rank made the incidental boat kill stop happening.** The
+ * comment on {@link KNOWN_GOOD} records that the burst "comes of playing more
+ * crossings rather than of dodging one" - a steadily-firing player used to shoot
+ * the boat down by accident often enough that `battleship_burst` needed no
+ * scenario of its own. That stopped being true when the missile rank landed:
+ * the shared step timer now free-runs rather than starting when a shot is fired,
+ * so the delay between pressing fire and the shot's first step is anywhere in a
+ * 32-sweep window instead of a fixed 32. A mechanical `fire every N` pattern
+ * therefore no longer lands on the boat at a repeatable phase, and the whole
+ * fallback grid - 43 scenarios, every dwell and period in the space - converged
+ * on `battleship_burst:plate:6` as the single cell it could not cover.
+ *
+ * The fix is to aim rather than to spray, which is what a player does and what
+ * `scoring-ruler.test.ts`'s own boat hunt already does for the same reason. The
+ * lever reads `NIB_BSLANE` and stands there for the whole descent, so a shot
+ * fired at any point during a crossing travels down the boat's lane.
+ *
+ * Reading RAM to decide where to aim is the same latitude {@link guarding} and
+ * every other drive in `tools/probe/` takes - the lever still reaches the game
+ * only by closing a contact on the K matrix, never by writing state.
+ *
+ * Falls back to {@link guarding} between crossings, because a scenario that
+ * cannot defend loses its launchers long before the next boat arrives.
+ */
+const huntingBoat = (sweep: number, machine: Tms1370Machine): Lane => {
+  const lane = machine.ram[STATE_FILE * 16 + BSHIP_LANE] as number;
+  // BS_NONE (15) when no crossing is in progress; otherwise the boat's lane.
+  if (lane < LANES.length) {
+    return lane as Lane;
+  }
+  return guarding(sweep, machine);
+};
+
 const KNOWN_GOOD: Scenario[] = [
+  {
+    what: "hunting the battleship: the lever stands in the boat's lane for the whole descent, so a shot fired during a crossing goes down it - the burst the fallback grid cannot reach since the rank made the step timer free-running",
+    skill: 1,
+    lever: (sweep, machine) => huntingBoat(sweep, machine),
+    fire: every(3),
+    sweeps: SCENARIO_SWEEPS,
+  },
   {
     what: 'a defended game: the lever guards whichever jet is deepest and steps out of a live rocket lane, so the squadron is held off long enough to reach a three-digit score',
     skill: 2,
