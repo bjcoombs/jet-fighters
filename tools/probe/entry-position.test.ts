@@ -62,8 +62,38 @@ const GRID_COL_LAST = symbol('GRID_COL_LAST');
 /** Sampling interval. A march step is 32 sweeps at its fastest, far coarser. */
 const SAMPLE_CYCLES = Math.round(CYCLE_HZ / 200);
 
-/** Emulated seconds one drive plays. A sampling window, not a stop horizon. */
-const DRIVE_SECONDS = 90;
+/**
+ * The moment an untouched machine falls silent, in seconds.
+ *
+ * Measured, not estimated - `tools/probe/game-lifetime.test.ts` carries the
+ * measurement and the note on why estimating it turned `main` red. Restated here
+ * rather than imported because a test file's constants are not an interface;
+ * what the project rule asks for is that a horizon be a multiple of a named
+ * measured figure rather than a literal, and {@link DRIVE_SECONDS} is one.
+ */
+const UNATTENDED_SILENCE_S = 24.6;
+
+/**
+ * Emulated seconds one drive plays: four times the silence horizon.
+ *
+ * `CLAUDE.md` names the failure this avoids - "a literal timeout in a test about
+ * a machine that stops is a bet on when it stops", and that figure has moved
+ * three times in one day here. The bet is different for the two kinds of drive
+ * below, so both are stated:
+ *
+ *   - **Attended drives sample a game that outlives the window.** Measured, a
+ *     played game reaches its ending between 113 s and 127 s, so 98.4 s is a
+ *     sampling budget and those drives stop on the clock. Nothing here asserts
+ *     that; if a cadence change shortened the game they would simply end earlier,
+ *     and the non-vacuity floors - entries counted, six cells reached, a thousand
+ *     two-plane samples - are what report a sample too thin to mean anything.
+ *   - **The unattended drive has to contain its whole game**, because the claim
+ *     it carries is about every plane an untouched machine releases. Measured, it
+ *     ends at 35.3 s, comfortably inside. That one *is* asserted, below, so a
+ *     game that outgrew the window says so by name instead of quietly reporting
+ *     the first 98 seconds of one.
+ */
+const DRIVE_SECONDS = UNATTENDED_SILENCE_S * 4;
 
 /** Wall-clock allowance. Every bound that means anything is in cycles. */
 vi.setConfig({ testTimeout: 120_000 });
@@ -108,17 +138,28 @@ function entriesOf(block: number): readonly Entry[] {
   return entries;
 }
 
-/** Play with the fire contact never closed, and record the same thing. */
-function unattendedEntries(): readonly Entry[] {
+/**
+ * Play with the fire contact never closed, and record the same thing.
+ *
+ * Reports **how the drive stopped** as well as what it saw. A drive the clock cut
+ * short and a drive that played a game to its end produce the same `Entry[]` and
+ * mean different things, and the claim this one carries - about every plane an
+ * untouched machine releases - is only true of the second.
+ */
+function unattendedEntries(): { entries: readonly Entry[]; ended: 'machine' | 'clock' } {
   const machine = new Tms1370Machine();
   machine.setContacts({ skill: 1, lane: 0, fire: false });
   const entries: Entry[] = [];
+  let ended: 'machine' | 'clock' = 'clock';
   let previous = slotsOf(machine.ram, SQUADRON);
   const until = DRIVE_SECONDS * CYCLE_HZ;
   while (machine.cycles < until) {
     machine.step(SAMPLE_CYCLES);
     const ram = machine.ram;
-    if ((ram[STATE] as number) !== 0) break;
+    if ((ram[STATE] as number) !== 0) {
+      ended = 'machine';
+      break;
+    }
     const slots = slotsOf(ram, SQUADRON);
     for (let slot = 0; slot < slots.length; slot += 1) {
       const now = slots[slot] as Plane;
@@ -128,7 +169,7 @@ function unattendedEntries(): readonly Entry[] {
     }
     previous = slots;
   }
-  return entries;
+  return { entries, ended };
 }
 
 /** Firing rhythms to pool over. One rhythm fixes one phase, and one answer. */
@@ -275,7 +316,16 @@ describe("a plane enters at a position the player's rhythm decides", () => {
     // always played. Getting this backwards gave the quietest player the
     // shortest game, and put the three parked-lever runs behind contract
     // criterion V7 on a machine their ROM never was.
-    const entries = unattendedEntries();
+    const { entries, ended } = unattendedEntries();
+    // The window has to hold the whole game, or "every plane" is a claim about
+    // however much of one fitted. See the note on DRIVE_SECONDS: this is what
+    // keeps that horizon from being a bet on when the machine stops. Measured,
+    // the unattended game ends at 35.3 s inside a 98.4 s window.
+    expect(
+      ended,
+      'the unattended drive ran out of clock before the game ended, so these are the ' +
+        'entries of part of a game and not of all of one - lengthen DRIVE_SECONDS',
+    ).toBe('machine');
     expect(entries.length, 'the unattended machine released no planes').toBeGreaterThan(5);
     expect(
       [...new Set(entries.map((entry) => entry.column))],
