@@ -138,6 +138,8 @@ interface LaneTally {
   /** Of those, the ones the shot walked away from without a kill. */
   leavePassed: number;
   arrivePassed: number;
+  /** Coincidences a spawn created, which the tallies above exclude. */
+  spawnSeen: number;
 }
 
 /**
@@ -155,11 +157,16 @@ function tally(frames: readonly Frame[]): readonly LaneTally[] {
     arriveSeen: 0,
     leavePassed: 0,
     arrivePassed: 0,
+    spawnSeen: 0,
   }));
-  // Per lane: the column a coincidence was standing on, and which half it was.
-  const pending: ({ column: number; half: 'leave' | 'arrive' } | undefined)[] = new Array(
-    LANE_COUNT,
-  ).fill(undefined);
+  // Per lane: the column a coincidence was standing on, which half it was, and
+  // whether it counts. A coincidence a spawn created is tracked but not counted
+  // - see the note where they are opened - and it has to stay tracked, or the
+  // next frame simply reopens it as a settled one.
+  const pending: (
+    | { column: number; half: 'leave' | 'arrive'; counted: boolean }
+    | undefined
+  )[] = new Array(LANE_COUNT).fill(undefined);
 
   for (let i = 1; i < frames.length; i += 1) {
     const previous = frames[i - 1] as Frame;
@@ -175,7 +182,7 @@ function tally(frames: readonly Frame[]): readonly LaneTally[] {
       // Resolve an open coincidence the moment the shot's column moves.
       if (open !== undefined && nowShot !== open.column) {
         const killed = nowShot === 0 && current.kills !== previous.kills;
-        if (!killed && nowShot !== 0 && nowShot < open.column) {
+        if (open.counted && !killed && nowShot !== 0 && nowShot < open.column) {
           if (open.half === 'leave') tallyLane.leavePassed += 1;
           else tallyLane.arrivePassed += 1;
         }
@@ -188,14 +195,36 @@ function tally(frames: readonly Frame[]): readonly LaneTally[] {
       // LEAVE: the jet was already standing on the shot's column before the
       // step. ARRIVE: the jet stands on the column the shot has just entered.
       if ((nowJet & (1 << nowShot)) !== 0) {
+        // **A jet that materialised on the cell is not this file's business,
+        // and since task 14 it can.** `jet_enter` draws an entry column of 1 or
+        // 2 - the last two cells a missile passes through on its way to the
+        // horizon - so a plane can now appear on top of a shot already standing
+        // there. The sweep's hit tests run when the missile steps and when the
+        // squadron marches; a spawn is neither, so the shot walks on and the
+        // plane lives. Measured at 2 of 82 coincidences, and recorded as
+        // unresolved in `docs/evidence/open-questions.md` rather than invented
+        // away: whether the unit hit-tests a spawn cannot be settled from the
+        // reference assets.
+        //
+        // A jet that *marched* onto the shot's cell is a different thing and
+        // stays in: the march does hit-test, 46 such coincidences were measured
+        // and none of them let a shot through. It arrived by march if it stood
+        // one grid further out in this row a frame ago - the squadron marches
+        // toward the launcher, so toward a higher column.
+        const settled = (wasJet & (1 << nowShot)) !== 0;
+        const marched = nowShot > 0 && (wasJet & (1 << (nowShot - 1))) !== 0;
+        const counted = settled || marched;
         const half: 'leave' | 'arrive' = nowShot === wasShot ? 'leave' : 'arrive';
         if (pending[lane] === undefined) {
-          if (half === 'leave') tallyLane.leaveSeen += 1;
-          else tallyLane.arriveSeen += 1;
-          pending[lane] = { column: nowShot, half };
+          if (counted) {
+            if (half === 'leave') tallyLane.leaveSeen += 1;
+            else tallyLane.arriveSeen += 1;
+          } else {
+            tallyLane.spawnSeen += 1;
+          }
+          pending[lane] = { column: nowShot, half, counted };
         }
       }
-      void wasJet;
     }
   }
   return tallies;
@@ -218,6 +247,7 @@ function pooled(): readonly LaneTally[] {
     arriveSeen: 0,
     leavePassed: 0,
     arrivePassed: 0,
+    spawnSeen: 0,
   }));
   for (const block of BLOCKS) {
     const run = tally(drive(block));
@@ -228,6 +258,7 @@ function pooled(): readonly LaneTally[] {
       into.arriveSeen += from.arriveSeen;
       into.leavePassed += from.leavePassed;
       into.arrivePassed += from.arrivePassed;
+      into.spawnSeen += from.spawnSeen;
     }
   }
   return total;
@@ -270,5 +301,21 @@ describe('the collision test runs for every lane, not just lane 0', () => {
       .filter((entry) => entry.n > 0)
       .map((entry) => entry.lane);
     expect(covered, 'some lane produced no coincidence at all').toEqual([0, 1, 2]);
+  });
+
+  it('excludes spawn coincidences without excluding most of the evidence', () => {
+    // The exclusion above is the only thing in this file that declines to look
+    // at a coincidence, so it needs a bound of its own or it could quietly grow
+    // until nothing is asserted at all. A spawn onto a live missile is a corner;
+    // if it ever became the common case the guard would be hollow and this is
+    // what says so. Expressed as a share rather than a count, because the number
+    // of coincidences a drive produces moves with every cadence change.
+    const spawned = tallies.reduce((sum, t) => sum + t.spawnSeen, 0);
+    const counted = tallies.reduce((sum, t) => sum + t.leaveSeen + t.arriveSeen, 0);
+    expect(
+      spawned,
+      `${spawned} of ${spawned + counted} coincidences were created by a spawn, ` +
+        'so the exclusion is now most of the file rather than a corner of it',
+    ).toBeLessThan(counted);
   });
 });

@@ -1142,3 +1142,46 @@ window differently from the application**, is worth a note rather than a redisco
 Neither is asserted to be a defect here. What is asserted is that any claim about what
 the tube shows in the first 30 ms after power-on has to say which of the two paths it
 was measured on, because they answer differently and both are in this tree.
+
+## 14. A plane that appears on top of a live missile is not hit by it
+
+**Unresolved, and reachable only since entry positions varied.** `jet_enter` draws an
+entry column of 1 or 2 (`asm/jetfighter.asm`, "The column: the far half of the field"),
+and those are the last two cells a missile passes through on its way to the horizon. So
+a plane can now enter the cell a shot is already standing in.
+
+It survives. The sweep hit-tests a collision at two moments - when the missile steps a
+column, and when the squadron marches - and a spawn is neither. The shot takes its next
+step, finds the cell it moved *into* empty, and carries on to expire against the
+horizon. The plane flies on.
+
+Measured with `tools/probe/drives/entry-onto-missile.ts` over three firing cadences and
+90 emulated seconds each:
+
+| | before entry positions varied | after |
+| --- | --- | --- |
+| coincidences (a shot and a jet on one cell) | 94 | 82 |
+| shot walked away, jet already settled there | 0 | 0 |
+| shot walked away, jet arrived that frame | 0 | 2 |
+| of the fresh arrivals: by march | 47 | 46 |
+| of the fresh arrivals: by spawn | 28 | 23 |
+
+**The collision test itself is not implicated, and the middle row is the evidence**: a
+jet standing on a shot's cell is hit every time, before and after. A jet that *marches*
+onto one is hit every time as well - the march does test. What changed is that entries
+used to land only on grid 1, where a missile expires against the horizon rather than
+stepping to a lower column, so a spawn coincidence could never present as a shot walking
+away. It can now, from grid 2.
+
+**Why this is recorded rather than fixed.** Whether the unit hit-tests a spawn cannot be
+settled from `assets/reference/`, from the audio, or from the owner's testimony. The
+owner's evidence about entry is that "a plane can randomly appear anywhere on the
+board" - about variety, and silent on what happens when the board already has a shot on
+that cell. Both readings are defensible: a missile fired before the plane existed
+arguably has nothing to hit, and a player watching his shot pass through a plane would
+call it a bug. `P_SPAWN` is at 63 of 64 words, so the check would not fit where the
+decision is made in any case.
+
+`missile-rank.test.ts` excludes spawn-created coincidences from its pass-through tallies
+for this reason, and carries an assertion that the exclusion stays a corner of the file
+rather than most of it.
