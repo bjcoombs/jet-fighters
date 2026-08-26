@@ -219,13 +219,51 @@ interface Sample {
  * Tapped rather than held because firing is edge triggered - `tick_fire` reads
  * `NIB_FIREP` first, so a held button launches one shot and no more.
  */
-function sample(lane: number): readonly Sample[] {
+/**
+ * A lever that walks the lanes, tapping fire once it has settled in each.
+ *
+ * **Every other assertion in this file wants a parked lever** - the fault they
+ * were written for varied with the lever's lane, so each run holds one detent
+ * and the lane is the parameter. Exactly one assertion wants the opposite, and
+ * it is the one about shots in more than one lane at once: with the lever
+ * parked, the player can only ever put a shot in the lane he is standing in, so
+ * `bestFrame` could never exceed one **however the ROM behaved**. That is a
+ * property of the drive, not of the machine, and it is why the seam needed its
+ * own schedule rather than a longer run of the existing one.
+ *
+ * The schedule obeys the aiming rule `tms1370-probe.ts` sets out: the lever must
+ * settle for at least one sweep before the press, or the shot goes down whichever
+ * lane the lever held last. Here it settles for 200 ms - about thirteen sweeps -
+ * which is far more than the rule needs and costs nothing.
+ *
+ * `BLOCK` is 400 ms so a full circuit of the three lanes takes 1.2 s, comfortably
+ * inside one shot's 2.5 s flight (five columns at the measured 500 ms each). That
+ * is the whole point: the third shot is fired while the first is still crossing,
+ * which is the only way a rank of three is observable at all.
+ */
+const ROVE_BLOCK_SAMPLES = 40;
+const ROVE_PRESS_FROM = 20;
+const ROVE_PRESS_TO = 25;
+
+const roving = (tap: number): { lane: number; fire: boolean } => {
+  const within = tap % ROVE_BLOCK_SAMPLES;
+  return {
+    lane: Math.floor(tap / ROVE_BLOCK_SAMPLES) % LANE_COUNT,
+    fire: within >= ROVE_PRESS_FROM && within < ROVE_PRESS_TO,
+  };
+};
+
+function sample(lane: number, lever?: (tap: number) => { lane: number; fire: boolean }): readonly Sample[] {
   const machine = new Tms1370Machine();
   machine.setContacts({ skill: 1, lane, fire: false });
   const samples: Sample[] = [];
   let taps = 0;
   while (machine.cycles < RUN_CYCLES) {
-    machine.setContacts({ fire: Math.floor(taps / 10) % 2 === 0 });
+    if (lever === undefined) {
+      machine.setContacts({ fire: Math.floor(taps / 10) % 2 === 0 });
+    } else {
+      machine.setContacts(lever(taps));
+    }
     taps += 1;
     machine.step(SAMPLE_CYCLES);
     // Nothing before the first completed sweep is a picture. `reset` clears all
@@ -798,41 +836,36 @@ describe('a kill is credited to the lane the shot was flying down', () => {
 });
 
 describe('the player can have a shot in more than one lane at once', () => {
-  // The third seam, and the only assertion in this file that is **expected to
-  // fail until the ROM changes**. It is written now, before the change, because
-  // that is the only way to know it is armed for the seam it guards.
+  // The third seam. **This was `it.fails()` until the per-lane gate landed**,
+  // and the conversion to a plain `it()` here is the obligation that mechanism
+  // came with, discharged.
   //
-  // ## Why this is `it.fails()`, and what you owe it
+  // ## What it recorded, and why the red was the point
   //
-  // **`it.fails()` here means "expected to fail *because the seam is unbuilt*",
-  // not "known broken".** The assertion body below is live, executable and
-  // un-weakened: it runs every time the suite runs, and Vitest fails the run if
-  // it ever *passes*. Nothing about it is skipped and nothing is relaxed. What
-  // `it.fails()` records is a fact about the ROM - `tick_fire` gates on one shot
-  // anywhere rather than one per lane - not a fact about the assertion.
+  // `it.fails()` meant "expected to fail *because the seam is unbuilt*", never
+  // "known broken". The body was live, executable and un-weakened throughout: it
+  // ran every time the suite ran, and Vitest failed the run if it ever *passed*.
+  // What it recorded was a fact about the ROM - firing gated on one shot
+  // anywhere rather than one per lane - not a fact about the assertion. It was
+  // written before the change it guards, because that is the only way to know an
+  // assertion is armed for the seam it covers.
   //
-  // **So a red here is success, and it arrives in the pull request that needs
-  // it.** The moment `tick_fire` gates per lane, this test starts passing,
-  // `it.fails()` starts failing, and the run goes red in the branch that landed
-  // multi-missile.
-  //
-  // **The obligation that comes with that:** whoever lands multi-missile must
-  // convert this back to a plain `it()`. That is the whole point of the
-  // mechanism, and the failure mode to avoid is reading the red as a regression
-  // and suppressing it - which would be this file's own history inverted. If you
-  // are here because `it.fails()` went red: the ROM caught up, and the fix is to
-  // delete `.fails`, not to silence the test.
+  // So the red was success, and it arrived in the pull request that needed it:
+  // the moment the gate became per lane this test started passing, `it.fails()`
+  // started failing, and the branch that landed multi-missile went red until the
+  // `.fails` came off. The failure mode it was guarding against was reading that
+  // red as a regression and suppressing it.
   //
   // It must never be weakened, skipped or deleted to green a branch. The seam it
   // covers is invisible to every other assertion in this file, each of which is
   // about a shot that already exists.
   //
-  // `tick_fire` gates firing on the missile column being zero - one shot
-  // anywhere on the playfield, not one shot per lane. That gate reads like an
-  // input check rather than like missile state, which is exactly why a
-  // multi-missile change can draw three shots correctly, step three shots
-  // correctly, and still fire only one: every assertion above would pass,
-  // because each is about a shot that exists.
+  // The gate that used to block this read like an input check rather than like
+  // missile state, which is exactly why a multi-missile change could draw three
+  // shots correctly, step three shots correctly, and still fire only one: every
+  // assertion above would pass, because each is about a shot that exists. The
+  // gate now lives in `fire_missile` and tests `FILE_MISS[the lever's lane]`
+  // alone, so a shot in another lane is no longer a refusal.
   //
   // The owner's account of the physical unit is the specification here - tap,
   // tap, tap and three shots stand in the three lanes, staggered by column:
@@ -848,11 +881,14 @@ describe('the player can have a shot in more than one lane at once', () => {
   // Read off the drawn picture rather than off state, deliberately: it is the
   // one claim here that is about what the player sees, it is what the owner
   // described, and it does not assume where per-lane state ends up living.
-  it.fails('draws shots in two lanes at the same instant', () => {
+  it('draws shots in two lanes at the same instant', () => {
     const lanesSeen = new Set<number>();
     let bestFrame = 0;
-    for (const detent of DETENTS) {
-      for (const shot of sample(detent)) {
+    // One roving run rather than three parked ones - see `roving`. A parked
+    // lever cannot put shots in two lanes whatever the ROM does, so looping the
+    // detents here would assert nothing about the seam.
+    {
+      for (const shot of sample(0, roving)) {
         if (!shot.refreshing) {
           continue;
         }
@@ -873,5 +909,44 @@ describe('the player can have a shot in more than one lane at once', () => {
     // ROM that simply never draws two of them.
     expect([...lanesSeen].sort(), 'the shot never reached some lane').toEqual([0, 1, 2]);
     expect(bestFrame, 'no frame ever held shots in two lanes at once').toBeGreaterThan(1);
+  });
+
+  // The other half of the rule, and the half a passing seam test cannot see.
+  //
+  // The gate is `FILE_MISS[the lever's lane] != 0` **and nothing else**. A build
+  // that deleted the gate outright would pass the assertion above with room to
+  // spare - three lanes, several shots, every frame it wants - while letting the
+  // player stack shots on top of each other in one lane. So the refusal is
+  // asserted here directly, because "shots appear in more lanes now" and "the
+  // gate still refuses" are independent claims and only the first is popular.
+  //
+  // Read off the column rather than off a press count: a shot's column walks
+  // *outward*, grid 5 down toward the horizon, one step per interval. It is
+  // therefore monotonically decreasing for as long as that shot lives, and the
+  // only thing that can raise it is `fire_missile` writing GRID_COL_LAST. So a
+  // rise while the lane was already occupied is exactly a shot fired into an
+  // occupied lane, with no need to model the edge-triggered press at all.
+  it('refuses a second shot in a lane that already holds one', () => {
+    let occupiedPresses = 0;
+    for (const detent of DETENTS) {
+      const shots = sample(detent);
+      for (let i = 1; i < shots.length; i += 1) {
+        const before = (shots[i - 1] as Sample).missiles[detent] as number;
+        const after = (shots[i] as Sample).missiles[detent] as number;
+        if (before > 0) {
+          occupiedPresses += 1;
+          expect(
+            after,
+            `a shot was fired into lane ${detent} while it still held one at grid ${before}`,
+          ).toBeLessThanOrEqual(before);
+        }
+      }
+    }
+    // Non-vacuity, in the shape `tms1370-rom.test.ts` names: the check above is
+    // a check over nothing unless the drive actually spent time with a shot in
+    // flight in the lever's own lane while fire was being tapped.
+    expect(occupiedPresses, 'no sample ever caught a shot in flight in the lever lane').toBeGreaterThan(
+      100,
+    );
   });
 });

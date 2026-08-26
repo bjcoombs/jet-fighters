@@ -1317,11 +1317,22 @@ st_off:
 ; tapping fire would hold the entire rank still. Every path to the reload below
 ; has just proved all three columns zero, so there is nothing there to hold.
 ;
-; **The task that opens the gate per lane must delete this reload or guard it.**
-; The moment `fire_missile` can be reached with another shot airborne, it is the
-; freeze described above. Nothing else depends on it: `tick_missile`'s expiry arm
-; is what winds the countdown in steady flight, and the rank keeps stepping
-; without these three words.
+; **The gate is now per lane, and the reload is GUARDED rather than deleted.**
+; The warning that stood here - that the moment `fire_missile` can be reached
+; with another shot airborne the reload becomes the freeze described above - was
+; correct, and the guard is the answer to it. The three lane tests that used to
+; refuse the press now decide only whether to reload: they run *after* the press
+; has been accepted, and reaching the reload still proves all three columns zero,
+; so there is still nothing in flight to hold back. A press into a free lane
+; while another lane is airborne now fires and leaves the countdown alone.
+;
+; Deleting the reload outright was the other option and is measurably worse. The
+; figures below are why it was kept: without it the first step lands on whatever
+; was left of a countdown the shot did not start, and a led shot at the boat
+; scored 0 kills in 26 against 9 in 45 with it. Guarding keeps that for the
+; common case - a press into an empty rank - and costs the rank nothing when it
+; is not empty, because `tick_missile`'s expiry arm is what winds the countdown
+; in steady flight.
 ;
 ; What they buy is a flight that is the same length every time. Without them the
 ; first step lands on whatever was left of a countdown the shot did not start, so
@@ -1336,24 +1347,33 @@ st_off:
 ; grid 1 and then the horizon.
 
 fire_missile:
+        LDX  FILE_STATE
+        TCY  NIB_LANE
+        TMA                     ; A <- the lever's lane, and A SURVIVES the rank
+                                ; test below: TCY and MNEZ touch neither A nor X,
+                                ; so `TAY` at fm_arm recovers the lane in one
+                                ; word instead of re-reading it in five. P_STROBE
+                                ; has two words free and this change needs both.
         LDX  FILE_MISS
-        TCY  NIB_MC
-        MNEZ                    ; lane 0 - one missile at a time, anywhere in
-        BR   fm_busy            ;   the rank
+        TAY                     ; the nibble index is the lane
+        MNEZ                    ; is THIS lane already holding a shot?
+        BR   fm_busy            ; one shot per lane, and per lane is the whole
+                                ; rule - a shot in another lane is no longer a
+                                ; refusal, which is the point of the rank
+        TCY  NIB_MC             ; this lane is clear. Is the whole rank, though?
+        MNEZ                    ; lane 0
+        BR   fm_arm
         TCY  NIB_MC + 1
         MNEZ                    ; lane 1
-        BR   fm_busy
+        BR   fm_arm
         TCY  NIB_MC + 2
         MNEZ                    ; lane 2
-        BR   fm_busy
+        BR   fm_arm
         TCY  NIB_M_LO           ; the rank was empty, so its step starts here
         TCMIY MISSILE_LO        ; NIB_M_HI follows NIB_M_LO
         TCMIY MISSILE_HI
-        LDX  FILE_STATE
-        TCY  NIB_LANE
-        TMA
-        LDX  FILE_MISS
-        TAY                     ; the nibble index is the lane
+fm_arm:
+        TAY                     ; A still holds the lane - see the note above
         TCMIY GRID_COL_LAST
         LDX  FILE_D0
         TCY  NIB_HALF_O
