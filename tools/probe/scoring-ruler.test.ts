@@ -485,6 +485,45 @@ interface Drive {
 }
 
 /**
+ * Cycles from power-on to the first plane of the game, **measured on a machine
+ * here rather than written down**.
+ *
+ * The whole of {@link primeEntropy} has to fit inside this, and the figure is a
+ * product of the ROM's entry countdown, the sweep length and the cost of the
+ * power-on clear - three things that have all moved during this project. Reading
+ * it off a fresh machine costs about sixty sweeps once per file and cannot go
+ * stale; a literal here would be the bet `CLAUDE.md` warns about, pointing the
+ * other way. Today it comes to 54,850 cycles, a little under 62 sweeps.
+ */
+const FIRST_RELEASE_CYCLES = (() => {
+  const machine = new Tms1370Machine();
+  machine.setContacts({ skill: 1, lane: 0, fire: false });
+  const ceiling = seconds(5);
+  while (machine.cycles < ceiling) {
+    machine.step(SWEEP_INSTRUCTIONS);
+    if (planesOf(machine.ram).length > 0) return machine.cycles;
+  }
+  throw new Error(
+    "no plane was released in the first five seconds of a game, so primeEntropy has no window to prime in",
+  );
+})();
+
+/**
+ * Sweeps the contact is held closed for one priming press, and sweeps it is open
+ * again before the next.
+ *
+ * `if_down` reads the contact once a sweep and stirs `NIB_ENT` on the *rising
+ * edge*, so a press has to be seen closed on one sweep and open on an earlier
+ * one. Two sweeps each way is the smallest that does not depend on where the
+ * press falls within a sweep. The gap then cycles 2-3-4-5 so the presses land at
+ * different points of `NIB_TICK`, which wraps every sixteen sweeps: pressing at a
+ * fixed period is the latch trap `entropy-nibble.test.ts` documents, one level
+ * up.
+ */
+const PRIME_HOLD_SWEEPS = 2;
+const primeGapSweeps = (press: number): number => 2 + (press % 4);
+
+/**
  * Presses fire `priming` times before the drive starts playing, which is the
  * only knob that gives this file a *different game* to sample.
  *
@@ -496,16 +535,33 @@ interface Drive {
  * machine's cadences by the same amount and the game comes out identical - both
  * were tried, and both produced twelve byte-identical runs.
  *
- * The intervals lengthen with each press so the presses land at different points
- * of `NIB_TICK`, which wraps every sixteen sweeps. Pressing at a fixed period is
- * the latch trap `entropy-nibble.test.ts` documents, one level up.
+ * **The whole sequence has to finish before the first plane is released, and it
+ * did not.** The earlier schedule held for 3,000 cycles and lengthened the gap by
+ * one sample per press, which at `priming = 11` came to 58,696 cycles against a
+ * first release at {@link FIRST_RELEASE_CYCLES}. So the longest-primed games
+ * began with a plane already airborne and marched, and one of them could have had
+ * a priming shot kill it - which makes priming a knob on the squadron as well as
+ * on the entropy, and the twelve games no longer twelve samples of one variable.
+ * Held in sweeps and bounded here instead, and the bound is checked rather than
+ * asserted in a comment.
  */
 function primeEntropy(machine: Tms1370Machine, priming: number): void {
   for (let press = 0; press < priming; press += 1) {
     machine.setContacts({ fire: true });
-    machine.step(3_000);
+    machine.step(PRIME_HOLD_SWEEPS * SWEEP_INSTRUCTIONS);
     machine.setContacts({ fire: false });
-    machine.step(SAMPLE_CYCLES * (3 + press));
+    machine.step(primeGapSweeps(press) * SWEEP_INSTRUCTIONS);
+  }
+  if (machine.cycles > FIRST_RELEASE_CYCLES) {
+    throw new Error(
+      `priming ${priming} times took ${machine.cycles} cycles, past the first release at ` +
+        `${FIRST_RELEASE_CYCLES} - the primed games no longer vary only the entropy`,
+    );
+  }
+  if (planesOf(machine.ram).length > 0) {
+    throw new Error(
+      `priming ${priming} times left a plane airborne before the drive started`,
+    );
   }
 }
 
@@ -520,7 +576,11 @@ function aimedDrive(forSeconds: number, aim: Aim, skill = 1, priming = 0): Drive
   let releaseFireAt = -1;
   let pressFireAt = -1;
   let wanted = 1;
-  const until = seconds(forSeconds);
+  // **After the priming, not from power-on.** `forSeconds` is how long the drive
+  // plays; measured from cycle zero it would be the priming *plus* the play, so
+  // a longer priming would quietly buy a shorter game and the twelve runs below
+  // would differ in their length as well as in their entropy.
+  const until = machine.cycles + seconds(forSeconds);
 
   while (machine.cycles < until) {
     machine.step(SAMPLE_CYCLES);
