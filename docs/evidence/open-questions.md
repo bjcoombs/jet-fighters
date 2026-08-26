@@ -1264,6 +1264,68 @@ The same frame-by-frame read killed a different claim, recorded in `audio-refere
 the tube is *not* specifically dark during the tone. It is also dark from 13.70 s, four
 tenths of a second before the episode starts, and for the whole 17.00-23.20 s stretch.
 
+### The fundamental, precisely - and what it says about unit identity
+
+Run because the recordings have been proposed to be **two different physical units**
+(`timing-analysis.md` records the two clips disagreeing by 3.5x on missile speed and 4.7x
+on aircraft speed, measured from pictures with no audio involved). A delay-loop note is
+clocked off the chip's own RC oscillator, so its pitch is a property of the hardware and
+can test that directly.
+
+**The null first, because agreement without a scale is a number.** MAME fits this part's
+oscillator at 350 kHz and its driver header states the spread that carries: the frequency
+*"can differ up to 50kHz"* unit to unit, partly from ageing. That is **±14%**, carried in
+this repository as `OSCILLATOR_SPREAD_HZ` and discussed in
+`docs/research/mp2110-timing-measurement.md` §4. At 626 Hz, ±14% is **±88 Hz**.
+
+Method: the fundamental as **the median spacing between adjacent partials**, which is the
+method `audio-reference.md`'s `win` section uses and the reason it gives - *"a fundamental
+is the spacing between adjacent partials"*. Resolution is measured rather than asserted:
+the same fit over three disjoint thirds of each run.
+
+| Recording | at (s) | f0 | sub-window spread | residual |
+| --- | --- | --- | --- | --- |
+| `gameplay-audio.m4a` | 12.71 | 625.80 Hz | 0.17 Hz | 0.14 Hz |
+| `gameplay-audio.m4a` | 28.90 | 625.60 Hz | 0.47 Hz | 0.28 Hz |
+| `gameplay-audio.m4a` | 116.17 | 625.77 Hz | 0.23 Hz | 0.19 Hz |
+| `skill3-video-audio.m4a` | 14.20 | 624.88 Hz | 0.35 Hz | 0.09 Hz |
+| `skill3-video-audio.m4a` | 17.85 | 624.93 Hz | 0.15 Hz | 0.10 Hz |
+| `IMG_6113` t=120 | +0.75 | 623.11 Hz | 0.24 Hz | 6.46 Hz |
+| `IMG_6113` t=120 | +6.54 | 623.11 Hz | 0.05 Hz | 6.57 Hz |
+
+**Seven episodes across three recordings span 2.70 Hz - 0.432%, thirty-two times inside
+the ±14% two-unit null**, with a worst measurement noise of 0.47 Hz. On the audio, these
+are one machine. Two units agreeing to under half a percent on an untrimmed RC oscillator
+would be the coincidence; one unit on three occasions agreeing this closely is what the
+part does.
+
+**The structure inside that span is real and is not noise**: each recording clusters
+tightly on its own value - 625.7, 624.9, 623.1 - separated by more than the within-episode
+spread. A third of a percent of drift between sessions is ordinary for an RC oscillator
+with temperature and supply. It is nowhere near a different part.
+
+**Two things this does not say.** It cannot explain a 3.5x or 4.7x speed difference - that
+is far too large to be a clock effect, and 0.4% of clock drift would move a speed by 0.4%.
+And it does not identify the sound. It says the *emitter* is the same across the three
+recordings, which is a claim about hardware, not about what the program was doing.
+
+If both hold, **one unit in two states** fits better than two units, and the state to test
+is the **skill dial**: every `IMG_6113` row in `timing-analysis.md` records the skill as
+"unknown", while the skill-3 clip's is stated by the owner. A tired supply is the other
+obvious candidate and this measurement argues against it - a sagging supply moves an RC
+oscillator's rate, which would move this note, and it has moved by 0.4%. *Whether the real
+unit scales missile speed with the dial is `timing-analysis.md`'s question, not this
+one's; the ROM's `MISSILE_LO`/`_HI` are constants and do not.*
+
+**A method note, because the first version of this measurement was wrong.** It fitted the
+partials by least squares through the origin and read `IMG_6113` t=120 as **626.9 Hz**. The
+residual column is what exposed it: 3.8 Hz there against 0.1-0.2 Hz elsewhere. Five of
+that episode's six gaps measure 623.1 Hz and only the third partial is astray, and a fit
+through the origin is pulled by one bad partial while still returning a confident-looking
+number. The median of the gaps ignores it. **A fit that cannot fail needs a residual
+printed beside it**, which is the same lesson as the partial-ratio table earlier in this
+section.
+
 **What is unresolved**: what game event fires it. Nothing in the ROM emits a 410 ms tone,
 and no rule in the PRD predicts one. The episode times in `gameplay-audio.m4a` are
 12.60, 28.80 and 116.10 s; in the skill-3 clip, 1.10, 14.10 and 17.70 s; and in
