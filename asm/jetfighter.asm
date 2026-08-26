@@ -1123,6 +1123,28 @@ main_work:
 ; return register is unused at this point, which `tools/tmsasm`'s analysis 3
 ; would refuse to assemble if it were not.
 ;
+; --- the shape this is not, and why it was deferred rather than rejected ------
+;
+; **Asking the question once per plane instead of once per lane per half is the
+; right architecture, and it is task 21.** The walk is a walk over *lanes*
+; because a lane used to be a slot; it no longer is. Rows are geometry now and
+; planes are entities, so the question "did anything get hit" is naturally two
+; tests, not six: for each of the two planes, is `FILE_MISS[plane.row]` equal to
+; `plane.column`? Everything this routine spends on re-reading the shot's cell
+; per lane disappears, and with it the sweep-budget note above - the tail would
+; go back under where `main` had it rather than being argued about.
+;
+; It was kept out of the task that wrote this deliberately. It restructures the
+; walk's control flow rather than a comparison inside it, and it moves *when* a
+; kill lands relative to the other lanes' steps - which is exactly the semantics
+; `tools/probe/missile-rank.test.ts` counts, per lane, per half of the pair. A
+; change that could redden the instrument guarding it does not belong in the same
+; commit as the change that instrument is guarding.
+;
+; So whoever picks task 21 up starts here: the win is 2 tests a phase against 6,
+; the risk is the LEAVE/ARRIVE semantics, and the measurement to beat is a
+; longest silent sweep of 1165 cycles against a mean of 898.
+;
 ; **Placed on P_SWEEP because P_HIT had fourteen words free and this is
 ; thirty-seven**,
 ; and because a subroutine may not branch across a page (analysis 2) - so it has
