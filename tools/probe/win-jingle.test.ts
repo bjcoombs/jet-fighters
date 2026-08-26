@@ -204,6 +204,32 @@ const INTERVAL_TOLERANCE_CENTS = 100;
  */
 const CAPTURE_S = 3;
 
+/**
+ * Emulated seconds the drive below takes to reach the win.
+ *
+ * **Measured: 1.783 s.** The drive pokes the score to {@link SCORE_BEFORE_WIN}
+ * and then plays, so what it is waiting for is a single kill and not a whole
+ * game - which is why it is quick and why the figure is worth naming rather than
+ * guessing at.
+ */
+const WIN_ARRIVES_S = 1.8;
+
+/**
+ * How long the drive waits for the win before giving up.
+ *
+ * Ten times the measurement, which is CLAUDE.md's rule: "a literal timeout in a
+ * test about a machine that stops is a bet on when it stops", so the bound is a
+ * multiple of a named measured figure. **It was a bare `120 * CYCLE_HZ`** - not
+ * wrong, and it fails loudly rather than quietly because the drive throws when
+ * the win never arrives, but 120 s said nothing about what was being waited for
+ * and was 67 times longer than the wait.
+ *
+ * The margin is wide because what it has to survive is a cadence change that
+ * lengthens the time to one kill - the march ladder doubling once already moved
+ * a horizon in this repository - and the run costs nothing until it is used.
+ */
+const WIN_TIMEOUT_S = WIN_ARRIVES_S * 10;
+
 interface Note {
   hz: number;
   ms: number;
@@ -278,7 +304,7 @@ function winJingle(): { notes: Note[]; silentAfter: boolean } {
   let lane = 0;
   let fire = false;
   let toggledAt = machine.cycles;
-  while (state() !== ST_WIN && machine.cycles - start < 120 * CYCLE_HZ) {
+  while (state() !== ST_WIN && machine.cycles - start < WIN_TIMEOUT_S * CYCLE_HZ) {
     machine.step(200);
     if (machine.cycles - toggledAt > 12_000) {
       toggledAt = machine.cycles;

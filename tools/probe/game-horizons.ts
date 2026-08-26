@@ -59,3 +59,41 @@ export const HORIZON_FACTOR = 1.4;
 
 /** A parked-lever run's horizon in seconds: the ending, widened. */
 export const PARKED_HORIZON_S = PARKED_GAME_END_S * HORIZON_FACTOR;
+
+/**
+ * The moment an **unattended** machine falls silent, in seconds - no contact
+ * closed at all, not even the skill dial.
+ *
+ * A machine nobody plays loses all three launchers and the loss sound is the
+ * last thing it makes. **Measured: the last speaker edge lands at 24.028 s.**
+ *
+ * It is named because it is the figure that started the misdiagnosis. The v2
+ * figure was 20.6 s and reached that only after two wrong answers: 5.66 s while
+ * a single capture ended the game, then an *estimated* 10.92 s offered as
+ * "roughly twice" it, which was short of the ending the horizons were meant to
+ * contain and turned `main` red. This one is measured for that reason, and it is
+ * not the v2 figure rescaled - the instruction rate, the sweep length and the
+ * cadence ladder all moved with the core, so the only honest way to get it was to
+ * run this machine and look.
+ *
+ * **A ceiling, deliberately above the measurement**, for the reason
+ * {@link PARKED_GAME_END_S} gives.
+ */
+export const UNATTENDED_SILENCE_S = 24.6;
+
+/**
+ * The same ending, taken as a ceiling over **every skill setting**.
+ *
+ * A different quantity from {@link UNATTENDED_SILENCE_S} and kept separate even
+ * though today's measurements have converged on the same lane. Measured with the
+ * dial closed and the lever untouched: **24.003 s at skill 1, 19.702 s at skill
+ * 2, 21.699 s at skill 3.**
+ *
+ * **The two were the same name at two values in three files** - 24.6 in
+ * `game-lifetime.test.ts` and `entry-position.test.ts`, 26.2 in
+ * `speaker-bands.test.ts` - which is how a reader comparing them is misled about
+ * which machine each describes. Collapsing them into one constant because the
+ * numbers currently agree would be the other error: a skill setting is free to
+ * outlive the unattended default again.
+ */
+export const UNATTENDED_SILENCE_ANY_SKILL_S = 26.2;

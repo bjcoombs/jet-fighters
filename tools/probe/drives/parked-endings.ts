@@ -1,40 +1,67 @@
-// When does an unplayed game end? Parks the lever in each lane and times the
-// last speaker edge.
+// When does an unplayed game end? Times the last speaker edge, three ways.
 //
-// This is the re-derivation for `PARKED_GAME_END_S` in
-// `tools/probe/game-horizons.ts`, and it exists because that constant is the one
-// figure in `tools/probe/` that two suites both depend on and neither owns. It
-// had already drifted - 43.2 s in one file against 36.9 s in the file that
-// measured it - and a constant nobody can re-measure in one command is how that
-// happens.
+// This is the re-derivation for every constant in `tools/probe/game-horizons.ts`,
+// and it exists because those are the figures in `tools/probe/` that several
+// suites depend on and none owns. Two had already drifted: 43.2 s in one file
+// against the 36.9 s the file that measured it carried, and one *name* holding
+// 24.6 s in two files and 26.2 s in a third. A constant nobody can re-measure in
+// one command is how that happens, so this prints each figure beside its
+// constant and says whether the constant is still a ceiling.
+//
+// Three drives, because they are three quantities and today's numbers agreeing
+// is not a reason to treat them as one:
+//
+//   - the lever parked in each lane at skill 1 - PARKED_GAME_END_S
+//   - no contact closed at all, not even the dial - UNATTENDED_SILENCE_S
+//   - the dial closed at each setting, lever untouched -
+//     UNATTENDED_SILENCE_ANY_SKILL_S
 //
 // Written against the ROM with the entry position drawn from the entropy nibble.
-// Nothing is played: no fire, no lever movement, one skill setting. That is the
-// point - the horizon has to hold for a machine nobody is attending to, which is
-// the longest a game can take.
+// Nothing is played: no fire, no lever movement. That is the point - the horizon
+// has to hold for a machine nobody is attending to, which is the longest a game
+// can take.
 //
 // Paths in this file are relative to the repository root.
 
 import { Tms1370Machine } from '../tms1370-probe.js';
 import { CYCLE_HZ } from '../../../src/machine/cpu/tms1370/timing.js';
-import { PARKED_GAME_END_S } from '../game-horizons.js';
+import {
+  PARKED_GAME_END_S,
+  UNATTENDED_SILENCE_ANY_SKILL_S,
+  UNATTENDED_SILENCE_S,
+} from '../game-horizons.js';
 
 /** Long enough that a game which had not ended would be obvious. */
 const CEILING_S = 90;
 /** Sampling interval. Fine against the 0.67 s loss envelope. */
 const SAMPLE_CYCLES = Math.round(CYCLE_HZ / 200);
 
-const endings: number[] = [];
-for (const lane of [0, 1, 2] as const) {
+/** Run to the ceiling and hand back the last speaker edge, in seconds. */
+function lastEdgeSeconds(contacts: Parameters<Tms1370Machine['setContacts']>[0] | null): number {
   const machine = new Tms1370Machine();
-  machine.setContacts({ skill: 1, lane });
+  if (contacts !== null) machine.setContacts(contacts);
   let lastEdge = 0;
   const ceiling = Math.round(CEILING_S * CYCLE_HZ);
   while (machine.cycles < ceiling) {
     machine.step(SAMPLE_CYCLES);
     for (const edge of machine.takeSpeakerEdges()) lastEdge = edge.cycle;
   }
-  const seconds = lastEdge / CYCLE_HZ;
+  return lastEdge / CYCLE_HZ;
+}
+
+/** Says whether a constant is still the ceiling it claims to be. */
+function ceilingReport(name: string, constant: number, measured: number): string {
+  return (
+    `${name} is ${constant} s - ` +
+    (measured <= constant
+      ? `a ceiling, clearing the latest ending by ${(constant - measured).toFixed(3)} s`
+      : `NO LONGER A CEILING: the latest ending is ${(measured - constant).toFixed(3)} s past it`)
+  );
+}
+
+const endings: number[] = [];
+for (const lane of [0, 1, 2] as const) {
+  const seconds = lastEdgeSeconds({ skill: 1, lane });
   endings.push(seconds);
   console.log(`lever parked in lane ${lane}: last speaker edge at ${seconds.toFixed(3)} s`);
 }
@@ -42,9 +69,25 @@ for (const lane of [0, 1, 2] as const) {
 const latest = Math.max(...endings);
 console.log(`latest ending ${latest.toFixed(3)} s`);
 console.log(`spread across lanes ${(latest - Math.min(...endings)).toFixed(3)} s`);
+console.log(ceilingReport('PARKED_GAME_END_S', PARKED_GAME_END_S, latest));
+
+// The unattended machine: nothing closed at all, which is a different drive from
+// a parked lever and gets a different constant. Then the same with each skill
+// setting closed, which is a third.
+console.log('');
+const untouched = lastEdgeSeconds(null);
+console.log(`no contact closed at all: last speaker edge at ${untouched.toFixed(3)} s`);
+console.log(ceilingReport('UNATTENDED_SILENCE_S', UNATTENDED_SILENCE_S, untouched));
+
+const bySkill = [1, 2, 3].map((skill) => {
+  const seconds = lastEdgeSeconds({ skill });
+  console.log(`skill ${skill}, lever untouched: last speaker edge at ${seconds.toFixed(3)} s`);
+  return seconds;
+});
 console.log(
-  `PARKED_GAME_END_S is ${PARKED_GAME_END_S} s - ` +
-    (latest <= PARKED_GAME_END_S
-      ? `a ceiling, clearing the latest ending by ${(PARKED_GAME_END_S - latest).toFixed(3)} s`
-      : `NO LONGER A CEILING: the latest ending is ${(latest - PARKED_GAME_END_S).toFixed(3)} s past it`),
+  ceilingReport(
+    'UNATTENDED_SILENCE_ANY_SKILL_S',
+    UNATTENDED_SILENCE_ANY_SKILL_S,
+    Math.max(untouched, ...bySkill),
+  ),
 );
