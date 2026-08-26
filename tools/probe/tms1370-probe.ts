@@ -61,6 +61,82 @@ export function assembleGame(source = ROM_SOURCE): ReturnType<typeof assemble> {
   });
 }
 
+/**
+ * One airborne plane: the row it is in and the column it stands on.
+ *
+ * The squadron is two `(row, column)` pairs at `FILE_JETS` 10-13 and no longer a
+ * jet per lane, so "what is in lane N" is a question about the pair and not
+ * about a nibble. Every probe that used to read `FILE_JETS[lane]` reads this
+ * instead, in one place, because the two facts that make the model worth having
+ * both break a per-lane reader:
+ *
+ *   - **Two planes can be in one row**, so a reader that returns one column per
+ *     row silently loses the second - and losing it is exactly the case a
+ *     collision or render assertion needs to see.
+ *   - **An empty slot keeps its last row.** Only the column is cleared, by
+ *     `mw_kill` and `jm_capture` alike, so the row nibble of a dead plane is
+ *     stale and means nothing. A column of 0 is what "not flying" is, which is
+ *     the same convention the rocket, the missile and the battleship use.
+ */
+export interface Plane {
+  /** 0 to 2, top to bottom - the same numbering as the lever's lane. */
+  readonly row: number;
+  /** The grid it stands on, 1 to 5. From {@link slotsOf}, 0 means "not flying". */
+  readonly column: number;
+}
+
+/** Where the squadron lives, read from the ROM rather than written down here. */
+export interface SquadronMap {
+  readonly base: number;
+  readonly stride: number;
+  readonly count: number;
+}
+
+/** The squadron's RAM addresses, from the assembled program's own symbols. */
+export function squadronMap(asm: ReturnType<typeof assemble>): SquadronMap {
+  const value = (name: string): number => {
+    const found = asm.symbols.find((definition) => definition.name === name);
+    if (found === undefined) throw new Error(`asm/jetfighter.asm no longer defines ${name}`);
+    return found.value;
+  };
+  return {
+    base: value('FILE_JETS') * 16 + value('NIB_P_BASE'),
+    stride: value('PLANE_STRIDE'),
+    count: value('PLANE_COUNT'),
+  };
+}
+
+/**
+ * Both slots as the RAM holds them, empties included, in slot order.
+ *
+ * An empty slot reads `column: 0` and whatever row its last plane was in - the
+ * ROM clears only the column. Callers that want planes want {@link planesOf};
+ * this exists for the ones that have to follow a *slot* over time, which is what
+ * "was this plane drawn where it stood" is a question about.
+ */
+export function slotsOf(ram: ArrayLike<number>, map: SquadronMap): readonly Plane[] {
+  return Array.from({ length: map.count }, (_unused, slot) => {
+    const at = map.base + slot * map.stride;
+    return { row: ram[at] as number, column: ram[at + 1] as number };
+  });
+}
+
+/** Every plane currently airborne, in slot order. Empty slots are not listed. */
+export function planesOf(ram: ArrayLike<number>, map: SquadronMap): readonly Plane[] {
+  return slotsOf(ram, map).filter((plane) => plane.column !== 0);
+}
+
+/**
+ * The columns a row holds, as a bitmap over the playfield's grids.
+ *
+ * Bit `g` is set when some plane stands on grid `g` in this row. A bitmap and
+ * not a column, because a row can hold two planes and both of them are drawn,
+ * hit-tested and shot at independently.
+ */
+export function rowColumns(planes: readonly Plane[], row: number): number {
+  return planes.reduce((bits, plane) => (plane.row === row ? bits | (1 << plane.column) : bits), 0);
+}
+
 /** One R15 transition, stamped with the instruction cycle it happened on. */
 export interface SpeakerEdge {
   readonly cycle: number;

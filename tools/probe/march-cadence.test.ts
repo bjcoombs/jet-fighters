@@ -67,7 +67,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { CAPTURE_WINDOW_CYCLES } from '../../src/machine/board/tms1370-cadence.js';
-import { Tms1370Machine, assembleGame } from './tms1370-probe.js';
+import { Tms1370Machine, assembleGame, planesOf, squadronMap } from './tms1370-probe.js';
 
 /** The assembled game ROM, kept so symbol values are read rather than typed. */
 const GAME_ASM = assembleGame();
@@ -86,8 +86,10 @@ const ADDRESS = {
   kills: gameSymbol('FILE_STATE') * NIBBLES_PER_FILE + gameSymbol('NIB_KILLS'),
   stepLo: gameSymbol('FILE_TIME') * NIBBLES_PER_FILE + gameSymbol('NIB_STEP_LO'),
   stepHi: gameSymbol('FILE_TIME') * NIBBLES_PER_FILE + gameSymbol('NIB_STEP_HI'),
-  lane0Jet: gameSymbol('FILE_JETS') * NIBBLES_PER_FILE + gameSymbol('NIB_J_LANE0'),
 } as const;
+
+/** Where the two plane slots live, read from the ROM rather than written down. */
+const SQUADRON = squadronMap(GAME_ASM);
 
 /** `NIB_HITS` when the last launcher has gone - three, and the game is over. */
 const LAUNCHERS = gameSymbol('HITS_LAST');
@@ -210,25 +212,32 @@ function standStill(lane: number): Game {
   let peakKills = 0;
   let hits = 0;
   let previousPair: number | undefined;
-  let previousLaneJet = 0;
+  let previousAirborne = 0;
   while (hits < LAUNCHERS && machine.sweepCount < SWEEP_CEILING) {
     machine.runSweeps(1, SWEEP_WAIT_CYCLES);
     const ram = machine.ram;
     const pair = (ram[ADDRESS.stepHi] as number) * NIBBLES_PER_FILE + (ram[ADDRESS.stepLo] as number);
-    const laneJet = ram[ADDRESS.lane0Jet + lane] as number;
+    const airborne = planesOf(ram, SQUADRON).length;
     const seenHits = ram[ADDRESS.hits] as number;
     peakKills = Math.max(peakKills, ram[ADDRESS.kills] as number);
     if (previousPair !== undefined && pair > previousPair) {
       steps.push(machine.sweepCount);
     }
     if (seenHits > hits) {
-      // The lever's lane is the only one whose arrival costs anything, and
-      // `jm_capture` clears that jet's nibble as it takes the launcher.
-      (previousLaneJet !== 0 && laneJet === 0 ? captures : rockets).push(machine.sweepCount);
+      // **A capture is told from a rocket by the squadron getting smaller.**
+      // This used to read the lever's own lane nibble, on the rule that only an
+      // arrival in that lane cost anything; that rule is gone (a capture costs a
+      // launcher wherever the lever stands) and the nibble is gone with it. What
+      // distinguishes the two is that `jm_capture` clears the crossing plane's
+      // column and `launcher_hit` clears nothing - so a launcher lost on a sweep
+      // where the squadron shrank is a capture and one where it did not is a
+      // rocket. Sound only because this drive never fires: a missile kill would
+      // shrink the squadron too, and there are no missiles in a parked game.
+      (airborne < previousAirborne ? captures : rockets).push(machine.sweepCount);
     }
     hits = seenHits;
     previousPair = pair;
-    previousLaneJet = laneJet;
+    previousAirborne = airborne;
   }
   return { steps, captures, rockets, peakKills, hits, sweeps: machine.sweepCount };
 }

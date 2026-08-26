@@ -77,6 +77,49 @@ const NIB_SC_U = 10;
 const NIB_SC_T = 11;
 const NIB_SC_H = 12;
 
+/**
+ * The squadron: two `(row, column)` pairs at `FILE_JETS` 10-13.
+ *
+ * Written out in the same style as the nibbles above rather than read from the
+ * assembled symbols, because this file deliberately keeps its RAM map local -
+ * see the block comment on `FILE_STATE`.
+ */
+const NIB_P_BASE = 10;
+const PLANE_STRIDE = 2;
+const PLANE_COUNT = 2;
+
+/** Every airborne plane's `(row, column)`. A column of 0 is an empty slot. */
+function planesOf(ram: ArrayLike<number>): { row: number; column: number }[] {
+  const planes: { row: number; column: number }[] = [];
+  for (let slot = 0; slot < PLANE_COUNT; slot += 1) {
+    const at = FILE_JETS * 16 + NIB_P_BASE + slot * PLANE_STRIDE;
+    const column = ram[at + 1] as number;
+    if (column !== 0) planes.push({ row: ram[at] as number, column });
+  }
+  return planes;
+}
+
+/**
+ * Per lane, the deepest column a plane stands on in it - 0 for an empty lane.
+ *
+ * This is what every `ram[FILE_JETS * 16 + lane]` in this drive used to be, and
+ * it is deliberately lossy in the one way the model allows: two planes can share
+ * a row and only the deeper is reported. That is right for a *drive*, whose job
+ * is to pick a lane to shoot down and should pick the urgent one; assertions
+ * about the squadron read the pairs themselves.
+ */
+function deepestByLane(ram: ArrayLike<number>): number[] {
+  const planes = planesOf(ram);
+  return [0, 1, 2].map((lane) =>
+    planes.reduce((deepest, plane) => (plane.row === lane ? Math.max(deepest, plane.column) : deepest), 0),
+  );
+}
+
+/** A lane holding a plane on exactly `column`, or -1. Both slots are searched. */
+function laneStandingOn(ram: ArrayLike<number>, column: number): number {
+  return planesOf(ram).find((plane) => plane.column === column)?.row ?? -1;
+}
+
 /** `NIB_BSLANE` when no crossing is in progress. */
 const BS_NONE = 15;
 
@@ -358,10 +401,11 @@ function boatHunt(): { attempts: number; kills: Kill[]; used: number[] } {
           // the one-shot gate blocks the shot that matters. Defending only while
           // `BS_NONE` keeps the barrel free for the boat.
           if (boat === BS_NONE) {
+            const byLane = deepestByLane(ram);
             let deepest = -1;
             let target = 0;
             for (const candidate of [0, 1, 2]) {
-              const grid = ram[FILE_JETS * 16 + candidate] as number;
+              const grid = byLane[candidate] as number;
               if (grid > deepest) {
                 deepest = grid;
                 target = candidate;
@@ -400,7 +444,7 @@ function boatHunt(): { attempts: number; kills: Kill[]; used: number[] } {
         // survive to the boat's row. It raises the hit rate rather than lowering
         // the bar, and it is what a player who has learned the lead does - which
         // is the player this drive is meant to be.
-        if ((ram[FILE_JETS * 16 + BOAT_LEAD_LANE] as number) !== 0) continue;
+        if ((deepestByLane(ram)[BOAT_LEAD_LANE] as number) !== 0) continue;
         // **Aim a sweep before the fire edge**, the same as the defending shot
         // above and for the same reason: the ROM samples the lever and the
         // button in one pass, so a lever moved in the same call as the press can
@@ -463,7 +507,7 @@ function aimedDrive(forSeconds: number, aim: Aim, skill = 1): Drive {
       break;
     }
 
-    const jetsNow = [0, 1, 2].map((lane) => ram[FILE_JETS * 16 + lane] as number);
+    const jetsNow = deepestByLane(ram);
 
     const seen = scoreOf(ram);
     if (score < 0) {
@@ -502,9 +546,7 @@ function aimedDrive(forSeconds: number, aim: Aim, skill = 1): Drive {
     // This is not making the drive good at the game; it is stopping it standing
     // still in front of the one thing that can end the run.
     if (missileInFlight(ram)) {
-      const inbound = [0, 1, 2].map(
-        (lane) => ram[FILE_JETS * 16 + lane] as number,
-      );
+      const inbound = deepestByLane(ram);
       const rocketLane =
         (ram[FILE_STATE * 16 + NIB_RCOL] as number) !== 0
           ? (ram[FILE_STATE * 16 + NIB_RLANE] as number)
@@ -547,12 +589,12 @@ function aimedDrive(forSeconds: number, aim: Aim, skill = 1): Drive {
         (ram[FILE_TIME * 16 + NIB_STEP_LO] as number) +
         1;
       const flight = (GRID_COL_LAST - aim.column) * MISSILE_COLUMN_SWEEPS;
-      lane = marchLeft > flight ? jets.indexOf(aim.column) : -1;
+      lane = marchLeft > flight ? laneStandingOn(ram, aim.column) : -1;
     } else {
       // Preferred column first so the drive covers the field, then the boat
       // when it is crossing - it has to be shot at deliberately or the census
       // never sees a ten - and any jet at all rather than waste the sweep.
-      const preferred = jets.indexOf(wanted);
+      const preferred = laneStandingOn(ram, wanted);
       wanted = (wanted % 5) + 1;
       const boat = ram[FILE_STATE * 16 + NIB_BSLANE] as number;
       if (preferred >= 0) lane = preferred;
@@ -585,11 +627,18 @@ function aimedDrive(forSeconds: number, aim: Aim, skill = 1): Drive {
  * measured constant, `UNATTENDED_SILENCE_S` being the worked example, because a
  * literal there is a bet on when the machine stops and that figure has moved
  * three times. This is deliberately *not* that kind of number, and the
- * difference is measured rather than asserted: drives of **240, 300, 360, 480
- * and 600 s all stop at the same 58 events and the same final score**, because
- * the run ends when the third launcher goes and not when the clock runs out.
- * Two and a half times the value changes no result, so there is no bet here to
- * lose.
+ * difference is measured rather than asserted: drives of **300, 360, 480, 600
+ * and 900 s all stop at the same 127 events and the same final score of 197**,
+ * because the run ends when the game is decided and not when the clock runs out.
+ * Three times the value changes no result, so there is no bet here to lose.
+ *
+ * **Re-measured when the squadron became two positioned planes.** It was 240 s,
+ * against a drive that stopped at 58 events with the third launcher gone. Two
+ * planes are two attackers where the lane rank could put three up, so the same
+ * defending drive now survives to *win*: 127 events, score 197, and the ending
+ * arrives at about 300 s rather than inside 240. The old ceiling stopped being
+ * long enough for the run to be decided at all, which is precisely the failure
+ * the assertion below exists to report, and it reported it.
  *
  * Deriving it from `UNATTENDED_SILENCE_S` would also be a false dependency in
  * the other direction: that constant measures when an *unattended* machine
@@ -597,7 +646,7 @@ function aimedDrive(forSeconds: number, aim: Aim, skill = 1): Drive {
  * attended ceiling to an unattended measurement would make the number look
  * derived while coupling it to a quantity it does not depend on.
  */
-const CENSUS_SECONDS = 240;
+const CENSUS_SECONDS = 360;
 
 /** The same kind of ceiling: long enough for tens of kills at any reachable column. */
 const COLUMN_SECONDS = 120;
