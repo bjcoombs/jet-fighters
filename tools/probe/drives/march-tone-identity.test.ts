@@ -170,13 +170,24 @@ describe.skipIf(!ffmpeg && process.env['CI'] === undefined)(
       const t210 = result.files.find((f) => f.path.includes('t210'));
       expect(t210, 'the t=210 window is missing').toBeDefined();
       const grid = sweepGrid((t210 as { episodes: never[] }).episodes);
-      const flat = grid.flat();
+      // Both axes, separately. Asserting only that *some* cell differs passes
+      // when one axis has been collapsed and the other still moves - which is
+      // the exact failure this test was written for, and the first version of
+      // it did not catch a flattened continuity axis for that reason.
+      const rowVaries = grid.some((row) => new Set(row).size > 1);
+      const columns = grid[0].map((_, c) => grid.map((row) => row[c]));
+      const columnVaries = columns.some((col) => new Set(col).size > 1);
       expect(
-        new Set(flat).size,
-        'every cell of the sweep returned the same count, so the grid is not ' +
-          'measuring the gate sensitivity it exists to measure',
-      ).toBeGreaterThan(1);
-      expect(Math.max(...flat), 'the sweep found nothing anywhere').toBeGreaterThanOrEqual(3);
+        rowVaries,
+        'the count does not move as the continuity floor moves, so that axis of ' +
+          'the sweep is not measuring anything',
+      ).toBe(true);
+      expect(
+        columnVaries,
+        'the count does not move as the comb threshold moves, so that axis of ' +
+          'the sweep is not measuring anything',
+      ).toBe(true);
+      expect(Math.max(...grid.flat()), 'the sweep found nothing anywhere').toBeGreaterThanOrEqual(3);
     });
 
     it('keeps a tonality control that separates a tone from silence', () => {
