@@ -233,7 +233,7 @@ const BS_LO_ADDRESS = gameSymbol('FILE_TIME') * 16 + gameSymbol('NIB_BS_LO');
 const BS_HI_ADDRESS = gameSymbol('FILE_TIME') * 16 + gameSymbol('NIB_BS_HI');
 
 /** Break a sound's rising edges into runs of like periods. */
-function runsOf(rising: readonly number[]): Run[] {
+function runsOf(rising: readonly number[], maxStretch: number = MAX_BOUNDARY_STRETCH_CYCLES): Run[] {
   const periods = rising.slice(1).map((cycle, index) => cycle - rising[index]!);
   const runs: Run[] = [];
   let current: number[] = [];
@@ -272,7 +272,7 @@ function runsOf(rising: readonly number[]): Run[] {
         next !== undefined &&
         !deviates(next, reference) &&
         stretch > 0 &&
-        stretch <= MAX_BOUNDARY_STRETCH_CYCLES
+        stretch <= maxStretch
       ) {
         current.push(period);
         continue;
@@ -300,6 +300,28 @@ function runsOf(rising: readonly number[]): Run[] {
  */
 const BUZZ_MIN_MS = 1900;
 
+/**
+ * The most of a stretch's runs that may be notes before it is a phrase.
+ *
+ * **This is what tells the battleship's buzz from a sound `note` built, and it
+ * is a property of the stretch rather than of its length.** The buzz is not
+ * built by `note` at all - it is clocked off the display sweep, so consecutive
+ * rise-to-rise intervals disagree and almost every run is a join. A phrase is
+ * the opposite: it is made of notes and the joins are the seams between them.
+ *
+ * Measured over both scenarios, the separation is not close:
+ *
+ * | stretch | notes / runs |
+ * | the two sustained buzzes | 0.007 and 0.010 |
+ * | every other stretch | 0.600 and above |
+ *
+ * Two orders of magnitude, so a fifth sits sixty times below the lowest phrase
+ * and twenty times above the highest buzz. A buzz *fragment* - a buzz the gap
+ * rule cut short - has no notes at all and scores zero, which is why one rule
+ * covers both and no duration gate is needed to recognise either.
+ */
+const BUZZ_MAX_NOTE_FRACTION = 0.2;
+
 /** The buzz's repetition rate over a stretch, by harmonic-comb periodicity. */
 function buzzHzOf(edges: readonly SpeakerEdge[]): number {
   const first = edges[0];
@@ -311,12 +333,16 @@ function buzzHzOf(edges: readonly SpeakerEdge[]): number {
 }
 
 /** Split an edge stream into sounds, each broken into its runs. */
-function soundsIn(edges: readonly SpeakerEdge[]): Sound[] {
+function soundsIn(
+  edges: readonly SpeakerEdge[],
+  gapCycles: number = BURST_GAP_CYCLES,
+  maxStretch: number = MAX_BOUNDARY_STRETCH_CYCLES,
+): Sound[] {
   const groups: SpeakerEdge[][] = [];
   let group: SpeakerEdge[] = [];
   for (const edge of edges) {
     const previous = group[group.length - 1];
-    if (previous !== undefined && edge.cycle - previous.cycle > BURST_GAP_CYCLES) {
+    if (previous !== undefined && edge.cycle - previous.cycle > gapCycles) {
       groups.push(group);
       group = [];
     }
@@ -334,7 +360,10 @@ function soundsIn(edges: readonly SpeakerEdge[]): Sound[] {
       atMs: (edgesInSound[0]!.cycle / CYCLE_HZ) * 1000,
       edges: edgesInSound.length,
       ms,
-      runs: runsOf(edgesInSound.filter((edge) => edge.level === 1).map((edge) => edge.cycle)),
+      runs: runsOf(
+        edgesInSound.filter((edge) => edge.level === 1).map((edge) => edge.cycle),
+        maxStretch,
+      ),
       combHz,
       carriesBuzz: ms >= BUZZ_MIN_MS && combHz >= buzzBand.minHz && combHz <= buzzBand.maxHz,
     };
@@ -344,6 +373,48 @@ function soundsIn(edges: readonly SpeakerEdge[]): Sound[] {
 /** Runs long enough to be a note rather than the join between two notes. */
 function notesOf(sound: Sound): Run[] {
   return sound.runs.filter((run) => run.periods >= MIN_RUN_PERIODS);
+}
+
+/**
+ * Is this stretch the battleship's buzz - sustained or fragmentary?
+ *
+ * **Positive criteria, not a shrug.** It is easy to write a classifier that
+ * accounts for an awkward stretch by declining to look at it, and such a
+ * classifier passes "every sound is accounted for" while measuring nothing. This
+ * one has to find both of:
+ *
+ *   1. **Runs that are overwhelmingly joins**, at {@link BUZZ_MAX_NOTE_FRACTION}
+ *      - the mechanical signature of being clocked off the sweep rather than off
+ *      a reloaded counter. A phrase of notes scores 0.600 and up and can never
+ *      pass, so nothing `note` built is absorbed here however short it is.
+ *   2. **A comb reading inside the buzz's own measured band.**
+ *
+ * **It replaces a narrower rule that was a special case wearing a general coat.**
+ * The first version required no note *at all* and a period cycle of at most four
+ * distinct values, which caught buzz fragments and nothing else: measured, it
+ * fired on zero of 57 stretches at the shipped constant and on one across the
+ * whole drive-slice sweep. A rule whose population is the two failures that
+ * prompted it is fitted to them. This one classifies **the two sustained buzzes
+ * as well**, which the duration gate {@link BUZZ_MIN_MS} used to account for
+ * separately - so one rule now covers one phenomenon, and `BUZZ_MIN_MS` is left
+ * doing only the job its own comment claims for it, telling a sustained buzz
+ * from a phrase for the duration assertions further down.
+ */
+function isBuzzOutput(sound: Sound): boolean {
+  if (sound.runs.length === 0) {
+    return false;
+  }
+  const fraction = notesOf(sound).length / sound.runs.length;
+  if (fraction > BUZZ_MAX_NOTE_FRACTION) {
+    return false;
+  }
+  const buzz = BANDS.find((band) => band.name === BATTLESHIP_BUZZ)!;
+  return sound.combHz >= buzz.minHz && sound.combHz <= buzz.maxHz;
+}
+
+/** Every stretch this instrument can say something positive about. */
+function isAccountedFor(sound: Sound): boolean {
+  return notesOf(sound).length > 0 || sound.carriesBuzz || isBuzzOutput(sound);
 }
 
 /**
@@ -450,14 +521,33 @@ const LANE_DWELL_SLICES = 60;
  * ROM. The ceiling is not optional: once the game is over the machine never
  * sounds again, so a drive already in silence has to stop rather than spin.
  */
-function drainToSilence(machine: Tms1370Machine): void {
+/**
+ * Run on until the speaker has been quiet for a burst gap.
+ *
+ * `sliceCycles` is threaded through from the caller so the whole run, tail
+ * included, is driven on one slice. **Measured, it changes no edge**: nothing
+ * sets a contact during the drain, so the slice is only how often the exit
+ * condition is polled, and the exit requires a stretch of silence in which no
+ * edge is produced anyway. Compared across the six swept slices, the captured
+ * stream is identical either way - same edge count, same final cycle, same
+ * level.
+ *
+ * It is threaded through regardless, because "this parameter happens not to
+ * matter here" is a fact about today's drain rather than about the function, and
+ * the next person to add a contact to it would inherit a tail driven on a phase
+ * the rest of the run was not.
+ */
+function drainToSilence(
+  machine: Tms1370Machine,
+  sliceCycles: number = PLAYER_SLICE_CYCLES,
+): void {
   const until = machine.cycles + CAPTURE_WINDOW_CYCLES;
   while (machine.cycles < until) {
     const last = machine.speakerEdges.at(-1);
     if (last !== undefined && last.level === 0 && machine.cycles - last.cycle > BURST_GAP_CYCLES) {
       return;
     }
-    machine.step(PLAYER_SLICE_CYCLES);
+    machine.step(sliceCycles);
   }
 }
 
@@ -472,7 +562,10 @@ function drainToSilence(machine: Tms1370Machine): void {
  * loses all three launchers inside half a minute and nothing sounds again
  * however long the run.
  */
-function scenario(fire: boolean): { edges: readonly SpeakerEdge[]; sounds: Sound[] } {
+function scenario(
+  fire: boolean,
+  sliceCycles: number = PLAYER_SLICE_CYCLES,
+): { edges: readonly SpeakerEdge[]; sounds: Sound[] } {
   const machine = new Tms1370Machine();
   machine.setContacts({ skill: 3 });
   const window = seconds(fire ? PLAYED_SECONDS : IDLE_SECONDS);
@@ -491,9 +584,9 @@ function scenario(fire: boolean): { edges: readonly SpeakerEdge[]; sounds: Sound
       const due = ram[BS_HI_ADDRESS]! * 16 + ram[BS_LO_ADDRESS]!;
       machine.setContacts({ fire: !crossing && due >= 6 && slice % 12 === 0 });
     }
-    machine.step(PLAYER_SLICE_CYCLES);
+    machine.step(sliceCycles);
   }
-  drainToSilence(machine);
+  drainToSilence(machine, sliceCycles);
   const edges = machine.speakerEdges;
   return { edges, sounds: soundsIn(edges) };
 }
@@ -541,9 +634,7 @@ describe('every sustained note lands in a band audio-reference.md measured', () 
     // A stretch carrying the buzz is accounted for even with no note in it: the
     // buzz is not built by `note` and has no period to resolve, and what
     // identifies it is the comb reading asserted further down.
-    const silentSounds = allSounds.filter(
-      (sound) => notesOf(sound).length === 0 && !sound.carriesBuzz,
-    );
+    const silentSounds = allSounds.filter((sound) => !isAccountedFor(sound));
     expect(silentSounds.map((sound) => sound.atMs.toFixed(1))).toEqual([]);
   });
 
@@ -675,5 +766,202 @@ describe('the sounds the scenarios actually reached', () => {
     }
     const collapses = named(GAME_OVER_COLLAPSE);
     expect(collapses.length, 'the loss sound never collapsed to its low buzz').toBeGreaterThan(0);
+  });
+});
+
+describe('the splitter holds across a band, not at one value of the sweep constant', () => {
+  // ## Why this block exists
+  //
+  // `SWEEP_INSTRUCTIONS` is 889 and has been measured at 897. Task 8 tried the
+  // change, hit failures here, and reverted - and the write-up recorded the cause
+  // as `BURST_GAP_CYCLES` moving sixteen cycles, 1778 to 1794.
+  //
+  // **That was not the cause.** Swept on its own, the gap changes nothing at all:
+  // every value from 1746 to 1826 gives the same 57 sounds, the same runs and the
+  // same joins. What actually moves with the sweep constant is
+  // `PLAYER_SLICE_CYCLES`, which redrives the scenario and so changes which
+  // sounds the ROM is asked to make, and `STEP_CYCLES`, which is the
+  // burst-boundary allowance inside `runsOf`.
+  //
+  // And the sensitivity was never a cliff at 897. Measured by setting the
+  // constant directly, the suite passed at 820, 875, 889, 897, 910 and 980
+  // instructions and **failed at 850 and 940** - non-monotonic, which is the tell
+  // that the verdict was near-arbitrary in the constant rather than tracking
+  // anything real. Both failures were the same assertion, "resolved at least one
+  // note in every sound", on a buzz fragment the gap rule had cut below
+  // {@link BUZZ_MIN_MS}. {@link isBuzzOutput} is the fix, and this block is what
+  // stops the next person rediscovering the cliff.
+  //
+  // Sweeping the constant itself from a test is not possible - it is a module
+  // export - so what is swept here is the three quantities it controls.
+
+  /** Either side of both 1778 (at 889) and 1794 (at 897), and well beyond both. */
+  const GAPS = [1600, 1746, 1778, 1794, 1850, 2000] as const;
+  /** Either side of both 89 (at 889) and 90 (at 897). */
+  const STRETCHES = [80, 89, 90, 100] as const;
+  /**
+   * Drive slices to re-run the scenarios at: the two that failed, and the one
+   * that ships.
+   *
+   * **Three, not six, and the reason is that this guard has to survive being
+   * cheap.** Each slice re-runs both scenarios, and a six-value grid took 3.1 s
+   * alone but 5.3 s under the full suite's parallel load - past Vitest's 5 s
+   * default, so it failed on timeout rather than on anything it measured. A
+   * guard that goes red under load gets a timeout bump from the next person in a
+   * hurry, and then it gets deleted.
+   *
+   * `SWEEP_INSTRUCTIONS` of 850 and 940 are the two values measured to fail, and
+   * they drive at `round(850 / 5)` and `round(940 / 5)`. So this grid hits both
+   * cliffs exactly rather than bracketing them, and adds the shipped 178.
+   *
+   * **What it buys**: the two phases known to break the splitter, at full cost.
+   * **What it would miss**: a cliff at some third phase nobody has found. The
+   * gap-and-stretch grid below is the wide net; this is the deep one.
+   */
+  const SLICES = [170, 178, 188] as const;
+
+  /**
+   * Scenarios one pass of the slice sweep runs: an idle drive and a played one
+   * at every slice.
+   */
+  const SCENARIOS_PER_SLICE = 2;
+
+  /**
+   * Wall clock one scenario costs **on a CI runner**, measured.
+   *
+   * Not measured on a developer machine, which is the mistake that made this
+   * test red. A six-slice grid ran in 3.1 s locally and **7.5 s on the runner** -
+   * 260 ms a scenario against 625 - so a horizon calibrated on the fast machine
+   * put a 5 s default two seconds inside a coin toss, and CI called it.
+   */
+  const RUNNER_SCENARIO_MS = 625;
+
+  /**
+   * Multiple of the measured cost this test is allowed before it is called hung.
+   *
+   * Three, over a figure already taken from the slower of the two machines. It
+   * absorbs a runner having a bad day without being so wide that a genuine hang
+   * sits in CI for a minute.
+   */
+  const TIMEOUT_SLACK = 3;
+
+  /**
+   * **A multiple of a named, measured cost - not a literal.** CLAUDE.md's second
+   * rule for this repository: a literal horizon in a test about a machine that
+   * stops is a bet on when it stops, and it has turned `main` red three times
+   * here. Written this way, adding a slice to {@link SLICES} moves the ceiling
+   * with it instead of leaving a number that used to be enough.
+   */
+  const SWEEP_TIMEOUT_MS =
+    SLICES.length * SCENARIOS_PER_SLICE * RUNNER_SCENARIO_MS * TIMEOUT_SLACK;
+
+  it('accounts for every sound at every gap and boundary allowance', () => {
+    let checked = 0;
+    for (const gap of GAPS) {
+      for (const stretch of STRETCHES) {
+        const sounds = [idle.edges, fired.edges].flatMap((edges) =>
+          soundsIn(edges, gap, stretch),
+        );
+        expect(sounds.length, `no sounds at gap ${gap}, stretch ${stretch}`).toBeGreaterThan(0);
+        const unaccounted = sounds
+          .filter((sound) => !isAccountedFor(sound))
+          .map((sound) => `${sound.atMs.toFixed(1)} ms`);
+        expect(unaccounted, `unaccounted at gap ${gap}, stretch ${stretch}`).toEqual([]);
+        checked += 1;
+      }
+    }
+    expect(checked).toBe(GAPS.length * STRETCHES.length);
+  });
+
+  it(
+    'accounts for every sound at every drive slice, which is what the constant really moves',
+    { timeout: SWEEP_TIMEOUT_MS },
+    () => {
+    // The expensive half: each slice re-runs both scenarios, so the ROM is asked
+    // to make a different set of sounds rather than the same set being re-cut.
+    //
+    // **This is the one that has teeth, and it is worth saying so.** With
+    // {@link isBuzzOutput} stubbed out to return false - the behaviour before
+    // this block was written - this test fails and the gap-and-stretch sweep
+    // above still passes. That is the same finding as the header's: re-cutting a
+    // fixed edge stream cannot produce the failure, because the failure is a
+    // buzz fragment that only exists when the ROM is driven onto a different
+    // phase. A regression guard that swept only the segmentation constants would
+    // have gone green through the whole defect.
+    for (const slice of SLICES) {
+      const sounds = [scenario(false, slice), scenario(true, slice)].flatMap(
+        (run) => run.sounds,
+      );
+      expect(sounds.length, `no sounds at slice ${slice}`).toBeGreaterThan(0);
+      const unaccounted = sounds
+        .filter((sound) => !isAccountedFor(sound))
+        .map((sound) => `${sound.atMs.toFixed(1)} ms`);
+      expect(unaccounted, `unaccounted at slice ${slice}`).toEqual([]);
+    }
+  },
+  );
+
+  it('still resolves plural notes inside their bands across the same band', () => {
+    // **The negative control, and without it the two tests above are worthless.**
+    // An instrument that classified every stretch as sweep-clocked would account
+    // for all of them and measure nothing. So the sweep has to show that notes
+    // survive it: several of them, at more than one pitch, each inside a band
+    // audio-reference.md measured.
+    for (const gap of GAPS) {
+      for (const stretch of STRETCHES) {
+        const sounds = [idle.edges, fired.edges].flatMap((edges) =>
+          soundsIn(edges, gap, stretch),
+        );
+        const notes = sounds.flatMap((sound) => notesOf(sound));
+        expect(notes.length, `notes at gap ${gap}, stretch ${stretch}`).toBeGreaterThan(20);
+        const named = new Set(
+          sounds.flatMap((sound) =>
+            notesOf(sound).flatMap((run) => {
+              const band = bandOf(run, sound);
+              return band === undefined ? [] : [band.name];
+            }),
+          ),
+        );
+        expect(named.size, `distinct bands at gap ${gap}, stretch ${stretch}`).toBeGreaterThan(1);
+      }
+    }
+  });
+
+  it('never lets the buzz classifier swallow a phrase of notes', () => {
+    // The other half of the control, asserted on the classifier rather than on
+    // its consequences.
+    //
+    // **Not "never swallows a sound that has a note" - that was the first
+    // version of this assertion and it was the wrong property.** The rule is
+    // meant to classify the sustained buzz, and a four-second buzz picks up two
+    // or three accidental notes where three consecutive sweep-clocked intervals
+    // happen to agree inside {@link RUN_TOLERANCE}. What must never be absorbed
+    // is a *phrase*: a stretch whose runs are mostly notes. Measured, the lowest
+    // note fraction any phrase reaches is 0.600 and the highest either buzz
+    // reaches is 0.010, so the two populations are not near each other.
+    for (const gap of GAPS) {
+      const sounds = [idle.edges, fired.edges].flatMap((edges) => soundsIn(edges, gap));
+      const swallowed = sounds.filter((sound) => {
+        if (!isBuzzOutput(sound) || sound.runs.length === 0) {
+          return false;
+        }
+        return notesOf(sound).length / sound.runs.length >= 0.5;
+      });
+      expect(swallowed.map((sound) => sound.atMs.toFixed(1)), `at gap ${gap}`).toEqual([]);
+    }
+  });
+
+  it('classifies the sustained buzz too, so the rule is not fitted to its fragments', () => {
+    // The scope guard, asserted rather than promised. A rule whose only members
+    // are the stretches that prompted it is a special case in general clothing -
+    // and the first version of this classifier was exactly that, firing on zero
+    // of 57 stretches at the shipped constant. This one must account for the two
+    // sustained buzzes, which are the same phenomenon at full length and which
+    // {@link BUZZ_MIN_MS} used to account for by a separate mechanism.
+    const buzzes = allSounds.filter((sound) => isBuzzOutput(sound));
+    expect(buzzes.length, 'stretches classified as buzz output').toBeGreaterThanOrEqual(2);
+    for (const buzz of buzzes) {
+      expect(buzz.ms, `buzz output at ${buzz.atMs.toFixed(0)} ms`).toBeGreaterThan(20);
+    }
   });
 });
