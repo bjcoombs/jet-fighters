@@ -129,9 +129,14 @@ const SWEEP_WAIT_CYCLES = 64 * SWEEP_INSTRUCTIONS;
  * is up, so the sweep period *is* the program's cost and that cost moves with
  * what is on the glass. Over 500 silent sweeps of a played game the extremes
  * measure 858 and 1017 cycles about a mean of 889, which is 14.4% at the worst.
- * The bound is set above that with room, and still well below what a second
- * cadence would look like - an idle machine's sweep against a full playfield's,
- * or a sweep that had acquired a fixed dwell, both differ by far more.
+ * The bound is set above that with room.
+ *
+ * The sentence that used to end this paragraph - that the bound sits "well below
+ * what a second cadence would look like", an idle machine's sweep against a full
+ * playfield's differing "by far more" - was **measured and is wrong**. See the
+ * re-measurement below: those two populations are 5.8% apart, so the claim was
+ * false at 0.25 as well as at 0.35. It is corrected rather than deleted because
+ * a justification that was quoted forward for two tasks is worth leaving visible.
  *
  * ## Re-measured at 0.35 when the squadron became two positioned planes
  *
@@ -156,9 +161,26 @@ const SWEEP_WAIT_CYCLES = 64 * SWEEP_INSTRUCTIONS;
  *
  * So this is a wider single population rather than a second cadence, which is
  * what the assertion below is about. The bound is re-set the way this docstring
- * set it the first time - from the measurement, with room - and it stays far
- * below the discriminators named above: an idle machine's sweep against a full
- * playfield's, or an acquired fixed dwell, differ by much more than 35%.
+ * set it the first time - from the measurement, with room.
+ *
+ * **One of the discriminators this docstring used to name does not hold, and it
+ * did not hold before the bound moved either.** It claimed "an idle machine's
+ * sweep against a full playfield's [differs] by much more" than the tolerance.
+ * Measured, by this file's own method - 300 sweeps each, silent ones only:
+ *
+ *   idle    mean 870.8  min 844  max  939  worst jitter 0.078
+ *   played  mean 924.4  min 845  max 1189  worst jitter 0.286
+ *
+ * The two populations are **5.8% apart**, not 35% and not 25%. So the tolerance
+ * has never been what separates an idle machine from a played one, at either
+ * value, and quoting it as though it were would mislead the next reader into
+ * thinking a wider bound had given something up that it never held.
+ *
+ * What this assertion actually does is bound how far one silent sweep may sit
+ * from its own population's mean - a jitter bound, nothing more. The thing that
+ * catches a sweep pinned to a fixed dwell is the `distinct.size > 1` assertion
+ * beside it, which a fixed dwell fails outright by making every period equal.
+ * Those are two different guards and only one of them is this constant.
  *
  * **What would make this the wrong answer**, and it is worth writing down for
  * whoever reads this next: inverting the missile walk to ask the question once
@@ -495,6 +517,18 @@ describe('the sweep rate the reference video admits (D4)', () => {
   const sweeps = timePlayedSweeps(machine, SWEEPS_TIMED);
   const silent = sweeps.filter((sweep) => sweep.silent);
   const meanSilentCycles = silent.reduce((total, s) => total + s.cycles, 0) / silent.length;
+
+  it('MEASUREMENT', () => {
+    const dev = silent.map((s) => Math.abs(s.cycles - meanSilentCycles) / meanSilentCycles).sort((a, b) => a - b);
+    const q = (f: number): string => (dev[Math.min(dev.length - 1, Math.floor(f * dev.length))] as number).toFixed(4);
+    // eslint-disable-next-line no-console
+    console.log(`DEV mean=${meanSilentCycles.toFixed(1)} n=${dev.length} p50=${q(0.5)} p90=${q(0.9)} p95=${q(0.95)} p98=${q(0.98)} p99=${q(0.99)} max=${(dev[dev.length-1] as number).toFixed(4)}`);
+    for (const band of [0.1, 0.12, 0.15, 0.2, 0.25]) {
+      const within = dev.filter((d) => d < band).length / dev.length;
+      // eslint-disable-next-line no-console
+      console.log(`  within ${band}: ${(within * 100).toFixed(2)}%`);
+    }
+  });
 
   it('kept the game alive for the whole window it is timing', () => {
     // A run that ended early would be timing an idle machine, whose sweeps are
