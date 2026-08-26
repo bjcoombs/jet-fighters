@@ -190,6 +190,50 @@ describe.skipIf(!ffmpeg && process.env['CI'] === undefined)(
       expect(Math.max(...grid.flat()), 'the sweep found nothing anywhere').toBeGreaterThanOrEqual(3);
     });
 
+    it('reads the long tone\'s fundamental in all three recordings', () => {
+      // The two-unit hypothesis is tested on this number, so the floor is that
+      // there is one to test: **measured 7 episodes across three recordings,
+      // 623.11 to 625.80 Hz.** With fewer than two recordings represented there
+      // is no comparison to make and the section reports agreement between a
+      // thing and itself.
+      const files = new Set(result.preciseF0.map((p) => p.file));
+      expect(
+        files.size,
+        'the precise fundamental was read in fewer than two recordings, so the ' +
+          'agreement it reports is between one recording and itself',
+      ).toBeGreaterThanOrEqual(2);
+      for (const p of result.preciseF0) {
+        expect(p.f0Hz, `${p.file} returned no fundamental`).toBeGreaterThan(500);
+        expect(p.f0Hz, `${p.file} returned an implausible fundamental`).toBeLessThan(750);
+      }
+    });
+
+    it('keeps the fundamental\'s spread far inside the unit-to-unit null', () => {
+      // **Measured: 2.70 Hz across 7 episodes, 0.432%, against a documented
+      // +/-14% unit-to-unit oscillator spread.** The assertion is deliberately
+      // loose - 2% would still be seven times inside the null - because the
+      // finding is an order-of-magnitude one and a tight bound here would fail
+      // on a recording made on a colder day, which is a real effect and not a
+      // regression.
+      const f0s = result.preciseF0.map((p) => p.f0Hz);
+      const mean = f0s.reduce((a, b) => a + b, 0) / f0s.length;
+      const spreadPct = ((Math.max(...f0s) - Math.min(...f0s)) / mean) * 100;
+      expect(
+        spreadPct,
+        'the long tone\'s fundamental now varies by more than 2% across the ' +
+          'recordings, which is the direction that would support two different ' +
+          'units and needs reading, not silencing',
+      ).toBeLessThan(2);
+      // And the measurement has to be able to resolve that: noise larger than
+      // the spread would make the agreement meaningless.
+      const worstNoise = Math.max(...result.preciseF0.map((p) => p.subWindowSpreadHz));
+      expect(
+        worstNoise,
+        'within-episode noise is now larger than a hertz, so the between-episode ' +
+          'agreement is being read below this measurement\'s own resolution',
+      ).toBeLessThan(1.5);
+    });
+
     it('keeps a tonality control that separates a tone from silence', () => {
       // The comb score is meaningless in absolute terms. If the known tone and
       // the known silence stop separating, every "is this a tone" verdict the
