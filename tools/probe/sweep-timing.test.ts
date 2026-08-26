@@ -173,7 +173,10 @@ const SWEEP_WAIT_CYCLES = 64 * SWEEP_INSTRUCTIONS;
  *     squadron to draw - runs a mean silent sweep of **849.8** against a played
  *     machine's **902.2**. That is **5.8%** apart. It was never distinguishable
  *     at 0.25 either, and no setting of this constant that admits ordinary
- *     jitter could ever have separated them.
+ *     jitter could ever have separated them. Measured twice, independently and
+ *     from different drives - 870.8 against 924.4 the other time - and both
+ *     landed on the same 5.8%, which is the figure to trust rather than either
+ *     pair of means.
  *   - *"a sweep that had acquired a fixed dwell"*. A fixed dwell makes the period
  *     *uniform*, which shrinks this figure toward zero. It is caught by the
  *     `distinct.size > 1` assertion in the same test, not by this bound.
