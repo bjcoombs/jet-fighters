@@ -723,11 +723,37 @@ it and nothing here shows it to be tapping either. What this clip adds is that a
 ~205 ms broadband repetition is present in a *second*, independent recording of the
 same unit, unexplained in both.
 
-Three places still cite it as a live justification and should be read against this
-section: `asm/jetfighter.asm` (the `FILE_JETS` header, the cadence-block header, and
-the `jet_march` comment), `docs/contract/v3-entities.contract.md` (E3's action and
-observation), and `docs/design/jet-model.md`. The **cadence value** those texts
-defend may still be right; the **argument** they defend it with is a withdrawn row.
+**Every place that still cites it as a live justification**, so the census is a list
+rather than a gesture. The **cadence value** these texts defend may still be right;
+the **argument** they defend it with is a withdrawn row.
+
+| Where | What it rests on the figure for |
+| --- | --- |
+| `asm/jetfighter.asm:332` | The `FILE_JETS` header: why the march is one squadron-wide countdown rather than one per plane |
+| `asm/jetfighter.asm:672` | The cadence block's header: "DERIVED from the one measurement this cadence has" |
+| `asm/jetfighter.asm:762` | `STEP_HI_MIN` is left alone because "the floor is still 488 ms against the 205 ms the unit was never observed to beat" |
+| `asm/jetfighter.asm:2300` | `jet_march`'s walk: one countdown, because the rate is a squadron rate |
+| `docs/contract/v3-entities.contract.md:91, 123-124` | E3's action drives "four squadron steps at the 205 ms cadence"; its observation reasons from the beep rate |
+| `docs/design/jet-model.md:106-107` | The same one-countdown argument |
+| `docs/evidence/vfd-appearance.md:90-91, 517` | `600 / 205.1 = 2.93`, read as the march sound pulsing about three times per step |
+| `docs/evidence/open-questions.md:92` | §2b still records T1 as measured from the beep onsets |
+
+Two of these are worth separating from the rest.
+
+**`asm/jetfighter.asm:762` is now wrong twice over.** It declines to move
+`STEP_HI_MIN` on the grounds that the floor is 488 ms and 205 ms is a rate the unit
+never beat. The first half fails on this ROM - the ladder reaches 16 sweeps, not 32,
+and `open-questions.md` §16 has the mechanism - and the second half rests on the
+withdrawn row. The conclusion may still be the right one; neither premise supports
+it now.
+
+**`docs/evidence/vfd-appearance.md:90-91` is an inference built on the figure**, not
+merely a citation of it: a 600 ms observation divided by 205.1 ms gives 2.93, read as
+the march sound pulsing three times per step. Divide instead by the 300 ms this clip
+measures and the ratio is 2.0. Left alone here rather than rewritten - that file is a
+v2 document with its own marker and this is one video-side reading - but it should not
+be quoted as independent corroboration of the 205 ms row, because it is downstream of
+it.
 
 ## Evidence gap
 

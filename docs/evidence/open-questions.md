@@ -88,10 +88,17 @@ Blocks the measured-timing table in `timing-analysis.md`. Rows T2 to T10 -
 battleship crossing interval, rocket travel, thin-out curve, post-hit recovery -
 have no measured values and cannot get them from stills or from the audio.
 
-T1 (the march step) is the exception and **has** now been measured, from the march
+~~T1 (the march step) is the exception and **has** now been measured, from the march
 beep onsets in `gameplay-audio.m4a`: 205.1 ms mean, sd 22.1, n=21 across five
 uninterrupted runs. That is the only cadence figure in the ROM derived rather than
-chosen. Everything else remains marked `PROVISIONAL`.
+chosen.~~ Everything else remains marked `PROVISIONAL`.
+
+**Struck through: that row is withdrawn.** The beep is not on the squadron step's
+clock - `timing-analysis.md`, "What the audio row does and does not say" - and what
+the 205 ms period actually is remains unidentified in two separate recordings, which
+is §15 below. **T1 is now measured from the picture instead**, at a skill the owner
+states: 267, 300 and 467 ms at skill 3, n = 3. See
+`timing-analysis.md`, "The skill-3 clip".
 
 **Partly relieved by `IMG_6113.mov`**, the owner's 407.9 s recording of real play at 30 fps
 real time. It supplies, at one unknown skill level: one aircraft advancing one cell every
