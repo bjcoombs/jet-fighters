@@ -46,6 +46,15 @@ const COVERAGE: Readonly<Record<string, Coverage>> = {
       'print only when they are, and every drive test imports it transitively.',
   },
   'entry-spread.ts': { test: 'entry-spread.test.ts' },
+  'missile-transit.ts': {
+    test: 'missile-transit.test.ts',
+    note:
+      'The only drive here that measures the physical unit rather than the emulated ' +
+      'machine. It reads assets/reference/skill3-video-cells.csv, which ' +
+      'tools/trace/video-cells.py produces from the owner recording - the drive itself ' +
+      'needs no ffmpeg, NumPy or video decode, which is deliberate: ' +
+      'loss-warning-partials.ts could not run in a clean checkout for exactly that reason.',
+  },
   'loss-warning-partials.ts': {
     test: 'loss-warning-partials.test.ts',
     note:
