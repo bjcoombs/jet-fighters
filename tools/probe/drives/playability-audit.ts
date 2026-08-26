@@ -12,8 +12,13 @@
 // a threatened lane while one is. That is deliberate and load-bearing: a drive
 // that aims without dodging parks the lever in the lane it just fired at, which
 // is where a capture lands, and dies faster than one that taps blindly.
+//
+// `playability-audit.test.ts` holds this drive's non-vacuity floors, and they
+// exist because this drive reported **0 march steps and 0 releases on all three
+// skills** for a whole tag while its crossing test compared zeroes.
 
 import { Tms1370Machine, assembleGame, planesOf, squadronMap } from '../tms1370-probe.js';
+import { isEntryPoint } from './entry-point.js';
 const FILE_STATE = 4, FILE_TIME = 5, FILE_MISS = 7, CYCLE_HZ = 58333, DODGE = 4;
 const at = (f: number, n: number, r: Uint8Array) => r[f * 16 + n];
 // The shot's column lives in FILE_MISS, one nibble per lane, so the lane is the
@@ -45,52 +50,99 @@ const deepestByRow = (r: Uint8Array) => {
 const planeRowOn = (r: Uint8Array, column: number) =>
   planesOf(r, SQUADRON).find((plane) => plane.column === column)?.row ?? -1;
 
-for (const skill of [1, 2, 3]) {
-  const m = new Tms1370Machine();
-  m.setContacts({ skill, lane: 0, fire: false });
-  let wanted = 1, over = 0, steps = 0, releases = 0;
-  let prevJets = [0, 0, 0];
-  let prevM = { col: 0, lane: -1 };
-  let crossings = 0, sameCell = 0, flights = 0;
-  for (let i = 0; i < 20 * 400 && over === 0; i++) {
-    const ram = m.ram;
-    const jets = deepestByRow(ram);
-    const mlane = shotLane(ram);
-    const mcol = mlane >= 0 ? (at(FILE_MISS, mlane, ram) as number) : 0;
-    // march steps and releases
-    jets.forEach((g, l) => {
-      const p = prevJets[l] as number;
-      if (p !== 0 && g === p + 1) steps++;
-      if (p === 0 && g === 1) releases++;
-    });
-    // crossing: shot and jet in the same lane swap order without sharing a cell
-    if (mcol !== 0 && prevM.col !== 0 && mlane === prevM.lane) {
-      const j = jets[mlane] as number, pj = prevJets[mlane] as number;
-      if (j !== 0 && pj !== 0) {
-        if (mcol === j) sameCell++;
-        else if ((prevM.col > pj && mcol < j) || (prevM.col < pj && mcol > j)) crossings++;
+/** The three dial settings, one game each. */
+export const SKILLS = [1, 2, 3] as const;
+
+export interface SkillAudit {
+  readonly skill: number;
+  /** 'WIN', 'game over', or 'alive' at the 400 s ceiling. */
+  readonly ending: 'WIN' | 'game over' | 'alive';
+  /** Emulated seconds to the ending, or null if the ceiling was reached first. */
+  readonly seconds: number | null;
+  readonly score: number;
+  readonly livesLost: number;
+  /** March steps observed - one of the two counts that read 0 while this was dead. */
+  readonly steps: number;
+  /** Entries observed - the other one. */
+  readonly releases: number;
+  /** Shots launched: the crossing test cannot see anything without these. */
+  readonly flights: number;
+  /** Frames a shot and a jet were tested in the same cell. */
+  readonly sameCell: number;
+  /** Frames a shot and a jet swapped order without ever sharing a cell. */
+  readonly crossings: number;
+}
+
+/** Play one competent game per skill and audit it. */
+export function runPlayabilityAudit(): readonly SkillAudit[] {
+  const audits: SkillAudit[] = [];
+  for (const skill of SKILLS) {
+    const m = new Tms1370Machine();
+    m.setContacts({ skill, lane: 0, fire: false });
+    let wanted = 1, over = 0, steps = 0, releases = 0;
+    let prevJets = [0, 0, 0];
+    let prevM = { col: 0, lane: -1 };
+    let crossings = 0, sameCell = 0, flights = 0;
+    for (let i = 0; i < 20 * 400 && over === 0; i++) {
+      const ram = m.ram;
+      const jets = deepestByRow(ram);
+      const mlane = shotLane(ram);
+      const mcol = mlane >= 0 ? (at(FILE_MISS, mlane, ram) as number) : 0;
+      // march steps and releases
+      jets.forEach((g, l) => {
+        const p = prevJets[l] as number;
+        if (p !== 0 && g === p + 1) steps++;
+        if (p === 0 && g === 1) releases++;
+      });
+      // crossing: shot and jet in the same lane swap order without sharing a cell
+      if (mcol !== 0 && prevM.col !== 0 && mlane === prevM.lane) {
+        const j = jets[mlane] as number, pj = prevJets[mlane] as number;
+        if (j !== 0 && pj !== 0) {
+          if (mcol === j) sameCell++;
+          else if ((prevM.col > pj && mcol < j) || (prevM.col < pj && mcol > j)) crossings++;
+        }
       }
+      if (mcol !== 0 && prevM.col === 0) flights++;
+      prevJets = jets; prevM = { col: mcol, lane: mlane };
+      // competent play: aim when free, dodge while the shot flies
+      if (mcol !== 0) {
+        const rl = at(FILE_STATE, 7, ram) !== 0 ? at(FILE_STATE, 8, ram) : -1;
+        const safe = [0, 1, 2].find((l) => (jets[l] as number) < DODGE && l !== rl);
+        if (safe !== undefined) m.setContacts({ lane: safe, fire: false });
+      } else {
+        const pref = planeRowOn(ram, wanted); wanted = (wanted % 5) + 1;
+        const boat = at(FILE_STATE, 9, ram);
+        const lane = pref >= 0 ? pref : boat !== 15 ? boat : jets.findIndex((g) => g !== 0);
+        if (lane >= 0) m.setContacts({ lane, fire: true });
+      }
+      m.step(CYCLE_HZ / 20);
+      m.setContacts({ fire: false });
+      if (at(FILE_STATE, 11, m.ram) !== 0) over = m.cycles;
     }
-    if (mcol !== 0 && prevM.col === 0) flights++;
-    prevJets = jets; prevM = { col: mcol, lane: mlane };
-    // competent play: aim when free, dodge while the shot flies
-    if (mcol !== 0) {
-      const rl = at(FILE_STATE, 7, ram) !== 0 ? at(FILE_STATE, 8, ram) : -1;
-      const safe = [0, 1, 2].find((l) => (jets[l] as number) < DODGE && l !== rl);
-      if (safe !== undefined) m.setContacts({ lane: safe, fire: false });
-    } else {
-      const pref = planeRowOn(ram, wanted); wanted = (wanted % 5) + 1;
-      const boat = at(FILE_STATE, 9, ram);
-      const lane = pref >= 0 ? pref : boat !== 15 ? boat : jets.findIndex((g) => g !== 0);
-      if (lane >= 0) m.setContacts({ lane, fire: true });
-    }
-    m.step(CYCLE_HZ / 20);
-    m.setContacts({ fire: false });
-    if (at(FILE_STATE, 11, m.ram) !== 0) over = m.cycles;
+    const r = m.ram, st = at(FILE_STATE, 11, r);
+    audits.push({
+      skill,
+      ending: st === 2 ? 'WIN' : st === 1 ? 'game over' : 'alive',
+      seconds: over ? over / CYCLE_HZ : null,
+      score: at(FILE_TIME, 12, r) * 100 + at(FILE_TIME, 11, r) * 10 + at(FILE_TIME, 10, r),
+      livesLost: at(FILE_STATE, 10, r) as number,
+      steps,
+      releases,
+      flights,
+      sameCell,
+      crossings,
+    });
   }
-  const r = m.ram, st = at(FILE_STATE, 11, r);
-  const score = at(FILE_TIME, 12, r) * 100 + at(FILE_TIME, 11, r) * 10 + at(FILE_TIME, 10, r);
-  console.log(`skill ${skill}: ${st === 2 ? 'WIN' : st === 1 ? 'game over' : 'alive'} ` +
-    `${over ? (over / CYCLE_HZ).toFixed(1) + 's' : '400s+'}  score ${score}  lives lost ${at(FILE_STATE, 10, r)}  ` +
-    `steps ${steps} / releases ${releases}  |  flights ${flights}, same-cell ${sameCell}, CROSSINGS ${crossings}`);
+  return audits;
+}
+
+/** The one line this drive prints per skill. */
+export function formatSkillAudit(a: SkillAudit): string {
+  return `skill ${a.skill}: ${a.ending} ` +
+    `${a.seconds === null ? '400s+' : a.seconds.toFixed(1) + 's'}  score ${a.score}  lives lost ${a.livesLost}  ` +
+    `steps ${a.steps} / releases ${a.releases}  |  flights ${a.flights}, same-cell ${a.sameCell}, CROSSINGS ${a.crossings}`;
+}
+
+if (isEntryPoint(import.meta.url)) {
+  for (const audit of runPlayabilityAudit()) console.log(formatSkillAudit(audit));
 }

@@ -19,9 +19,14 @@
 // "27 kills in 40 shots", "20 shots, 20 kills" - were taken against the lane
 // rank and this drive cannot produce them. Re-read rather than trust.
 //
+// `column-hit-profile.test.ts` holds this drive's non-vacuity floors, and they
+// exist because this is the drive that fired **0 shots at every column** for a
+// whole tag and printed "no kills" five times as though that were an answer.
+//
 // Paths in this file are relative to the repository root.
 
 import { Tms1370Machine, assembleGame, planesOf, squadronMap } from '../tms1370-probe.js';
+import { isEntryPoint } from './entry-point.js';
 const FILE_STATE = 4, FILE_MISS = 7, CYCLE_HZ = 58333, DODGE = 4;
 const at = (f: number, n: number, r: Uint8Array) => r[f * 16 + n];
 // The shot's column lives in FILE_MISS, one nibble per lane. This drive only
@@ -45,30 +50,65 @@ const deepestByRow = (r: Uint8Array) => {
     planes.reduce((deep, p) => (p.row === row ? Math.max(deep, p.column) : deep), 0),
   );
 };
-for (const target of [1, 2, 3, 4, 5]) {
-  const m = new Tms1370Machine();
-  m.setContacts({ skill: 1, lane: 0, fire: false });
-  const byGrid = new Map<number, number>();
-  let prevScore = 0, shots = 0;
-  for (let i = 0; i < 20 * 300; i++) {
-    const ram = m.ram;
-    const rows = deepestByRow(ram);
-    const mcol = shotCol(ram);
-    if (mcol !== 0) {
-      const rl = at(FILE_STATE, 7, ram) !== 0 ? at(FILE_STATE, 8, ram) : -1;
-      const safe = [0, 1, 2].find((l) => (rows[l] as number) < DODGE && l !== rl);
-      if (safe !== undefined) m.setContacts({ lane: safe, fire: false });
-    } else {
-      const lane = planeRowOn(ram, target);
-      if (lane >= 0) { m.setContacts({ lane, fire: true }); shots++; }
+
+/** The columns aimed at, one game each. */
+export const TARGETS = [1, 2, 3, 4, 5] as const;
+
+export interface ColumnProfile {
+  /** The column every shot in this game was aimed at. */
+  readonly target: number;
+  /** Shots taken - the opportunity count, and what read 0 while this was dead. */
+  readonly shots: number;
+  /** Kills by the column they scored in, ascending. */
+  readonly byGrid: readonly (readonly [grid: number, kills: number])[];
+}
+
+/** Play one game per target column and profile where the kills landed. */
+export function runColumnHitProfile(): readonly ColumnProfile[] {
+  const profiles: ColumnProfile[] = [];
+  for (const target of TARGETS) {
+    const m = new Tms1370Machine();
+    m.setContacts({ skill: 1, lane: 0, fire: false });
+    const byGrid = new Map<number, number>();
+    let prevScore = 0, shots = 0;
+    for (let i = 0; i < 20 * 300; i++) {
+      const ram = m.ram;
+      const rows = deepestByRow(ram);
+      const mcol = shotCol(ram);
+      if (mcol !== 0) {
+        const rl = at(FILE_STATE, 7, ram) !== 0 ? at(FILE_STATE, 8, ram) : -1;
+        const safe = [0, 1, 2].find((l) => (rows[l] as number) < DODGE && l !== rl);
+        if (safe !== undefined) m.setContacts({ lane: safe, fire: false });
+      } else {
+        const lane = planeRowOn(ram, target);
+        if (lane >= 0) { m.setContacts({ lane, fire: true }); shots++; }
+      }
+      m.step(CYCLE_HZ / 20);
+      m.setContacts({ fire: false });
+      const r2 = m.ram;
+      const sc = at(5, 12, r2) * 100 + at(5, 11, r2) * 10 + at(5, 10, r2);
+      if (sc !== prevScore) { const g = at(FILE_STATE, 14, r2) - 1; byGrid.set(g, (byGrid.get(g) ?? 0) + 1); prevScore = sc; }
+      if (at(FILE_STATE, 11, r2) !== 0) break;
     }
-    m.step(CYCLE_HZ / 20);
-    m.setContacts({ fire: false });
-    const r2 = m.ram;
-    const sc = at(5, 12, r2) * 100 + at(5, 11, r2) * 10 + at(5, 10, r2);
-    if (sc !== prevScore) { const g = at(FILE_STATE, 14, r2) - 1; byGrid.set(g, (byGrid.get(g) ?? 0) + 1); prevScore = sc; }
-    if (at(FILE_STATE, 11, r2) !== 0) break;
+    profiles.push({
+      target,
+      shots,
+      byGrid: [...byGrid].sort((a, b) => a[0] - b[0]).map(([g, n]) => [g, n] as const),
+    });
   }
-  const hits = [...byGrid].sort((a,b)=>a[0]-b[0]).map(([g,n])=>`g${g}:${n}`).join(' ');
-  console.log(`aiming only at grid ${target}: ${shots} shots -> ${hits || 'no kills'}`);
+  return profiles;
+}
+
+/** Kills in one profile, however they were distributed. */
+export const killsIn = (p: ColumnProfile): number =>
+  p.byGrid.reduce((sum, [, kills]) => sum + kills, 0);
+
+/** The one line this drive prints per target. */
+export function formatColumnProfile(p: ColumnProfile): string {
+  const hits = p.byGrid.map(([g, n]) => `g${g}:${n}`).join(' ');
+  return `aiming only at grid ${p.target}: ${p.shots} shots -> ${hits || 'no kills'}`;
+}
+
+if (isEntryPoint(import.meta.url)) {
+  for (const profile of runColumnHitProfile()) console.log(formatColumnProfile(profile));
 }
