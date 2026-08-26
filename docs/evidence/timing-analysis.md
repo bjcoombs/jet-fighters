@@ -695,6 +695,42 @@ Any change to it must be **measured rather than extrapolated**, for the reason
 often, each beep suspends the sweep, and the ladder partly resists being sped up -
 rungs 8 and 7 are 244 ms apart nominally and 83 ms apart measured.
 
+### The tube's blanking does not mark the squadron's step
+
+The blanking pass on this clip found the whole display dark for a large minority of
+frames during play, in short runs, and neither the march note nor the 410 ms tone of
+`open-questions.md` §15 accounts for the rate. Since the ROM does not strobe the tube
+while a note plays, and a march step emits a note, the obvious hypothesis is that the
+blank runs *are* the march steps - which would make them an independent read on the
+cadence, from a signal that needs no sprite tracking at all.
+
+**They are not.** Measured on the same registered stack, over the played portion
+(t < 17.5 s, before the game-over flash):
+
+| "dark" defined as lit pixels below | frames dark | short runs | one per | steps with a run within +/-100 ms | chance (p95) |
+| --- | --- | --- | --- | --- | --- |
+| 2% of the playing median | 11.4% | 8 | 2.19 s | 10% | 9% (20%) |
+| 10% | 11.8% | 9 | 1.94 s | 10% | 10% (30%) |
+| 25% | 12.0% | 9 | 1.94 s | 10% | 10% (30%) |
+| 40% | 12.6% | 10 | 1.75 s | 10% | 10% (30%) |
+
+At chance under every definition of dark, so the result is not an artefact of where
+the threshold was put.
+
+**And the test could have found the opposite**, which is the part that has to be
+stated for a negative to be worth anything - it is exactly the failure this document
+records twice already. Ten steps and eight to ten blank runs share the same 17.5 s: a
+one-to-one relationship would score 100% against a null whose 95th percentile is
+20-30%, so the instrument discriminates easily between the two answers. It returned
+the one it returned.
+
+What that leaves is the blanking rate still unexplained, now with one more candidate
+eliminated rather than fewer. The comparison against the audio-side pass is loose in
+one direction worth flagging: it counted 14-17% of frames in runs of 133-167 ms, one
+per 1.1 s, against 11-13% here in runs whose median is shorter. Same phenomenon,
+different detectors; the correlation result does not depend on which is preferred,
+because it holds across the whole range of definitions above.
+
 ### The audio, and the 205 ms question
 
 The clip's audio was read first, before any of the above, and it produced a wrong

@@ -48,6 +48,15 @@
 // rightward control, because it is the honest denominator for the leftward one,
 // but no conclusion is drawn from it here.
 //
+// **A second reason, which matters to whoever fixes the first.** Reading the red
+// channel is necessary and not sufficient: {@link LINK_GATE_FRAMES} is 12 frames,
+// 400 ms, and the squadron's measured step intervals are 267, 300 and **467 ms**.
+// The longest of the three is already outside the gate, and the chain rule
+// compounds it - one handoff refused ends the whole track. So a future version
+// that feeds red runs into this linker unchanged would produce another negative,
+// and it would look exactly like this one. The gate is sized for a shot crossing
+// a column in 133 ms; a march is three to four times slower and needs its own.
+//
 // `missile-transit.test.ts` holds this drive's floors.
 //
 // Paths in this file are relative to the repository root.
