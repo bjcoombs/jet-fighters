@@ -63,6 +63,7 @@ const COVERAGE: Readonly<Record<string, Coverage>> = {
       'skip in CI - .github/workflows/ci.yml installs ffmpeg if the runner lacks it, ' +
       'and the test fails rather than skips when CI is set and ffmpeg is missing.',
   },
+  'march-wall-clock.ts': { test: 'march-wall-clock.test.ts' },
   'parked-endings.ts': { test: 'parked-endings.test.ts' },
   'playability-audit.ts': { test: 'playability-audit.test.ts' },
   'render-drive.ts': {
