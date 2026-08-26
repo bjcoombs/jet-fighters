@@ -197,6 +197,19 @@ const SCENARIO_SWEEPS = 1500;
  */
 const GUARD_REFRESH_SWEEPS = 1;
 
+/**
+ * Every lane {@link guarding} has ever chosen, so a dead guard can be seen.
+ *
+ * **This exists because a dead guard was invisible for a whole tag.** The lever
+ * read the deleted lane rank, got 0 for all three lanes, and therefore stood in
+ * lane 0 for every sweep of every scenario. Nothing here failed: the coverage
+ * assertions are about what the tube lit, and the fallback scenario grid quietly
+ * supplied whatever the motionless lever stopped reaching. A drive that has
+ * stopped driving is the vacuity `tms1370-rom.test.ts` names, one level up - the
+ * opportunity count was zero and no assertion was quantified over it.
+ */
+const guardLanesChosen = new Set<Lane>();
+
 let guardCacheSweep = -1;
 let guardCacheLane: Lane = 0;
 
@@ -229,6 +242,7 @@ const guarding = (sweep: number, machine: Tms1370Machine): Lane => {
     }
   }
   guardCacheLane = lane;
+  guardLanesChosen.add(lane);
   return lane;
 };
 
@@ -429,6 +443,8 @@ interface Coverage {
   readonly plates: Map<string, Set<number>>;
   /** How many of the scenario space were needed. Reported, not asserted. */
   readonly scenariosRun: number;
+  /** Lanes the guarding lever chose across the whole search. Asserted. */
+  readonly guardLanes: readonly Lane[];
 }
 
 /**
@@ -499,7 +515,13 @@ function sweepScenarios(): Coverage {
       wanted.delete(`${family}:plate:${plate}`);
     }
   }
-  return { unmapped: [...unmapped].sort(), grids, plates, scenariosRun };
+  return {
+    unmapped: [...unmapped].sort(),
+    grids,
+    plates,
+    scenariosRun,
+    guardLanes: [...guardLanesChosen].sort(),
+  };
 }
 
 const atlas = loadAtlas();
@@ -565,6 +587,24 @@ const driven = (into: Map<string, Set<number>>, family: string): number[] =>
 // known exceptions, and a mechanism that exists will eventually be used to
 // silence something real - so it lives next to the assertions it applies to,
 // enumerated by name with a reason each, and nowhere near the strict one.
+describe('the search drove the machine rather than watching it', () => {
+  it('moved the guarding lever through every lane', () => {
+    // The floor on the drive, not on the ROM. Everything this file asserts is
+    // quantified over what the scenarios lit, so a lever that stands still still
+    // produces a coverage set - just a smaller one that the fallback grid then
+    // fills in. That is how a guard reading three nibbles the ROM had freed
+    // stayed green for a tag.
+    //
+    // All three, and not merely "more than one": the guard picks the row holding
+    // the deepest plane, planes enter in all three rows, and a guard that could
+    // only ever name two of them would be reading the model wrong again.
+    expect(
+      coverage.guardLanes,
+      'the guarding lever never left the lanes listed - it is not reading the squadron',
+    ).toEqual([0, 1, 2]);
+  });
+});
+
 describe('the ROM drives no address the tube has no segment at', () => {
   it('drives no address the tube has no segment at', () => {
     // The phantom-segment direction, and the one that has actually bitten. Not
