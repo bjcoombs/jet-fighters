@@ -1511,6 +1511,13 @@ between the two, whatever it is a recording of.
 > | Unbroken run length | `march-tone-identity.ts` §3c | 126-155 ms |
 > | Dark-run duration | `tools/video/blanking.py` | 133-167 ms, one at 200 ms |
 >
+> **Length is a correlate here, not the discriminator.** The two populations are told
+> apart by harmonic comb - `march-tone-identity.ts` §3c's instrument - and they happen
+> to differ in duration as well. A 225 ms note in the t=120 window scores 23.9 dB on
+> that comb, is §15's tone, and does not blank; the notes that blank score 1.0-8.2 dB.
+> Reading the correlate as the cause is a mistake this section made and the paragraph
+> below the table now records.
+>
 > **The three overlap, and that overlap is the finding rather than an inconvenience.**
 > The sound and the blank measure the same length because the blank *is* the sound -
 > the tube is not swept while a note plays - and the two instruments disagree at the
@@ -1540,15 +1547,33 @@ never going to reach 14-17% by emitting one. That is the claim this section need
 it survives the corrected figures: the two windows that blank contain **nothing but**
 100-300 ms notes, 13 of 13 and 16 of 16.
 
-**And a residual, stated rather than smoothed over.** t=120 does hold two notes in
-that range, at 110 and 225 ms. Two blanks of ~150 ms in 20 s would be about 1.5% of
-frames, which is above this instrument's floor - and the window measures 0.0%. So
-either those two notes do not blank, or the detector missed them, and nothing here
-distinguishes those. It does not touch the conclusion, which turns on the windows
-that do blank containing no short notes at all, but a length rule that predicted 1.5%
-and measured zero is not a rule that has been fully checked. **What would settle it**
-is locating those two notes in the frames and looking, which is a twenty-minute job
-nobody has done.
+**A residual was recorded here and has now been closed, and closing it corrected the
+rule.** t=120 holds two notes in the 100-300 ms range, at 110 and 225 ms, which a
+length rule says should have blanked about 1.5% of frames against a measured 0.0%.
+Located in the frames and looked at:
+
+| t=120 note | harmonic comb, partials 2-6 | tube at its quietest |
+| --- | --- | --- |
+| 660 ms at 0.73 s | **23.7 dB** | 80% of the window median |
+| **225 ms at 6.94 s** | **23.9 dB** | **126%** - not dark at all |
+| 110 ms at 14.11 s | 3.5 dB | 67% - a dip, not a blank |
+| 70 ms at 8.45 s | 12.8 dB | - |
+
+against the notes that *do* blank, at t=210: **1.0, 2.3 and 8.2 dB**.
+
+**So the detector did not miss them, and length was the wrong rule.** The 225 ms note
+is §15's tone - 23.9 dB, indistinguishable from the 660 ms one beside it - and §15's
+tone does not blank whatever length it runs to. It was never a counterexample, because
+it was never in this section's population. **What separates the two populations is the
+comb, not the duration**, exactly as `march-tone-identity.ts` §3c has it; the durations
+differ as a correlate and this section had been reading the correlate as the cause.
+
+One genuine residual survives, smaller and sharper. The 110 ms note is comb-weak at
+3.5 dB - this section's population - and it does not blank either, though it does dip
+to 67%. It is also the shortest of that class by 19 ms, against a blanking population
+of 129-209 ms. So the honest rule is that **a comb-weak note of 129 ms or more blanks,
+and one at 110 ms produced a dip instead** - which is a boundary this evidence locates
+between 110 and 129 ms and does not resolve.
 
 ### The fire blip does blank the display, and two of the six labels do not survive
 
