@@ -1568,12 +1568,46 @@ it was never in this section's population. **What separates the two populations 
 comb, not the duration**, exactly as `march-tone-identity.ts` §3c has it; the durations
 differ as a correlate and this section had been reading the correlate as the cause.
 
-One genuine residual survives, smaller and sharper. The 110 ms note is comb-weak at
-3.5 dB - this section's population - and it does not blank either, though it does dip
-to 67%. It is also the shortest of that class by 19 ms, against a blanking population
-of 129-209 ms. So the honest rule is that **a comb-weak note of 129 ms or more blanks,
-and one at 110 ms produced a dip instead** - which is a boundary this evidence locates
-between 110 and 129 ms and does not resolve.
+**A residual about the 110 ms note was recorded here as a duration boundary, and
+censusing it showed there is no boundary.** Every sustained note in the three windows,
+filtered to a comb below 12 dB - §15's tones score 23.7-23.9 - against whether the
+tube went dark while it played:
+
+| Window | frames dark | comb-weak notes | durations | blanked |
+| --- | --- | --- | --- | --- |
+| t=210 | 13.2% | 13 | 129-209 ms | 13 of 13 |
+| t=250 | 12.5% | 10 | **61**-197 ms | 10 of 10 |
+| t=300 | 16.2% | 8 | 132-193 ms | 8 of 8 |
+| t=340 | 16.7% | 13 | 102-209 ms | 13 of 13 |
+| **all four** | | **44** | **61-209 ms** | **44 of 44**, tube at 0-8% of median |
+| **t=120** | **0.0%** | **7** | 68-110 ms | **0 of 7**, tube at 83-122% of median |
+
+**A 61 ms note blanks at t=250 and a 74 ms note does not at t=120**, which ends any
+duration rule outright: the shorter one darkens the tube completely and the longer one
+leaves it brighter than its own median. Across the four blanking windows every
+comb-weak note blanks whatever its length, over a range spanning more than three to
+one.
+
+So the discriminator is **the window, not the note**. Something about t=120 suppresses
+blanking for sounds that blank elsewhere, and this analysis does not say what. It is
+the window `vfd-appearance.md` §5 calls "a quiet stretch - which is the control", and
+its tube carries far more lit phosphor than the others: a median of 1452 lit pixels
+against t=210's 614. Whether that is a different game state, a different display mode,
+or something else is open.
+
+**What that costs the section:** nothing in its conclusion, which is that the blanking
+is the speaker and the sounds are named - that rests on the 44 of 44. What it costs is
+a mechanism sentence this section has now had wrong twice. Length is not the rule, and
+comb is not the rule either, because t=120's 110 ms note is comb-weak and does not
+blank. **What the sound is determines whether it *can* blank; whether the window blanks
+at all is decided by something else, and that something is not identified here.**
+
+The two extra windows in that table were decoded to answer exactly this, rather than
+being left as a note saying somebody should. That matters because the paragraph this
+replaces had already made the mistake once: it recorded a residual, then wrote a rule
+in the same breath that the residual falsified. Logging a residual is not the same as
+respecting it, and the cheap version of respecting it is to close it before writing the
+rule it qualifies.
 
 ### The fire blip does blank the display, and two of the six labels do not survive
 
