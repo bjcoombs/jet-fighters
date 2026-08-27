@@ -143,6 +143,15 @@ def fire_blips(signal: np.ndarray, rate: int) -> list[tuple[float, float]]:
             j = i
             while j < count and on[j]:
                 j += 1
+            # Start-to-start, and **not** start-to-end-of-the-last-window.
+            # Reviewed as a bug on the reasoning that the sound is still
+            # sounding through the final window's own 23.2 ms span, so omitting
+            # it makes every duration short. Calibrated against tone bursts of
+            # known length, that reasoning is wrong and the correction is worse
+            # than the defect - see `calibrate` below. The windows overlap
+            # sixteen to one, so the first qualifying window starts slightly
+            # *before* the note and the last slightly before its end; the two
+            # offsets very nearly cancel.
             length = (times[j - 1] - times[i]) * 1000
             if length >= FIRE_MIN_MS:
                 found.append((float(times[i]), float(length)))
@@ -190,6 +199,7 @@ def band_notes(signal: np.ndarray, rate: int) -> list[float]:
             j = i
             while j < count and on[j]:
                 j += 1
+            # Start-to-start; see `fire_blips` and `calibrate`.
             length = (times[j - 1] - times[i]) * 1000
             if length >= NOTE_MIN_MS:
                 found.append(float(length))
@@ -197,6 +207,70 @@ def band_notes(signal: np.ndarray, rate: int) -> list[float]:
         else:
             i += 1
     return found
+
+
+def calibrate(rate: int = 44100) -> list[tuple[int, float, float]]:
+    """Measure both length estimators against notes of known duration.
+
+    **The check that decides between two defensible readings of the same code.**
+    A review held that `length` should run to the *end* of the last qualifying
+    window rather than to its start, on the ground that the note is still
+    sounding through that window's 23.2 ms. That is sound reasoning and it is
+    empirically wrong, because the windows overlap sixteen to one: the first
+    qualifying window starts before the note and the last starts before the
+    note's end, and the offsets nearly cancel.
+
+    Measured on 626 Hz bursts in noise, reported minus true:
+
+    | true | start-to-start | plus the window span |
+    | 60   | +7             | +30                  |
+    | 100  | +7             | +31                  |
+    | 200  | +6             | +29                  |
+    | 300  | +6             | +29                  |
+
+    So the estimator in use is long by about 6-7 ms - a quarter of a window -
+    and the proposed correction would make it long by about 30. Every duration
+    quoted from this tool carries that +6-7 ms, which is well inside the
+    distinctions §16 draws with them and is recorded rather than removed.
+
+    Run it with `python3 tools/video/blanking.py --calibrate`.
+    """
+    import numpy as _np
+
+    rng = _np.random.default_rng(3)
+    size, hop = 1024, 64
+    out = []
+    for true_ms in (60, 80, 100, 150, 200, 300):
+        signal = rng.normal(0, 0.004, int(rate * 2.0))
+        start = int(rate * 0.6)
+        stop = start + int(rate * true_ms / 1000)
+        span = _np.arange(stop - start) / rate
+        signal[start:stop] += _np.sign(_np.sin(2 * _np.pi * 626 * span)) * 0.25
+        signal = signal.astype(_np.float32)
+        count = 1 + (len(signal) - size) // hop
+        window = _np.hanning(size)
+        freq = _np.fft.rfftfreq(size, 1 / rate)
+        band = (freq >= NOTE_BAND[0]) & (freq < NOTE_BAND[1])
+        share = _np.empty(count)
+        for i in range(count):
+            spectrum = _np.abs(_np.fft.rfft(signal[i * hop : i * hop + size] * window))
+            share[i] = spectrum[band].sum() / max(spectrum.sum(), 1e-9)
+        times = _np.arange(count) * hop / rate
+        on = share > NOTE_MIN_SHARE
+        i, plain, padded = 0, [], []
+        while i < count:
+            if on[i]:
+                j = i
+                while j < count and on[j]:
+                    j += 1
+                plain.append((times[j - 1] - times[i]) * 1000)
+                padded.append((times[j - 1] - times[i] + size / rate) * 1000)
+                i = j
+            else:
+                i += 1
+        if plain:
+            out.append((true_ms, plain[0] - true_ms, padded[0] - true_ms))
+    return out
 
 
 def report(video: Path, start: float, length: float) -> None:
@@ -310,4 +384,10 @@ def report(video: Path, start: float, length: float) -> None:
 
 
 if __name__ == "__main__":
-    report(Path(sys.argv[1]).expanduser(), float(sys.argv[2]), float(sys.argv[3]))
+    if sys.argv[1:2] == ["--calibrate"]:
+        print("note duration estimator, reported minus true (ms):")
+        print("  true   start-to-start   plus the window span")
+        for true_ms, plain, padded in calibrate():
+            print(f"  {true_ms:4d}   {plain:+14.1f}   {padded:+20.1f}")
+    else:
+        report(Path(sys.argv[1]).expanduser(), float(sys.argv[2]), float(sys.argv[3]))

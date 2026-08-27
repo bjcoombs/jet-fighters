@@ -1595,6 +1595,16 @@ its tube carries far more lit phosphor than the others: a median of 1452 lit pix
 against t=210's 614. Whether that is a different game state, a different display mode,
 or something else is open.
 
+**Every duration from this tool is long by 6-7 ms, and that is measured rather than
+assumed.** `blanking.py --calibrate` runs the estimator against 626 Hz bursts of known
+length: start-to-start reports +5.6 to +7.4 ms across 60-300 ms. A review proposed
+adding the final FFT window's 23.2 ms span on the reasoning that the note is still
+sounding through it - sound reasoning, and empirically wrong, because the windows
+overlap sixteen to one so the first qualifying window starts *before* the note and the
+last starts before its end. Calibrated, that correction would make the tool long by
+about 30 ms instead of 7. The figures above therefore carry a constant +6-7 ms, which
+is well inside every distinction drawn with them and is recorded rather than removed.
+
 **What that costs the section:** nothing in its conclusion, which is that the blanking
 is the speaker and the sounds are named - that rests on the 44 of 44. What it costs is
 a mechanism sentence this section has now had wrong twice. Length is not the rule, and
