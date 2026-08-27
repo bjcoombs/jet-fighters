@@ -284,7 +284,14 @@ are here.
 
 **Says:** on the real unit, at the skill this recording was played on,
 
-- **one aircraft advances one cell every 1.2 to 1.9 s, median 1.4 s** (42 frames). From
+- **one aircraft advances one cell every 1.2 to 1.9 s, median 1.4 s** (42 frames), and
+  **this row has not had the check the missile row has just had**. It was taken by
+  chained same-aircraft steps, which is the right method, but an attempt to re-derive
+  it found only **two handoffs across four pooled 20 s windows and no chain at all**,
+  so there is no independent reading to compare it against. That corroborates rather
+  than surprises - the section below records only six chains in the whole 408 s file -
+  but it means the figure rests on its original pass alone. Recorded as not
+  re-derived rather than replaced with something thinner. From
   12 consecutive same-aircraft steps found across the whole file by tracking the leading
   jet's cell per lane. Three further readings of 10 to 22 frames are almost certainly two
   jets being confused for one and are excluded.
@@ -699,6 +706,15 @@ Same answer, different route, same recording.
 number in this document - 500 ms a column over 744 adjacent steps. Both cannot
 describe the same machine at the same setting, so the missile's speed is either a
 function of the skill dial or of something else that differed between the two takes.
+
+**And that row survives the estimator that broke this one**, which had to be checked
+before the disagreement could be believed: 500 ms is a *single-step* median and
+exactly 15 frames, the same shape as the 133 ms this section has just withdrawn.
+Re-measured as traverses over four pooled 20 s windows, `IMG_6113` gives **567 ms
+over 37 steps** and 583 ms over the two traverses spanning three or more columns -
+and its steps are spread across 16-20 frames rather than piled on one, so a frame of
+aliasing is 6% there against 25% here. The 3.5x is a real difference between two
+recordings, not two estimators disagreeing.
 `docs/evidence/open-questions.md` carries it; T7's "skill-independent if the missile
 speed is fixed" was always a conditional and this is the evidence against the
 condition.
@@ -726,10 +742,29 @@ Against a video whose slowest reading is 467 ms and whose median is 300:
 2. **The descent is spent in the wrong place.** The video's 267 ms is at score 0-1
    and its 467 ms at score 20, so if anything the unit was *faster* early. The ROM
    is at its slowest there and needs four kills to reach the video's range.
-3. **The owner is right, and the size of it is about 4x.** Two independent
-   quantities give the same factor: the squadron steps 4.5x too slowly (1364
-   against 300) and the missile flies 3.5x too slowly (500 against 142). Two
-   unrelated measurements agreeing on one ratio is a stronger claim than either.
+3. **The owner is right, and the size of it is about 4x** - two independent
+   quantities give the same factor, the squadron at 4.5x (1364 against 300) and the
+   missile at 3.5x (500 against 142), and two unrelated measurements agreeing on one
+   ratio is a stronger claim than either.
+
+   **But the missile half is not a wrong constant, and saying so was an error this
+   document made first.** The ROM's 500 ms was derived from `IMG_6113.mov` and is
+   *faithful to it*: re-measured as traverses rather than single steps - the
+   estimator that broke the skill-3 figure - that recording still gives 567 ms over
+   37 steps and 583 ms over two multi-column traverses, with the steps spread across
+   16-20 frames instead of piled on one value. So 500 ms and 142 ms are **two rungs,
+   not a value and a correction**.
+
+   What that makes it is a missing mechanic rather than a wrong number: in
+   `asm/jetfighter.asm` the missile's speed **does not vary with the dial at all** -
+   `MISSILE_LO`/`_HI` are flat constants and only the squadron ladder moves - while
+   the two recordings suggest the real one does. The honest sentence is *"the ROM's
+   missile does not vary with the dial, and the two recordings suggest the real one
+   does"*, not *"the ROM's missile is 3.5x too slow"*.
+
+   It stays a reading the evidence favours rather than an assertion, and what it
+   waits on is not another measurement: **every `IMG_6113` row records the skill as
+   unknown**, and no analysis of the footage can recover it. Only the owner can.
 
 The recommendation, which this task does not implement: **`STEP_SKILL` is the
 constant that is wrong, not `STEP_HI_MAX`.** `STEP_HI_MAX` is anchored on

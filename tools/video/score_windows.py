@@ -25,6 +25,17 @@ is either a real end-of-game behaviour or bloom, and it is unresolved - so the
 tool flags saturation and does not normalise it away, because a contrast stretch
 that made that panel comfortable to read would also have made it agree.
 
+**The general test, which cost more to learn than the four traps.** Point the
+instrument at the case it exists for and confirm it fires. The clipping flag here
+first counted lit pixels at the channel ceiling, and that version flagged fourteen
+of fifteen windows while **missing the blown final flash it was built for** - a
+normal cyan digit has its blue channel near 255 as a matter of course, and the blown
+flash is white, so it barely passes the lit test at all. It was a detector
+anti-correlated with its own subject, and it would have shipped, because it ran
+without error and produced a plausible column. Verified now: the flag picks exactly
+the two clipped windows and no others. **Do not trim that check** - a flag that fires
+on everything except the case it was written for is worse than no flag.
+
 **4. A dead reader prints an empty table, and an empty table reads as darkness.**
 The failure this repository has hit five times in `tools/probe/drives/`. So the
 tool asserts its own non-vacuity: it exits non-zero if it finds no windows, or if

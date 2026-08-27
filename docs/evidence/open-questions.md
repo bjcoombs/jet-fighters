@@ -1481,20 +1481,143 @@ that 71.8 ms cannot produce a 133-167 ms blank. The resolution is that the real 
 notes in that band are **130-210 ms**, roughly twice what the ROM emits. Gated on band
 share, t=210 holds 13 such notes and t=340 holds 16.
 
-**Three recordings agree, which is what makes it more than one window.** Sustained
-notes in that band and blanking appear and disappear together:
+**What separates the blanking windows from the quiet one is the length of what is in
+the band, not the band being occupied.** An earlier version of this passage said
+"three recordings agree" and leaned on the skill-3 clip's absence of both notes and
+blanking as a third supporting window. That was weaker than stated: **t=120 has the
+band occupied and blanks 0.0%**, so it is not a third agreeing case, it is the
+discriminator. The skill-3 clip's row is kept below for completeness and carries no
+weight in the argument - a clip with neither notes nor blanking cannot distinguish
+between the two, whatever it is a recording of.
 
-| Window | sustained 600-660 Hz notes | frames dark |
+> **A note on the words "long" and "short", because this section and the one below
+> nearly used them for opposite things.** "The blanking attaches to the long
+> population" and "the sound that darkens the display is the short population" are
+> both defensible sentences and they mean the same thing, because each is relative to
+> a different comparator: the events that blank are **long** against t=120's 69-75 ms
+> notes and **short** against §15's 405-699 ms tone. They are one population reported
+> by two instruments that bracket it from opposite sides.
+>
+> **Three quantities, named, because a first draft of this note spliced two of them.**
+> It said "the 126-210 ms events", which is a number appearing nowhere else in the
+> section: 126 is the floor of the run length below and 210 the ceiling of the note
+> length above, taken from two different instruments and joined. That is the same
+> defect this note exists to fix, one level down, and it is deleted rather than
+> reconciled. What there actually is:
+>
+> | Quantity | Instrument | Measured |
+> | --- | --- | --- |
+> | Note duration, gated on band share | `tools/video/blanking.py` | 130-210 ms at t=210, 103-288 ms at t=340 |
+> | Unbroken run length | `march-tone-identity.ts` §3c | 126-155 ms |
+> | Dark-run duration | `tools/video/blanking.py` | 133-167 ms, one at 200 ms |
+>
+> **Length is a correlate here, not the discriminator.** The two populations are told
+> apart by harmonic comb - `march-tone-identity.ts` §3c's instrument - and they happen
+> to differ in duration as well. A 225 ms note in the t=120 window scores 23.9 dB on
+> that comb, is §15's tone, and does not blank; the notes that blank score 1.0-8.2 dB.
+> Reading the correlate as the cause is a mistake this section made and the paragraph
+> below the table now records.
+>
+> **The three overlap, and that overlap is the finding rather than an inconvenience.**
+> The sound and the blank measure the same length because the blank *is* the sound -
+> the tube is not swept while a note plays - and the two instruments disagree at the
+> edges because one gates on band share and the other on an unbroken run. Everything
+> below states a length in milliseconds with the quantity named, and anything that
+> reintroduces "long" or "short" should say against what.
+
+| Window | sustained 600-660 Hz notes | of which 100-300 ms | frames dark |
+| --- | --- | --- | --- |
+| `IMG_6113` t=210 | 13, 129-209 ms | **13 of 13** | 13.2% |
+| `IMG_6113` t=340 | 16, 102-287 ms | **16 of 16** | 16.7% |
+| `IMG_6113` t=120 | 14, 68-660 ms | **2 of 14** (110 and 225 ms) | **0.0%** |
+| the owner's skill-3 clip | **none** - the band never exceeds 11% share | - | ~0% (5%, all single frames) |
+
+> **The t=120 row said "14, but durations 69-75 ms" and that was wrong.** 69-75 ms is
+> that window's *mode*, not its range: eleven of its fourteen notes are 68-99 ms, but
+> two are 110 and 225 ms and one is 660 ms - the long tone §15 measures. Quoting the
+> mode as the range hid both ends, and it hid them in the direction that made the
+> argument tidier, which is the direction to distrust. Re-derive the distribution with
+> `python3 tools/video/blanking.py ~/Downloads/IMG_6113.mov 120 20`.
+
+t=120 is the informative row. Its notes are **mostly** the length
+`audio-reference.md` synthesises and the ROM emits - eleven of fourteen at 68-99 ms,
+with a mode of 70 - and it does not blank at all. So a note of the ROM's length does
+not produce a measurable blank at 30 fps, and the emulator's dark-frame fraction was
+never going to reach 14-17% by emitting one. That is the claim this section needs and
+it survives the corrected figures: the two windows that blank contain **nothing but**
+100-300 ms notes, 13 of 13 and 16 of 16.
+
+**A residual was recorded here and has now been closed, and closing it corrected the
+rule.** t=120 holds two notes in the 100-300 ms range, at 110 and 225 ms, which a
+length rule says should have blanked about 1.5% of frames against a measured 0.0%.
+Located in the frames and looked at:
+
+| t=120 note | harmonic comb, partials 2-6 | tube at its quietest |
 | --- | --- | --- |
-| `IMG_6113` t=210 | 13, durations 130-210 ms | 13.2% |
-| `IMG_6113` t=340 | 16, durations 103-288 ms | 16.7% |
-| `IMG_6113` t=120 | 14, but durations **69-75 ms** | **0.0%** |
-| the owner's skill-3 clip | **none** - the band never exceeds 11% share | ~0% (5%, all single frames) |
+| 660 ms at 0.73 s | **23.7 dB** | 80% of the window median |
+| **225 ms at 6.94 s** | **23.9 dB** | **126%** - not dark at all |
+| 110 ms at 14.11 s | 3.5 dB | 67% - a dip, not a blank |
+| 70 ms at 8.45 s | 12.8 dB | - |
 
-t=120 is the informative row. It has real energy in the band, at **69-75 ms** - which
-is the length `audio-reference.md` synthesises and the ROM emits - and it does not blank
-at all. So a note of the ROM's length does not produce a measurable blank at 30 fps, and
-the emulator's dark-frame fraction was never going to reach 14-17% by emitting one.
+against the notes that *do* blank, at t=210: **1.0, 2.3 and 8.2 dB**.
+
+**So the detector did not miss them, and length was the wrong rule.** The 225 ms note
+is §15's tone - 23.9 dB, indistinguishable from the 660 ms one beside it - and §15's
+tone does not blank whatever length it runs to. It was never a counterexample, because
+it was never in this section's population. **What separates the two populations is the
+comb, not the duration**, exactly as `march-tone-identity.ts` §3c has it; the durations
+differ as a correlate and this section had been reading the correlate as the cause.
+
+**A residual about the 110 ms note was recorded here as a duration boundary, and
+censusing it showed there is no boundary.** Every sustained note in the three windows,
+filtered to a comb below 12 dB - §15's tones score 23.7-23.9 - against whether the
+tube went dark while it played:
+
+| Window | frames dark | comb-weak notes | durations | blanked |
+| --- | --- | --- | --- | --- |
+| t=210 | 13.2% | 13 | 129-209 ms | 13 of 13 |
+| t=250 | 12.5% | 10 | **61**-197 ms | 10 of 10 |
+| t=300 | 16.2% | 8 | 132-193 ms | 8 of 8 |
+| t=340 | 16.7% | 13 | 102-209 ms | 13 of 13 |
+| **all four** | | **44** | **61-209 ms** | **44 of 44**, tube at 0-8% of median |
+| **t=120** | **0.0%** | **7** | 68-110 ms | **0 of 7**, tube at 83-122% of median |
+
+**A 61 ms note blanks at t=250 and a 74 ms note does not at t=120**, which ends any
+duration rule outright: the shorter one darkens the tube completely and the longer one
+leaves it brighter than its own median. Across the four blanking windows every
+comb-weak note blanks whatever its length, over a range spanning more than three to
+one.
+
+So the discriminator is **the window, not the note**. Something about t=120 suppresses
+blanking for sounds that blank elsewhere, and this analysis does not say what. It is
+the window `vfd-appearance.md` §5 calls "a quiet stretch - which is the control", and
+its tube carries far more lit phosphor than the others: a median of 1452 lit pixels
+against t=210's 614. Whether that is a different game state, a different display mode,
+or something else is open.
+
+**Every duration from this tool is long by 6-7 ms, and that is measured rather than
+assumed.** `blanking.py --calibrate` runs the estimator against 626 Hz bursts of known
+length: start-to-start reports +5.6 to +7.4 ms across 60-300 ms. A review proposed
+adding the final FFT window's 23.2 ms span on the reasoning that the note is still
+sounding through it - sound reasoning, and empirically wrong, because the windows
+overlap sixteen to one so the first qualifying window starts *before* the note and the
+last starts before its end. Calibrated, that correction would make the tool long by
+about 30 ms instead of 7. The figures above therefore carry a constant +6-7 ms, which
+is well inside every distinction drawn with them and is recorded rather than removed.
+
+**What that costs the section:** nothing in its conclusion, which is that the blanking
+is the speaker and the sounds are named - that rests on the 44 of 44. What it costs is
+a mechanism sentence this section has now had wrong twice. Length is not the rule, and
+comb is not the rule either, because t=120's 110 ms note is comb-weak and does not
+blank. **What the sound is determines whether it *can* blank; whether the window blanks
+at all is decided by something else, and that something is not identified here.**
+
+The two extra windows in that table were decoded to answer exactly this, rather than
+being left as a note saying somebody should. That matters because the paragraph this
+replaces had already made the mistake once: it recorded a residual, then wrote a rule
+in the same breath that the residual falsified. Logging a residual is not the same as
+respecting it, and the cheap version of respecting it is to close it before writing the
+rule it qualifies.
 
 ### The fire blip does blank the display, and two of the six labels do not survive
 
@@ -1530,6 +1653,16 @@ That does not weaken the section's conclusion, which rests on the march notes: 2
 of the runs are those and they are not in question. It sharpens what the second
 source is worth. The fire blip blanks the display **where it occurs**, on one
 window's evidence, and it does not occur in the other.
+
+**And one fire sound has never been tested against blanking at all.** The owner's
+skill-3 clip fires at **2577 Hz** - sixteen events, sd 7.6 Hz, each leading a visible
+missile launch by a median 50 ms, which is as well established as anything here. It
+is not the 1593 Hz measured above, and it has no blanking result because **that clip
+has almost no blanking to test it against**: 5% of its timeline dark, all of it in
+single frames. So the finding above is about the fire sound in `IMG_6113` and says
+nothing either way about the one in the skill-3 clip. That holds whatever the two
+recordings turn out to be recordings of, which is why it is stated in terms of the
+clips rather than in terms of units.
 
 ### What this does and does not settle for the removal
 
