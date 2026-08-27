@@ -1494,23 +1494,61 @@ between the two, whatever it is a recording of.
 > nearly used them for opposite things.** "The blanking attaches to the long
 > population" and "the sound that darkens the display is the short population" are
 > both defensible sentences and they mean the same thing, because each is relative to
-> a different comparator: the runs that blank are **long** against t=120's 69-75 ms
-> and **short** against §15's 405-699 ms tone. They are one population -
-> the 126-210 ms events - reported by two instruments that bracket it from opposite
-> sides. Everything below states lengths in milliseconds rather than by label, and
-> anything that reintroduces the labels should say against what.
+> a different comparator: the events that blank are **long** against t=120's 69-75 ms
+> notes and **short** against §15's 405-699 ms tone. They are one population reported
+> by two instruments that bracket it from opposite sides.
+>
+> **Three quantities, named, because a first draft of this note spliced two of them.**
+> It said "the 126-210 ms events", which is a number appearing nowhere else in the
+> section: 126 is the floor of the run length below and 210 the ceiling of the note
+> length above, taken from two different instruments and joined. That is the same
+> defect this note exists to fix, one level down, and it is deleted rather than
+> reconciled. What there actually is:
+>
+> | Quantity | Instrument | Measured |
+> | --- | --- | --- |
+> | Note duration, gated on band share | `tools/video/blanking.py` | 130-210 ms at t=210, 103-288 ms at t=340 |
+> | Unbroken run length | `march-tone-identity.ts` §3c | 126-155 ms |
+> | Dark-run duration | `tools/video/blanking.py` | 133-167 ms, one at 200 ms |
+>
+> **The three overlap, and that overlap is the finding rather than an inconvenience.**
+> The sound and the blank measure the same length because the blank *is* the sound -
+> the tube is not swept while a note plays - and the two instruments disagree at the
+> edges because one gates on band share and the other on an unbroken run. Everything
+> below states a length in milliseconds with the quantity named, and anything that
+> reintroduces "long" or "short" should say against what.
 
-| Window | sustained 600-660 Hz notes | frames dark |
-| --- | --- | --- |
-| `IMG_6113` t=210 | 13, durations 130-210 ms | 13.2% |
-| `IMG_6113` t=340 | 16, durations 103-288 ms | 16.7% |
-| `IMG_6113` t=120 | 14, but durations **69-75 ms** | **0.0%** |
-| the owner's skill-3 clip | **none** - the band never exceeds 11% share | ~0% (5%, all single frames) |
+| Window | sustained 600-660 Hz notes | of which 100-300 ms | frames dark |
+| --- | --- | --- | --- |
+| `IMG_6113` t=210 | 13, 129-209 ms | **13 of 13** | 13.2% |
+| `IMG_6113` t=340 | 16, 102-287 ms | **16 of 16** | 16.7% |
+| `IMG_6113` t=120 | 14, 68-660 ms | **2 of 14** (110 and 225 ms) | **0.0%** |
+| the owner's skill-3 clip | **none** - the band never exceeds 11% share | - | ~0% (5%, all single frames) |
 
-t=120 is the informative row. It has real energy in the band, at **69-75 ms** - which
-is the length `audio-reference.md` synthesises and the ROM emits - and it does not blank
-at all. So a note of the ROM's length does not produce a measurable blank at 30 fps, and
-the emulator's dark-frame fraction was never going to reach 14-17% by emitting one.
+> **The t=120 row said "14, but durations 69-75 ms" and that was wrong.** 69-75 ms is
+> that window's *mode*, not its range: eleven of its fourteen notes are 68-99 ms, but
+> two are 110 and 225 ms and one is 660 ms - the long tone §15 measures. Quoting the
+> mode as the range hid both ends, and it hid them in the direction that made the
+> argument tidier, which is the direction to distrust. Re-derive the distribution with
+> `python3 tools/video/blanking.py ~/Downloads/IMG_6113.mov 120 20`.
+
+t=120 is the informative row. Its notes are **mostly** the length
+`audio-reference.md` synthesises and the ROM emits - eleven of fourteen at 68-99 ms,
+with a mode of 70 - and it does not blank at all. So a note of the ROM's length does
+not produce a measurable blank at 30 fps, and the emulator's dark-frame fraction was
+never going to reach 14-17% by emitting one. That is the claim this section needs and
+it survives the corrected figures: the two windows that blank contain **nothing but**
+100-300 ms notes, 13 of 13 and 16 of 16.
+
+**And a residual, stated rather than smoothed over.** t=120 does hold two notes in
+that range, at 110 and 225 ms. Two blanks of ~150 ms in 20 s would be about 1.5% of
+frames, which is above this instrument's floor - and the window measures 0.0%. So
+either those two notes do not blank, or the detector missed them, and nothing here
+distinguishes those. It does not touch the conclusion, which turns on the windows
+that do blank containing no short notes at all, but a length rule that predicted 1.5%
+and measured zero is not a rule that has been fully checked. **What would settle it**
+is locating those two notes in the frames and looking, which is a twenty-minute job
+nobody has done.
 
 ### The fire blip does blank the display, and two of the six labels do not survive
 

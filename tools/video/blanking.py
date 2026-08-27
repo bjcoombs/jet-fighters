@@ -157,6 +157,48 @@ def fire_blips(signal: np.ndarray, rate: int) -> list[tuple[float, float]]:
     return merged
 
 
+# The band the blanking notes live in, and the share of total energy a note must
+# hold. Separate from FIRE_BAND: this one is `jetMarch`'s.
+NOTE_BAND = (600, 660)
+NOTE_MIN_SHARE = 0.08
+NOTE_MIN_MS = 60.0
+
+
+def band_notes(signal: np.ndarray, rate: int) -> list[float]:
+    """Durations of every sustained note in {@link NOTE_BAND}, in ms.
+
+    **Committed because the figure it produces was quoted before it was
+    re-derivable.** `open-questions.md` §16 states the blanking windows' notes as
+    130-210 ms and 103-288 ms, and those came from a scratch pass that lived
+    nowhere. A length quoted in a document with no tool behind it is exactly what
+    this directory exists to stop.
+    """
+    size, hop = 1024, 64
+    count = 1 + (len(signal) - size) // hop
+    window = np.hanning(size)
+    freq = np.fft.rfftfreq(size, 1 / rate)
+    band = (freq >= NOTE_BAND[0]) & (freq < NOTE_BAND[1])
+    share = np.empty(count)
+    for i in range(count):
+        spectrum = np.abs(np.fft.rfft(signal[i * hop : i * hop + size] * window))
+        share[i] = spectrum[band].sum() / max(spectrum.sum(), 1e-9)
+    times = np.arange(count) * hop / rate
+    on = share > NOTE_MIN_SHARE
+    found, i = [], 0
+    while i < count:
+        if on[i]:
+            j = i
+            while j < count and on[j]:
+                j += 1
+            length = (times[j - 1] - times[i]) * 1000
+            if length >= NOTE_MIN_MS:
+                found.append(float(length))
+            i = j
+        else:
+            i += 1
+    return found
+
+
 def report(video: Path, start: float, length: float) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         lit, wav = extract(video, start, length, Path(tmp))
@@ -167,6 +209,20 @@ def report(video: Path, start: float, length: float) -> None:
         print(f"{video.name}  t = {start}-{start + length} s   {len(lit)} frames")
         print(f"  {dark.mean()*100:.1f}% of frames dark, {len(runs)} runs of "
               f"{LONGEST_SOUND_BLANK*1000:.0f} ms or less")
+        # --- how long are the notes in the band the blanks belong to? -----
+        #
+        # **Printed before the dark-run early return, deliberately.** The window
+        # this section's argument turns on is t=120, which has notes and *no*
+        # blanking - so a census that only ran when dark runs existed would be
+        # silent about the one case that discriminates.
+        notes = band_notes(signal, rate)
+        if notes:
+            print(f"  sustained {NOTE_BAND[0]}-{NOTE_BAND[1]} Hz notes "
+                  f"(>{NOTE_MIN_SHARE*100:.0f}% of energy for >{NOTE_MIN_MS:.0f} ms): "
+                  f"{len(notes)}, {min(notes):.0f}-{max(notes):.0f} ms")
+        else:
+            print(f"  no sustained {NOTE_BAND[0]}-{NOTE_BAND[1]} Hz note in this window")
+
         if not runs:
             print("  no dark runs - nothing to classify")
             return
