@@ -1,10 +1,17 @@
-// The 3D page: the unit as a model that can be turned in the hand.
+// The 3D page: the unit as a model that can be turned in the hand, with the
+// machine running behind its glass.
 //
-// Builds a canvas, hands it to the scene, and runs a render loop. This loop
-// draws the scene; it does not step the machine. The machine's clock is
-// src/app/driver.ts, which a later change wires in here so the tube glows.
+// Builds a canvas for the scene and two offscreen ones for the tube, hands the
+// driver a renderer bound to the first of those, and runs a render loop. That
+// loop draws the scene and uploads the tube's canvas; it does not step the
+// machine. The machine's clock is src/app/driver.ts, here as on the flat page.
 
+import { opla, rom } from '../../asm/jetfighter.asm';
+import { createDriver } from '../app/driver.js';
+import { buildMuteToggle } from '../app/mute-toggle.js';
+import { createHelpOverlay, createInputSystem } from '../input/index.js';
 import { createConsoleScene } from './scene.js';
+import { createTubeTextures } from './tube-texture.js';
 
 const MODEL_URL = `${import.meta.env.BASE_URL}models/console.glb`;
 
@@ -18,33 +25,43 @@ async function start(mount: HTMLElement): Promise<void> {
   mount.appendChild(canvas);
   mount.appendChild(buildChrome());
 
+  // The machine, dark, painting an offscreen canvas the model will wear.
+  const textures = createTubeTextures();
+  const driver = createDriver({ image: { rom, opla }, renderer: textures.renderer });
+  createInputSystem(driver.apply, { screenElement: canvas });
+  mount.appendChild(buildMuteToggle(driver));
+  mount.appendChild(createHelpOverlay());
+  driver.start();
+
   const status = buildStatus('Loading the model…');
   mount.appendChild(status);
   let scene;
   try {
-    scene = await createConsoleScene(canvas, MODEL_URL);
+    scene = await createConsoleScene(canvas, MODEL_URL, textures);
   } catch (err) {
     status.textContent = `Could not load ${MODEL_URL}: ${err instanceof Error ? err.message : String(err)}`;
     return;
   }
   status.remove();
 
-  const frame = (): void => {
+  const frame = (now: number): void => {
+    textures.upload(now, driver.board.power.state === 'on');
     scene.render();
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
 
   if (import.meta.env.DEV) {
-    (globalThis as { jetFighters3d?: unknown }).jetFighters3d = scene;
+    (globalThis as { jetFighters3d?: unknown }).jetFighters3d = { scene, driver, textures };
   }
 }
 
 /** The corner chrome: a way back to the flat page, and what this is. */
 function buildChrome(): HTMLElement {
   const bar = document.createElement('div');
+  // Right of the mute toggle, which takes the corner on both pages.
   bar.style.cssText =
-    'position:absolute;top:8px;left:8px;z-index:10;display:flex;gap:8px;align-items:center;' +
+    'position:absolute;top:8px;left:44px;z-index:10;display:flex;gap:8px;align-items:center;' +
     'font-size:12px;color:#ddd;';
   const back = document.createElement('a');
   back.href = './';

@@ -444,6 +444,18 @@ describe('layer order', () => {
     expect(silkscreen).toBeGreaterThan(litSegment);
   });
 
+  it('omits the silkscreen when asked, and paints everything else', () => {
+    const { renderer, recorder } = setup({ silkscreen: false });
+    const frame = frameOf([{ id: 'score_label', duty: FULL_DUTY }]);
+    settle(renderer, recorder, frame);
+    renderer.draw(frame, 16);
+
+    const ops = recorder.calls;
+    expect(firstSilkscreenCall(ops)).toBe(-1);
+    expect(ops.findIndex((call) => call.op === 'fillRect' && call.fillStyle === BACKGROUND)).toBeGreaterThanOrEqual(0);
+    expect(ops.findIndex((call) => call.op === 'fill' && call.fillStyle === ghostFill('red'))).toBeGreaterThan(0);
+  });
+
   it('leaves the context balanced across a frame', () => {
     const { renderer, recorder } = setup();
     renderer.draw(frameOf([{ id: 'jet_lane0_col1', duty: FULL_DUTY }]), 16);

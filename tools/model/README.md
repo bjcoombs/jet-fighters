@@ -32,7 +32,7 @@ How each figure was arrived at, and how far each estimate might be out, is
 ## What the glTF contains
 
 One root node, `console`, scaled to metres. Under it, one node per part, named:
-`front_shell` (with children `window`, `sticker`, `fire_cap`, `power_thumb`,
+`front_shell` (with children `window`, `scope_mask`, `sticker`, `fire_cap`, `power_thumb`,
 `lever_pin`, `skill_flag`), `back_shell` (with `battery_door`), and `pcb` with everything
 on it as children: `tube_shroud`, `tube_glass`, `tube_face`, `tube_grid_pins`,
 `tube_plate_leads`, `tms1370`, `resistor_row`, `electrolytics`, `discretes`, `lamp`,

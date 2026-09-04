@@ -8,12 +8,15 @@
 import {
   ACESFilmicToneMapping,
   Box3,
+  BufferAttribute,
+  BufferGeometry,
   Color,
   DirectionalLight,
+  DoubleSide,
   Group,
   Mesh,
+  MeshBasicMaterial,
   MeshPhysicalMaterial,
-  MeshStandardMaterial,
   PerspectiveCamera,
   PMREMGenerator,
   Scene,
@@ -26,6 +29,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 import { attachCanvasSizing } from '../app/viewport.js';
+import type { TubeTextures } from './tube-texture.js';
 
 /** What the glTF carries on every part - see tools/model/README.md. */
 export interface PartExtras {
@@ -69,8 +73,12 @@ const PHOTO_FOCAL_MM = 26;
 const PHOTO_SENSOR_MM = 36;
 const PHOTO_CASE_FRACTION = 1187 / 1422;
 
-/** Build the scene around `canvas` and load the model from `url`. */
-export async function createConsoleScene(canvas: HTMLCanvasElement, url: string): Promise<ConsoleScene> {
+/**
+ * Build the scene around `canvas` and load the model from `url`. With
+ * `textures`, the tube face shows the renderer's canvas and the window carries
+ * the silkscreen; without, both stay as the exporter left them.
+ */
+export async function createConsoleScene(canvas: HTMLCanvasElement, url: string, textures?: TubeTextures): Promise<ConsoleScene> {
   const renderer = new WebGLRenderer({ canvas, antialias: true, alpha: false });
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = ACESFilmicToneMapping;
@@ -117,7 +125,7 @@ export async function createConsoleScene(canvas: HTMLCanvasElement, url: string)
     if (!obj.name || typeof extras.label !== 'string') return;
     parts.set(obj.name, { name: obj.name, object: obj, extras, restPosition: obj.position.clone() });
   });
-  tuneMaterials(model);
+  tuneMaterials(model, textures);
 
   const bounds = new Box3().setFromObject(model);
   const size = bounds.getSize(new Vector3());
@@ -165,37 +173,92 @@ export async function createConsoleScene(canvas: HTMLCanvasElement, url: string)
 }
 
 /**
- * The exporter's materials are close; two need what glTF cannot say. The
+ * The exporter's materials are close; a few need what glTF cannot say. The
  * smoked window should transmit rather than merely be transparent, so the tube
- * reads through it; and the tube face is drawn by the page, so it must not
- * take the room's lighting.
+ * reads through it; the tube face is the renderer's canvas, emitted as drawn
+ * rather than lit by the room; and the silkscreen is a decal on the window.
  */
-function tuneMaterials(model: Group): void {
+function tuneMaterials(model: Group, textures?: TubeTextures): void {
   model.traverse((obj) => {
     if (!(obj instanceof Mesh)) return;
     const mat = obj.material;
+    if (obj.name === 'tube_face' && textures) {
+      // The canvas already carries the phosphor's colour, bloom and decay; it
+      // is shown verbatim, outside tone mapping, as a light source would be.
+      // Lifted above unity: the canvas is drawn for a screen, and here it is seen
+      // through the smoked filter, which halves it.
+      obj.material = new MeshBasicMaterial({ map: textures.phosphor, toneMapped: false, color: new Color(2.0, 2.0, 2.0) });
+      return;
+    }
+    if (obj.name === 'window' && textures) {
+      // The print, on the same geometry, pushed a hair toward the camera in
+      // depth so it wins over the glass it is printed on. Seen from behind, the
+      // text reads mirrored, as printed text does.
+      const decal = new Mesh(
+        upwardFaces(obj.geometry),
+        new MeshBasicMaterial({
+          map: textures.silkscreen,
+          transparent: true,
+          depthWrite: false,
+          toneMapped: false,
+          side: DoubleSide,
+          polygonOffset: true,
+          polygonOffsetFactor: -2,
+          polygonOffsetUnits: -2,
+        }),
+      );
+      decal.name = 'silkscreen';
+      decal.renderOrder = 2;
+      obj.add(decal);
+    }
     if (obj.name === 'window' && mat instanceof MeshPhysicalMaterial) {
-      // Smoked acrylic: what is behind it shows through darkened, and the room
-      // reflects in it faintly. Transmission blurs with roughness, so this stays
-      // near-polished; the environment is what would otherwise wash it out.
-      mat.transmission = 0.7;
-      mat.thickness = 0.001;
-      mat.roughness = 0.06;
-      mat.envMapIntensity = 0.12;
-      mat.specularIntensity = 0.35;
-      mat.transparent = false;
-      mat.opacity = 1;
-      mat.color.set(0x3a2a28);
+      // Smoked acrylic as an unlit dark transparency. A lit material, however
+      // it is set, carries the lights' broad highlight across the glass and the
+      // tube reads through a grey blot; the filter on the unit is matt-dark and
+      // what matters is that the phosphor behind it comes through darkened and
+      // sharp, which plain opacity does.
+      obj.material = new MeshBasicMaterial({
+        color: 0x120c0e,
+        transparent: true,
+        opacity: 0.42,
+        depthWrite: false,
+      });
+      return;
     }
     if (obj.name === 'tube_glass' && mat instanceof MeshPhysicalMaterial) {
-      mat.transmission = 0.9;
+      mat.transmission = 0;
+      mat.transparent = true;
+      mat.opacity = 0.18;
       mat.roughness = 0.05;
-      mat.envMapIntensity = 0.2;
-      mat.transparent = false;
-      mat.opacity = 1;
-    }
-    if (obj.name === 'tube_face' && mat instanceof MeshStandardMaterial) {
       mat.envMapIntensity = 0;
+      mat.specularIntensity = 0.15;
+      mat.color.set(0xdfe6ea);
+      mat.depthWrite = false;
     }
   });
+}
+
+/**
+ * The triangles of `geometry` that face +Y - the top of a box, in the model's
+ * frame the face toward the player. The window is a thin box, and a decal on
+ * both its faces would print the silkscreen twice, a glass-thickness apart.
+ */
+function upwardFaces(geometry: BufferGeometry): BufferGeometry {
+  const src = geometry.index ? geometry.toNonIndexed() : geometry;
+  const pos = src.getAttribute('position');
+  const nrm = src.getAttribute('normal');
+  const uv = src.getAttribute('uv');
+  const positions: number[] = [];
+  const uvs: number[] = [];
+  for (let i = 0; i < pos.count; i += 3) {
+    if (nrm.getY(i) < 0.9) continue;
+    for (let k = 0; k < 3; k += 1) {
+      positions.push(pos.getX(i + k), pos.getY(i + k), pos.getZ(i + k));
+      uvs.push(uv.getX(i + k), uv.getY(i + k));
+    }
+  }
+  const out = new BufferGeometry();
+  out.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
+  out.setAttribute('uv', new BufferAttribute(new Float32Array(uvs), 2));
+  return out;
 }
