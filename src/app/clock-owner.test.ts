@@ -19,9 +19,10 @@ const CLOCK_OWNER = 'app/driver.ts';
 
 /**
  * Modules that may call `requestAnimationFrame` for a *render* loop of their
- * own but never to step the board. Empty until the 3D page lands.
+ * own but never to step the board: the 3D page redraws its scene every frame
+ * and reads the tube canvas the driver painted.
  */
-const RENDER_LOOPS: readonly string[] = [];
+const RENDER_LOOPS: readonly string[] = ['viewer3d/'];
 
 const CLOCK_CALLS = /\b(requestAnimationFrame|setTimeout|setInterval|performance\.now|Date\.now)\s*\(/g;
 
