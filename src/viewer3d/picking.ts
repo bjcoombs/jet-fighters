@@ -33,6 +33,16 @@ export interface Picker {
   readonly highlighted: Part | null;
 }
 
+/** Visible along with every ancestor: a mesh on a hidden shell is not drawn, whatever its own flag says. */
+function shown(obj: Object3D): boolean {
+  let node: Object3D | null = obj;
+  while (node) {
+    if (!node.visible) return false;
+    node = node.parent;
+  }
+  return true;
+}
+
 export function createPicker(canvas: HTMLCanvasElement, camera: PerspectiveCamera, parts: ReadonlyMap<string, Part>): Picker {
   const raycaster = new Raycaster();
   const ndc = new Vector2();
@@ -66,7 +76,7 @@ export function createPicker(canvas: HTMLCanvasElement, camera: PerspectiveCamer
     raycaster.setFromCamera(ndc, camera);
     const hits = raycaster.intersectObjects(meshes, false);
     for (const hit of hits) {
-      if (!hit.object.visible) continue;
+      if (!hit.object.visible || !shown(hit.object)) continue;
       const mat = (hit.object as Mesh).material;
       // The silkscreen decal is transparent and mostly empty; a pointer over
       // its blank area is over the window beneath, which is the same part.

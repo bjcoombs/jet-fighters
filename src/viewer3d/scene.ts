@@ -159,7 +159,9 @@ export async function createConsoleScene(canvas: HTMLCanvasElement, url: string,
 
   attachCanvasSizing(canvas, {
     resize(cssWidth, cssHeight, dpr = 1) {
-      renderer.setPixelRatio(dpr);
+      // Phones report 3x; the scene gains nothing above 2x and the fill rate
+      // is what a phone runs out of.
+      renderer.setPixelRatio(Math.min(dpr, 2));
       renderer.setSize(cssWidth, cssHeight, false);
       camera.aspect = cssWidth / cssHeight;
       camera.updateProjectionMatrix();
