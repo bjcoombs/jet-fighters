@@ -139,6 +139,39 @@ deliberately no restart button here either.
 Mute silences the browser's output, not the machine - the program keeps toggling the
 speaker pin, like a real unit with its piezo disconnected.
 
+## The unit in three dimensions
+
+[`3d.html`](https://bjcoombs.github.io/jet-fighters/3d.html) is the same machine behind the
+glass of a model of the unit: orbit it, lift the red shell off, pull the board out with the
+tube still lit, click the chip to be told what it is, and play - the fire cap, the power
+slide, the launcher lever and the skill flag on the model close the same contacts the flat
+page's controls do, and the keyboard works throughout.
+
+**What it is built from.** No dimension was measured with a ruler; the owner has no further
+access to the unit for that. Every figure is read off two photographs against the one
+object of known size in them, the TMS1370's 2.54 mm pin pitch, and recorded with its source
+in [`tools/model/dimensions.json`](tools/model/dimensions.json); a Blender script builds
+every part from that file and exports the model with a label, its evidence and an explode
+vector on each node. Renders from cameras matched to the photographs sit beside them in
+[`docs/evidence/console-model-front.jpg`](docs/evidence/console-model-front.jpg) and
+[`console-model-board.jpg`](docs/evidence/console-model-board.jpg), and
+[`tools/model/compare.py`](tools/model/compare.py) reads both images with the same masks:
+the front agrees to within 1.5% of the case width.
+
+**What is estimated.** No photograph is edge-on, so every depth - the shells, the tube's
+thickness, how high the board sits - is an estimate with a stated basis and bound, in
+[`docs/evidence/console-dimensions.md`](docs/evidence/console-dimensions.md). The assembled
+unit comes out at about 340 x 145 x 36 mm, with the last figure the least certain thing in
+the model. The launcher lever's mechanism and one toothed black disc on the board are
+labelled unidentified, because the photographs do not say.
+
+**Regenerating it.** `npm run model` rebuilds `public/models/console.glb` headless (Blender
+4.2+, found automatically on macOS or via `BLENDER`); two runs are byte-identical, so a
+change in geometry shows as a real diff. `python3 tools/model/measure.py --overlay
+docs/evidence --doc docs/evidence/console-dimensions.md` re-derives the dimensions from the
+pixel reads and rewrites the document's tables. The one runtime dependency the site has,
+`three`, is confined to the 3D page by a test that reads the import graph.
+
 ## Architecture
 
 Five layers, mirroring the physical machine. Data flows the way electricity did.
@@ -166,7 +199,10 @@ flowchart LR
 | `src/machine/audio/` | The speaker: cycle-stamped edges placed on a sample timeline and band-limited into a waveform.                                         |
 | `src/ui/`            | The case shell - the moulded body, the scope window, and the four controls.                                                           |
 | `src/input/`         | Keyboard and touch, translated into movements of those same four controls.                                                            |
-| `src/main.ts`        | The frame driver, and the only clock in the program.                                                                                  |
+| `src/app/`           | The frame driver - the only clock in the program - plus canvas sizing and the mute toggle, shared by both pages.                     |
+| `src/main.ts`        | The flat page: builds the case and hands the driver a renderer.                                                                       |
+| `src/viewer3d/`      | The 3D page: the model from `tools/model/` orbited, taken apart and played, with the renderer's canvas as the tube's texture.         |
+| `tools/model/`       | The unit's dimensions from the photographs, the Blender script that builds the model from them, and the comparison against the photographs. |
 | `tools/probe/`       | The headless machine probe: drives the board from a terminal and reports what the hardware did.                                        |
 
 Two rules hold everything else in place:
@@ -251,6 +287,7 @@ and what it does *not* establish:
 | [`docs/evidence/timing-analysis.md`](docs/evidence/timing-analysis.md) | Squadron cadence and battleship crossings, measured frame by frame |
 | [`assets/reference/sprites/README.md`](assets/reference/sprites/README.md) | Every sprite on the glass, its size, its cell and its lanes |
 | [`src/machine/tube/ATLAS-COORDINATES.md`](src/machine/tube/ATLAS-COORDINATES.md) | The tracing method, the five approaches that failed, and the two ways this atlas has gone wrong |
+| [`docs/evidence/console-dimensions.md`](docs/evidence/console-dimensions.md) | The unit's dimensions from the photographs against the chip's pin pitch: what is measured, what is estimated, and how far the flat page's drawing disagrees |
 | [`docs/evidence/open-questions.md`](docs/evidence/open-questions.md) | What is still unsettled, and what would settle it |
 
 ## Credits

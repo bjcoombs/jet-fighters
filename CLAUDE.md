@@ -50,8 +50,11 @@ being built. An agent that does it will believe it is being helpful.
 
 ## Architecture rules
 
-TypeScript, zero runtime dependencies. Vite build, Vitest tests. Five layers, mirroring
-the physical machine:
+TypeScript, and one runtime dependency: `three`, confined to `src/viewer3d/` (the 3D
+page) and kept out of everything else by `src/viewer3d/dependency-boundary.test.ts`, which
+reads the import graph. The machine, the input layer, the flat case and the driver take
+nothing from npm at runtime. Vite build, Vitest tests. Five layers, mirroring the physical
+machine, and a second page beside them:
 
 | Path                 | Layer                                                                     |
 | -------------------- | ------------------------------------------------------------------------- |
@@ -63,6 +66,7 @@ the physical machine:
 | `src/machine/audio/` | Cycle-stamped edges band-limited into a waveform                            |
 | `src/app/`           | The frame driver - the one clock - plus canvas sizing and the mute toggle, shared by both pages |
 | `src/ui/`, `src/input/`, `src/main.ts` | Case shell, keyboard/touch, and the flat page's wiring   |
+| `src/viewer3d/`, `3d.html` | The unit as a model: the glTF from `tools/model/` orbited, taken apart and played, the tube's canvas as its texture |
 
 Beside them, and not part of the build: `tools/trace/` is where
 `src/machine/tube/atlas.json` comes from. It traces the teardown photograph into segment
@@ -77,6 +81,17 @@ dependencies, plus `ffmpeg`. Every figure it produces is quoted in
 `docs/evidence/timing-analysis.md` or `open-questions.md` with the run that produced it,
 and **a cadence figure taken from a video is changed there and re-run, not typed into a
 comment**.
+
+`tools/model/` is where `public/models/console.glb` comes from: the physical unit's
+dimensions read off the photographs against the chip's pin pitch (`pixels.json` ->
+`measure.py` -> `dimensions.json`, every figure measured with its source or estimated with
+its basis), and a Blender script that builds every part from them headless and exports the
+model with a label, its evidence and an explode vector on each node. The `.glb` is
+committed and deterministic; `npm run model` rebuilds it, `npm run model:render` also
+re-renders the comparisons against the photographs in `docs/evidence/`. **A dimension is
+changed in `pixels.json` or in `measure.py`'s estimates and regenerated, never typed into
+the Blender script or the model** - `docs/evidence/console-dimensions.md`, whose tables
+`measure.py --doc` writes. Needs Blender 4.2+ locally; CI never runs it.
 
 **Two ways a recording reaches this repo, and the difference is deliberate.** The full
 clips are hundreds of megabytes and are *not* committed - `IMG_6113.mov` and the owner's
@@ -124,6 +139,7 @@ The rules that keep it honest:
 - `npm run build` - production build
 - `npm test` - Vitest
 - `npm run lint` - lint
+- `npm run model` - rebuild `public/models/console.glb` in Blender; `npm run model:render` also the comparison renders
 
 ## Marathon Configuration
 
