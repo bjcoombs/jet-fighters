@@ -2063,7 +2063,13 @@ mw_start:
 ; before it runs out past it, because the horizon arm is reached from the
 ; decrement rather than from the test.
 
-mw_leave:
+; **`mw_live` and not `mw_leave`.** This is the LEAVE half of the pair, and the
+; frozen acceptance contract `docs/contract/v3-entities.contract.md` names this
+; label and `mw_arrive` as the two hit-test sites a cold verifier reads. The
+; phase constant is PH_LEAVE, which is the half; this is the label, which the
+; contract owns.
+
+mw_live:
         LDP  P_SWEEP            ; the page load also leaves status armed, so the
         CALL mw_scan            ; call below is unconditional
         YNEC 0                  ; it comes back with the answer in Y, so this is
@@ -2132,7 +2138,7 @@ mw_lane_next:
 ; with shot and jet on the same column, so it was live rather than vacuous.
 ;
 ; Testing only the arrival cell after stepping misses the *launch cell*, which is
-; the defect the paragraph above `mw_leave` measures. So neither order is a
+; the defect the paragraph above `mw_live` measures. So neither order is a
 ; choice between a defect and no defect; it is a choice between two defects, and
 ; both halves of the argument now read straight through on one page.
 
@@ -2167,7 +2173,7 @@ mw_next:
         TMY                     ; Y <- the phase cursor
         YNEC PH_LEAVE
         BR   mw_n_stepping
-        BR   mw_leave
+        BR   mw_live
 mw_n_stepping:
         YNEC PH_ARRIVE
         BR   mw_lane            ; 0, 1 or 2: a lane, and Y is already standing on
