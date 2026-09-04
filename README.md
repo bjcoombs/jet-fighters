@@ -149,7 +149,7 @@ flowchart LR
     CPU -->|R0-R8 grids, O0-O7 + R11-R14 plates| BOARD[src/machine/board/<br/>grid x plate PWM state]
     CPU -->|R15 pin edges| SPK[src/machine/audio/<br/>square reconstruction]
     BOARD --> TUBE[src/machine/tube/<br/>segment atlas + phosphor]
-    MAIN[src/main.ts<br/>the only clock] -.->|steps| CPU
+    MAIN[src/app/driver.ts<br/>the only clock] -.->|steps| CPU
     MAIN -.->|draws| TUBE
     MAIN -.->|drains| SPK
 ```
