@@ -74,6 +74,17 @@ const COVERAGE: Readonly<Record<string, Coverage>> = {
   },
   'parked-endings.ts': { test: 'parked-endings.test.ts' },
   'playability-audit.ts': { test: 'playability-audit.test.ts' },
+  'score-windows.ts': {
+    test: 'score-windows.test.ts',
+    note:
+      'The second drive here that measures the physical unit. Same shape as ' +
+      'missile-transit.ts and for the same reason: it reads ' +
+      'assets/reference/skill3-video-score.csv, which tools/video/score_windows.py ' +
+      'produces from the committed crop, so the drive needs no ffmpeg, NumPy or video ' +
+      'decode. Its floors are unusual in one way: its subject is dark for more of the ' +
+      'clip than it is lit, so one of them asserts a named frame is still *dark* - the ' +
+      'frame a fabricated row was once read off.',
+  },
   'recording.ts': {
     test: null,
     note:
