@@ -422,10 +422,30 @@ def build_window(shell: bpy.types.Object) -> bpy.types.Object:
     r = D["scope.circle_radius"]
     rect = D["scope.rect"]
     uv_project_top(glass, fx(rect["left"]), fx(cx + r), fy(cy + r), fy(cy - r))
-    shade_smooth(glass)
+    # Flat: a smoothed plate tilts its corner normals and the glass then carries a
+    # highlight across its middle with a seam down the diagonal.
     extras(glass, "Smoked window: the dark filter over the tube, with the radar-scope silkscreen printed on its inner face. Its UVs cover the window's bounding box so the page can draw the silkscreen onto it.", "device-front-lit.jpg, screen-overlay-closeup.jpg", (0, 0, 40))
     parent(glass, shell)
     return glass
+
+
+def build_scope_mask(shell: bpy.types.Object) -> bpy.types.Object:
+    """A matte black plate under the window, open only over the tube's glass.
+
+    Through the smoked filter the real unit shows nothing but the tube: no board, no
+    resistors above it. Whether that is a printed mask on the filter's inner face or a
+    black card behind it the photographs cannot say, so it is modelled as a plate and
+    labelled as such.
+    """
+    gx, gy = D["tube.glass_x"], D["tube.glass_y"]
+    z = Z_WINDOW - 1.5 - 0.6
+    mask = window_cutter("scope_mask", z - 0.5, z, grow=1.0)
+    mask.name = "scope_mask"
+    cut(mask, box("mask_open", fx(gx[0] - 1), fx(gx[1] + 1), fy(gy[1] + 1), fy(gy[0] - 1), z - 1, z + 1))
+    set_material(mask, material("mask_black", hexrgb("#08080a"), roughness=0.95))
+    extras(mask, "Black mask behind the window, open over the tube. Whether it is printed on the filter or a separate card is not established.", "device-front-lit.jpg (nothing but the tube shows through the glass)", (0, 0, 30))
+    parent(mask, shell)
+    return mask
 
 
 def build_sticker(shell: bpy.types.Object) -> bpy.types.Object:
@@ -969,6 +989,7 @@ def main(argv: list[str]) -> None:
 
     front = build_front_shell()
     build_window(front)
+    build_scope_mask(front)
     build_sticker(front)
     build_controls(front)
     back = build_back_shell()

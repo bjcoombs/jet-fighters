@@ -69,6 +69,14 @@ export interface TubeRendererOptions {
    * the magnification at which it resolves; off is a diagnostic setting.
    */
   readonly mesh?: boolean;
+  /**
+   * Draw the printed silkscreen over the tube. On by default: on the flat page
+   * the canvas is the window and the glass, so the print belongs on it. The 3D
+   * page turns it off and draws the print on the window's own mesh with
+   * `drawSilkscreen`, because on the unit it is printed on the smoked filter a
+   * few millimetres in front of the phosphor, not on the tube.
+   */
+  readonly silkscreen?: boolean;
 }
 
 /** A renderer bound to a canvas. */
@@ -155,6 +163,7 @@ export function createTubeRenderer(
   );
   const withGlow = options.glow ?? true;
   const withMesh = options.mesh ?? true;
+  const withSilkscreen = options.silkscreen ?? true;
   const meshSurface = options.meshSurface ?? defaultMeshSurfaceFactory;
 
   // Seeded so a draw before the first resize produces valid output rather than
@@ -315,7 +324,9 @@ export function createTubeRenderer(
     drawMeshLayer();
     // Printed on the outside of the glass: on top of everything in the tube, and
     // still there when the tube is dark.
-    drawSilkscreen(ctx);
+    if (withSilkscreen) {
+      drawSilkscreen(ctx);
+    }
 
     ctx.restore();
   };
