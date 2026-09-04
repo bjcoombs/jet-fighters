@@ -101,9 +101,11 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--pixels", type=Path, default=PIXELS)
     ap.add_argument("--out", type=Path, default=DIMENSIONS)
     ap.add_argument("--overlay", type=Path, help="directory to write annotated photographs into")
+    ap.add_argument("--doc", type=Path, help="rewrite the generated tables in this markdown file, between the dimensions markers")
     args = ap.parse_args(argv)
 
     px = json.loads(args.pixels.read_text())
+    photo_b = px["photographs"]["board"]
     s_board, s_rim, scale_detail = board_scale(px)
     d = Dims()
     B = px["board"]
@@ -210,14 +212,23 @@ def main(argv: list[str]) -> int:
 
     # ---- Inside, from the board photograph. Board-plane scale, origin the shell's
     # top-left corner (module top, left edge) so the two photographs share a frame.
-    bx0 = sh["left"]
-    by0 = sh["module_top"]
+    #
+    # The two planes have different scales, so a read cannot be converted by offset
+    # from the origin at one scale: the origin is a rim read and the part is a board
+    # read. Both are projected through the image's principal point (its centre): a
+    # rim pixel is (px - centre) * s_rim from the optical axis, a board pixel
+    # (px - centre) * s_board, and the difference between the two is the part's
+    # position relative to the shell corner. Without this a board read at the far
+    # corner of the frame lands 7 mm outside the case.
+    pcx, pcy = photo_b["size"][0] / 2, photo_b["size"][1] / 2
+    ox = (sh["left"] - pcx) * s_rim
+    oy = (sh["module_top"] - pcy) * s_rim
 
     def bx(x: float) -> float:
-        return _r((x - bx0) * s_board)
+        return _r((x - pcx) * s_board - ox)
 
     def by(y: float) -> float:
-        return _r((y - by0) * s_board)
+        return _r((y - pcy) * s_board - oy)
 
     def bxr(a, b) -> list[float]:
         return [bx(a), bx(b)]
@@ -249,7 +260,7 @@ def main(argv: list[str]) -> int:
     bb = B["battery_box"]
     d.measured("battery_box.x", bxr(*bb["x"]), f"{src_b} battery_box.x")
     d.measured("battery_box.y", byr(*bb["y"]), f"{src_b} battery_box.y")
-    d.estimated("battery_box.height", 28.0, "The box is as tall as the cells it holds plus a wall; no side view. Sized to the rim height.", 6.0)
+    d.estimated("battery_box.height", 18.0, "AA cells are 14.5 mm across, plus the box's walls. The box stands on the back shell's floor beside the board - the board's outline starts to its right - and reaches about the rim.", 4.0)
 
     for name in ("power_switch_body", "dc_jack", "resistor_row", "lamp"):
         e = B[name]
@@ -266,6 +277,12 @@ def main(argv: list[str]) -> int:
     d.measured("standoffs.centres", [[bx(x), by(y)] for x, y in so["centres"]], f"{src_b} standoffs.centres")
     d.measured("standoffs.radius", _r(so["radius"] * s_board), f"{src_b} standoffs.radius")
     d.measured("screws.centres", [[bx(x), by(y)] for x, y in B["screws"]["centres"]], f"{src_b} screws.centres")
+    d.measured(
+        "discretes",
+        [{"kind": e["kind"], "label": e["label"], "box": [bx(e["box"][0]), by(e["box"][1]), bx(e["box"][2]), by(e["box"][3])]} for e in B["discretes"]["parts"]],
+        f"{src_b} discretes.parts",
+        "Boxes in plan, mm. The toothed black disc at buzzer.centre is unidentified.",
+    )
     d.measured("electrolytics.cans", [[bx(a), by(b), bx(c), by(e)] for a, b, c, e in B["electrolytics"]["cans"]], f"{src_b} electrolytics.cans")
 
     # ---- Cross-check against the flat page's SVG, scaled so its body width is the
@@ -301,10 +318,10 @@ def main(argv: list[str]) -> int:
 
     # ---- Depth. Nothing photographs the unit edge-on, so every figure here is an
     # estimate with its basis; the bound is what a side view would be expected to move it by.
-    d.estimated("depth.rim_above_board", sh["rim_above_board_mm"]["value"], sh["rim_above_board_mm"]["$comment"], 10.0)
-    d.estimated("depth.back_shell", 22.0, "Board 5 mm off the back floor on its bosses, rim 15 mm above the board, 2 mm wall.", 6.0)
-    d.estimated("depth.front_shell_wing", 14.0, "Wing face must clear the fire switch body and the lever disc; both about 12 mm tall over the board.", 5.0)
-    d.estimated("depth.front_shell_module", 20.0, "Module face must clear the tube (11 mm) on its shroud plus the window glass; and the module stands proud of the wings by a visible step.", 5.0)
+    d.estimated("depth.rim_above_board", sh["rim_above_board_mm"]["value"], sh["rim_above_board_mm"]["$comment"], 5.0)
+    d.estimated("depth.back_shell", 20.0, "Board top 3 mm below the rim, board 1.6 mm, bosses 12 mm under it clearing the solder side and the door, 2 mm wall. The bosses' height is the guess.", 6.0)
+    d.estimated("depth.front_shell_wing", 11.0, "Wing face must clear the fire switch body and the lever disc, both a few mm above the rim.", 5.0)
+    d.estimated("depth.front_shell_module", 16.0, "Module face must clear the tube (11 mm on the board, so 8 mm above the rim) plus the window glass, and the module stands proud of the wings by a visible step.", 5.0)
     d.estimated("depth.window_recess", 2.0, "The silkscreened smoked window sits a little below the module face, inside a lip.", 1.0)
     d.estimated("depth.wall", 2.0, "Injection-moulded ABS of the period.", 0.5)
     d.estimated("depth.fire_cap_height", 6.0, "The cap stands proud of its ring in device-front-lit.jpg by about its own radius's quarter.", 2.0)
@@ -321,7 +338,109 @@ def main(argv: list[str]) -> int:
 
     if args.overlay:
         write_overlays(px, args.overlay)
+    if args.doc:
+        write_doc_tables(args.doc, out)
     return 0
+
+
+DOC_BEGIN = "<!-- dimensions:begin (generated by tools/model/measure.py --doc; do not edit) -->"
+DOC_END = "<!-- dimensions:end -->"
+
+
+def write_doc_tables(doc: Path, out: dict) -> None:
+    """Replace the block between the markers with tables built from the result."""
+    dd = out["dimensions"]
+    sc = out["scale"]
+
+    def v(name: str):
+        return dd[name]["value"]
+
+    def rng(name: str) -> str:
+        a, b = v(name)
+        return f"{a}-{b}"
+
+    def pt(name: str) -> str:
+        a, b = v(name)
+        return f"({a}, {b})"
+
+    lines = [DOC_BEGIN, ""]
+    lines += [
+        "### Scale",
+        "",
+        "| | |",
+        "| --- | --- |",
+        f"| Board photograph, board plane | {sc['mm_per_px_board']} mm/px |",
+        f"| Board photograph, rim plane | {sc['mm_per_px_rim']} mm/px (factor {sc['perspective_factor']}, rim {sc['rim_distance_mm']} mm from the camera) |",
+        f"| Front photograph | {sc['mm_per_px_front']} mm/px |",
+        "",
+        "### The case",
+        "",
+        "| | mm | From |",
+        "| --- | --- | --- |",
+        f"| Width | **{v('case.width')}** | {dd['case.width']['source']} |",
+        f"| Module height | {v('case.module_height')} | {dd['case.module_height']['source']} |",
+        f"| Wing height | {v('case.wing_height')} | {dd['case.wing_height']['source']} |",
+        f"| Wing top below module top | {v('case.wing_top_below_module_top')} | front photo |",
+        f"| Wing bottom below module bottom | {v('case.wing_bottom_below_module_bottom')} | front photo: the wings hang lower than the module's lower lip |",
+        "",
+        f"Across the face, left to right: the left wing's raised stippled block **{rng('face.left_block_x')}**, its",
+        f"smooth inboard strip carrying the power switch **{rng('face.left_strip_x')}**, the module **{rng('face.module_x')}**,",
+        f"the right wing's smooth strip **{rng('face.right_strip_x')}**, its raised block **{rng('face.right_block_x')}**.",
+        "",
+        "### The scope window",
+        "",
+        "| | mm |",
+        "| --- | --- |",
+        f"| Circle centre | {pt('scope.circle_centre')}, radius {v('scope.circle_radius')} |",
+        f"| Rectangle | left {v('scope.rect')['left']}, top {v('scope.rect')['top']}, bottom {v('scope.rect')['bottom']}, running into the circle |",
+        f"| Tab at 12 o'clock | x {rng_d(v('scope.tab')['x'])}, y {rng_d(v('scope.tab')['y'])}, overlapping the glass |",
+        "",
+        "### Controls, on the face",
+        "",
+        "| | mm |",
+        "| --- | --- |",
+        f"| Fire button | centre {pt('controls.fire.centre')}; cap radius {v('controls.fire.cap_radius')}, ring {v('controls.fire.ring_radius')}; switch body under it radius {v('controls.fire.body_radius')} |",
+        f"| Power switch thumb | centre {pt('controls.power.thumb_centre')}, {v('controls.power.thumb_size')[0]} x {v('controls.power.thumb_size')[1]}, travelling y {rng('controls.power.travel_y')} |",
+        f"| Launcher lever well | centre {pt('controls.lever.well_centre')}, radius {v('controls.lever.well_radius')}; slot x {rng_d(v('controls.lever.slot')['x'])}, y {rng_d(v('controls.lever.slot')['y'])}; pin at y {' / '.join(str(y) for y in v('controls.lever.pin_y_positions'))} for the three lanes |",
+        f"| Skill flag | hub {pt('controls.skill.hub_centre')}, radius {v('controls.skill.hub_radius')}; flag {v('controls.skill.flag_length')} long; the 1/2/3 marks on a {v('controls.skill.mark_radius')} radius arc |",
+        f"| Sticker | x {rng_d(v('face.sticker')['x'])}, y {rng_d(v('face.sticker')['y'])} |",
+        "",
+        "### Inside",
+        "",
+        "| | mm |",
+        "| --- | --- |",
+        f"| Board | x {rng('pcb.x')}, y {rng('pcb.y')}; outline in `pcb.outline`, bottom edge stepping down for a central tongue and the right end |",
+        f"| Tube shroud | x {rng('tube.shroud_x')}, y {rng('tube.shroud_y')} |",
+        f"| Tube glass | x {rng('tube.glass_x')}, y {rng('tube.glass_y')} |",
+        f"| Tube face (printed segments) | x {rng('tube.face_x')}, y {rng('tube.face_y')} |",
+        f"| TMS1370 | pins x {rng('chip.pins_x')}, body y {rng('chip.body_y')}; body length {v('chip.body_length')} |",
+        f"| Battery box | x {rng('battery_box.x')}, y {rng('battery_box.y')}, against the left wall |",
+        f"| Resistor row | {v('resistor_row.count')} resistors, x {rng('resistor_row.x')}, y {rng('resistor_row.y')} |",
+        f"| Lever disc | centre {pt('lever_disc.centre')}, radius {v('lever_disc.radius')}, the pin protruding to x {v('lever_disc.pin')['x'][1]} |",
+        f"| Skill hub | centre {pt('skill_hub.centre')} |",
+        f"| Toothed disc | centre {pt('buzzer.centre')}, radius {v('buzzer.radius')} |",
+        f"| DC jack | x {rng('dc_jack.x')}, y {rng('dc_jack.y')} |",
+        f"| Standoffs | {len(v('standoffs.centres'))}, `standoffs.centres`; screws, {len(v('screws.centres'))}, `screws.centres` |",
+        f"| Electrolytics | {len(v('electrolytics.cans'))} cans, `electrolytics.cans` |",
+        f"| Discretes | {len(v('discretes'))} resistors, diodes, transistors and a disc capacitor, `discretes`, each with the silkscreen value where it is legible |",
+        "",
+        "### Cross-check against the flat page's SVG",
+        "",
+        "| | SVG | Photograph |",
+        "| --- | --- | --- |",
+    ]
+    x = v("svg_crosscheck")
+    for key, label in (("module_height", "Module height"), ("wing_height", "Wing height"), ("module_x", "Module x"), ("circle_radius", "Circle radius"), ("rect_left", "Rectangle left"), ("rect_top", "Rectangle top"), ("circle_centre", "Circle centre"), ("rect_bottom", "Rectangle bottom")):
+        lines.append(f"| {label} | {x[key]['svg']} | {x[key]['photo']} |")
+    lines += ["", DOC_END]
+    text = doc.read_text()
+    a, b = text.index(DOC_BEGIN), text.index(DOC_END) + len(DOC_END)
+    doc.write_text(text[:a] + "\n".join(lines) + text[b:])
+    print(f"rewrote the generated tables in {doc}")
+
+
+def rng_d(pair) -> str:
+    return f"{pair[0]}-{pair[1]}"
 
 
 def write_overlays(px: dict, out_dir: Path) -> None:
