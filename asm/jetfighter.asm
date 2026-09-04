@@ -287,7 +287,8 @@
                                 ;   +1 is lane 1, +2 is lane 2
 .EQU NIB_M_LO,       3          ; sweeps until the rank advances a column, low
 .EQU NIB_M_HI,       4          ;   "                                     high
-.EQU NIB_MWORK,      5          ; the walk's lane index, held across chapter 1
+.EQU NIB_MWORK,      5          ; the missile walk's phase cursor - PH_LEAVE, a
+                                ; lane 0..2, or PH_ARRIVE - held across chapter 1
 .EQU NIB_ENT,        6          ; entropy: NIB_TICK accumulated on each fire
                                 ; press, written by if_down and read by
                                 ; jet_enter, which is its ONLY consumer - two
@@ -348,10 +349,13 @@
                                 ; step_reload spends it - see jm_capture
 .EQU NIB_J_MOVED,    7          ; set when a jet stepped this sweep
 .EQU NIB_J_TMP,      8          ; arithmetic scratch: rocket_fire's try counter
-.EQU NIB_J_SCR,      9          ; arithmetic scratch. `plane_at` walks the slots
-                                ; in it and leaves the matched slot's row nibble
-                                ; there for `mw_kill`, which reaches the clear
-                                ; only after a page crossing has lost A
+.EQU NIB_J_SCR,      9          ; arithmetic scratch, and free at the moment. The
+                                ; per-lane collision test kept its walk over the
+                                ; slots here and left the matched slot in it for
+                                ; `mw_kill`; `mw_scan` answers in Y instead, and
+                                ; `mw_kill` is one branch away with Y intact. Kept
+                                ; declared because nibble 9 is what a slot walk
+                                ; that does need RAM should take next
 
 ; --- two planes as positions ------------------------------------------------
 ;
@@ -415,6 +419,15 @@
 ; number. The one that remains is `rocket_fire`'s rotor, which is counting rows
 ; because the rocket really does fly down one of three - geometry, not entities.
 .EQU LANE_COUNT,     3          ; three lanes, 0..2
+
+; The missile walk's two hit-test phases, as values of NIB_MWORK beside the lane
+; it otherwise holds. PH_ARRIVE is LANE_COUNT and not a number of its own: the
+; step phase ends when `mw_lane_next` carries past the last lane, so the cursor
+; is already sitting on it and nothing has to write it. PH_LEAVE is the next one
+; up, and both are outside 0..2 so `mw_next` can tell a phase from a lane.
+.EQU PH_ARRIVE,      3          ; after every lane has stepped
+.EQU PH_LEAVE,       4          ; before any of them has
+
 .EQU BS_NONE,       15          ; NIB_BSLANE when no crossing is in progress
 ;
 ; The next two are thresholds rather than operands, and they read as unused
@@ -1089,140 +1102,108 @@ main_work:
         LDP  P_INPUT
         BR   input_scan
 
-; --- is a plane where the shot is? -------------------------------------------
+; --- is a plane standing where a shot is? ------------------------------------
 ;
-; **The one comparison the lane rank gave away for nothing.** A lane held at most
-; one jet and the lane WAS the row, so `mw_live` was `TMA / LDX FILE_JETS / MNEA`
-; - the shot's column against the one nibble its own lane could hold. Two
-; positioned planes can both be in the shot's row, so the question becomes "is
-; either slot at (this row, this column)?" and it costs a row test and a column
-; test per slot. Four comparisons where there was one, at each of the two sites.
+; **The nibble index IS the lane on both sides of the question, so the whole
+; test is one comparison per plane.** A plane carries its own row and FILE_MISS
+; is indexed by lane, so `FILE_MISS[plane.row]` names the shot in that plane's
+; row with no search at all - and comparing it against the plane's column asks
+; "same row and same column" in a single `MNEA`. The routine this replaces asked
+; the question the other way round, once per lane, and so had to test a row and
+; a column at each slot: four comparisons per shot per half of the LEAVE/ARRIVE
+; pair, and up to six of those on a step. This is two comparisons a half for the
+; whole rank.
 ;
-; **One routine called twice, and not two copies.** `mw_live` and `mw_arrive` ask
-; the *same* question of different columns - before the step and after it - so a
-; shared routine halves the cost and, more to the point, removes the way the two
-; halves could drift apart. `tools/probe/missile-rank.test.ts` counts
-; pass-throughs per lane on each half separately precisely because a build that
-; kept only one of them still passes the other's assertions.
+; **It answers about the rank and not about one lane, which is what let the walk
+; drop to two phases.** `missile_walk` calls it once before any lane steps and
+; once after all three have, rather than around each lane's own step. Nothing
+; between those two points moves a plane, so asking about three lanes at once
+; and asking lane by lane cannot differ in what they find - only in what it
+; costs. The answer names the plane, and `mw_kill` takes the lane from that
+; plane's row rather than from the walk's cursor.
 ;
-; **It takes the shot's cell in the registers the walk already has it in**, which
-; is what makes it fit. `mw_lane` leaves Y on the lane, and the column is one
-; `TMA` away at `mw_live` and already in A at `mw_arrive` - so the head is a
-; single `LDX` and there is no contest for A or Y at all. The register problem
-; this looked like having is the walk's own bookkeeping solving it. Where a value
-; does have to be recovered - `pa_reload`, after slot 0's row test spends A - it
-; comes back out of `NIB_MWORK`, which is where the walk keeps its index and the
-; one nibble that survives every arm of this page.
-;
-; **The column is tested before the row at each slot, and that order is a cost
-; decision.** Five columns against three rows, and an empty slot has a column of
-; 0 that no shot can match while its stale row can - so the column test rejects
-; more per instruction and rejects empty slots outright. The common answer is
-; therefore sixteen instructions: read the shot's cell, reject slot 0 on its
-; column, reject slot 1 on its column, answer none.
+; **The shot is tested before the column, and that order is doing two jobs.** A
+; lane usually holds nothing, so `MNEZ` on the shot's cell rejects a slot in five
+; instructions where reaching the column comparison costs nine. It also makes an
+; empty slot unable to match without a test of its own: an empty slot keeps a
+; column of 0 and a stale row, the row is always a real lane - RAM powers up
+; cleared and `jet_enter` only ever writes 0-2 - so it addresses a real cell, and
+; a cell holding a shot holds a grid of 1-5. Zero never equals one of those.
 ;
 ; **Straight-line over the two slots rather than a loop**, which is the same
 ; judgement task 4 made when it unrolled the missile's render walk. A loop's
-; index has to live in RAM, and the six instructions an iteration spends reading
-; it back cost more than the second copy of a four-instruction test. This matters
-; here and not elsewhere because the walk runs it six times on a sweep that steps
-; the rank - see the sweep-budget note below.
+; index has to live in RAM, and the instructions an iteration spends reading it
+; back cost more than the second copy of a five-instruction test.
+;
+; **The answer travels in Y and not in RAM.** The per-lane form could not do
+; that: it spent Y on its own walk over the slots and had to leave the answer in
+; NIB_J_SCR for a `mw_kill` that reached the clear only after a page crossing had
+; lost A. This one leaves Y on the answer and `mw_kill` is one `LDP`/`BR` away
+; with the registers intact, so nibble 9 is free again.
+;
+; Answers:
+;   Y      the matched slot's **row** nibble - NIB_P_BASE or NIB_P_ROW1 - or 0
+;          for none, which no row nibble can be. The caller reads it with one
+;          `YNEC 0` and no addressing of its own.
+;   X, A   spent. Neither caller relies on either.
 ;
 ; **The sweep budget is what shaped this routine, not the word budget.**
 ; `tools/probe/sweep-timing.test.ts` holds the mean silent sweep under 920 cycles
 ; and holds every silent sweep inside a tolerance of that mean. The missile walk
-; runs one sweep in thirty-two and calls this up to six times on that sweep, so
-; every instruction here is multiplied by six *in the tail of the distribution*
-; and by six thirty-seconds in the mean. An earlier loop form of this routine
-; measured 39 instructions a call and took the longest sweep from 1100 cycles to
-; 1297; this one measures 12 and is why that tail is what it is.
+; runs one sweep in thirty-two and reaches this twice on that sweep however many
+; shots are up, where the per-lane form reached its predecessor once per shot per
+; half - so the tail this sits in is now flat in the number of shots in flight
+; rather than linear in it.
 ;
 ; **The stack is free here.** `missile_walk` is reached by `BR` from
-; `tick_missile`, and the walk itself calls nothing: `mw_kill` and `bship_kill`
-; branch rather than call, and both leave through the scorer. So the one-level
-; return register is unused at this point, which `tools/tmsasm`'s analysis 3
-; would refuse to assemble if it were not.
+; `tick_missile`, and the walk itself calls nothing else: `mw_kill` and
+; `bship_kill` branch rather than call, and both leave through the scorer. So the
+; one-level return register is unused at this point, which `tools/tmsasm`'s
+; analysis 3 would refuse to assemble if it were not.
 ;
-; --- the shape this is not, and why it was deferred rather than rejected ------
-;
-; **Asking the question once per plane instead of once per lane per half is the
-; right architecture, and it is task 21.** The walk is a walk over *lanes*
-; because a lane used to be a slot; it no longer is. Rows are geometry now and
-; planes are entities, so the question "did anything get hit" is naturally two
-; tests, not six: for each of the two planes, is `FILE_MISS[plane.row]` equal to
-; `plane.column`? Everything this routine spends on re-reading the shot's cell
-; per lane disappears, and with it the sweep-budget note above - the tail would
-; go back under where `main` had it rather than being argued about.
-;
-; It was kept out of the task that wrote this deliberately. It restructures the
-; walk's control flow rather than a comparison inside it, and it moves *when* a
-; kill lands relative to the other lanes' steps - which is exactly the semantics
-; `tools/probe/missile-rank.test.ts` counts, per lane, per half of the pair. A
-; change that could redden the instrument guarding it does not belong in the same
-; commit as the change that instrument is guarding.
-;
-; So whoever picks task 21 up starts here: the win is 2 tests a phase against 6,
-; the risk is the LEAVE/ARRIVE semantics, and the measurement to beat is a
-; longest silent sweep of 1165 cycles against a mean of 898.
-;
-; **Placed on P_SWEEP because P_HIT had fourteen words free and this is
-; thirty-seven**,
-; and because a subroutine may not branch across a page (analysis 2) - so it has
-; to sit whole on one page with room. `mw_horizon` moved to P_SPILL to make it.
-;
-; Answers, and the whole answer is in RAM because the kill arm crosses a page
-; that spends A. Y is spent too, so neither caller may rely on the lane it passed
-; in surviving the call:
-;   NIB_J_SCR  the matched slot's **column** nibble - 11 or 13 - or 0 for none.
-;   X, Y       FILE_JETS and NIB_J_SCR, so the caller reads that answer with one
-;              `MNEZ` and no addressing of its own.
-;   the lane   *not* restored. Both callers re-read it from NIB_MWORK, which is
-;              where the walk keeps it and the only place that survives the kill
-;              arm anyway.
+; **Placed on P_SWEEP**, where the routine it replaces sat, because a subroutine
+; may not branch across a page (analysis 2) and P_HIT has no room to carry it
+; whole. It is seven words shorter than that one, so this page keeps the room it
+; had and gains a little.
 
-plane_at:                       ; in: Y = the shot's row, A = its column
+mw_scan:
         LDX  FILE_JETS
-        TCY  NIB_J_SCR
-        TCMIY 0                 ; nothing found yet, and the miss arms below then
-                                ; cost one branch each rather than a clear
-        TCY  NIB_P_COL0
-        MNEA                    ; status = slot 0 stands on some other column
-        BR   pa_slot1
         TCY  NIB_P_BASE
-        TMA                     ; A <- slot 0's row
+        TMY                     ; Y <- slot 0's row, which is a lane index
         LDX  FILE_MISS
-        TCY  NIB_MWORK
-        MNEA                    ; status = slot 0 is in some other row
-        BR   pa_reload
+        MNEZ                    ; status = a shot is in flight down that lane
+        BR   ms_shot0
+        LDX  FILE_JETS          ; nothing in that lane, so slot 0 cannot be hit.
+                                ; The two arms that reach the block below are the
+                                ; two that arrive with X on FILE_MISS, and both
+                                ; fall into it rather than branching, which is
+                                ; what the layout here is bought with
+ms_slot1:
+        TCY  NIB_P_ROW1
+        TMY                     ; Y <- slot 1's row
+        LDX  FILE_MISS
+        MNEZ                    ; status = a shot is in flight down that lane
+        BR   ms_shot1
+        TCY  0                  ; nothing was hit, and 0 is no slot's row nibble
+        RETN
+ms_shot1:
+        TMA                     ; A <- the column that shot stands on
         LDX  FILE_JETS
-        TCY  NIB_J_SCR
-        TCMIY NIB_P_COL0        ; slot 0 is the one the shot is in
-        BR   pa_out
-pa_reload:
-        LDX  FILE_MISS          ; the row test above spent A on slot 0's row, so
-        TCY  NIB_MWORK          ; the shot's own cell has to be read again before
-        TMY                     ; slot 1 can be asked about it
-        TMA
-        LDX  FILE_JETS
-pa_slot1:
         TCY  NIB_P_COL1
         MNEA                    ; status = slot 1 stands on some other column
-        BR   pa_out
-        TCY  NIB_P_ROW1
-        TMA                     ; A <- slot 1's row
-        LDX  FILE_MISS
-        TCY  NIB_MWORK
-        MNEA                    ; status = slot 1 is in some other row
-        BR   pa_miss1
+        BR   ms_none
+        TCY  NIB_P_ROW1         ; slot 1 is the plane the shot is standing in
+        RETN
+ms_none:
+        TCY  0
+        RETN
+ms_shot0:
+        TMA                     ; A <- the column that shot stands on
         LDX  FILE_JETS
-        TCY  NIB_J_SCR
-        TCMIY NIB_P_COL1
-        BR   pa_out
-pa_miss1:
-        LDX  FILE_JETS          ; slot 1's row arm is the one place that arrives
-                                ; with X on FILE_MISS
-pa_out:
-        TCY  NIB_J_SCR          ; the answer, where the caller's MNEZ reads it
+        TCY  NIB_P_COL0
+        MNEA                    ; status = slot 0 stands on some other column
+        BR   ms_slot1
+        TCY  NIB_P_BASE         ; slot 0 is the plane the shot is standing in
         RETN
 
 
@@ -1983,17 +1964,51 @@ tk_to_fire:
 ; visited whether or not it holds a shot, because the countdown is the rank's
 ; and not any one shot's.
 ;
-; **The loop index is NIB_MWORK in RAM and never a register.** The kill arm
-; below crosses into chapter 1 by way of the scorer, which clobbers X, Y and A
-; on the way there and hands none of them back; a walk that kept its index in Y
-; would resume the loop on whichever lane the scorer happened to leave behind.
-; The return path is `as_out2` (P_SCORE) -> `mw_next`, which reads the index
-; back out of RAM before doing anything else.
+; **Two hit-test phases and a step between them, rather than a hit test either
+; side of every lane's own step.** `mw_scan` (P_SWEEP) asks its question about
+; the whole rank at once - for each of the two planes, is `FILE_MISS[plane.row]`
+; equal to `plane.column`? - so the walk reaches it twice a step whatever is in
+; flight, where the per-lane form reached its predecessor once per shot per half
+; and paid four comparisons each time. Nothing between the two phases moves a
+; plane, so the two orderings find the same collisions; the LEAVE phase still
+; runs before any shot steps and the ARRIVE phase after all of them have, which
+; is the pair the argument below `mw_lane_next` is about.
 ;
-; **The nibble index IS the lane** (see the FILE_MISS header), so the walk needs
-; no lane lookup at all: `TMY` puts the index straight into Y, and Y then names
-; this lane's column in FILE_MISS and this lane's jet in FILE_JETS without being
-; touched in between.
+; **The lane the step phase is on lives in Y, and NIB_MWORK is a phase cursor.**
+; The cursor reads:
+;
+;   PH_LEAVE   the LEAVE phase, before any lane has stepped
+;   0, 1, 2    a lane, written only when the step phase is about to leave the
+;              page for `mw_horizon`
+;   PH_ARRIVE  the ARRIVE phase, after all three lanes have stepped
+;
+; and the lane values are the lane itself, so `TMY` puts one straight into Y and
+; Y then names that lane's column in FILE_MISS without being touched in between
+; (see the FILE_MISS header). PH_ARRIVE is one past the last lane, so
+; `mw_lane_next` walks off the end onto it.
+;
+; **Why the step phase keeps its lane in a register when the walk it replaced
+; could not.** Everything that clobbers a register here does it by crossing into
+; chapter 1 through the scorer, and the step phase no longer has such an arm: the
+; hit test moved out of it, so the only way out of the lane loop is
+; `mw_to_horizon`, and that one writes the lane to the cursor on its way past.
+; Three lanes of loop bookkeeping in RAM cost thirteen instructions a lane where
+; Y costs six, on the one sweep in thirty-two the sweep budget is measured at.
+;
+; **The scorer returns to `mw_next`, which dispatches on that cursor and does not
+; step it.** A phase that kills leaves the cursor where it is and so re-runs
+; itself, which is what it must do: the killed plane's column is now 0 and its
+; lane's shot is cleared, so the phase cannot find that pair again, and a second
+; plane standing on a second lane's shot still gets tested. Re-running terminates
+; because each pass through `mw_kill` empties a slot and there are two. Stepping
+; the cursor instead would drop that second plane's LEAVE test, and a shot that
+; walked away from a jet already on its column is exactly the pass-through
+; `tools/probe/missile-rank.test.ts` counts.
+;
+; `mw_horizon` and `bship_kill` come back through `mw_next` too, onto the lane
+; they left rather than the one after it. The shot they came in over is spent by
+; then, so that lane costs one pass of `mw_lane` finding nothing before the walk
+; carries on - which is why neither of them had to learn anything about phases.
 
 ; **"Is anything in flight?" is asked here, once per step, and not once per
 ; sweep.** The single-shot ROM asked it every sweep, in `tick_missile`, off a
@@ -2010,10 +2025,9 @@ tk_to_fire:
 ; fire test swallows any press whose edge fell in it, outright and with no
 ; auto-repeat to cover it. Measured, walking three empty lanes instead cost 2
 ; presses in 64 - one rank step in every thirty-two - against 0 in 64 before.
-; A shot in flight keeps the old behaviour too: `mw_done` goes to `jet_march`,
-; exactly as the single-shot step routine's arms did, so a stepping sweep skips
-; the fire test
-; the way it always has.
+; A shot in flight keeps the old behaviour too: the ARRIVE phase goes to
+; `jet_march`, exactly as the single-shot step routine's arms did, so a stepping
+; sweep skips the fire test the way it always has.
 
 missile_walk:
         LDX  FILE_MISS
@@ -2030,19 +2044,11 @@ missile_walk:
         BR   tick_fire          ; test, which is where it went before the rank
 mw_start:
         TCY  NIB_MWORK          ; X is still FILE_MISS, from the tests above
-        TCMIY 0                 ; the walk starts at lane 0
+        TCMIY PH_LEAVE          ; and the walk starts in the LEAVE phase
 
-mw_lane:
-        LDX  FILE_MISS
-        TCY  NIB_MWORK
-        TMY                     ; Y <- the lane, which is also the nibble index
-        MNEZ                    ; status = a shot is in flight down this lane
-        BR   mw_live
-        BR   mw_next            ; an empty lane costs the four words above
-
-; --- the cell the shot is leaving --------------------------------------------
+; --- the cells the shots are leaving -----------------------------------------
 ;
-; **The cell is tested before the shot leaves it, rather than after.** This
+; **The cells are tested before the shots leave them, rather than after.** This
 ; routine used to advance the missile's column and only then ask what was on the
 ; new column, which meant the column the missile is *launched* into - grid 5, the
 ; cell directly in front of the launcher - was written, drawn and left again
@@ -2053,24 +2059,30 @@ mw_lane:
 ; more now that a jet crossing the G line costs a launcher in any lane - that jet
 ; is the one the player most needs an answer to.
 ;
-; Testing first covers grid 5 on the shot's first step and still covers grid 1
+; Testing first covers grid 5 on a shot's first step and still covers grid 1
 ; before it runs out past it, because the horizon arm is reached from the
 ; decrement rather than from the test.
 
-mw_live:
-        TMA                     ; A <- the column this lane's shot stands on, and
-                                ; Y is already the lane: that is `plane_at`'s
-                                ; whole argument list
+mw_leave:
         LDP  P_SWEEP            ; the page load also leaves status armed, so the
-        CALL plane_at           ; call below is unconditional
-        MNEZ                    ; it comes back with X and Y already on its own
-                                ; answer, so this is the whole test: status = a
-                                ; plane is standing where the shot is
+        CALL mw_scan            ; call below is unconditional
+        YNEC 0                  ; it comes back with the answer in Y, so this is
+                                ; the whole test: status = a plane is standing
+                                ; where a shot is
         BR   mw_to_kill
-        BR   mw_advance
+        LDX  FILE_MISS          ; nothing was hit, so the rank steps, and the
+        TCY  NIB_MC             ; step phase opens on lane 0 with the cell in X
+                                ; and Y rather than the cursor
 
-; A same-page trampoline, and not `LDP P_SPARE / BR mw_kill` at the test above.
-; The page load would sit between `MNEZ` and its branch and re-arm status to
+mw_lane:
+        MNEZ                    ; status = a shot is in flight down this lane.
+                                ; X is FILE_MISS and Y is the lane, from the arm
+                                ; above or from `mw_lane_next`
+        BR   mw_advance
+        BR   mw_lane_next       ; an empty lane costs the three words above
+
+; A same-page trampoline, and not `LDP P_SPARE / BR mw_kill` at the tests above.
+; The page load would sit between the test and its branch and re-arm status to
 ; "always taken", which is the failure this program has made more than once.
 
 mw_to_kill:
@@ -2078,25 +2090,36 @@ mw_to_kill:
         BR   mw_kill
 
 mw_advance:
-        LDX  FILE_MISS
-        TCY  NIB_MWORK
-        TMY                     ; Y <- the lane: `plane_at` spends Y on its own
-                                ; answer and hands back the walk's index instead
         DMAN                    ; outward: grid 5 toward grid 1
         BR   mw_step_ok
-        LDP  P_SPILL
-        BR   mw_horizon         ; past the last column is the battleship's row,
-                                ; and Y is still the lane it flew down
+        BR   mw_to_horizon      ; past the last column is the battleship's row
 mw_step_ok:
         TAM
         MNEZ                    ; grid 0 is the horizon, not a column
-        BR   mw_arrive
-        LDP  P_SPILL
-        BR   mw_horizon         ; Y is still the lane here too
+        BR   mw_lane_next
 
-; --- the cell the shot has arrived in ----------------------------------------
+; The one arm of the step phase that leaves this page, and so the one place the
+; lane has to be spilled: `mw_horizon`'s boat arm reaches `bship_kill`, which
+; leaves through the scorer, and the scorer comes back to `mw_next` reading RAM.
+
+mw_to_horizon:
+        TYA                     ; A <- the lane
+        TCY  NIB_MWORK
+        TAM                     ; the cursor catches up with the loop
+        TAY                     ; Y <- the lane again: `mw_horizon` takes it there
+        LDP  P_SPILL
+        BR   mw_horizon
+
+mw_lane_next:
+        IYC                     ; Y <- the next lane, which is also the next
+                                ; nibble of FILE_MISS
+        YNEC LANE_COUNT
+        BR   mw_lane
+        BR   mw_arrive
+
+; --- the cells the shots have arrived in -------------------------------------
 ;
-; **A step tests two cells: the one the shot leaves and the one it arrives in.**
+; **A step tests two cells: the one a shot leaves and the one it arrives in.**
 ; Either alone provably misses a case, and they are different cases at opposite
 ; ends of the field.
 ;
@@ -2109,45 +2132,45 @@ mw_step_ok:
 ; with shot and jet on the same column, so it was live rather than vacuous.
 ;
 ; Testing only the arrival cell after stepping misses the *launch cell*, which is
-; the defect the paragraph above `mw_live` measures. So neither order is a choice
-; between a defect and no defect; it is a choice between two defects, and both
-; halves of the argument now read straight through on one page.
+; the defect the paragraph above `mw_leave` measures. So neither order is a
+; choice between a defect and no defect; it is a choice between two defects, and
+; both halves of the argument now read straight through on one page.
 
 mw_arrive:
-        LDP  P_SWEEP            ; A is still the column just stepped into and Y
-        CALL plane_at           ; still the lane, so the same routine asks the
-                                ; same question of the new cell with nothing
-                                ; loaded for it at all
-        MNEZ                    ; status = a plane is standing where it landed
+        TCY  NIB_MWORK          ; X is still FILE_MISS. The cursor was last
+        TCMIY PH_ARRIVE         ; written by `mw_start`, so a kill below has to
+                                ; find this phase named before the scorer takes A
+        LDP  P_SWEEP
+        CALL mw_scan            ; the same routine asks the same question of the
+                                ; cells the rank has just stepped into
+        YNEC 0                  ; status = a plane is standing where a shot landed
         BR   mw_to_kill
-        BR   mw_next            ; `mw_next` reads the walk's index back out of
-                                ; RAM, so it needs nothing of Y either
+        LDP  P_JETS             ; the walk leaves for `jet_march`, which is where
+        BR   jet_march          ; every arm of the single-shot step routine left
+                                ; for - see the head of the page for why a
+                                ; stepping sweep skips the fire test
 
-; --- the next lane, or the end of the walk -----------------------------------
+; --- back into the walk, wherever it was ------------------------------------
 ;
 ; **Anything that reaches `mw_next` lands in the middle of a missile walk.** It
-; is the loop's continue, not a general "carry on with the sweep" - it reads
-; NIB_MWORK, steps it, and either walks another lane or leaves. `as_out2`
-; (P_SCORE) branches here, which is safe only because every entry into the
-; scorer is inside this walk; see the comment there before adding a third.
+; is the walk's resume, not a general "carry on with the sweep" - it reads the
+; phase cursor and re-enters the phase that cursor names. `as_out2` (P_SCORE)
+; branches here, which is safe only because every entry into the scorer is inside
+; this walk; see the comment there before adding a third.
+;
+; It does not step the cursor, and the head of the page is where that is argued.
 
 mw_next:
         LDX  FILE_MISS
         TCY  NIB_MWORK
-        IMAC                    ; A <- the next lane
-        TAM
-        A13AAC                  ; carry iff all three lanes have been walked
-        BR   mw_done
-        BR   mw_lane
-
-; The walk leaves for `jet_march`, which is where every arm of the single-shot
-; step routine left for. A sweep that steps the rank does not test the fire button, and did
-; not before either - see the head of the page for the empty-rank case, which is
-; the one that had to keep its old door.
-
-mw_done:
-        LDP  P_JETS
-        BR   jet_march
+        TMY                     ; Y <- the phase cursor
+        YNEC PH_LEAVE
+        BR   mw_n_stepping
+        BR   mw_leave
+mw_n_stepping:
+        YNEC PH_ARRIVE
+        BR   mw_lane            ; 0, 1 or 2: a lane, and Y is already standing on
+        BR   mw_arrive          ; it with X on FILE_MISS
 
 ; ============================================================================
 ; Page 8 - the score
@@ -2252,10 +2275,10 @@ as_to_done:
 ; `as_out` in chapter 1, is this routine's own return leg and not an entry.
 ;
 ; A future scorer reached from anywhere else - a bonus, a wave clear, anything
-; that is not a shot resolving - would land in `mw_next` and step NIB_MWORK,
-; walking lanes nothing asked it to walk and, whenever the index happened to be
-; at 2, ending that sweep's missile work early. Give any such caller its own
-; exit rather than reusing this one.
+; that is not a shot resolving - would land in `mw_next` and be dispatched on
+; NIB_MWORK, re-entering a phase of a walk nothing asked it to run and stepping
+; the rank a second time in the sweep. Give any such caller its own exit rather
+; than reusing this one.
 
 as_out2:
         LDP  P_HIT
@@ -2697,14 +2720,18 @@ tr_done:
 ; not. It is reached by branch like everything else in the loop, and it stays
 ; off P_HIT now the walk owns that page: the boat arm below crosses to
 ; `bship_kill` and the walk has no room to carry it. It moved off P_SWEEP, where
-; it used to live, when `plane_at` took that page's last thirty-one words - a
-; subroutine may not branch across a page, so it had to sit whole on one with
-; room, and this block may sit anywhere the loop can branch to.
+; it used to live, when the collision test took that page's last thirty-one
+; words - a subroutine may not branch across a page, so it had to sit whole on
+; one with room, and this block may sit anywhere the loop can branch to. It has
+; stayed here since, because `mw_scan` still wants that page and P_HIT is still
+; the fuller of the two.
 ;
-; **Entry contract: Y holds the lane the shot was flying down**, exactly as at
-; `mw_kill`, and for the same reason - `mw_advance` and `mw_step_ok` both reach
-; this with the walk's lane already in Y, and no nibble anywhere names "the"
-; shot's lane for it to be read back from.
+; **Entry contract: Y holds the lane the shot was flying down.** `mw_to_horizon`
+; reaches this with the walk's lane in Y, and no nibble anywhere names "the"
+; shot's lane for it to be read back from - NIB_MWORK holds a phase cursor, and
+; `mw_to_horizon` writing the lane into it is a spill for the return leg rather
+; than a name this arm could read. `mw_kill` derives its lane a third way, off
+; the plane it killed, which this arm has no plane for.
 ;
 ; The shot is spent whichever way the test goes, so the clear happens once, ahead
 ; of the test, while the lane is still in Y. `bship_kill` used to do its own on
@@ -2724,6 +2751,11 @@ tr_done:
 ; leaves by the scorer and so returns to `mw_next` like every other scoring path.
 ; A lane that ran out past the last column must not end the sweep's missile work:
 ; there are two more lanes behind it.
+;
+; `mw_next` resumes the phase its cursor names rather than stepping it, so both
+; arms come back to the lane they left. The clear above is what makes that
+; terminate - `mw_lane` finds nothing in flight and falls through to the advance -
+; and it is the second reason to do the clear here rather than in either arm.
 
 mw_horizon:
         TYA                     ; A <- the lane; Y is about to name a nibble
@@ -2738,7 +2770,8 @@ mw_horizon:
         BR   bship_kill         ; rides here and not between the test and the BR
 mw_h_next:
         LDP  P_HIT
-        BR   mw_next            ; back into the walk, at the next lane
+        BR   mw_next            ; back into the walk, at the lane it left, which
+                                ; the clear above has just emptied
 
 
 ; --- a rocket arrives in the launcher's lane ---------------------------------
@@ -2935,35 +2968,39 @@ bs_out:
 
 ; --- a jet is shot down ------------------------------------------------------
 ;
-; **Entry contract: NIB_J_SCR holds the column nibble of the plane slot that
-; matched.** Both arms of the hit test reach this label straight off `plane_at`,
-; which leaves the slot behind for exactly this - `mw_live` before the shot
-; leaves its cell, `mw_arrive` after it lands in the next one.
+; **Entry contract: Y holds the *row* nibble of the plane slot that matched** -
+; NIB_P_BASE or NIB_P_ROW1 - which is what `mw_scan` (P_SWEEP) answers with.
+; Both phases of the hit test reach this label through `mw_to_kill`, which loads
+; a page and branches and so hands the registers over untouched.
 ;
-; **The slot has to be carried in RAM and cannot be a register.** A lane used to
-; be enough, because a lane held one jet and clearing `FILE_JETS[lane]` was the
-; kill; now the row alone does not say *which* plane was hit, since both slots
-; can be in it. And this arm crosses into chapter 1 by way of the scorer, which
-; clobbers X, Y and A - the same reason the walk's own index lives in RAM.
+; **The slot travels in a register again, and the lane is derived from it.** The
+; per-lane form had to carry the slot in RAM, because it spent Y walking the
+; slots itself; and it had to read the lane back out of NIB_MWORK, because the
+; walk's cursor was the only nibble that survived every arm. Neither holds now:
+; the slot arrives in Y, and the plane's own row IS the lane its shot was flying
+; down - that is the property that made the collision test one comparison, and it
+; makes the lane free here too. The cursor is a phase and no longer names a lane
+; at all when a LEAVE or ARRIVE kill lands, so deriving it is not a preference.
 ;
-; **The lane is re-read from NIB_MWORK rather than taken out of Y**, which is a
-; change: the entry contract used to name Y, on the argument that a caller should
-; state the lane rather than have this routine infer it. `plane_at` spends Y on
-; its own answer, and the walk's index is the one nibble that survives every arm
-; between `mw_lane` and here - the kill arm included, which is why it is in RAM
-; at all. So the inference is now the safer of the two.
+; **The plane is cleared through the row nibble rather than a column nibble.**
+; The pair is (row, column) and the column is one nibble above, so `IYC` reaches
+; it - the same relationship `jm_capture` walks the other way with `DYN`.
 ;
-; The column comes out of FILE_MISS[lane] rather than off a register, and costs
-; nothing for it: this routine has to clear that nibble anyway, and `CLA` + `XMA`
-; reads it out and writes the zero back in the two words the clear alone would
-; have taken. So A is free at entry as well.
+; The column of the kill comes out of FILE_MISS[lane] rather than off a register,
+; and costs nothing for it: this routine has to clear that nibble anyway, and
+; `CLA` + `XMA` reads it out and writes the zero back in the two words the clear
+; alone would have taken. So A is free at entry as well.
 ;
-; It leaves through the scorer, which returns to `mw_next` and resumes the walk.
+; It leaves through the scorer, which returns to `mw_next`. The cursor is
+; untouched, so the phase that found this plane runs again and can find the
+; second one - see the head of P_HIT.
 
 mw_kill:
-        LDX  FILE_MISS
-        TCY  NIB_MWORK
-        TMA                     ; A <- the lane, which has to outlive Y below
+        LDX  FILE_JETS
+        TMA                     ; A <- the plane's row, which is the lane its
+                                ; killer was flying down, and it has to outlive Y
+        IYC                     ; Y <- that slot's column nibble, one above
+        TCMIY 0                 ; the plane is gone. A survives TCMIY
         LDX  FILE_STATE
         TCY  NIB_KLANE
         TAM                     ; the burst stands in the shot's own lane
@@ -2973,10 +3010,6 @@ mw_kill:
         XMA                     ; A <- the column the shot died on, and the spent
                                 ; shot is cleared in the same word
         A1AAC                   ; NIB_KCOL is the grid plus one, so 0 is "none"
-        LDX  FILE_JETS
-        TCY  NIB_J_SCR
-        TMY                     ; Y <- the matched slot's column nibble, from
-        TCMIY 0                 ; the hit test: the plane is gone. A survives
         LDX  FILE_STATE
         TCY  NIB_KCOL
         TAM
@@ -3629,7 +3662,7 @@ rd_jet_draw:
         BR   rd_jet_bit1        ; the NIB_RLNE round trip taken out, which is
         LDX  FILE_D3            ; sixteen instructions a plane on a walk that
         TCY  NIB_RGRID          ; runs every sweep - see the sweep-budget note at
-        TMY                     ; `plane_at`
+        TMY                     ; `mw_scan`
         LDX  FILE_D0
         SBIT 0                  ; row 0 lights plate 0
         BR   rd_jet_next

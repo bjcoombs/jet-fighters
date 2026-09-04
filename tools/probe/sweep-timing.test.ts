@@ -145,23 +145,33 @@ const SWEEP_WAIT_CYCLES = 64 * SWEEP_INSTRUCTIONS;
  * it whatever that task was, and the fact that this one did is not what made it
  * fragile. Recording the drift is the more useful half of this note.
  *
- * ## And it moved again for the collision test, entirely in the tail
+ * ## It moved for the collision test, and then most of the way back
  *
- * The squadron became two positioned planes, so the collision test is four
+ * The squadron became two positioned planes, so the collision test was four
  * comparisons per shot per half of the LEAVE/ARRIVE pair where a lane rank made
  * it one - two planes can be in the shot's row and only one is where the shot
- * is. All of it lands on the **one sweep in thirty-two** that steps the missile
- * rank, because `plane_at` is called up to six times on that pass and never on
- * any other. Measured over the same 300-sweep played drive:
+ * is - and the per-lane routine that asked it was called up to six times on the
+ * **one sweep in thirty-two** that steps the missile rank, and never on any
+ * other. Restructuring the walk into two per-plane phases takes that to two
+ * calls of `mw_scan` on that sweep whatever is in flight, because a plane knows
+ * its own row and `FILE_MISS[plane.row]` is one comparison. Measured over the
+ * same 300-sweep played drive, three ROMs apart:
  *
- *   |          | mean  | max  | worst dev | within 0.12 |
- *   | main     | 904.9 | 1100 | 0.2155    | 99.32%      |
- *   | this ROM | 898.0 | 1165 | 0.2973    | 98.63%      |
+ *   |                     | mean  | max  | worst dev | within 0.12 |
+ *   | before the entities | 904.9 | 1100 | 0.2155    | 99.32%      |
+ *   | per-lane, at task 12| 898.0 | 1165 | 0.2973    | 98.63%      |
+ *   | per-lane, re-measured on main at task 21
+ *                         | 895.7 | 1117 | 0.2471    | 98.29%      |
+ *   | per-plane phases    | 895.1 | 1108 | 0.2378    | 98.98%      |
  *
- * The *body* did not move. The mean went **down**, because the same task took
- * the `lane_bit` call out of `rd_jets`, which runs every sweep against the
- * walk's one in thirty-two - so `CYCLE_HZ_MAX / mean` is better than main's and
- * that bound is untouched.
+ * **The two per-lane rows are the same ROM**, and the 0.2973 the task that wrote
+ * it recorded had already decayed to 0.2471 by the time the next task measured
+ * it - the drive is a played game, and what it plays moves with every ROM in
+ * front of it. Read the last two rows against each other and nothing else: they
+ * are the pair this restructure was measured over.
+ *
+ * The *body* did not move either way, and the mean has drifted down across all
+ * four, so `CYCLE_HZ_MAX / mean` is untouched.
  *
  * ## What 0.35 still catches, demonstrated rather than asserted in prose
  *
@@ -183,10 +193,21 @@ const SWEEP_WAIT_CYCLES = 64 * SWEEP_INSTRUCTIONS;
  *
  * What this bound does catch is a **per-sweep cost regression concentrated in
  * the tail**, which is the failure mode the sweep budget actually has. Measured
- * against a real variant: an earlier loop form of `plane_at` cost 39
- * instructions a call against the shipped form's 12, took the longest sweep from
- * 1165 to 1297 cycles, and reddens this assertion at **0.4206**. That is the
- * control for this number, and it was run.
+ * against a real variant: an earlier loop form of the per-lane collision test
+ * cost 39 instructions a call against the shipped form's 12, took the longest
+ * sweep from 1165 to 1297 cycles, and reddens this assertion at **0.4206**. That
+ * is the control for this number, and it was run.
+ *
+ * ## Why 0.35 stayed at 0.35 when the tail came back under 0.25
+ *
+ * Task 21 measured 0.2378 and did not tighten this, which wants saying rather
+ * than leaving as a gap. Every candidate tighter setting is below the **0.3210**
+ * the second-cadence control above measures, and that control is the whole
+ * demonstration that this bound cannot do {@link SWEEP_BODY_TOLERANCE}'s job:
+ * move this to any figure that catches it and the split the two constants are
+ * documented as making stops being true. A tail bound at 0.25 would also sit 5%
+ * above the measured worst case, which is the "there was no room" the section
+ * above records as the reason the number had to move in the first place.
  */
 const SWEEP_JITTER_TOLERANCE = 0.35;
 
