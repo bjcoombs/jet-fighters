@@ -61,7 +61,8 @@ the physical machine:
 | `src/machine/board/` | PWM display state, K input matrix, R15 edge capture, power switch           |
 | `src/machine/tube/`  | Segment atlas and the renderer's phosphor rise/decay curves                 |
 | `src/machine/audio/` | Cycle-stamped edges band-limited into a waveform                            |
-| `src/ui/`, `src/input/`, `src/main.ts` | Case shell, keyboard/touch, and the frame driver          |
+| `src/app/`           | The frame driver - the one clock - plus canvas sizing and the mute toggle, shared by both pages |
+| `src/ui/`, `src/input/`, `src/main.ts` | Case shell, keyboard/touch, and the flat page's wiring   |
 
 Beside them, and not part of the build: `tools/trace/` is where
 `src/machine/tube/atlas.json` comes from. It traces the teardown photograph into segment
@@ -90,9 +91,11 @@ Prefer the second shape for anything a drive asserts on.
 
 The rules that keep it honest:
 
-- **Nothing owns a clock except `src/main.ts`.** The board advances only when stepped.
-  No module below `src/main.ts` may call `requestAnimationFrame`, `setTimeout`,
-  `Date.now()` or `performance.now()`.
+- **Nothing owns a clock except `src/app/driver.ts`.** The board advances only when
+  stepped. No other module under `src/` may call `requestAnimationFrame`, `setTimeout`,
+  `setInterval`, `Date.now()` or `performance.now()`; `src/app/clock-owner.test.ts` reads
+  the tree and fails on one. A page (`src/main.ts`, `src/viewer3d/`) builds its canvas
+  and controls and hands the driver a renderer; it never steps the board itself.
 - **`src/machine/` never touches the DOM** (the tube renderer takes a 2D context handed
   to it; it does not look one up). This is what lets `tools/probe/machine-probe.ts` and
   the spectral tests drive the real machine headlessly, and the Vitest `node` environment
