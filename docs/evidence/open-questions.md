@@ -1231,16 +1231,28 @@ A sound that blanks the tube and is followed by a changed score would be a scori
 so the video was read frame by frame to test exactly that. The result is **suggestive and
 does not close it**, and why it does not is the useful part.
 
-| Time | Score readout | Relation to a tone episode |
-| --- | --- | --- |
-| 13.30 s | **SCORE 18**, a red plane and cyan sprites on the glass | 0.8 s before episode 2 |
-| 13.70 s | not lit | before |
-| 14.05 s | not lit | before |
-| 14.55 s | not lit | just after |
-| **14.70 s** | **SCORE 20** | 0.2 s after |
-| 15.00 s | SCORE 20 | - |
-| 16.50 s | SCORE 20, a squadron of cyan jets | 1.2 s before episode 3 |
-| 17.00 - 22.50 s | not lit at any sample | spans episode 3 |
+| Frame | Time | Lit px | Score readout | Relation to a tone episode |
+| --- | --- | --- | --- | --- |
+| f399 | 13.30 s | 1078 | **SCORE 18**, a red plane and cyan sprites on the glass | 0.8 s before episode 2 |
+| f411 | 13.70 s | 0 | not lit | before |
+| f421 | 14.03 s | 0 | not lit | before |
+| f436 | 14.53 s | 0 | not lit | just after |
+| **f441** | **14.70 s** | 1396 | **SCORE 20** | 0.2 s after |
+| f450 | 15.00 s | 1522 | SCORE 20 | - |
+| f495 | 16.50 s | 1332 | SCORE 20, a squadron of cyan jets | 1.2 s before episode 3 |
+| - | 17.00 - 22.50 s | - | not lit *at any sample* - and the sampling is the artefact, see the addendum below | spans episode 3 |
+
+Frame indices and lit-pixel counts per `tools/video/score_windows.py --video`, which
+reads the committed crop `assets/reference/skill3-video-tube.mp4` and freezes the
+per-frame series into `assets/reference/skill3-video-score.csv`;
+`tools/probe/drives/score-windows.ts` re-derives the window census from that CSV under
+`npm test`. **Every timestamp here is frame / 30 fps and comes from nowhere else** - the
+fabricated row recorded below was a panel attributed to a timestamp that did not come
+from its own frame index. Two timestamps moved by a frame when they were re-derived this
+way, 14.05 -> 14.03 s and 14.55 -> 14.53 s; no reading changed. The digits themselves are
+read by a person off the labelled contact sheet the tool writes and are recorded against
+the frame index and count that back them - segment decoding was tried on this footage and
+is not reliable, for the reason `score_windows.py`'s header gives.
 
 **The score rises by two across the 14.10 s episode.** Two is `SCORE_JET_MID`, a jet shot
 in the ruler's `2` band, so a jet kill is the right size of event.
@@ -1345,21 +1357,29 @@ row. Failing that, two questions to the owner: what makes a sound about half a s
 long, and whether shooting a jet sounds different from firing at one. The second is a
 direct re-test of the `missileFire` row that point 3 collides with.
 
-Re-derive every audio figure here with `tools/probe/drives/march-tone-identity.ts`. The
-score readings come from the owner's video and are **not** re-derivable from the
-committed audio; the timestamps are given so they can be re-read from the source file.
+Re-derive every audio figure here with `tools/probe/drives/march-tone-identity.ts`, and
+every lit window and lit-pixel count with `tools/video/score_windows.py --video` (or
+`tools/probe/drives/score-windows.ts`, which reads the CSV that tool freezes and runs in
+`npm test`). What remains outside a tool is **the digits themselves**: they are read by a
+person off the labelled contact sheet, because segment decoding is not reliable at this
+scale, so each is recorded against the frame index and lit-pixel count that back it rather
+than against a wall-clock instant.
 
 ### Added from §17's pass over the same clip: episode 3 *can* be tested, and it says no
 
 Point 1 above rests on "the readout is unlit at every sample from 17.00 s to the end of
-the video". **That is a sampling artefact.** Read frame by frame from the registered
-stack rather than at half-second samples, the score digits are lit in **nine separate
-windows after 17.00 s**: 17.03-17.07, and then 19.93-20.17, 20.33-20.43, 20.60-20.70,
-20.87-20.97, 21.13-21.23, 21.40-21.50, 21.67-21.77 and 21.93-21.97. The last seven are a
-regular ~270 ms flash, which is the end-of-game display rather than play.
+the video". **That is a sampling artefact.** Read frame by frame rather than at
+half-second samples, the score digits are lit in **nine separate windows after 17.00 s**:
+f511-f512 (17.03-17.07 s), and then f598-f605 (19.93-20.17), f610-f613 (20.33-20.43),
+f618-f621 (20.60-20.70), f626-f629 (20.87-20.97), f634-f637 (21.13-21.23), f642-f645
+(21.40-21.50), f650-f653 (21.67-21.77) and f658-f659 (21.93-21.97). The last seven are a
+regular ~270 ms flash, which is the end-of-game display rather than play. Fifteen windows
+across the whole clip, of which these are the last nine, per
+`tools/video/score_windows.py --video`.
 
-**Eight of the nine read 20.** The ninth is the last flash of the clip, 21.93-21.97 s,
-two frames, heavily overexposed - and its tens digit is unmistakably a **3**, not a 2:
+**Eight of the nine read 20.** The ninth is the last flash of the clip, f658-f659
+(21.93-21.97 s), two frames, heavily overexposed - `score_windows.py` flags it CLIPPED at
+peak luminance 255 against 207-219 on the ordinary windows - and its tens digit is unmistakably a **3**, not a 2:
 the bottom-left segment is dark and the bottom-right lit, the opposite of every reading
 before it. What it means is not established. A score cannot climb after the game has
 ended, so the candidates are a partial multiplex catch (the following frame lights the
@@ -1368,23 +1388,37 @@ saturated segment, or something the end-of-game display does that nothing here m
 It is recorded and not explained.
 
 **It does not bear on episode 3**, which is what this addendum is about: the two
-readings that bracket the episode are 17.03-17.07 s and 19.93-20.17 s, and both are
-plainly 20. So episode 3 (17.70-18.11 s) has a legible score 0.6 s
+readings that bracket the episode are f511-f512 (17.03-17.07 s) and f598-f605
+(19.93-20.17 s), and both are plainly 20. So episode 3 (17.70-18.11 s) has a legible score 0.6 s
 before it and a legible score 1.8 s after it, and **the score did not change across it**:
 
-| Time | Score readout | Relation to episode 3 |
-| --- | --- | --- |
-| 16.60 s | SCORE 20 | 1.1 s before |
-| 17.03 - 17.07 s | **SCORE 20** | 0.6 s before |
-| 19.93 - 20.33 s | **SCORE 20** | 1.8 s after, tube now flashing |
+| Frames | Time | Peak lit px | Score readout | Relation to episode 3 |
+| --- | --- | --- | --- | --- |
+| f498 | 16.60 s | 1314 | SCORE 20 | 1.1 s before |
+| f511-f512 | 17.03 - 17.07 s | 1312 | **SCORE 20** | 0.6 s before |
+| f598-f605 | 19.93 - 20.17 s | 1496 | **SCORE 20** | 1.8 s after, tube now flashing |
+| f610-f613 | 20.33 - 20.43 s | 1490 | **SCORE 20** | 2.2 s after, tube now flashing |
 
-Every row is a frame measured lit before it was read: 536, 564, 409, 640 and 704 lit
-pixels in the digit box against a 40-pixel floor. **A fifth row said "21.33 s, SCORE 20"
-and has been removed - that frame is dark, 0 lit pixels.** It came from misreading a
-contact sheet whose frame list contained a duplicate, so a panel was attributed to the
-wrong timestamp. Nothing else in this addendum depended on it, and the three rows that
-bracket the episode are unaffected, but it was a row of data that was never observed and
-it should not have been written.
+Every row is a frame measured lit before it was read, against a 40-pixel floor, and every
+count is re-derivable: `python3 tools/video/score_windows.py --video --csv` writes them,
+`assets/reference/skill3-video-score.csv` holds them and
+`tools/probe/drives/score-windows.ts` asserts them in `npm test`. **A fifth row said
+"21.33 s, SCORE 20" and has been removed - that frame is f640 and it is dark, 0 lit
+pixels.** It came from misreading a contact sheet whose frame list contained a duplicate,
+so a panel was attributed to the wrong timestamp. Nothing else in this addendum depended
+on it, and the rows that bracket the episode are unaffected, but it was a row of data that
+was never observed and it should not have been written. `score_windows.py --video --frame
+640 --strict` is that request re-run: it exits non-zero rather than offering a panel to
+read digits off.
+
+**The counts above are not the counts this addendum first carried, and the difference is
+the point.** It quoted 536, 564, 409, 640 and 704 lit pixels, measured on the registered
+stack of the owner's full clip - a file that is not in this repository, so nobody else
+could reach those numbers. The committed crop is a different crop of the same recording at
+a different scale, so its digit box holds more pixels and its counts run 1078-1522 on the
+same frames. **The frame indices, the fifteen-window census and the two clipped windows are
+identical in both**, which is what says the two are measuring the same thing; the counts
+are not comparable across them and only the re-derivable ones are quoted now.
 
 **The census is therefore n = 2, one for and one against**, not n = 1 suggestive.
 Episode 2 has the score rising by two across it; episode 3 has it flat across it. That
@@ -1403,9 +1437,15 @@ about is softer than it looks. That is a reason to re-measure `missileFire`, not
 to prefer the kill reading.
 
 Method and re-derivation: `tools/video/clip.py` then `tools/video/measure.py` for the
-audio figures; the score windows come from thresholding cyan excess in the digit box of
-the registered stack, which is the same colour-excess rule the rest of this analysis
-uses. The tube-blank question in §16 is untouched by any of this.
+audio figures. The score windows come from thresholding cyan excess in the digit box -
+the same colour-excess rule the rest of this analysis uses - and are now produced by
+`tools/video/score_windows.py --video --csv` off the committed crop rather than off the
+uncommitted full clip, so anyone with this repository can reach them:
+
+    python3 tools/video/score_windows.py --video --csv --sheet /tmp/score.png
+    npx vite-node tools/probe/drives/score-windows.ts
+
+The tube-blank question in §16 is untouched by any of this.
 
 ## 16. The real machine blinks about once a second - ANSWERED: it is the speaker, and which sounds
 
