@@ -2,7 +2,9 @@
 
 A browser emulation of the 1979 Gakken/CGL Jet Fighters tabletop game.
 
-**[Play it here](https://bjcoombs.github.io/jet-fighters/)**
+**[Play it here](https://bjcoombs.github.io/jet-fighters/)** - and see the unit in three
+dimensions, orbitable and taken apart, at [`3d.html`](https://bjcoombs.github.io/jet-fighters/3d.html)
+(`docs/prd/jet-fighters-3d.md`; the model comes from `tools/model/`).
 
 | The original 1979 CGL unit | This emulator |
 | :---: | :---: |

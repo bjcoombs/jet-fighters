@@ -394,6 +394,14 @@ export function createHelpOverlay(doc: Document = document): HTMLElement {
     panel.appendChild(row);
   }
 
+  // The same unit in three dimensions, on its own page. A relative link, so it
+  // resolves under the deployed base path as well as the dev server's.
+  const link = doc.createElement('a');
+  link.href = '3d.html';
+  link.textContent = 'See the unit in 3D';
+  link.style.cssText = 'display:block;margin-top:8px;color:#8fc7ff;';
+  panel.appendChild(link);
+
   let open = false;
   const setOpen = (next: boolean): void => {
     open = next;
