@@ -78,6 +78,14 @@ describe('controlAtFacePoint', () => {
     const scope = D['scope.circle_centre'].value;
     expect(controlAtFacePoint(...faceToLocal(scope[0], scope[1]))).toBeNull();
   });
+
+  it('widens every control by the slack a finger needs', () => {
+    const f = D['controls.fire.centre'].value;
+    const r = D['controls.fire.ring_radius'].value;
+    const [x, z] = faceToLocal(f[0] + r + 4, f[1]);
+    expect(controlAtFacePoint(x, z)).toBeNull();
+    expect(controlAtFacePoint(x, z, 6)).toBe('fire_cap');
+  });
 });
 
 describe('inputForPress', () => {

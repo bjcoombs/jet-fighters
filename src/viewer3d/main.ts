@@ -15,7 +15,9 @@ import { createExploder } from './explode.js';
 import { buildExplodePanel, buildInfoPanel, buildTooltip, titleOf } from './panel.js';
 import { createPicker } from './picking.js';
 import { createConsoleScene, type Part } from './scene.js';
+import { TOUCH_BAR_HEIGHT_PX, buildTouchBar, isCoarsePointer } from './touch-bar.js';
 import { createTubeTextures } from './tube-texture.js';
+import { createVisibility } from './visibility.js';
 import { Box3, Mesh, Plane, Raycaster, Vector2, Vector3 } from 'three';
 
 const MODEL_URL = `${import.meta.env.BASE_URL}models/console.glb`;
@@ -49,12 +51,24 @@ async function start(mount: HTMLElement): Promise<void> {
   }
   status.remove();
 
-  // Taking it apart, and pointing at what is inside.
+  // Fingers: a control bar along the bottom, and wider targets on the model.
+  // `#touch` in the URL shows the bar on any device, for trying it.
+  const coarse = isCoarsePointer() || window.location.hash.includes('touch');
+  const slackMm = coarse ? 6 : 0;
+  const panelBottom = coarse ? TOUCH_BAR_HEIGHT_PX + 8 : 12;
+
+  // Taking it apart, hiding what is in the way, and pointing at what is inside.
   const exploder = createExploder(scene.parts);
+  const visibility = createVisibility(scene.parts);
   const picker = createPicker(canvas, scene.camera, scene.parts);
   const tooltip = buildTooltip();
-  const info = buildInfoPanel();
-  mount.append(buildExplodePanel(exploder), tooltip.el, info.el);
+  const info = buildInfoPanel((part) => visibility.hide(part.name), panelBottom);
+  mount.append(buildExplodePanel(exploder, visibility, panelBottom), tooltip.el, info.el);
+  // With the case off the board is the thing to look at; bring the camera to it.
+  visibility.onChange(() => {
+    const pcb = scene.parts.get('pcb');
+    if (pcb && visibility.hidden.length > 0 && visibility.isHidden('front_shell')) focusOn(pcb);
+  });
 
   // The flag pivots on its hub: move the geometry so the part's origin is there.
   const flag = scene.parts.get('skill_flag');
@@ -73,6 +87,9 @@ async function start(mount: HTMLElement): Promise<void> {
     lever: driver.board.input.lever,
     skill: driver.board.input.skill,
   });
+  if (coarse) {
+    mount.appendChild(buildTouchBar({ apply: driver.apply, state: stateOf }));
+  }
   const controlUnderPointer = (x: number, y: number): ControlName | null => {
     const hit = picker.pick(x, y);
     if (!hit) return null;
@@ -80,7 +97,7 @@ async function start(mount: HTMLElement): Promise<void> {
     if (hit.part.name in CONTROL_UNDER) return CONTROL_UNDER[hit.part.name];
     if (hit.part.name === 'front_shell') {
       const local = hit.part.object.worldToLocal(hit.point.clone());
-      return controlAtFacePoint(local.x, local.z);
+      return controlAtFacePoint(local.x, local.z, slackMm);
     }
     return null;
   };

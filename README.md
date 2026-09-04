@@ -147,6 +147,12 @@ tube still lit, click the chip to be told what it is, and play - the fire cap, t
 slide, the launcher lever and the skill flag on the model close the same contacts the flat
 page's controls do, and the keyboard works throughout.
 
+On a phone the four controls are also a bar of buttons along the bottom (lane up and
+down, fire held while touched, power, skill), because the modelled ones are a few
+millimetres across; add `#touch` to the address to see the bar on a desktop. "Bare
+board" takes the case off and leaves the board and the lit tube to play; clicking any
+part offers to hide it, and "Show all" brings everything back.
+
 **What it is built from.** No dimension was measured with a ruler; the owner has no further
 access to the unit for that. Every figure is read off two photographs against the one
 object of known size in them, the TMS1370's 2.54 mm pin pitch, and recorded with its source

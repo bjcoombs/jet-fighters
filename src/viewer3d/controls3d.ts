@@ -100,16 +100,20 @@ export function laneFromSlotOffset(offsetMm: number): 0 | 1 | 2 {
   return best;
 }
 
-/** Which control a hit on the front shell's face is on, if any: the wells around the small parts count. */
-export function controlAtFacePoint(localX: number, localZ: number): ControlName | null {
+/**
+ * Which control a hit on the front shell's face is on, if any: the wells around
+ * the small parts count, and `slackMm` widens them further - a finger needs
+ * more than a pointer does.
+ */
+export function controlAtFacePoint(localX: number, localZ: number, slackMm = 0): ControlName | null {
   const [lx, lz] = faceToLocal(D['controls.lever.well_centre'].value[0], D['controls.lever.well_centre'].value[1]);
-  if (Math.hypot(localX - lx, localZ - lz) <= D['controls.lever.well_radius'].value) return 'lever_pin';
+  if (Math.hypot(localX - lx, localZ - lz) <= D['controls.lever.well_radius'].value + slackMm) return 'lever_pin';
   const [fx, fz] = faceToLocal(D['controls.fire.centre'].value[0], D['controls.fire.centre'].value[1]);
-  if (Math.hypot(localX - fx, localZ - fz) <= D['controls.fire.ring_radius'].value) return 'fire_cap';
+  if (Math.hypot(localX - fx, localZ - fz) <= D['controls.fire.ring_radius'].value + slackMm) return 'fire_cap';
   const [sx, sz] = faceToLocal(D['controls.skill.hub_centre'].value[0], D['controls.skill.hub_centre'].value[1]);
-  if (Math.hypot(localX - sx, localZ - sz) <= D['controls.skill.mark_radius'].value + 4) return 'skill_flag';
+  if (Math.hypot(localX - sx, localZ - sz) <= D['controls.skill.mark_radius'].value + 4 + slackMm) return 'skill_flag';
   const [px, pz] = faceToLocal(D['controls.power.thumb_centre'].value[0], D['controls.power.thumb_centre'].value[1]);
-  if (Math.abs(localX - px) <= 8 && Math.abs(localZ - pz) <= 14) return 'power_thumb';
+  if (Math.abs(localX - px) <= 8 + slackMm && Math.abs(localZ - pz) <= 14 + slackMm) return 'power_thumb';
   return null;
 }
 
