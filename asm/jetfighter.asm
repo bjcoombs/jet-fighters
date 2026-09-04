@@ -2137,9 +2137,10 @@ mw_lane_next:
 ; both halves of the argument now read straight through on one page.
 
 mw_arrive:
-        TCY  NIB_MWORK          ; X is still FILE_MISS. The cursor was last
-        TCMIY PH_ARRIVE         ; written by `mw_start`, so a kill below has to
-                                ; find this phase named before the scorer takes A
+        TCY  NIB_MWORK          ; X is still FILE_MISS. The cursor still names
+        TCMIY PH_ARRIVE         ; the LEAVE phase, or a lane if `mw_to_horizon`
+                                ; spilled one, so a kill below has to find this
+                                ; phase named before the scorer takes A
         LDP  P_SWEEP
         CALL mw_scan            ; the same routine asks the same question of the
                                 ; cells the rank has just stepped into
