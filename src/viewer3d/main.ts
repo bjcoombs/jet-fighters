@@ -10,8 +10,12 @@ import { opla, rom } from '../../asm/jetfighter.asm';
 import { createDriver } from '../app/driver.js';
 import { buildMuteToggle } from '../app/mute-toggle.js';
 import { createHelpOverlay, createInputSystem } from '../input/index.js';
-import { createConsoleScene } from './scene.js';
+import { createExploder } from './explode.js';
+import { buildExplodePanel, buildInfoPanel, buildTooltip, titleOf } from './panel.js';
+import { createPicker } from './picking.js';
+import { createConsoleScene, type Part } from './scene.js';
 import { createTubeTextures } from './tube-texture.js';
+import { Box3, Vector3 } from 'three';
 
 const MODEL_URL = `${import.meta.env.BASE_URL}models/console.glb`;
 
@@ -44,15 +48,84 @@ async function start(mount: HTMLElement): Promise<void> {
   }
   status.remove();
 
+  // Taking it apart, and pointing at what is inside.
+  const exploder = createExploder(scene.parts);
+  const picker = createPicker(canvas, scene.camera, scene.parts);
+  const tooltip = buildTooltip();
+  const info = buildInfoPanel();
+  mount.append(buildExplodePanel(exploder), tooltip.el, info.el);
+
+  // A click is a press and release without much travel; anything longer is
+  // the orbit, and orbiting over a part must not select it.
+  let pressAt: { x: number; y: number } | null = null;
+  canvas.addEventListener('pointerdown', (e) => {
+    pressAt = { x: e.clientX, y: e.clientY };
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    const hit = picker.pick(e.clientX, e.clientY);
+    picker.highlight(hit?.part ?? null);
+    if (hit) {
+      tooltip.show(titleOf(hit.part.name), e.clientX, e.clientY);
+      canvas.style.cursor = 'pointer';
+    } else {
+      tooltip.hide();
+      canvas.style.cursor = '';
+    }
+  });
+  canvas.addEventListener('pointerleave', () => {
+    picker.highlight(null);
+    tooltip.hide();
+  });
+  canvas.addEventListener('pointerup', (e) => {
+    if (!pressAt) return;
+    const moved = Math.hypot(e.clientX - pressAt.x, e.clientY - pressAt.y);
+    pressAt = null;
+    if (moved > 6) return;
+    const hit = picker.pick(e.clientX, e.clientY);
+    if (hit) {
+      info.show(hit.part);
+      focusOn(hit.part);
+    } else {
+      info.hide();
+    }
+  });
+
+  // Easing the camera onto a part: target to its centre, distance to fit it,
+  // direction kept.
+  let focus: { fromPos: Vector3; toPos: Vector3; fromTarget: Vector3; toTarget: Vector3; start: number } | null = null;
+  const focusOn = (part: Part): void => {
+    const bounds = new Box3().setFromObject(part.object);
+    const centre = bounds.getCenter(new Vector3());
+    const radius = bounds.getSize(new Vector3()).length() / 2;
+    const dir = scene.camera.position.clone().sub(scene.controls.target).normalize();
+    const dist = Math.max(0.12, radius * 2.6);
+    focus = {
+      fromPos: scene.camera.position.clone(),
+      toPos: centre.clone().add(dir.multiplyScalar(dist)),
+      fromTarget: scene.controls.target.clone(),
+      toTarget: centre,
+      start: -1,
+    };
+  };
+
   const frame = (now: number): void => {
     textures.upload(now, driver.board.power.state === 'on');
+    exploder.update(now);
+    if (focus) {
+      if (focus.start < 0) focus.start = now;
+      const t = Math.min(1, (now - focus.start) / 500);
+      const k = 1 - (1 - t) ** 3;
+      scene.camera.position.lerpVectors(focus.fromPos, focus.toPos, k);
+      scene.controls.target.lerpVectors(focus.fromTarget, focus.toTarget, k);
+      if (t >= 1) focus = null;
+    }
     scene.render();
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
 
   if (import.meta.env.DEV) {
-    (globalThis as { jetFighters3d?: unknown }).jetFighters3d = { scene, driver, textures };
+    (globalThis as { jetFighters3d?: unknown }).jetFighters3d = { scene, driver, textures, exploder, picker };
   }
 }
 
