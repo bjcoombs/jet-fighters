@@ -52,8 +52,8 @@
       "module_left": 1440,
       "module_right": 2800,
       "rim_above_board_mm": {
-        "$comment": "Estimate, used only for the perspective correction: the rim is nearer the camera than the board by about this much. Basis: the tube envelope has to clear the board under the window, and the standoff bosses put the board a few mm off the back floor. Bound +/-10 mm.",
-        "value": 15,
+        "$comment": "Estimate, used only for the perspective correction: the rim is nearer the camera than the board by about this much. Bounded from the photograph itself: the board's right edge (pcb.x[1]) reads 7 px inside the shell's outer edge, and a board plane 15 mm below the rim would have moved it 70 px inward, so the two planes are within a few mm of each other in this frame. Bound +/-5 mm.",
+        "value": 3,
         "kind": "estimated"
       }
     },
@@ -103,6 +103,28 @@
       "radius": 40
     },
     "screws": { "method": "eye", "centres": [[2170, 870], [1190, 1550], [2170, 1700], [3490, 1620]] },
+    "discretes": {
+      "$comment": "Small parts read by eye off the gridded board photograph as [x0, y0, x1, y1] boxes, with what each is where the silkscreen says. The toothed black disc beside the 1815/2120 labels is not identified.",
+      "method": "eye",
+      "parts": [
+        {"kind": "resistor", "box": [3160, 1030, 3200, 1130], "label": "2.2K"},
+        {"kind": "resistor", "box": [2850, 1470, 2890, 1570], "label": "47K"},
+        {"kind": "resistor", "box": [1590, 1780, 1690, 1820], "label": "470"},
+        {"kind": "resistor", "box": [1920, 1670, 2030, 1710], "label": "4.7K"},
+        {"kind": "resistor", "box": [1920, 1735, 2030, 1775], "label": "2.2K"},
+        {"kind": "resistor", "box": [3320, 1470, 3420, 1500], "label": ""},
+        {"kind": "resistor", "box": [3320, 1500, 3420, 1530], "label": ""},
+        {"kind": "resistor", "box": [1490, 1290, 1530, 1400], "label": ""},
+        {"kind": "diode", "box": [3350, 1230, 3380, 1330], "label": ""},
+        {"kind": "diode", "box": [3430, 1280, 3460, 1380], "label": ""},
+        {"kind": "diode", "box": [3510, 1450, 3540, 1550], "label": ""},
+        {"kind": "diode", "box": [2290, 1740, 2400, 1770], "label": ""},
+        {"kind": "diode", "box": [1740, 1640, 1830, 1670], "label": ""},
+        {"kind": "transistor", "box": [1975, 1590, 2025, 1640], "label": "1815"},
+        {"kind": "transistor", "box": [2200, 1590, 2250, 1640], "label": "2120"},
+        {"kind": "disc_capacitor", "box": [2900, 1430, 2950, 1470], "label": "47P"}
+      ]
+    },
     "electrolytics": {
       "$comment": "Radial electrolytic capacitors lying on the board, as [x0, y0, x1, y1] of the can.",
       "method": "eye",

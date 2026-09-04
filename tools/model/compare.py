@@ -40,12 +40,14 @@ def channels(im: Image.Image):
 
 def red_mask(im):
     r, g, b, s, v = channels(im)
-    return (r > 0.4) & (s > 0.45) & (r > g * 1.5) & (r > b * 1.5)
+    # The shell's red against the board's brown: both are red-dominant, the shell's
+    # red more than twice its green, the board's less.
+    return (r > 0.4) & (s > 0.45) & (r > g * 2.4) & (r > b * 1.5)
 
 
 def blue_mask(im):
     r, g, b, s, v = channels(im)
-    return (b > 0.35) & (b > r * 1.4) & (b > g * 1.05) & (s > 0.35)
+    return (b > 0.35) & (b > r * 1.4) & (b > g * 1.05) & (s > 0.25)
 
 
 def dark_mask(im):
@@ -126,12 +128,14 @@ def features_board(im: Image.Image) -> dict[str, tuple[float, float]]:
         return ((p[0] - cx0) / w, (p[1] - cy0) / h)
 
     r, g, b, s, v = channels(im)
-    brown = (r > 0.3) & (r < 0.8) & (g > 0.12) & (g < 0.5) & (b < 0.4) & (s > 0.3) & (s < 0.85) & ~red
+    # The board's brown against the shell's red: same hue family, lower saturation
+    # and value. Thresholds are wide because the render's shading is not the sun's.
+    brown = (r > 0.2) & (r > g * 1.3) & (r < g * 2.4) & (r > b * 1.6) & (s > 0.3) & (s < 0.9) & (v > 0.12)
     board = bbox(brown[cy0:cy1, cx0:cx1], min_count=80)
     if board:
         out["board_left_top"] = frac((board[0] + cx0, board[1] + cy0))
         out["board_right_bottom"] = frac((board[2] + cx0, board[3] + cy0))
-    dark = v < 0.2
+    dark = (v < 0.3) & (s < 0.35)
     tube = bbox(dark[cy0 + h // 4 : cy1 - h // 4, cx0 + w // 4 : cx1 - w // 4], min_count=150)
     if tube:
         out["tube_left_top"] = frac((tube[0] + cx0 + w // 4, tube[1] + cy0 + h // 4))
@@ -148,8 +152,10 @@ def photo_features_front() -> dict[str, tuple[float, float]]:
     the hand in frame passes a red mask, and the glass reflects too much for a dark one."""
     F = PIXELS["front"]
     sh = F["shell"]
+    # The whole silhouette, as a red mask on the render sees it: module top to the
+    # wings' lower edge, which hangs below the module's.
     x0, y0 = sh["left"], sh["module_top"]
-    w, h = sh["right"] - sh["left"], sh["module_bottom"] - sh["module_top"]
+    w, h = sh["right"] - sh["left"], max(sh["module_bottom"], sh["wing_bottom"]) - sh["module_top"]
 
     def frac(p):
         return ((p[0] - x0) / w, (p[1] - y0) / h)
@@ -172,7 +178,7 @@ def photo_features_board() -> dict[str, tuple[float, float]]:
     B = PIXELS["board"]
     sh = B["shell"]
     x0, y0 = sh["left"], sh["module_top"]
-    w, h = sh["right"] - sh["left"], sh["module_bottom"] - sh["module_top"]
+    w, h = sh["right"] - sh["left"], max(sh["module_bottom"], sh["wing_bottom"]) - sh["module_top"]
 
     def frac(p):
         return ((p[0] - x0) / w, (p[1] - y0) / h)
