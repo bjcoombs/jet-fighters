@@ -82,8 +82,10 @@ clips are hundreds of megabytes and are *not* committed - `IMG_6113.mov` and the
 skill-3 clip are referenced by path, so a tool that reads one runs only where the file
 is. Where a figure needs to be re-derivable in a clean checkout, the *reduction* is
 committed instead: `assets/reference/skill3-video-tube.mp4` is a 1 MB crop of the tube
-face and `skill3-video-cells.csv` is that crop reduced to per-cell brightness, which is
-what lets `tools/probe/drives/missile-transit.ts` run in CI with no video decode at all.
+face, `skill3-video-cells.csv` is that crop reduced to per-cell brightness and
+`skill3-video-score.csv` is the same crop reduced to the score readout's lit-pixel count
+per frame, which is what lets `tools/probe/drives/missile-transit.ts` and
+`score-windows.ts` run in CI with no video decode at all.
 Prefer the second shape for anything a drive asserts on.
 
 The rules that keep it honest:
