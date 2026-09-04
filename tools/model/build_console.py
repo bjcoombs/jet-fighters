@@ -369,7 +369,10 @@ def build_front_shell() -> bpy.types.Object:
     tr = D["controls.power.travel_y"]
     cut(shell, box("switch_slot", fx(p[0] - ps[0] / 2 - 0.5), fx(p[0] + ps[0] / 2 + 0.5), fy(tr[1] + ps[1] / 2 + 0.5), fy(tr[0] - ps[1] / 2 - 0.5), Z_WING - WALL - 1, Z_WING + 1))
     lw = D["controls.lever.well_centre"]
+    # The well is a recess with a floor, deeper than the wing's wall; the floor is
+    # added back under it, and only the slot goes through.
     cut(shell, cylinder("lever_well", fx(lw[0]), fy(lw[1]), D["controls.lever.well_radius"], Z_WING - 4, Z_WING + 1))
+    fuse(shell, cylinder("well_floor", fx(lw[0]), fy(lw[1]), D["controls.lever.well_radius"] + 1.0, Z_WING - 4 - WALL, Z_WING - 4 + 0.01, red))
     sl = D["controls.lever.slot"]
     cut(shell, box("lever_slot", fx(sl["x"][0]), fx(sl["x"][1]), fy(sl["y"][1]), fy(sl["y"][0]), Z_WING - WALL - 5, Z_WING + 1))
     sk = D["controls.skill.hub_centre"]
@@ -809,10 +812,13 @@ def build_board_hardware(board: bpy.types.Object) -> list[bpy.types.Object]:
     out.append(hub)
 
     bx_, by_ = D["battery_box.x"], D["battery_box.y"]
-    bb = box("battery_box", fx(clamp_x(bx_[0])), fx(bx_[1]), fy(clamp_y(by_[1])), fy(by_[0]), Z_BOARD_TOP, Z_BOARD_TOP + D["battery_box.height"], MATERIALS["red_abs"])
+    # On the back shell's floor, beside the board, not on it: the board's outline
+    # starts to the box's right.
+    z_floor = -Z_BACK + WALL
+    bb = box("battery_box", fx(clamp_x(bx_[0])), fx(bx_[1]), fy(clamp_y(by_[1])), fy(by_[0]), z_floor, z_floor + D["battery_box.height"], MATERIALS["red_abs"])
     contacts = []
     for k, xo in enumerate((10.0, 30.0)):
-        contacts.append(box(f"contact{k}", fx(bx_[0] + xo), fx(bx_[0] + xo + 6), fy(by_[0] + 6), fy(by_[0] + 1), Z_BOARD_TOP + 2, Z_BOARD_TOP + D["battery_box.height"] - 4, steel))
+        contacts.append(box(f"contact{k}", fx(bx_[0] + xo), fx(bx_[0] + xo + 6), fy(by_[0] + 6), fy(by_[0] + 1), z_floor + 4, z_floor + D["battery_box.height"] - 3, steel))
     join(bb, *contacts)
     extras(bb, "The battery box under the left wing, with its two contacts, loaded through the door in the back.", "board-L1001568.jpg", (0, 0, 30))
     parent(bb, board)

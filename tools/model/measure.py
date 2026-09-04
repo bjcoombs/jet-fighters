@@ -260,7 +260,7 @@ def main(argv: list[str]) -> int:
     bb = B["battery_box"]
     d.measured("battery_box.x", bxr(*bb["x"]), f"{src_b} battery_box.x")
     d.measured("battery_box.y", byr(*bb["y"]), f"{src_b} battery_box.y")
-    d.estimated("battery_box.height", 22.0, "The box is as tall as the cells it holds plus a wall; no side view. It must clear the wing's inner face, 9 mm above the rim.", 6.0)
+    d.estimated("battery_box.height", 18.0, "AA cells are 14.5 mm across, plus the box's walls. The box stands on the back shell's floor beside the board - the board's outline starts to its right - and reaches about the rim.", 4.0)
 
     for name in ("power_switch_body", "dc_jack", "resistor_row", "lamp"):
         e = B[name]

@@ -174,7 +174,7 @@ which is how far a side view would be expected to move it.
 | Tube thickness | 11 | Flat VFD envelopes of this size | 2 |
 | Tube face above board | 8 | The envelope sits on its shroud; the phosphor is on the back glass | 3 |
 | Board thickness | 1.6 | Single-sided phenolic | 0.4 |
-| Battery box height | 22 | As tall as its cells plus a wall; must clear the wing's inner face | 6 |
+| Battery box height | 18 | AA cells 14.5 mm across plus walls; it stands on the back shell's floor beside the board, not on the board, and reaches about the rim | 4 |
 | Fire cap, lever pin, skill flag heights | 6, 4, 5 | Read off the front photograph's shading | 2 |
 
 The assembled unit, then, is about 340 x 145 x 36 mm at the module and 31 mm at the

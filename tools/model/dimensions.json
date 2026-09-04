@@ -11,10 +11,10 @@
   },
   "dimensions": {
     "battery_box.height": {
-      "value": 22.0,
+      "value": 18.0,
       "kind": "estimated",
-      "basis": "The box is as tall as the cells it holds plus a wall; no side view. It must clear the wing's inner face, 9 mm above the rim.",
-      "bound_mm": 6.0
+      "basis": "AA cells are 14.5 mm across, plus the box's walls. The box stands on the back shell's floor beside the board - the board's outline starts to its right - and reaches about the rim.",
+      "bound_mm": 4.0
     },
     "battery_box.x": {
       "value": [
