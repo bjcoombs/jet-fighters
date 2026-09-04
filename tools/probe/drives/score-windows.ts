@@ -119,15 +119,45 @@ export interface ScoreWindowsResult {
   readonly peakLitPixels: number;
 }
 
+/** The regeneration this drive's CSV comes from, named in every parse failure. */
+const REGENERATE = 'regenerate it with tools/video/score_windows.py --video --csv';
+
+/**
+ * One CSV field as a number, or a parse failure naming the field.
+ *
+ * An empty or non-numeric field coerces to `0` or `NaN` under `Number`, and both
+ * pass silently into the census: `NaN >= LIT_FLOOR` is false and `0` is a dark
+ * frame, so a truncated write of this file would read as a readout that went
+ * out. That is the same shape of fault as the fabricated row - darkness taken
+ * for data - so it is rejected rather than measured.
+ */
+const numberAt = (fields: readonly string[], column: number, name: string, row: number): number => {
+  const raw = fields[column].trim();
+  const value = Number(raw);
+  if (raw.length === 0 || !Number.isFinite(value)) {
+    throw new Error(
+      `${SCORE_CSV} row ${row} has ${name} "${fields[column]}", which is not a finite number ` +
+        `- ${REGENERATE}`,
+    );
+  }
+  return value;
+};
+
 const readSeries = (): ScoreFrame[] => {
   const lines = readFileSync(SCORE_CSV, 'utf8')
     .split('\n')
     .filter((line) => line.length > 0 && !line.startsWith('#'));
+  if (lines.length < 2) {
+    throw new Error(
+      `${SCORE_CSV} carries no frames: ${lines.length} non-comment lines, where a series ` +
+        `needs a header and a row per frame - ${REGENERATE}`,
+    );
+  }
   const header = lines[0].split(',');
   if (header.join(',') !== 'frame,lit_pixels,lit,peak_luma') {
     throw new Error(
       `${SCORE_CSV} header is "${header.join(',')}", expected "frame,lit_pixels,lit,peak_luma" ` +
-        '- regenerate it with tools/video/score_windows.py --video --csv',
+        `- ${REGENERATE}`,
     );
   }
   return lines.slice(1).map((line, index) => {
@@ -135,20 +165,20 @@ const readSeries = (): ScoreFrame[] => {
     if (fields.length !== 4) {
       throw new Error(`${SCORE_CSV} row ${index} has ${fields.length} fields, expected 4`);
     }
-    const frame = Number(fields[0]);
+    const frame = numberAt(fields, 0, 'frame', index);
     if (frame !== index) {
       throw new Error(
         `${SCORE_CSV} row ${index} carries frame ${frame}. The rows are the frame index and a ` +
           'gap or a duplicate in them is the exact fault that produced the fabricated row',
       );
     }
-    const litPixels = Number(fields[1]);
+    const litPixels = numberAt(fields, 1, 'lit_pixels', index);
     return {
       frame,
       seconds: frame / FRAMES_PER_SECOND,
       litPixels,
       lit: litPixels >= LIT_FLOOR,
-      peakLuma: Number(fields[3]),
+      peakLuma: numberAt(fields, 3, 'peak_luma', index),
     };
   });
 };

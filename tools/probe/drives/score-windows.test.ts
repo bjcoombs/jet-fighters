@@ -22,7 +22,8 @@
 //    flagged fourteen of fifteen while missing the blown final flash it was
 //    written for, and `score_windows.py`'s header says not to trim this check.
 // 4. Named frames still read the way the documents that cite them say. Three
-//    anchors lit, and the fabricated row's frame still dark.
+//    anchors lit at the exact counts §15 cites, and the fabricated row's frame
+//    still dark.
 //
 // **What is deliberately not asserted: what the digits said.** Segment decoding
 // is not reliable on this footage - see `score_windows.py` - so the readings in
@@ -81,10 +82,16 @@ const CLIPPED_WINDOW_STARTS = [6, 658];
 /**
  * Frames whose lit-pixel counts back a reading quoted in `open-questions.md`.
  *
- * Measured lit pixels are in the comment beside each. They are not asserted to
- * the digit: the crop these come from is a different scale from the registered
- * stack the readings were first taken on, so what carries across is the frame
- * index and the fact of the readout being lit, not the count.
+ * The counts are asserted exactly. They are the counts §15 cites, read off the
+ * committed CSV this drive reads, so a regenerated crop that moves them fails
+ * here rather than leaving the citations quoting a number nothing produces any
+ * more. A floor would not do that: any count above forty would pass while the
+ * cited figure went stale.
+ *
+ * What is still not asserted is the digit. The crop is a different scale from
+ * the registered stack the readings were first taken on, so what carries across
+ * to `open-questions.md` is the frame index and the readout being lit, and the
+ * reading itself stays human.
  */
 const ANCHORS = [
   { frame: 399, seconds: 13.3, reading: 'SCORE 18', litPixels: 1078 },
@@ -162,9 +169,11 @@ describe('the score-windows drive', () => {
       expect(
         frame.litPixels,
         `f${anchor.frame} (${anchor.seconds} s) backs "${anchor.reading}" in open-questions.md ` +
-          `§15 and measured ${anchor.litPixels} lit px; it is now below the 40-pixel floor, so ` +
-          'the citation has lost the evidence under it',
-      ).toBeGreaterThanOrEqual(40);
+          `§15, cited at ${anchor.litPixels} lit px. assets/reference/skill3-video-score.csv ` +
+          'now measures something else, so the citation has come loose from the evidence ' +
+          'under it: re-run tools/video/score_windows.py --video --csv and carry the new ' +
+          'count into §15 and into this anchor',
+      ).toBe(anchor.litPixels);
       expect(windowAt(result, anchor.frame), `f${anchor.frame} is in no lit window`).toBeDefined();
     }
   });

@@ -428,7 +428,7 @@ def strict_read(lit: np.ndarray, frame: int, strict: bool) -> int:
     return 0
 
 
-def report(work: Path) -> int:
+def report(work: Path, sheet: Path | None = None) -> int:
     frames = np.load(work / "frames.npy")
     lit = lit_per_frame(frames)
     found = windows(lit)
@@ -436,8 +436,9 @@ def report(work: Path) -> int:
     print(f"digit box {DIGITS}, lit at colour excess > {LIT_EXCESS}")
     picks = print_windows(lit, lambda i: peak_luma(frames, i), found)
 
-    contact_sheet(frames, picks, work / "score_windows.png")
-    print(f"\nlabelled contact sheet: {work / 'score_windows.png'}")
+    destination = sheet if sheet is not None else work / "score_windows.png"
+    contact_sheet(frames, picks, destination)
+    print(f"\nlabelled contact sheet: {destination}")
     print("Every panel carries its own frame index. Read the digits off the sheet")
     print("and record them against that index, not against a position in a list.")
 
@@ -492,7 +493,9 @@ def main() -> int:
                         help=f"read the committed crop instead (default {TUBE_MP4.name})")
     parser.add_argument("--csv", nargs="?", const=str(SCORE_CSV), default=None,
                         help=f"write the per-frame series (default {SCORE_CSV.name}); --video only")
-    parser.add_argument("--sheet", default=None, help="write the labelled contact sheet here")
+    parser.add_argument("--sheet", default=None,
+                        help="write the labelled contact sheet here instead of "
+                             "<work>/score_windows.png")
     parser.add_argument("--frame", type=int, default=None,
                         help="report one frame's lit-pixel count; --video only")
     parser.add_argument("--strict", action="store_true",
@@ -502,7 +505,7 @@ def main() -> int:
     if args.video is None:
         if args.csv or args.frame is not None:
             parser.error("--csv and --frame read the committed crop; pass --video")
-        return report(Path(args.work))
+        return report(Path(args.work), Path(args.sheet) if args.sheet else None)
     return crop_report(
         Path(args.video),
         Path(args.csv) if args.csv else None,
