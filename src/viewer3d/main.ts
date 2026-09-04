@@ -10,12 +10,13 @@ import { opla, rom } from '../../asm/jetfighter.asm';
 import { createDriver } from '../app/driver.js';
 import { buildMuteToggle } from '../app/mute-toggle.js';
 import { createHelpOverlay, createInputSystem } from '../input/index.js';
+import { CONTROL_UNDER, PIN_REST_LOCAL_Z, SKILL_HUB_LOCAL, controlAtFacePoint, inputForPress, isControl, laneFromSlotOffset, poseFor, type ControlName, type ControlState } from './controls3d.js';
 import { createExploder } from './explode.js';
 import { buildExplodePanel, buildInfoPanel, buildTooltip, titleOf } from './panel.js';
 import { createPicker } from './picking.js';
 import { createConsoleScene, type Part } from './scene.js';
 import { createTubeTextures } from './tube-texture.js';
-import { Box3, Vector3 } from 'three';
+import { Box3, Mesh, Plane, Raycaster, Vector2, Vector3 } from 'three';
 
 const MODEL_URL = `${import.meta.env.BASE_URL}models/console.glb`;
 
@@ -55,13 +56,92 @@ async function start(mount: HTMLElement): Promise<void> {
   const info = buildInfoPanel();
   mount.append(buildExplodePanel(exploder), tooltip.el, info.el);
 
+  // The flag pivots on its hub: move the geometry so the part's origin is there.
+  const flag = scene.parts.get('skill_flag');
+  if (flag && flag.object instanceof Mesh) {
+    flag.object.geometry.translate(-SKILL_HUB_LOCAL[0], 0, -SKILL_HUB_LOCAL[1]);
+    flag.object.position.set(SKILL_HUB_LOCAL[0], 0, SKILL_HUB_LOCAL[1]);
+    flag.restPosition.copy(flag.object.position);
+  }
+
+  // The modelled controls. A press that lands on one operates it instead of
+  // orbiting: fire is held until the pointer is released anywhere, the lever
+  // follows a drag down its slot, the switch and the flag act on release.
+  const stateOf = (): ControlState => ({
+    fire: driver.board.input.fire,
+    power: driver.board.power.state === 'on',
+    lever: driver.board.input.lever,
+    skill: driver.board.input.skill,
+  });
+  const controlUnderPointer = (x: number, y: number): ControlName | null => {
+    const hit = picker.pick(x, y);
+    if (!hit) return null;
+    if (isControl(hit.part.name)) return hit.part.name;
+    if (hit.part.name in CONTROL_UNDER) return CONTROL_UNDER[hit.part.name];
+    if (hit.part.name === 'front_shell') {
+      const local = hit.part.object.worldToLocal(hit.point.clone());
+      return controlAtFacePoint(local.x, local.z);
+    }
+    return null;
+  };
+  // Where the pointer's ray meets the face the lever slides in, in the front
+  // shell's local frame - the shell may be lifted off, and the slot goes with it.
+  const slotRay = new Raycaster();
+  const slotNdc = new Vector2();
+  const slotOffsetAt = (x: number, y: number): number | null => {
+    const shell = scene.parts.get('front_shell');
+    if (!shell) return null;
+    const rect = canvas.getBoundingClientRect();
+    slotNdc.set(((x - rect.left) / rect.width) * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1);
+    slotRay.setFromCamera(slotNdc, scene.camera);
+    const origin = shell.object.localToWorld(new Vector3(0, 0, 0));
+    const normal = new Vector3(0, 1, 0).transformDirection(shell.object.matrixWorld);
+    const plane = new Plane().setFromNormalAndCoplanarPoint(normal, origin);
+    const point = slotRay.ray.intersectPlane(plane, new Vector3());
+    if (!point) return null;
+    return shell.object.worldToLocal(point).z - PIN_REST_LOCAL_Z;
+  };
+  let active: ControlName | null = null;
+
   // A click is a press and release without much travel; anything longer is
   // the orbit, and orbiting over a part must not select it.
   let pressAt: { x: number; y: number } | null = null;
   canvas.addEventListener('pointerdown', (e) => {
     pressAt = { x: e.clientX, y: e.clientY };
+    active = controlUnderPointer(e.clientX, e.clientY);
+    if (!active) return;
+    // OrbitControls listens on the same canvas; it checks this flag first.
+    scene.controls.enabled = false;
+    const input = inputForPress(active, stateOf());
+    if (active === 'fire_cap' && input) driver.apply(input);
+    if (active === 'lever_pin') {
+      const offset = slotOffsetAt(e.clientX, e.clientY);
+      if (offset !== null) driver.apply({ type: 'LANE', lane: laneFromSlotOffset(offset) });
+    }
+  });
+  window.addEventListener('pointerup', (e) => {
+    if (!active) return;
+    const was = active;
+    active = null;
+    scene.controls.enabled = true;
+    if (was === 'fire_cap') driver.apply({ type: 'FIRE', pressed: false });
+    if (was === 'power_thumb' || was === 'skill_flag') {
+      const still = controlUnderPointer(e.clientX, e.clientY);
+      const input = still === was ? inputForPress(was, stateOf()) : null;
+      if (input) driver.apply(input);
+    }
+    pressAt = null;
   });
   canvas.addEventListener('pointermove', (e) => {
+    if (active === 'lever_pin') {
+      const offset = slotOffsetAt(e.clientX, e.clientY);
+      if (offset !== null) {
+        const lane = laneFromSlotOffset(offset);
+        if (lane !== driver.board.input.lever) driver.apply({ type: 'LANE', lane });
+      }
+      return;
+    }
+    if (active) return;
     const hit = picker.pick(e.clientX, e.clientY);
     picker.highlight(hit?.part ?? null);
     if (hit) {
@@ -110,6 +190,15 @@ async function start(mount: HTMLElement): Promise<void> {
 
   const frame = (now: number): void => {
     textures.upload(now, driver.board.power.state === 'on');
+    // The controls' pose is the board's own reading of them, so the keyboard
+    // moves the modelled parts as much as the pointer does.
+    const pose = poseFor(stateOf());
+    for (const name of Object.keys(pose) as ControlName[]) {
+      const part = scene.parts.get(name);
+      if (!part) continue;
+      exploder.setOffset(name, pose[name].offset.lengthSq() > 0 ? pose[name].offset : null);
+      part.object.rotation.y = pose[name].rotationY;
+    }
     exploder.update(now);
     if (focus) {
       if (focus.start < 0) focus.start = now;
