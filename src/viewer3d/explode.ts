@@ -50,6 +50,11 @@ export function ease(t: number): number {
 export const EASE_MS = 650;
 
 export interface Exploder {
+  /**
+   * A further local offset for a part, on top of its explode position: the
+   * modelled controls move this way. Applied every frame until cleared.
+   */
+  setOffset(name: string, offset: Vector3 | null): void;
   /** Every part to the same factor, over `EASE_MS`. */
   setAmount(factor: number): void;
   /** A named arrangement. */
@@ -74,6 +79,7 @@ export function createExploder(parts: ReadonlyMap<string, Part>): Exploder {
     motions.push({ part, from: 0, to: 0, current: 0, startMs: -Infinity });
   }
   let lastNow = 0;
+  const offsets = new Map<string, Vector3>();
 
   const retarget = (targetFor: (name: string) => number): void => {
     for (const m of motions) {
@@ -90,13 +96,20 @@ export function createExploder(parts: ReadonlyMap<string, Part>): Exploder {
     for (const m of motions) {
       const t = m.startMs === -Infinity ? 1 : (nowMs - m.startMs) / EASE_MS;
       const next = m.from + (m.to - m.from) * ease(t);
-      if (next === m.current && t >= 1) continue;
+      const offset = offsets.get(m.part.name);
+      if (next === m.current && t >= 1 && !offset) continue;
       m.current = next;
-      m.part.object.position.copy(positionAt(m.part.restPosition, m.part.explodeLocal, m.current));
+      const position = positionAt(m.part.restPosition, m.part.explodeLocal, m.current);
+      if (offset) position.add(offset);
+      m.part.object.position.copy(position);
     }
   };
 
   return {
+    setOffset: (name, offset) => {
+      if (offset) offsets.set(name, offset);
+      else offsets.delete(name);
+    },
     setAmount: (factor) => retarget(() => Math.min(1, Math.max(0, factor))),
     setPreset: (preset) => retarget((name) => presetFactor(preset, name)),
     get amount() {
