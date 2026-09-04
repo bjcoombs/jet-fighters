@@ -46,6 +46,13 @@ export interface Part {
   readonly extras: PartExtras;
   /** Local position at rest, so the explode offset is applied from a fixed place. */
   readonly restPosition: Vector3;
+  /**
+   * The explode vector in the part's own local units. The extras are in metres;
+   * every part sits under the root that scales millimetres to metres, so its
+   * position is in millimetres, and the vector is divided by the parent's world
+   * scale to match.
+   */
+  readonly explodeLocal: Vector3;
 }
 
 export interface ConsoleScene {
@@ -123,7 +130,10 @@ export async function createConsoleScene(canvas: HTMLCanvasElement, url: string,
     // A part is a node the exporter labelled. A mesh with several materials
     // arrives as a Group of unlabelled primitive meshes; those are not parts.
     if (!obj.name || typeof extras.label !== 'string') return;
-    parts.set(obj.name, { name: obj.name, object: obj, extras, restPosition: obj.position.clone() });
+    const parentScale = obj.parent ? obj.parent.getWorldScale(new Vector3()) : new Vector3(1, 1, 1);
+    const [ex, ey, ez] = extras.explode ?? [0, 0, 0];
+    const explodeLocal = new Vector3(ex / parentScale.x, ey / parentScale.y, ez / parentScale.z);
+    parts.set(obj.name, { name: obj.name, object: obj, extras, restPosition: obj.position.clone(), explodeLocal });
   });
   tuneMaterials(model, textures);
 
