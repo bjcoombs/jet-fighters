@@ -1,0 +1,158 @@
+{
+  "$comment": [
+    "Pixel coordinates read off the reference photographs, in each photograph's own",
+    "pixel space at the committed resolution. This file is the hand-read input;",
+    "tools/model/measure.py converts it to millimetres in dimensions.json. A read is",
+    "changed here and the converter re-run, never typed into dimensions.json.",
+    "Methods: 'profile' = numeric detection from a colour/brightness mask along a row",
+    "or column; 'eye' = read off a gridded copy of the photograph at 4000 px, so",
+    "about +/-10 px; 'fit' = least-squares fit to detected boundary points."
+  ],
+  "photographs": {
+    "board": {
+      "file": "assets/reference/tube-teardown/board-L1001568.jpg",
+      "size": [4000, 2669],
+      "shows": "the back shell open, board component side up, tube face up, front shell removed",
+      "camera": {
+        "$comment": "Leica Q2, fixed 28 mm lens, full frame; the committed file is the full frame downscaled from 8368 px.",
+        "focal_length_mm": 28,
+        "sensor_width_mm": 36
+      },
+      "scale_bar": {
+        "$comment": "TMS1370 DIP pin pitch. 20 pins a side counted on board-L1001567.jpg (20 dark peaks across the pin row there). Pitch by autocorrelation of the pin-row profile: 41.6 px on L1001567, 22.6 px on L1001568. Pin pitch on a DIP is 2.54 mm.",
+        "kind": "dip-pin-pitch",
+        "pitch_px": 22.6,
+        "pitch_mm": 2.54,
+        "pins_per_side": 20,
+        "plane": "board",
+        "method": "profile"
+      }
+    },
+    "front": {
+      "file": "assets/reference/device-front-lit.jpg",
+      "size": [1422, 800],
+      "shows": "the assembled unit from the front, powered, near plan view",
+      "scale_bar": {
+        "$comment": "No object of known size in frame; scaled from the shell width derived on the board photograph.",
+        "kind": "derived",
+        "from": "case.width"
+      }
+    }
+  },
+  "board": {
+    "shell": {
+      "$comment": "Outer edge of the back shell's rim (the mating face). x from the red mask; the wing and module edges from the per-column red profile.",
+      "method": "profile",
+      "left": 615,
+      "right": 3680,
+      "module_top": 640,
+      "module_bottom": 1965,
+      "wing_top": 710,
+      "wing_bottom": 2000,
+      "module_left": 1440,
+      "module_right": 2800,
+      "rim_above_board_mm": {
+        "$comment": "Estimate, used only for the perspective correction: the rim is nearer the camera than the board by about this much. Basis: the tube envelope has to clear the board under the window, and the standoff bosses put the board a few mm off the back floor. Bound +/-10 mm.",
+        "value": 15,
+        "kind": "estimated"
+      }
+    },
+    "chip": {
+      "method": "profile",
+      "pins_x": [2753, 3183],
+      "pin_row_top_y": 1182,
+      "body_x": [2740, 3196],
+      "body_y": [1190, 1350]
+    },
+    "tube": {
+      "$comment": "shroud = the black end caps and frame; glass = the clear envelope between them; face = the printed segment area inside the glass.",
+      "method": "profile",
+      "shroud_x": [1498, 2696],
+      "shroud_y": [1058, 1551],
+      "glass_x": [1560, 2610],
+      "glass_y": [1090, 1480],
+      "face_x": [1600, 2540],
+      "face_y": [1140, 1400]
+    },
+    "pcb": {
+      "$comment": "The brown phenolic board. outline: corners clockwise from top-left, read off the overlay; the bottom edge steps down for the central tongue and the right end. The left end is hidden under the battery box.",
+      "method": "eye",
+      "x": [1117, 3673],
+      "y": [790, 2020],
+      "outline": [[1117, 800], [3673, 800], [3673, 2020], [3000, 2020], [3000, 1930], [2560, 1930], [2560, 2010], [1900, 2010], [1900, 1900], [1117, 1900]]
+    },
+    "battery_box": { "method": "eye", "x": [620, 1020], "y": [1080, 1900], "$comment": "Abuts the shell's left wall; the left read is the wall's inner face." },
+    "fire_button_body": { "method": "profile", "centre": [792, 900], "radius": 160 },
+    "power_switch_body": { "method": "eye", "x": [1000, 1090], "y": [830, 1010] },
+    "dc_jack": { "method": "eye", "x": [1740, 1850], "y": [640, 800] },
+    "resistor_row": { "method": "eye", "x": [1650, 2600], "y": [830, 960], "count": 17 },
+    "lever_disc": {
+      "$comment": "The grey disc with a steel pin through it, under the launcher lever's well. Its pin is the lever the player moves.",
+      "method": "profile",
+      "centre": [3412, 940],
+      "radius": 237,
+      "pin_x": [3480, 3600],
+      "pin_y": [950, 1000]
+    },
+    "skill_hub": { "method": "profile", "centre": [3412, 1838], "x": [3307, 3540], "y": [1790, 1893] },
+    "buzzer": { "method": "eye", "centre": [1870, 1590], "radius": 95 },
+    "lamp": { "method": "eye", "x": [2700, 2820], "y": [1390, 1440] },
+    "standoffs": {
+      "method": "eye",
+      "centres": [[620, 850], [1500, 760], [2680, 760], [3010, 840], [620, 1690], [1490, 1710], [2680, 1720], [3010, 1720]],
+      "radius": 40
+    },
+    "screws": { "method": "eye", "centres": [[2170, 870], [1190, 1550], [2170, 1700], [3490, 1620]] },
+    "electrolytics": {
+      "$comment": "Radial electrolytic capacitors lying on the board, as [x0, y0, x1, y1] of the can.",
+      "method": "eye",
+      "cans": [[1190, 1150, 1330, 1210], [1190, 1300, 1260, 1440], [1260, 1500, 1400, 1560], [1600, 1520, 1750, 1580], [3140, 830, 3260, 890]]
+    }
+  },
+  "svg": {
+    "$comment": "The flat page's case drawing, src/ui/geometry.ts and src/ui/case.ts, in its 896 x 440 viewBox units, for the cross-check the PRD asks for. Copied with citation, not imported.",
+    "viewbox": [896, 440],
+    "body_x": [8, 888],
+    "module_y": [32, 426],
+    "module_x": [246, 650],
+    "wing_y": [54, 418],
+    "circle": [481, 243, 150],
+    "rect": [268, 150, 213, 144]
+  },
+  "front": {
+    "shell": {
+      "$comment": "left is under the owner's finger; read where the wing's top edge meets the finger's shadow, +/-15 px.",
+      "method": "profile",
+      "left": 140,
+      "right": 1327,
+      "module_top": 162,
+      "module_bottom": 674,
+      "wing_top": 192,
+      "wing_bottom": 684
+    },
+    "bands": {
+      "$comment": "Left to right across the face: the raised stippled block of each wing, the smooth inboard strip each wing carries, and the module. Read off crops of the photograph at 1.5x.",
+      "method": "eye",
+      "left_block_x": [147, 300],
+      "left_strip_x": [300, 433],
+      "module_x": [470, 995],
+      "right_strip_x": [995, 1110],
+      "right_block_x": [1110, 1313]
+    },
+    "scope": {
+      "$comment": "Circle first fitted to the dark window's boundary, then corrected by eye against the overlay (the fit pulls low because the lit tube breaks the top boundary); rectangle edges from a 2x crop.",
+      "method": "eye",
+      "circle_centre": [745, 402],
+      "circle_radius": 207,
+      "rect_left": 481,
+      "rect_top": 310,
+      "rect_bottom": 585
+    },
+    "tab": { "method": "eye", "x": [738, 758], "y": [162, 205] },
+    "fire_button": { "method": "eye", "centre": [215, 275], "cap_radius": 47, "ring_radius": 58 },
+    "power_switch": { "method": "eye", "thumb_centre": [315, 275], "thumb_size": [25, 35], "travel_y": [258, 298] },
+    "sticker": { "method": "profile", "x": [176, 265], "y": [544, 641] },
+    "lever_well": { "method": "eye", "centre": [1217, 277], "radius": 70, "slot_x": [1205, 1230], "slot_y": [215, 340], "pin_y_positions": [235, 277, 320] },
+    "skill_flag": { "method": "eye", "hub_centre": [1237, 610], "hub_radius": 22, "tip": [1300, 665], "mark_radius": 40 }
+  }
+}
