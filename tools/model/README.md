@@ -13,7 +13,7 @@ The physical unit as a glTF, built in Blender from measured dimensions, for the 
 | `compare.py` | A render from a camera matched to a photograph, side by side with it, and the positions of the features both can be read for. |
 
 ```
-python3 tools/model/measure.py --overlay docs/evidence   # reads -> mm
+python3 tools/model/measure.py --overlay docs/evidence --doc docs/evidence/console-dimensions.md   # reads -> mm, and the doc's tables
 npm run model                                            # mm -> public/models/console.glb
 npm run model:render                                     # plus the two comparison renders
 sh tools/model/blender.sh --blend /tmp/console.blend     # a .blend to open in the app
@@ -33,8 +33,11 @@ How each figure was arrived at, and how far each estimate might be out, is
 
 One root node, `console`, scaled to metres. Under it, one node per part, named:
 `front_shell` (with children `window`, `sticker`, `fire_cap`, `power_thumb`,
-`lever_pin`, `skill_flag`), `back_shell` (with `battery_door`), and the board and
-everything on it. Each carries `extras`:
+`lever_pin`, `skill_flag`), `back_shell` (with `battery_door`), and `pcb` with everything
+on it as children: `tube_shroud`, `tube_glass`, `tube_face`, `tube_grid_pins`,
+`tube_plate_leads`, `tms1370`, `resistor_row`, `electrolytics`, `discretes`, `lamp`,
+`toothed_disc`, `dc_jack`, `fire_switch`, `power_switch`, `lever_disc`, `skill_hub`,
+`battery_box`, `board_screws`. Each carries `extras`:
 
 | Key | Meaning |
 | --- | --- |
