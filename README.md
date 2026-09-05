@@ -175,7 +175,7 @@ the front agrees to within 1.5% of the case width.
 **What is estimated.** No photograph is edge-on, so every depth - the shells, the tube's
 thickness, how high the board sits - is an estimate with a stated basis and bound, in
 [`docs/evidence/console-dimensions.md`](docs/evidence/console-dimensions.md). The assembled
-unit comes out at about 340 x 145 x 36 mm, with the last figure the least certain thing in
+unit comes out at about 340 x 145 x 58 mm, with the last figure the least certain thing in
 the model. The launcher lever's mechanism and one toothed black disc on the board are
 labelled unidentified, because the photographs do not say.
 

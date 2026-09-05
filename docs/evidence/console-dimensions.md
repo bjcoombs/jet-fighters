@@ -176,9 +176,24 @@ which is how far a side view would be expected to move it.
 | Board thickness | 1.6 | Single-sided phenolic | 0.4 |
 | Battery box height | 18 | AA cells 14.5 mm across plus walls; it stands on the back shell's floor beside the board, not on the board, and reaches about the rim | 4 |
 | Fire cap, lever pin, skill flag heights | 6, 4, 5 | Read off the front photograph's shading | 2 |
+| Shoulder chamfer | 8 | The 45-degree chamfers where the module's outline meets the wings, `front.jpg` and `back.jpg` | 3 |
+| Back panel width | 50 | The raised panels on the back of each wing, from their outer ends inward, `back.jpg` | 5 |
+| Back panel raise | 2 | How far those panels stand proud of the back face; `end-left.jpg` shows a step | 1 |
+| End grip ribs | 6 | Vertical ribs on the wing ends' front half, `edge-bottom-2.jpg`; the count is a read, the 4 mm pitch a guess | 2 |
 
-The assembled unit, then, is about 340 x 145 x 36 mm at the module and 31 mm at the
+The assembled unit, then, is about 340 x 145 x 58 mm at the module and 52 mm at the
 wings, with the last two figures carrying the largest uncertainty of anything here.
+
+**The depths have been replaced twice**, and the earlier figures are recorded here so
+the history of the estimate is visible. The first pass, with only the front and board
+photographs, put the back shell at 22 mm, the wing face at 14 and the module face at 20,
+from what the parts inside had to clear (later 20, 11 and 16 on the same basis). The
+owner's end views (`end-left.jpg`, `end-right.jpg`) then showed a case about 58 mm deep,
+first read as parted near its middle: back 28, wing 28, module 34. The current split, 44
+behind and 14 (module) or 8 (wing) in front, keeps that total and moves the parting line
+to where the parallax between the window's print and the segments in `front-oblique.jpg`
+says the glass must be: a few millimetres above the tube, not thirty. The mid-depth line
+in the end views is read as the wings' panel step, not the parting line.
 
 ## Cross-check against the flat page's SVG
 
