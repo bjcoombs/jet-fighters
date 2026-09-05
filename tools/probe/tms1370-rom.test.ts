@@ -11,26 +11,26 @@
 // The runs are seconds of emulated time and the core executes one instruction
 // per call, so they are not cheap. Each `describe` shares one run where it can.
 
-import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   BURST_GAP_CYCLES,
   CAPTURE_WINDOW_CYCLES,
   PLAYER_SLICE_CYCLES,
   SWEEP_INSTRUCTIONS,
   WARNING_CLUSTER_CYCLES,
-} from '../../src/machine/board/tms1370-cadence.js';
+} from "../../src/machine/board/tms1370-cadence.js";
 import {
   GRID_COUNT,
   O_PLATE_COUNT,
   PLATE_COUNT,
-} from '../../src/machine/cpu/tms1370/ports.js';
-import { CYCLE_HZ } from '../../src/machine/cpu/tms1370/timing.js';
+} from "../../src/machine/cpu/tms1370/ports.js";
+import { CYCLE_HZ } from "../../src/machine/cpu/tms1370/timing.js";
 import {
   O_PLA_TABLE,
   unreachablePlateMasks,
-} from '../../src/machine/board/o-pla.js';
+} from "../../src/machine/board/o-pla.js";
 import {
   assembleGame,
   cellKey,
@@ -45,7 +45,7 @@ import {
   type InputEvent,
   type Contacts,
   type RunResult,
-} from './tms1370-probe.js';
+} from "./tms1370-probe.js";
 
 /** `FILE_STATE` and its two rocket nibbles, from the RAM map in the ROM source. */
 const FILE_STATE = 4;
@@ -73,7 +73,8 @@ function deepestByLane(ram: ArrayLike<number>): number[] {
   const planes = planesOf(ram, SQUADRON);
   return [0, 1, 2].map((lane) =>
     planes.reduce(
-      (deepest, plane) => (plane.row === lane ? Math.max(deepest, plane.column) : deepest),
+      (deepest, plane) =>
+        plane.row === lane ? Math.max(deepest, plane.column) : deepest,
       0,
     ),
   );
@@ -100,7 +101,9 @@ const seconds = (value: number): number => Math.round(value * CYCLE_HZ);
  * A longer `cycles` cannot rescue those: the *game* ends rather than the clock.
  * Defending is the least this drive can do and still observe what it asserts on.
  */
-function defending(skill = 1): (machine: Tms1370Machine) => Contacts | undefined {
+function defending(
+  skill = 1,
+): (machine: Tms1370Machine) => Contacts | undefined {
   let releaseAt = -1;
   let fireAt = -1;
   return (machine) => {
@@ -165,9 +168,13 @@ function warningRunsIn(
   // Rising edges only: a period is rise to rise, and counting both levels would
   // report every half-period and put a 467 Hz beep at 934.
   const rising = edges
-    .filter((edge) => edge.level === 1 && edge.cycle >= from && edge.cycle <= to)
+    .filter(
+      (edge) => edge.level === 1 && edge.cycle >= from && edge.cycle <= to,
+    )
     .map((edge) => edge.cycle);
-  const periods = rising.slice(1).map((cycle, index) => cycle - (rising[index] as number));
+  const periods = rising
+    .slice(1)
+    .map((cycle, index) => cycle - (rising[index] as number));
   // Each run carries the cycles it spans as well as its pitch, so a caller can
   // measure the *warning* rather than the analyser group that contains it.
   const found: { hz: number; from: number; to: number }[] = [];
@@ -189,7 +196,10 @@ function warningRunsIn(
   };
   for (const [index, period] of periods.entries()) {
     const previous = current[current.length - 1];
-    if (previous !== undefined && Math.abs(period - previous) / previous >= 0.06) {
+    if (
+      previous !== undefined &&
+      Math.abs(period - previous) / previous >= 0.06
+    ) {
       close(index);
       startIndex = index;
     }
@@ -379,9 +389,14 @@ function parkedGame(
       }
     }
     const column = ram[FILE_STATE * 16 + NIB_RCOL] as number;
-    const occupied = [...new Set(planesOf(ram, SQUADRON).map((plane) => plane.row))].sort();
+    const occupied = [
+      ...new Set(planesOf(ram, SQUADRON).map((plane) => plane.row)),
+    ].sort();
     if (pending !== null) {
-      launches.push({ lane: ram[FILE_STATE * 16 + NIB_RLANE] as number, occupied: pending });
+      launches.push({
+        lane: ram[FILE_STATE * 16 + NIB_RLANE] as number,
+        occupied: pending,
+      });
       pending = null;
     }
     if (column !== 0 && !flying) {
@@ -390,20 +405,33 @@ function parkedGame(
     flying = column !== 0;
     previouslyOccupied = occupied;
   }
-  return { launches, lanes: launches.map((launch) => launch.lane), litCells: machine.litCells };
+  // A launch seen on the last sample, or on the one `stopWhenLost` broke out
+  // after, still counts; the routine that writes the lane has finished by the
+  // time the loop is left.
+  if (pending !== null) {
+    launches.push({
+      lane: machine.ram[FILE_STATE * 16 + NIB_RLANE] as number,
+      occupied: pending,
+    });
+  }
+  return {
+    launches,
+    lanes: launches.map((launch) => launch.lane),
+    litCells: machine.litCells,
+  };
 }
 
-describe('the machine comes up', () => {
+describe("the machine comes up", () => {
   const cycles = seconds(3);
   const run = runGame({ cycles, policy: defending(), keepStrobes: true });
 
-  it('strobes every one of the nine display grids', () => {
+  it("strobes every one of the nine display grids", () => {
     expect(run.gridsStrobed).toEqual(
       Array.from({ length: GRID_COUNT }, (_unused, grid) => grid),
     );
   });
 
-  it('lights nothing until its own RAM clear has finished', () => {
+  it("lights nothing until its own RAM clear has finished", () => {
     // RAM is not cleared by hardware reset on this part, so the ROM clears 112
     // nibbles before it draws anything. If the first strobe came before that
     // finished, the tube would show one frame of whatever the RAM powered up
@@ -413,7 +441,7 @@ describe('the machine comes up', () => {
     expect(run.firstLitCycle).toBeGreaterThanOrEqual(clearCost);
   });
 
-  it('never drives both input strobe columns at once', () => {
+  it("never drives both input strobe columns at once", () => {
     // `read_inputs` is a wired-OR over the driven columns, so with R9 and R10
     // both high the skill dial and the lever arrive superimposed on the same
     // three K lines and cannot be told apart. The hardware returns the OR and
@@ -421,8 +449,10 @@ describe('the machine comes up', () => {
     expect(run.superimposedStrobes).toEqual([]);
   });
 
-  it('holds the sweep period near the length the source records', () => {
-    const periods = [...sweepPeriods(run.strobes)].sort((left, right) => left - right);
+  it("holds the sweep period near the length the source records", () => {
+    const periods = [...sweepPeriods(run.strobes)].sort(
+      (left, right) => left - right,
+    );
     const median = periods[periods.length >> 1] as number;
     // Within 10%: the sweep is not frequency-stable by design - the
     // between-sweep work varies with what is on the glass - so this pins the
@@ -432,31 +462,37 @@ describe('the machine comes up', () => {
   });
 });
 
-describe('the source and the cadence module agree on the sweep length', () => {
-  it('states the same figure in both places', () => {
+describe("the source and the cadence module agree on the sweep length", () => {
+  it("states the same figure in both places", () => {
     const symbols = assembleGame().symbols;
     const valueOf = (name: string): number | undefined =>
       symbols.find((symbol) => symbol.name === name)?.value;
-    const low = valueOf('SWEEP_INSTRUCTIONS_LO');
-    const high = valueOf('SWEEP_INSTRUCTIONS_HI');
-    expect(low, 'asm/jetfighter.asm no longer defines SWEEP_INSTRUCTIONS_LO').toBeDefined();
-    expect(high, 'asm/jetfighter.asm no longer defines SWEEP_INSTRUCTIONS_HI').toBeDefined();
+    const low = valueOf("SWEEP_INSTRUCTIONS_LO");
+    const high = valueOf("SWEEP_INSTRUCTIONS_HI");
+    expect(
+      low,
+      "asm/jetfighter.asm no longer defines SWEEP_INSTRUCTIONS_LO",
+    ).toBeDefined();
+    expect(
+      high,
+      "asm/jetfighter.asm no longer defines SWEEP_INSTRUCTIONS_HI",
+    ).toBeDefined();
     expect((high as number) * 16 + (low as number)).toBe(SWEEP_INSTRUCTIONS);
   });
 });
 
-describe('the display', () => {
+describe("the display", () => {
   const cycles = seconds(40);
   const run = runGame({ cycles, policy: defending() });
 
-  it('drives only plate masks the output PLA holds', () => {
+  it("drives only plate masks the output PLA holds", () => {
     // The left-hand side of contract V4's closure, run over the masks the ROM
     // actually drives rather than over the masks a plan permits, through the
     // same `unreachablePlateMasks` the design-side suite uses.
     expect(unreachablePlateMasks(O_PLA_TABLE, run.oMasks)).toEqual([]);
   });
 
-  it('has that closure armed rather than vacuous', () => {
+  it("has that closure armed rather than vacuous", () => {
     // Contract V4 asks for a mutation case, and it has to pick its slot with
     // care: several masks in this table are produced twice over - digit 7 and
     // the full near triple are both %00000111 - so zeroing one of those would
@@ -465,22 +501,40 @@ describe('the display', () => {
     // is unique before it uses it.
     const produces = (mask: number): number =>
       O_PLA_TABLE.filter((slot) => slot === mask).length;
-    const unique = [...run.oMasks].find((mask) => mask !== 0 && produces(mask) === 1);
-    expect(unique, 'no uniquely-produced mask was driven to mutate').toBeDefined();
+    const unique = [...run.oMasks].find(
+      (mask) => mask !== 0 && produces(mask) === 1,
+    );
+    expect(
+      unique,
+      "no uniquely-produced mask was driven to mutate",
+    ).toBeDefined();
     const mutated = O_PLA_TABLE.map((slot) => (slot === unique ? 0 : slot));
     expect(unreachablePlateMasks(mutated, run.oMasks)).toEqual([unique]);
   });
 
-  it('lights no (grid, plate) the atlas has no segment at', () => {
+  it("lights no (grid, plate) the atlas has no segment at", () => {
     const atlas = JSON.parse(
-      readFileSync(resolve(import.meta.dirname, '..', '..', 'src', 'machine', 'tube', 'atlas.json'), 'utf8'),
+      readFileSync(
+        resolve(
+          import.meta.dirname,
+          "..",
+          "..",
+          "src",
+          "machine",
+          "tube",
+          "atlas.json",
+        ),
+        "utf8",
+      ),
     ) as { segments: { id: string; grid: number; plate: number }[] };
-    const known = new Set(atlas.segments.map((segment) => cellKey(segment.grid, segment.plate)));
+    const known = new Set(
+      atlas.segments.map((segment) => cellKey(segment.grid, segment.plate)),
+    );
     const stray = [...run.litCells].filter((cell) => !known.has(cell));
     expect(stray).toEqual([]);
   });
 
-  it('drives the high four plates from R11-R14 and the low eight from O', () => {
+  it("drives the high four plates from R11-R14 and the low eight from O", () => {
     // Every mask the O port emitted fits in eight bits, and the plates above
     // seven were reached anyway - so they came from the R latch. A build that
     // widened the O port to twelve lines fails the first half.
@@ -488,47 +542,57 @@ describe('the display', () => {
       expect(mask).toBeLessThan(1 << O_PLATE_COUNT);
     }
     const highPlates = [...run.litCells].filter(
-      (cell) => Number(cell.split(':')[1]) >= O_PLATE_COUNT,
+      (cell) => Number(cell.split(":")[1]) >= O_PLATE_COUNT,
     );
     expect(highPlates.length).toBeGreaterThan(0);
     for (const cell of highPlates) {
-      expect(Number(cell.split(':')[1])).toBeLessThan(PLATE_COUNT);
+      expect(Number(cell.split(":")[1])).toBeLessThan(PLATE_COUNT);
     }
   });
 
-  it('never puts the pair family through segment g of a score digit', () => {
+  it("never puts the pair family through segment g of a score digit", () => {
     // The one exception in the whole layout: on grids 7 and 8 plate 6 is the
     // digit's own segment g, so the pair pass may light lane 1 there and must
     // never light lane 0. A stray bar through the numeral at half brightness
     // would read as a renderer fault rather than a ROM one.
     for (const grid of [7, 8]) {
-      const digitLit = [0, 1, 2, 3, 4, 5].some((plate) => run.litCells.has(cellKey(grid, plate)));
+      const digitLit = [0, 1, 2, 3, 4, 5].some((plate) =>
+        run.litCells.has(cellKey(grid, plate)),
+      );
       expect(digitLit, `grid ${grid} never drew a digit at all`).toBe(true);
     }
   });
 });
 
-describe('the input matrix', () => {
-  it('responds to the fire button with both strobe columns low', () => {
+describe("the input matrix", () => {
+  it("responds to the fire button with both strobe columns low", () => {
     // K8 is ORed into every K read whatever R9 and R10 are doing, and the ROM
     // takes its fire sample with neither column driven. A build that routed
     // fire through a strobe column would see nothing here, because this drive
     // closes only the unstrobed contact.
     const cycles = seconds(4);
-    const quiet = runGame({ cycles, input: [{ cycle: 0, change: { skill: 1 } }] });
+    const quiet = runGame({
+      cycles,
+      input: [{ cycle: 0, change: { skill: 1 } }],
+    });
     const fired = runGame({
       cycles,
       input: [
         { cycle: 0, change: { skill: 1 } },
         { cycle: seconds(1), change: { fire: true } },
-        { cycle: seconds(1) + PLAYER_SLICE_CYCLES * 20, change: { fire: false } },
+        {
+          cycle: seconds(1) + PLAYER_SLICE_CYCLES * 20,
+          change: { fire: false },
+        },
       ],
     });
     const blip = splitSounds(fired.speakerEdges, BURST_GAP_CYCLES).length;
-    expect(blip).toBeGreaterThan(splitSounds(quiet.speakerEdges, BURST_GAP_CYCLES).length);
+    expect(blip).toBeGreaterThan(
+      splitSounds(quiet.speakerEdges, BURST_GAP_CYCLES).length,
+    );
   });
 
-  it('moves the launcher when the lever moves, and nowhere else', () => {
+  it("moves the launcher when the lever moves, and nowhere else", () => {
     const cycles = seconds(3);
     const lanes = [0, 1, 2].map(
       (lane) => runGame({ cycles, input: leverOnly(cycles, lane) }).litCells,
@@ -541,7 +605,7 @@ describe('the input matrix', () => {
   });
 });
 
-describe('a rocket can reach the launcher in any of the three lanes', () => {
+describe("a rocket can reach the launcher in any of the three lanes", () => {
   // Contract criterion V7, and the v2 defect PRD R5 forbids inheriting.
   // v2 drew the rocket's lane from the free-running timer as it stood the last
   // time the *player* pressed fire, so a player who never fires never moved it
@@ -551,44 +615,48 @@ describe('a rocket can reach the launcher in any of the three lanes', () => {
   const cycles = seconds(50);
 
   it(
-    'flies a rocket down every one of the three lanes',
+    "flies a rocket down every one of the three lanes",
     () => {
-    // The sharper half of the same criterion, and the one that actually
-    // falsifies the v2 defect. A warning burst alone does not: a jet crossing
-    // the G line in the lever's own lane costs a launcher and warns too, so a
-    // parked-lever run can hear all three warnings with the rocket never
-    // leaving one lane. What the defect *is* - a lane drawn from a nibble the
-    // player's own keypress sets - is what the occupancy check below rules out:
-    // such a lane knows nothing about the squadron and fires into empty lanes,
-    // and the rotor cannot, because it only stops on a lane holding a jet.
-    //
-    // ## Why this reads NIB_RLANE and not the lit cells
-    //
-    // It used to union `litCells` over one 50 s run and require all three of
-    // `rocket_lane{0,1,2}_col*`, and it passed for a ROM in which **exactly one
-    // rocket ever flew**. `rd_jets` left `NIB_RBIT` uninitialised, so the near
-    // pass's jet bitmap was offset by the lever's lane and overflowed the NEAR
-    // group into the FAR one, and the near pass emitted far masks - lighting the
-    // attackers' rocket segments in cells no rocket was in. The assertion was
-    // reading those phantoms as evidence of the behaviour it was asserting.
-    //
-    // A lit cell cannot tell a rocket from anything else that reaches the same
-    // plate, so the count comes from the one place that can: `NIB_RCOL` and
-    // `NIB_RLANE` are a nibble each, so a rocket is exactly one column and one
-    // lane, and a launch is that column going from zero to non-zero. The pins
-    // are still asserted, underneath, against the lanes actually flown.
-    //
-    // ## Why the lanes are pooled across the skill dial
-    //
-    // The rotor steps 1, 2, 0, and the first interval after power-on is the one
-    // `reset` writes rather than one the dial sets, so a parked-lever game ends
-    // after its second launch and no single run reaches the third rung. Skill
-    // shortens the *later* intervals and the march together, which samples the
-    // rotor at a different phase - which is why lane 0 shows up at skill 3. The
-    // union over the dial is the whole rotor, and nothing here depends on which
-    // run contributes which lane.
+      // The sharper half of the same criterion, and the one that actually
+      // falsifies the v2 defect. A warning burst alone does not: a jet crossing
+      // the G line in the lever's own lane costs a launcher and warns too, so a
+      // parked-lever run can hear all three warnings with the rocket never
+      // leaving one lane. What the defect *is* - a lane drawn from a nibble the
+      // player's own keypress sets - is what the occupancy check below rules out:
+      // such a lane knows nothing about the squadron and fires into empty lanes,
+      // and the rotor cannot, because it only stops on a lane holding a jet.
+      //
+      // ## Why this reads NIB_RLANE and not the lit cells
+      //
+      // It used to union `litCells` over one 50 s run and require all three of
+      // `rocket_lane{0,1,2}_col*`, and it passed for a ROM in which **exactly one
+      // rocket ever flew**. `rd_jets` left `NIB_RBIT` uninitialised, so the near
+      // pass's jet bitmap was offset by the lever's lane and overflowed the NEAR
+      // group into the FAR one, and the near pass emitted far masks - lighting the
+      // attackers' rocket segments in cells no rocket was in. The assertion was
+      // reading those phantoms as evidence of the behaviour it was asserting.
+      //
+      // A lit cell cannot tell a rocket from anything else that reaches the same
+      // plate, so the count comes from the one place that can: `NIB_RCOL` and
+      // `NIB_RLANE` are a nibble each, so a rocket is exactly one column and one
+      // lane, and a launch is that column going from zero to non-zero. The pins
+      // are still asserted, underneath, against the lanes actually flown.
+      //
+      // ## Why the lanes are pooled across the skill dial
+      //
+      // The rotor steps 1, 2, 0, and the first interval after power-on is the one
+      // `reset` writes rather than one the dial sets, so a parked-lever game ends
+      // after its second launch and no single run reaches the third rung. Skill
+      // shortens the *later* intervals and the march together, which samples the
+      // rotor at a different phase - which is why lane 0 shows up at skill 3. The
+      // union over the dial is the whole rotor, and nothing here depends on which
+      // run contributes which lane.
       const games = SKILLS.flatMap((skill) =>
-        [0, 1, 2].map((lever) => ({ skill, lever, ...parkedGame(skill, lever) })),
+        [0, 1, 2].map((lever) => ({
+          skill,
+          lever,
+          ...parkedGame(skill, lever),
+        })),
       );
 
       // ## Why the union comes from a dodging run and not from the parked ones
@@ -689,8 +757,10 @@ describe('a rocket can reach the launcher in any of the three lanes', () => {
       // finds a jet, so no lane is excluded by construction. Confirmed from the
       // other side too - pinning `rf_wrap` to 1 so the rotor never visits lane 0
       // takes this assertion red.
-      const flown = [...new Set([...games, ...dodged].flatMap((game) => game.lanes))].sort();
-      expect(flown, 'the rotor did not reach every lane').toEqual([0, 1, 2]);
+      const flown = [
+        ...new Set([...games, ...dodged].flatMap((game) => game.lanes)),
+      ].sort();
+      expect(flown, "the rotor did not reach every lane").toEqual([0, 1, 2]);
 
       // The falsifier proper: every rocket flew down a lane that had a jet
       // airborne in it at the moment it launched.
@@ -729,9 +799,16 @@ describe('a rocket can reach the launcher in any of the three lanes', () => {
       // launch of every run rather than on a prefix, and it does not depend on
       // when anything happened.
       const allLaunches = [...games, ...dodged].flatMap((game) =>
-        game.launches.map((launch) => ({ skill: game.skill, lever: game.lever, ...launch })),
+        game.launches.map((launch) => ({
+          skill: game.skill,
+          lever: game.lever,
+          ...launch,
+        })),
       );
-      requireNonVacuous(allLaunches.length, 'no rocket launched in any run, at any skill');
+      requireNonVacuous(
+        allLaunches.length,
+        "no rocket launched in any run, at any skill",
+      );
       for (const launch of allLaunches) {
         expect(
           launch.occupied,
@@ -747,13 +824,16 @@ describe('a rocket can reach the launcher in any of the three lanes', () => {
       // had exactly one lane occupied, so the rotor had no choice to make.
       requireNonVacuous(
         allLaunches.filter((launch) => launch.occupied.length < 3).length,
-        'every launch found all three lanes occupied, so the occupancy check constrained nothing',
+        "every launch found all three lanes occupied, so the occupancy check constrained nothing",
       );
 
       // And not vacuously: a ROM that pinned the rocket to one lane would
       // satisfy the sequence check trivially, so more than one lane has to be
       // reached, and no run may be empty of launches at every skill.
-      expect(flown.length, 'every rocket flew in the same lane').toBeGreaterThan(1);
+      expect(
+        flown.length,
+        "every rocket flew in the same lane",
+      ).toBeGreaterThan(1);
 
       // Finally the pins, now that the lanes they should show are known
       // independently: a lane that flew must have lit its own rocket segments,
@@ -762,7 +842,9 @@ describe('a rocket can reach the launcher in any of the three lanes', () => {
       for (const { skill, lever, lanes, litCells } of games) {
         for (const lane of new Set(lanes)) {
           expect(
-            [1, 2, 3, 4, 5].some((grid) => litCells.has(cellKey(grid, 3 + lane))),
+            [1, 2, 3, 4, 5].some((grid) =>
+              litCells.has(cellKey(grid, 3 + lane)),
+            ),
             `skill ${skill}, lever ${lever}: a rocket flew in lane ${lane} and lit nothing`,
           ).toBe(true);
         }
@@ -789,7 +871,8 @@ describe('a rocket can reach the launcher in any of the three lanes', () => {
       const run = runGame({ cycles, input: leverOnly(cycles, lane) });
       const sounds = splitSounds(run.speakerEdges, BURST_GAP_CYCLES);
       const warnings = sounds.filter(
-        (sound) => warningRunsIn(run.speakerEdges, sound.from, sound.to).length > 0,
+        (sound) =>
+          warningRunsIn(run.speakerEdges, sound.from, sound.to).length > 0,
       );
       expect(
         warnings.length,
@@ -807,15 +890,19 @@ describe('a rocket can reach the launcher in any of the three lanes', () => {
       // cycles against this 29167 limit, while the warning itself was unchanged:
       // two beeps, 455-545 Hz, 25-28 ms apart. The group was never the thing
       // this assertion is about.
-      const runs = warningRunsIn(run.speakerEdges, warnings[0]!.from, warnings[0]!.to);
+      const runs = warningRunsIn(
+        run.speakerEdges,
+        warnings[0]!.from,
+        warnings[0]!.to,
+      );
       const span = (runs[runs.length - 1]?.to ?? 0) - (runs[0]?.from ?? 0);
       expect(span).toBeLessThan(WARNING_CLUSTER_CYCLES);
     });
   }
 });
 
-describe('the sounds', () => {
-  it('puts the fire blip in the measured band, over its own burst', () => {
+describe("the sounds", () => {
+  it("puts the fire blip in the measured band, over its own burst", () => {
     // Measured over the *isolated* burst, split on the named gap constant, and
     // never as first-to-last edge across the capture: that method, and not the
     // 150 ms bound it produced, is what open-questions.md section 3b records as
@@ -836,24 +923,29 @@ describe('the sounds', () => {
         hz: soundHz(run.speakerEdges, sound.from, sound.to, CYCLE_HZ),
       }))
       .filter((entry) => entry.hz > 1_000);
-    expect(blips.length, 'no high blip at all').toBeGreaterThan(0);
-    const blip = blips[0] as { sound: { from: number; to: number }; hz: number };
+    expect(blips.length, "no high blip at all").toBeGreaterThan(0);
+    const blip = blips[0] as {
+      sound: { from: number; to: number };
+      hz: number;
+    };
     expect(blip.hz).toBeGreaterThanOrEqual(1480);
     expect(blip.hz).toBeLessThanOrEqual(1632);
     expect((blip.sound.to - blip.sound.from) / CYCLE_HZ).toBeLessThan(0.15);
   });
 
-  it('puts the march beep in the measured band', () => {
+  it("puts the march beep in the measured band", () => {
     const cycles = seconds(12);
     const run = runGame({ cycles, input: leverOnly(cycles) });
     const sounds = splitSounds(run.speakerEdges, BURST_GAP_CYCLES);
     const march = sounds
       .map((sound) => soundHz(run.speakerEdges, sound.from, sound.to, CYCLE_HZ))
       .filter((hz) => hz >= 600 && hz <= 650);
-    expect(march.length, 'the squadron never sounded a step').toBeGreaterThan(0);
+    expect(march.length, "the squadron never sounded a step").toBeGreaterThan(
+      0,
+    );
   });
 
-  it('sounds the battleship as a continuous buzz in the measured band', () => {
+  it("sounds the battleship as a continuous buzz in the measured band", () => {
     // audio-reference.md, battleshipBuzz: 3.5-4.5 s (4.05 and 3.80 across two
     // arrivals) at a 79-111 Hz repetition rate, continuous rather than a
     // sequence of beeps. Read by harmonic-comb periodicity and not by a median
@@ -877,17 +969,22 @@ describe('the sounds', () => {
     const arrivals = splitSounds(run.speakerEdges, BURST_GAP_CYCLES).filter(
       (sound) => (sound.to - sound.from) / CYCLE_HZ > 3,
     );
-    expect(arrivals.length, 'no arrival in the window').toBeGreaterThan(0);
+    expect(arrivals.length, "no arrival in the window").toBeGreaterThan(0);
     const arrival = arrivals[0] as { from: number; to: number };
     const durationSec = (arrival.to - arrival.from) / CYCLE_HZ;
     expect(durationSec).toBeGreaterThanOrEqual(3.5);
     expect(durationSec).toBeLessThanOrEqual(4.5);
-    const hz = combPeriodicityHz(run.speakerEdges, arrival.from, arrival.to, CYCLE_HZ);
+    const hz = combPeriodicityHz(
+      run.speakerEdges,
+      arrival.from,
+      arrival.to,
+      CYCLE_HZ,
+    );
     expect(hz).toBeGreaterThanOrEqual(79);
     expect(hz).toBeLessThanOrEqual(111);
   });
 
-  it('never drives the speaker from anything but R15', () => {
+  it("never drives the speaker from anything but R15", () => {
     // There is no D port on this part. The probe only ever records an edge from
     // an R-latch write, so a non-empty edge stream is itself the assertion -
     // what this pins is that the stream is not empty for the wrong reason.
@@ -900,17 +997,19 @@ describe('the sounds', () => {
   });
 });
 
-describe('the game', () => {
+describe("the game", () => {
   const cycles = seconds(45);
   const run: RunResult = runGame({ cycles, policy: defending() });
 
-  it('keeps playing while the player plays', () => {
+  it("keeps playing while the player plays", () => {
     const last = run.speakerEdges.at(-1);
-    expect(last, 'the machine fell silent immediately').toBeDefined();
-    expect((last as { cycle: number }).cycle).toBeGreaterThan(cycles - CAPTURE_WINDOW_CYCLES);
+    expect(last, "the machine fell silent immediately").toBeDefined();
+    expect((last as { cycle: number }).cycle).toBeGreaterThan(
+      cycles - CAPTURE_WINDOW_CYCLES,
+    );
   });
 
-  it('scores', () => {
+  it("scores", () => {
     const units = run.ram[5 * 16 + 10] as number;
     const tens = run.ram[5 * 16 + 11] as number;
     const hundreds = run.ram[5 * 16 + 12] as number;
@@ -919,7 +1018,7 @@ describe('the game', () => {
     expect(Math.max(units, tens, hundreds)).toBeLessThanOrEqual(9);
   });
 
-  it('flies a squadron, a rocket and a battleship over the same window', () => {
+  it("flies a squadron, a rocket and a battleship over the same window", () => {
     // Jets are the near family on grids 1-5, the rocket the far family there,
     // and the boat the near family on grid 0. All three in one run is the
     // assertion that the game is running rather than that one actor is.
@@ -930,10 +1029,14 @@ describe('the game', () => {
       [3, 4, 5].some((plate) => run.litCells.has(cellKey(grid, plate))),
     );
     const boat = [0, 1, 2].some((plate) => run.litCells.has(cellKey(0, plate)));
-    expect({ jets, rockets, boat }).toEqual({ jets: true, rockets: true, boat: true });
+    expect({ jets, rockets, boat }).toEqual({
+      jets: true,
+      rockets: true,
+      boat: true,
+    });
   });
 
-  it('leaves the player missile visible on its way out', () => {
+  it("leaves the player missile visible on its way out", () => {
     const missile = [1, 2, 3, 4, 5].some((grid) =>
       [6, 7, 8].some((plate) => run.litCells.has(cellKey(grid, plate))),
     );
