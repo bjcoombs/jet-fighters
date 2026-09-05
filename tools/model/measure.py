@@ -314,8 +314,10 @@ def main(argv: list[str]) -> int:
                 rgb = np.median(region, axis=0)
             rgb = np.clip(rgb * gain, 0, 255)
             d.measured(f"colour.{name}_srgb", "#%02x%02x%02x" % tuple(int(round(c)) for c in rgb), f"{col['file']} colours.{name} ({spec['take']}), white-balanced on the sticker's print")
-    except ImportError:
-        pass
+    except ImportError as exc:
+        # The Blender script reads every colour.* figure; a dimensions file
+        # without them would fail the next build, so fail here instead.
+        raise SystemExit(f"colour sampling needs Pillow and NumPy: {exc}") from exc
 
     # ---- Cross-check against the flat page's SVG, scaled so its body width is the
     # measured case width. Reported, not used: the model follows the photographs.
