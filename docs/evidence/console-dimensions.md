@@ -166,9 +166,9 @@ which is how far a side view would be expected to move it.
 | | mm | Basis | Bound |
 | --- | --- | --- | --- |
 | Rim above board | 3 | The board's edge reads at the shell wall in the board photograph; a deeper board would read well inside it | 5 |
-| Back shell depth | 20 | Board top 3 mm below the rim, board 1.6 mm, bosses about 12 mm under it clearing the solder side and the door, 2 mm wall | 6 |
-| Front shell, wing face | 11 | Clears the fire switch body and the lever disc, both a few mm above the rim | 5 |
-| Front shell, module face | 16 | Clears the tube (11 mm on the board, so 8 mm above the rim) plus the window; the module visibly stands proud of the wings | 5 |
+| Back shell depth | 28 | The end views (`assets/reference/case/end-left.jpg`, `end-right.jpg`): the end face is about 60 mm deep against the case's 147.5 mm height, parted near its middle | 8 |
+| Front shell, wing face | 28 | The end views: the front shell's half of the end face, about equal to the back's | 8 |
+| Front shell, module face | 34 | The wing face plus the step the module stands proud by, about 6 mm in `front-oblique.jpg` | 8 |
 | Window recess | 2 | The smoked window sits inside a lip | 1 |
 | Wall thickness | 2 | Moulded ABS of the period | 0.5 |
 | Tube thickness | 11 | Flat VFD envelopes of this size | 2 |
@@ -193,6 +193,16 @@ beside the deployed page. **The model follows the photographs; the SVG is left a
 per the PRD - the tube renderer's own layout (`src/machine/tube/layout.ts`) shares the
 SVG's rectangle and moving one means moving both, which is a change to the flat page and
 not part of this work.
+
+## The owner's case photographs
+
+Eight photographs of the assembled unit taken for the model, in
+`assets/reference/case/` (their README names each view). They supplied what the first
+two photographs could not: the depth, the wings' ribbed end grips, the angled shoulders
+where the module meets the wings, the raised panels and screw holes on the back, and the
+faces themselves - `front.jpg` and `back.jpg` are rectified by
+`tools/model/photos.py` into the textures the shells wear, so the moulded stipple, the
+printed marks, the sticker and the label are the photograph's own pixels.
 
 ## Check images
 

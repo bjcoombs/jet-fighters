@@ -319,9 +319,14 @@ def main(argv: list[str]) -> int:
     # ---- Depth. Nothing photographs the unit edge-on, so every figure here is an
     # estimate with its basis; the bound is what a side view would be expected to move it by.
     d.estimated("depth.rim_above_board", sh["rim_above_board_mm"]["value"], sh["rim_above_board_mm"]["$comment"], 5.0)
-    d.estimated("depth.back_shell", 20.0, "Board top 3 mm below the rim, board 1.6 mm, bosses 12 mm under it clearing the solder side and the door, 2 mm wall. The bosses' height is the guess.", 6.0)
-    d.estimated("depth.front_shell_wing", 11.0, "Wing face must clear the fire switch body and the lever disc, both a few mm above the rim.", 5.0)
-    d.estimated("depth.front_shell_module", 16.0, "Module face must clear the tube (11 mm on the board, so 8 mm above the rim) plus the window glass, and the module stands proud of the wings by a visible step.", 5.0)
+    d.estimated("depth.back_shell", 28.0, "The end views (assets/reference/case/end-left.jpg, end-right.jpg): the end face is about 60 mm deep against the case's 147.5 mm height, parted near its middle. Perspective in a hand-held close-up inflates it a little.", 8.0)
+    d.estimated("depth.front_shell_wing", 28.0, "The end views: the front shell's half of the end face, about equal to the back's.", 8.0)
+    d.estimated("depth.front_shell_module", 34.0, "The wing face plus the step the module stands proud by, read as about 6 mm in front-oblique.jpg.", 8.0)
+    d.estimated("shape.shoulder", 8.0, "The 45-degree chamfers where the module's outline meets the wings, front.jpg and back.jpg.", 3.0)
+    d.estimated("shape.back_panel_width", 50.0, "The raised panels on the back of each wing, from their outer ends inward, back.jpg.", 5.0)
+    d.estimated("shape.back_panel_raise", 2.0, "How far those panels stand proud of the back face; end-left.jpg shows a step.", 1.0)
+    d.measured("shape.back_screws", [[68.0, 27.0], [68.0, 127.0], [273.0, 27.0], [273.0, 127.0]], "back.jpg, the four screw holes inboard of the panels, read against the case's sides and the module's top and bottom", "Face mm, seen from the front (x runs as on the front).")
+    d.estimated("shape.end_grip_ribs", 6.0, "Vertical ribs on the wing ends' front half, edge-bottom-2.jpg; the count is a read, the pitch 4 mm a guess.", 2.0)
     d.estimated("depth.window_recess", 2.0, "The silkscreened smoked window sits a little below the module face, inside a lip.", 1.0)
     d.estimated("depth.wall", 2.0, "Injection-moulded ABS of the period.", 0.5)
     d.estimated("depth.fire_cap_height", 6.0, "The cap stands proud of its ring in device-front-lit.jpg by about its own radius's quarter.", 2.0)

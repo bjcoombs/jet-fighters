@@ -12,7 +12,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "model": "sh tools/model/blender.sh --out public/models/console.glb",
-    "model:render": "sh tools/model/blender.sh --out public/models/console.glb --render /tmp/console-render && python3 tools/model/compare.py front /tmp/console-render/console-model-front.png docs/evidence/console-model-front.jpg && python3 tools/model/compare.py board /tmp/console-render/console-model-board.png docs/evidence/console-model-board.jpg"
+    "model:render": "sh tools/model/blender.sh --out public/models/console.glb --render /tmp/console-render && python3 tools/model/compare.py front /tmp/console-render/console-model-front.png docs/evidence/console-model-front.jpg && python3 tools/model/compare.py board /tmp/console-render/console-model-board.png docs/evidence/console-model-board.jpg",
+    "model:blend": "sh tools/model/blender.sh --out public/models/console.glb --blend tools/model/console.blend"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

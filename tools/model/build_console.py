@@ -62,7 +62,12 @@ Z_BACK = D["depth.back_shell"]
 Z_BOARD_TOP = -D["depth.rim_above_board"]
 Z_BOARD_BOTTOM = Z_BOARD_TOP - D["pcb.thickness"]
 Z_WINDOW = Z_MODULE - D["depth.window_recess"]
-Z_CHANNEL = 6.0  # the ribbed channel floor between wing and module; estimated
+Z_CHANNEL = Z_WING - 5.0  # the ribbed channel floor between wing and module; estimated
+SHOULDER = D["shape.shoulder"]
+BACK_PANEL_W = D["shape.back_panel_width"]
+BACK_PANEL_RAISE = D["shape.back_panel_raise"]
+Z_BACK_FACE = -Z_BACK - BACK_PANEL_RAISE  # the wings' raised panels; the module's back is at -Z_BACK
+TEXTURES = ROOT / "tools/model/textures"
 STIPPLE_RAISE = 1.5  # the raised, stippled blocks on the wings; estimated
 
 WING_TOP = D["case.wing_top_below_module_top"]
@@ -133,11 +138,36 @@ def hexrgb(h: str) -> tuple[float, float, float]:
     return tuple(int(h[i : i + 2], 16) / 255 for i in (0, 2, 4))
 
 
+def photo_material(name: str, image_path: Path, roughness: float = 0.5) -> bpy.types.Material:
+    """A material whose base colour is a rectified photograph (tools/model/photos.py).
+
+    The image is referenced from disk; the glTF exporter embeds it.
+    """
+    if name in MATERIALS:
+        return MATERIALS[name]
+    mat = bpy.data.materials.new(name)
+    mat.use_nodes = True
+    nodes = mat.node_tree.nodes
+    bsdf = nodes["Principled BSDF"]
+    bsdf.inputs["Roughness"].default_value = roughness
+    tex = nodes.new("ShaderNodeTexImage")
+    tex.image = bpy.data.images.load(str(image_path))
+    tex.image.colorspace_settings.name = "sRGB"
+    mat.node_tree.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+    MATERIALS[name] = mat
+    return mat
+
+
 def materials() -> None:
-    # Case red, sampled from device-front-gameplay.jpg's module face and src/ui/case.ts's
-    # mid-stop (#c53d20). The stippled blocks are the same pigment, rougher.
-    material("red_abs", hexrgb("#c53d20"), roughness=0.55)
-    material("red_stipple", hexrgb("#bf3a1e"), roughness=0.9)
+    # Case red: the mean of the front photograph's left wing block, written by
+    # tools/model/photos.py beside the textures. The faces the photographs cover
+    # get the photographs themselves; this is for the walls and the moulding's
+    # sides. The stippled blocks are the same pigment, rougher.
+    plastic = json.loads((TEXTURES / "plastic.json").read_text())["red_abs_srgb"]
+    material("red_abs", hexrgb(plastic), roughness=0.55)
+    material("red_stipple", hexrgb(plastic), roughness=0.9)
+    photo_material("front_photo", TEXTURES / "front.jpg")
+    photo_material("back_photo", TEXTURES / "back.jpg")
     # The fire cap and skill flag: a deep blue, device-front-lit.jpg.
     material("blue_control", hexrgb("#2f3f9e"), roughness=0.45)
     # The sticker: light cornflower, src/ui/case.ts's sample rgb(129,159,213).
@@ -274,6 +304,32 @@ def uv_project_top(obj: bpy.types.Object, x0: float, x1: float, y0: float, y1: f
     bm.free()
 
 
+def wear_photo(obj: bpy.types.Object, photo: bpy.types.Material, facing: float) -> None:
+    """Project the face-frame photograph onto the faces that look `facing` (+1 front, -1 back).
+
+    UVs span the whole face, module top-left to bottom-right, on every face; the
+    photograph's material goes on the faces whose normal points out of that face,
+    the plastic's plain colour stays on the rest.
+    """
+    # The textures cover the whole silhouette, module top to the wings' lower edge.
+    uv_project_top(obj, fx(0), fx(W), fy(WING_BOTTOM), fy(0))
+    plain = obj.data.materials[0] if obj.data.materials else MATERIALS["red_abs"]
+    obj.data.materials.clear()
+    obj.data.materials.append(plain)
+    obj.data.materials.append(photo)
+    for poly in obj.data.polygons:
+        poly.material_index = 1 if poly.normal.z * facing > 0.7 else 0
+
+
+def shoulders(z0: float, z1: float, leg: float) -> list[bpy.types.Object]:
+    """Four 45-degree chamfer cutters where the module's outline meets the wings."""
+    out = []
+    for k, (x, sx) in enumerate(((MODULE_X[0], 1), (MODULE_X[1], -1))):
+        out.append(prism(f"sh{k}a", [(fx(x), fy(0)), (fx(x + sx * leg), fy(0)), (fx(x), fy(leg))], z0, z1))
+        out.append(prism(f"sh{k}b", [(fx(x), fy(H)), (fx(x + sx * leg), fy(H)), (fx(x), fy(H - leg))], z0, z1))
+    return out
+
+
 def extras(obj: bpy.types.Object, label: str, evidence: str, explode: tuple[float, float, float] = (0.0, 0.0, 0.0)) -> None:
     """Name the part for the viewer. `explode` is in mm, Blender frame; stored in metres, glTF frame."""
     ex, ey, ez = explode
@@ -340,20 +396,30 @@ def build_front_shell() -> bpy.types.Object:
     left_wing = box("fs_left", fx(0), fx(LEFT_STRIP[1]), fy(WING_BOTTOM), fy(WING_TOP), 0, Z_WING, red)
     right_wing = box("fs_right", fx(MODULE_X[1] + CHANNEL_W), fx(W), fy(WING_BOTTOM), fy(WING_TOP), 0, Z_WING, red)
     module = box("fs_module", fx(MODULE_X[0]), fx(MODULE_X[1]), fy(H), fy(0), 0, Z_MODULE, red)
-    chan_l = box("fs_chan_l", fx(LEFT_STRIP[1]), fx(MODULE_X[0]), fy(WING_BOTTOM), fy(WING_TOP), 0, Z_CHANNEL, red)
-    chan_r = box("fs_chan_r", fx(MODULE_X[1]), fx(MODULE_X[1] + CHANNEL_W), fy(WING_BOTTOM), fy(WING_TOP), 0, Z_CHANNEL, red)
+    # The channels stop at the module's lower edge; the wings run on below it.
+    chan_l = box("fs_chan_l", fx(LEFT_STRIP[1]), fx(MODULE_X[0]), fy(H - 1.0), fy(WING_TOP), 0, Z_CHANNEL, red)
+    chan_r = box("fs_chan_r", fx(MODULE_X[1]), fx(MODULE_X[1] + CHANNEL_W), fy(H - 1.0), fy(WING_TOP), 0, Z_CHANNEL, red)
     shell = fuse(left_wing, right_wing, module, chan_l, chan_r)
     shell.name = "front_shell"
+    cut(shell, *shoulders(-1, Z_MODULE + 1, SHOULDER))
 
     # Cavity: the same shapes, inset by the wall, open at the parting line.
     cav = fuse(
         box("cav_l", fx(WALL), fx(LEFT_STRIP[1] - WALL), fy(WING_BOTTOM - WALL), fy(WING_TOP + WALL), -1, Z_WING - WALL),
         box("cav_r", fx(MODULE_X[1] + CHANNEL_W + WALL), fx(W - WALL), fy(WING_BOTTOM - WALL), fy(WING_TOP + WALL), -1, Z_WING - WALL),
         box("cav_m", fx(MODULE_X[0] + WALL), fx(MODULE_X[1] - WALL), fy(H - WALL), fy(WALL), -1, Z_MODULE - WALL),
-        box("cav_cl", fx(LEFT_STRIP[1] - WALL), fx(MODULE_X[0] + WALL), fy(WING_BOTTOM - WALL), fy(WING_TOP + WALL), -1, Z_CHANNEL - WALL),
-        box("cav_cr", fx(MODULE_X[1] - WALL), fx(MODULE_X[1] + CHANNEL_W + WALL), fy(WING_BOTTOM - WALL), fy(WING_TOP + WALL), -1, Z_CHANNEL - WALL),
+        box("cav_cl", fx(LEFT_STRIP[1] - WALL), fx(MODULE_X[0] + WALL), fy(H - 1.0 - WALL), fy(WING_TOP + WALL), -1, Z_CHANNEL - WALL),
+        box("cav_cr", fx(MODULE_X[1] - WALL), fx(MODULE_X[1] + CHANNEL_W + WALL), fy(H - 1.0 - WALL), fy(WING_TOP + WALL), -1, Z_CHANNEL - WALL),
     )
+    cut(cav, *shoulders(-2, Z_MODULE + 1, max(0.5, SHOULDER - WALL * 1.5)))
     cut(shell, cav)
+
+    # Grips on the wing ends: a run of vertical grooves on the front half.
+    n = int(D["shape.end_grip_ribs"])
+    for x_end, sx in ((0.0, 1), (W, -1)):
+        for k in range(n):
+            y = 65.0 + k * 4.0
+            cut(shell, box(f"grip{k}", fx(x_end) - 1.0, fx(x_end) + sx * 0.8, fy(y + 1.2), fy(y), 3.0, Z_WING - 3.0))
 
     # The scope window opening, through the module face.
     cut(shell, window_cutter("win_cut", Z_MODULE - WALL - 1, Z_MODULE + 1))
@@ -410,6 +476,7 @@ def build_front_shell() -> bpy.types.Object:
         marks.append(m)
     join(shell, *blocks, *ribs, tab_obj, *marks)
     shade_smooth(shell)
+    wear_photo(shell, MATERIALS["front_photo"], +1)
     extras(shell, "Front shell: one red ABS moulding - two wings and the raised scope module, the ribbed channels between them, and the openings for the four controls.", "device-front-lit.jpg, device-front-gameplay.jpg, clip.mov", (0, 0, 120))
     return shell
 
@@ -451,6 +518,7 @@ def build_scope_mask(shell: bpy.types.Object) -> bpy.types.Object:
 def build_sticker(shell: bpy.types.Object) -> bpy.types.Object:
     s = D["face.sticker"]
     st = box("sticker", fx(s["x"][0]), fx(s["x"][1]), fy(s["y"][1]), fy(s["y"][0]), Z_WING + STIPPLE_RAISE, Z_WING + STIPPLE_RAISE + 0.4, MATERIALS["sticker_blue"])
+    wear_photo(st, MATERIALS["front_photo"], +1)
     extras(st, "The JET FIGHTERS / CGL sticker.", "device-front-gameplay.jpg", (0, 0, 15))
     parent(st, shell)
     return st
@@ -518,14 +586,25 @@ def build_back_shell() -> bpy.types.Object:
     red = MATERIALS["red_abs"]
     shell = outline_solid("back_shell", -Z_BACK, 0, red)
     shell.name = "back_shell"
+    cut(shell, *shoulders(-Z_BACK - 1, 1, SHOULDER))
+    # The raised panels on the back of each wing, from the ends inward.
+    for x0, x1 in ((2.0, BACK_PANEL_W), (W - BACK_PANEL_W, W - 2.0)):
+        fuse(shell, box("panel", fx(x0), fx(x1), fy(WING_BOTTOM - 8), fy(WING_TOP + 6), Z_BACK_FACE, -Z_BACK + 0.5, red))
     cav = outline_solid("back_cav", -Z_BACK + WALL, 1, None, inset=WALL)
+    cut(cav, *shoulders(-Z_BACK, 2, max(0.5, SHOULDER - WALL * 1.5)))
     cut(shell, cav)
+    # The four screws that hold the halves together, inboard of the panels.
+    for k, (sx_, sy_) in enumerate(D["shape.back_screws"]):
+        cut(shell, cylinder(f"bscrew{k}", fx(sx_), fy(sy_), 2.4, -Z_BACK - 3, -Z_BACK + WALL + 1, segments=20))
+    # The recessed panel on each end's back half.
+    for x_end, sx in ((0.0, 1), (W, -1)):
+        cut(shell, box("endrec", fx(x_end) - 1.0, fx(x_end) + sx * 1.2, fy(WING_BOTTOM - 14), fy(WING_TOP + 12), -Z_BACK + 5.0, -4.0))
 
     # Battery door opening in the back face, under the left wing.
     bb_x = D["battery_box.x"]
     bb_y = D["battery_box.y"]
     door = (fx(bb_x[0] + 1.0), fx(bb_x[1] - 0.5), fy(bb_y[1] - 1.0), fy(bb_y[0] + 1.0))
-    cut(shell, box("door_cut", door[0], door[1], door[2], door[3], -Z_BACK - 1, -Z_BACK + WALL + 0.5))
+    cut(shell, box("door_cut", door[0], door[1], door[2], door[3], Z_BACK_FACE - 1, -Z_BACK + WALL + 0.5))
     # A ledge the door rests on: leave the wall inset around the opening. Approximated by
     # cutting the opening 1 mm smaller through the outer 1 mm only - skipped; the door
     # sits flush in the opening.
@@ -558,6 +637,7 @@ def build_back_shell() -> bpy.types.Object:
     intersect(ribs, clip)
     join(shell, ribs, label)
     shade_smooth(shell)
+    wear_photo(shell, MATERIALS["back_photo"], -1)
     extras(shell, "Back shell: the same outline, moulded with diagonal ribs, the battery door opening and the instruction label's recess. The board sits on its bosses.", "back-instructions-label.jpg, board-L1001568.jpg", (0, 0, -80))
     return shell
 
@@ -565,16 +645,17 @@ def build_back_shell() -> bpy.types.Object:
 def build_battery_door(shell: bpy.types.Object) -> bpy.types.Object:
     bb_x = D["battery_box.x"]
     bb_y = D["battery_box.y"]
-    door = box("battery_door", fx(bb_x[0] + 1.3), fx(bb_x[1] - 0.8), fy(bb_y[1] - 1.3), fy(bb_y[0] + 1.3), -Z_BACK, -Z_BACK + WALL, MATERIALS["red_abs"])
+    door = box("battery_door", fx(bb_x[0] + 1.3), fx(bb_x[1] - 0.8), fy(bb_y[1] - 1.3), fy(bb_y[0] + 1.3), Z_BACK_FACE, -Z_BACK + WALL, MATERIALS["red_abs"])
     # The OPEN arrow: a shallow triangular recess near the door's end, as photographed.
     ax = fx((bb_x[0] + bb_x[1]) / 2)
     ay = fy(bb_y[0] + 14)
-    arrow = prism("arrow", [(ax - 5, ay - 4), (ax + 5, ay - 4), (ax, ay + 5)], -Z_BACK - 1, -Z_BACK + 0.5)
+    arrow = prism("arrow", [(ax - 5, ay - 4), (ax + 5, ay - 4), (ax, ay + 5)], Z_BACK_FACE - 1, Z_BACK_FACE + 0.5)
     cut(door, arrow)
     # Grip ridges across the door's far end.
     for k in range(6):
         y = fy(bb_y[1] - 6 - k * 3.0)
-        cut(door, box(f"ridge{k}", fx(bb_x[0] + 6), fx(bb_x[1] - 6), y - 0.6, y + 0.6, -Z_BACK - 1, -Z_BACK + 0.4))
+        cut(door, box(f"ridge{k}", fx(bb_x[0] + 6), fx(bb_x[1] - 6), y - 0.6, y + 0.6, Z_BACK_FACE - 1, Z_BACK_FACE + 0.4))
+    wear_photo(door, MATERIALS["back_photo"], -1)
     extras(door, "Battery door, with its OPEN arrow and grip ridges.", "board-L1001568.jpg (loose, top left)", (0, 0, -130))
     parent(door, shell)
     return door
@@ -911,7 +992,7 @@ def export_glb(path: Path) -> None:
         export_cameras=False,
         export_skins=False,
         export_morph=False,
-        export_image_format="NONE",
+        export_image_format="AUTO",
         use_selection=False,
     )
 
@@ -980,7 +1061,7 @@ def main(argv: list[str]) -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, default=ROOT / "public/models/console.glb")
     ap.add_argument("--render", type=Path, help="directory for the comparison renders")
-    ap.add_argument("--blend", type=Path, help="also save a .blend to open in the app")
+    ap.add_argument("--blend", type=Path, help="also save a .blend to open in the app (npm run model:blend writes tools/model/console.blend)")
     args = ap.parse_args(argv)
 
     reset_scene()
