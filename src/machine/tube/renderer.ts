@@ -70,11 +70,11 @@ export interface TubeRendererOptions {
    */
   readonly mesh?: boolean;
   /**
-   * Draw the printed silkscreen over the tube. On by default: on the flat page
-   * the canvas is the window and the glass, so the print belongs on it. The 3D
-   * page turns it off and draws the print on the window's own mesh with
-   * `drawSilkscreen`, because on the unit it is printed on the smoked filter a
-   * few millimetres in front of the phosphor, not on the tube.
+   * Draw the printed silkscreen over the tube. On by default, for a canvas that
+   * is the window and the glass in one (the probe's fake canvas, a bare
+   * renderer). The page turns it off and draws the print on the window's own
+   * mesh with `drawSilkscreen`, because on the unit it is printed on the smoked
+   * filter a few millimetres in front of the phosphor, not on the tube.
    */
   readonly silkscreen?: boolean;
 }

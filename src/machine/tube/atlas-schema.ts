@@ -209,7 +209,7 @@ export interface Segment {
 
 /**
  * The atlas coordinate space. Equal to the scope bounding box of
- * `src/ui/geometry.ts` with the origin translated to (0, 0): 363 x 300 units,
+ * the case drawing (`CIRCLE` and `RECT` in layout.ts) with the origin translated to (0, 0): 363 x 300 units,
  * +x right, +y down (SVG convention). See ATLAS-COORDINATES.md.
  */
 export interface AtlasViewBox {

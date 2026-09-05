@@ -1,12 +1,14 @@
-// The 3D page: the unit as a model that can be turned in the hand, with the
-// machine running behind its glass.
+// The page: the unit as a model that can be turned in the hand, with the
+// machine running behind its glass. It opens on the front view, which is the
+// unit as the flat drawing used to show it; the drawing was a rendering of
+// this and is gone.
 //
 // Builds a canvas for the scene and two offscreen ones for the tube, hands the
 // driver a renderer bound to the first of those, and runs a render loop. That
 // loop draws the scene and uploads the tube's canvas; it does not step the
-// machine. The machine's clock is src/app/driver.ts, here as on the flat page.
+// machine. The machine's clock is src/app/driver.ts.
 
-import { opla, rom } from '../../asm/jetfighter.asm';
+import { highestAddress, opla, ramHighWater, rom, symbols } from '../../asm/jetfighter.asm';
 import { createDriver } from '../app/driver.js';
 import { buildMuteToggle } from '../app/mute-toggle.js';
 import { createHelpOverlay, createInputSystem } from '../input/index.js';
@@ -24,15 +26,12 @@ import { Box3, Mesh, Plane, Quaternion, Raycaster, Vector2, Vector3 } from 'thre
 
 const MODEL_URL = `${import.meta.env.BASE_URL}models/console.glb`;
 
-/** Below this width the dock starts folded: a phone in either hand. */
-const NARROW_PX = 500;
-
 /** How fast a modelled control settles into its new place: a press, not a jump. */
 const CONTROL_EASE_MS = 90;
 
 const HINT_KEY = 'jf3d-hint-seen';
 
-const app = document.querySelector<HTMLElement>('#app3d');
+const app = document.querySelector<HTMLElement>('#app');
 if (app) {
   void start(app);
 }
@@ -45,7 +44,7 @@ async function start(mount: HTMLElement): Promise<void> {
   // The machine, dark, painting an offscreen canvas the model will wear.
   const textures = createTubeTextures();
   const driver = createDriver({ image: { rom, opla }, renderer: textures.renderer });
-  createInputSystem(driver.apply, { screenElement: canvas });
+  createInputSystem(driver.apply);
   mount.appendChild(buildMuteToggle(driver));
   mount.appendChild(
     createHelpOverlay(document, {
@@ -55,7 +54,6 @@ async function start(mount: HTMLElement): Promise<void> {
         ['H', 'Hide the focused part'],
         ['Esc', 'Clear the focus'],
       ],
-      link: { href: './', text: 'The flat page' },
     }),
   );
   driver.start();
@@ -75,7 +73,6 @@ async function start(mount: HTMLElement): Promise<void> {
   // `#touch` in the URL shows the bar on any device, for trying it.
   const coarse = isCoarsePointer() || window.location.hash.includes('touch');
   const slackMm = coarse ? 6 : 0;
-  const narrow = window.innerWidth < NARROW_PX;
   mount.style.setProperty('--jf-bottom', `${coarse ? TOUCH_BAR_HEIGHT_PX + 8 : 12}px`);
 
   // Taking it apart, hiding what is in the way, and pointing at what is inside.
@@ -88,7 +85,8 @@ async function start(mount: HTMLElement): Promise<void> {
     exploder,
     visibility,
     picker,
-    collapsed: narrow,
+    // Folded until asked for: the page opens as the unit and nothing else.
+    collapsed: true,
     onView: (view) => goToView(view),
     onFocus: (part) => {
       if (part) focusOn(part);
@@ -312,7 +310,26 @@ async function start(mount: HTMLElement): Promise<void> {
   requestAnimationFrame(frame);
 
   if (import.meta.env.DEV) {
-    (globalThis as { jetFighters3d?: unknown }).jetFighters3d = { scene, driver, textures, exploder, picker };
+    // A console handle on the machine: step it, read its RAM, name an address
+    // from the assembler's symbol table. The debugging surface a contributor
+    // editing the ROM needs, and dev-only so it is not part of the product.
+    (globalThis as { jetFighters?: unknown }).jetFighters = {
+      board: driver.board,
+      renderer: textures.renderer,
+      // Null until the first input builds it. `speaker.stats` is how a silent
+      // machine is told apart from a silenced one: edges consumed says the ROM
+      // is toggling the pin, realignments and underruns say what the transport
+      // then did with them.
+      get speaker() {
+        return driver.speaker;
+      },
+      rom: { words: rom.length, highestAddress, ramHighWater, symbols },
+      scene,
+      driver,
+      textures,
+      exploder,
+      picker,
+    };
   }
 }
 

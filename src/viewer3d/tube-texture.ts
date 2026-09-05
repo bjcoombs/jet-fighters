@@ -1,11 +1,11 @@
 // The tube's light, and the print on the glass, as textures.
 //
 // There is one drawing of the segments in this program: the tube renderer's.
-// The 3D page hands it an offscreen canvas instead of the one in the flat case,
-// and that canvas is uploaded to the GPU as the tube face's texture, so a lit
-// segment in three dimensions is the same pixels, with the same rise and decay,
-// as on the flat page. The silkscreen is drawn once, onto a second canvas, and
-// goes on the window, because that is where the unit prints it.
+// The page hands it an offscreen canvas, and that canvas is uploaded to the GPU
+// as the tube face's texture, so a lit segment on the model is the renderer's
+// own pixels, with its rise and decay. The silkscreen is drawn once, onto a
+// second canvas, and goes on the window, because that is where the unit prints
+// it.
 
 import { CanvasTexture, ClampToEdgeWrapping, LinearFilter, SRGBColorSpace } from 'three';
 

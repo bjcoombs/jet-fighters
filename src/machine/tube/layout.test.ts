@@ -31,7 +31,7 @@ describe('the copied scope geometry', () => {
   });
 
   it('places the circle and the left tab as ATLAS-COORDINATES.md documents', () => {
-    // src/ui/geometry.ts SCOPE_CIRCLE (533, 222, r150) and SCOPE_RECT
+    // The case drawing's SCOPE_CIRCLE (533, 222, r150) and SCOPE_RECT
     // (320, 150, 213 x 144), with the bounding box origin (320, 72) removed.
     expect(CIRCLE).toEqual({ cx: 213, cy: 150, r: 150 });
     expect(RECT).toEqual({ x: 0, y: 78, width: 213, height: 144 });

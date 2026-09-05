@@ -4,7 +4,7 @@
 // pose of the four control parts, and between a pointer on the model and the
 // input it means; it is tested headlessly. The other half attaches to the
 // canvas and turns pointer events into `MachineInput`, the same messages the
-// flat page's controls and the keyboard produce. Nothing here writes machine
+// keyboard and the touch bar produce. Nothing here writes machine
 // state: a click closes a contact through `apply`, and the pose the parts take
 // is read back from the board's input matrix each frame, so the keyboard moves
 // the modelled controls too.
@@ -67,8 +67,9 @@ export const FIRE_PRESS_MM = 2.5;
  * The skill flag's handle angle for each level, in the face's plane. The moulded
  * 1/2/3 marks sit at 150, 90 and 30 degrees round the hub (counter-clockwise from
  * +X, case-top up), and the handle points the opposite way from the mark it
- * selects: src/ui/case.ts, "the level it indicates is the direction opposite the
- * handle". The Blender script builds the flag at -40 degrees, near level 1.
+ * selects, as the flat drawing that preceded this model had it ("the level it
+ * indicates is the direction opposite the handle"). The Blender script builds
+ * the flag at -40 degrees, near level 1.
  */
 export const FLAG_REST_DEG = -40;
 export const FLAG_HANDLE_DEG: Readonly<Record<1 | 2 | 3, number>> = { 1: -30, 2: -90, 3: -150 };
