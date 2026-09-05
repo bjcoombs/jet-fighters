@@ -131,6 +131,21 @@
       "cans": [[1190, 1150, 1330, 1210], [1190, 1300, 1260, 1440], [1260, 1500, 1400, 1560], [1600, 1520, 1750, 1580], [3140, 830, 3260, 890]]
     }
   },
+  "textures": {
+    "$comment": "Four photograph pixels and the face millimetres they are, for tools/model/photos.py to rectify the photograph into a texture. Front: the wings' outer corners at the wing rows (red-mask edges at 10% and 90% of the width and at mid-height). Back: the case's sides at mid-height and the module's top and bottom edges; the unit was turned over about its short axis for this photograph, so its top edge is at the image's bottom and x runs the same way as on the front - the battery door is on the left in both.",
+    "front": {
+      "file": "assets/reference/case/front.jpg",
+      "method": "profile",
+      "corners_px": [[261, 805], [3859, 805], [3859, 2286], [261, 2286]],
+      "corners_mm": [[0, 8.6], [341.5, 8.6], [341.5, 151.2], [0, 151.2]]
+    },
+    "back": {
+      "file": "assets/reference/case/back.jpg",
+      "method": "profile",
+      "corners_px": [[521, 2098], [3743, 2098], [3743, 716], [521, 716]],
+      "corners_mm": [[0, 0], [341.5, 0], [341.5, 147.5], [0, 147.5]]
+    }
+  },
   "svg": {
     "$comment": "The flat page's case drawing, src/ui/geometry.ts and src/ui/case.ts, in its 896 x 440 viewBox units, for the cross-check the PRD asks for. Copied with citation, not imported.",
     "viewbox": [896, 440],

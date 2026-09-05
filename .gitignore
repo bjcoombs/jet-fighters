@@ -7,3 +7,7 @@ coverage/
 # Python bytecode from the contract gate shims
 __pycache__/
 *.pyc
+
+# Built on demand for review in the Blender app (npm run model:blend)
+tools/model/console.blend
+tools/model/console.blend1

@@ -224,10 +224,10 @@
       "source": "board-L1001568.jpg dc_jack.y"
     },
     "depth.back_shell": {
-      "value": 20.0,
+      "value": 28.0,
       "kind": "estimated",
-      "basis": "Board top 3 mm below the rim, board 1.6 mm, bosses 12 mm under it clearing the solder side and the door, 2 mm wall. The bosses' height is the guess.",
-      "bound_mm": 6.0
+      "basis": "The end views (assets/reference/case/end-left.jpg, end-right.jpg): the end face is about 60 mm deep against the case's 147.5 mm height, parted near its middle. Perspective in a hand-held close-up inflates it a little.",
+      "bound_mm": 8.0
     },
     "depth.fire_cap_height": {
       "value": 6.0,
@@ -236,16 +236,16 @@
       "bound_mm": 2.0
     },
     "depth.front_shell_module": {
-      "value": 16.0,
+      "value": 34.0,
       "kind": "estimated",
-      "basis": "Module face must clear the tube (11 mm on the board, so 8 mm above the rim) plus the window glass, and the module stands proud of the wings by a visible step.",
-      "bound_mm": 5.0
+      "basis": "The wing face plus the step the module stands proud by, read as about 6 mm in front-oblique.jpg.",
+      "bound_mm": 8.0
     },
     "depth.front_shell_wing": {
-      "value": 11.0,
+      "value": 28.0,
       "kind": "estimated",
-      "basis": "Wing face must clear the fire switch body and the lever disc, both a few mm above the rim.",
-      "bound_mm": 5.0
+      "basis": "The end views: the front shell's half of the end face, about equal to the back's.",
+      "bound_mm": 8.0
     },
     "depth.lever_pin_height": {
       "value": 4.0,
@@ -762,6 +762,53 @@
       ],
       "kind": "measured",
       "source": "board-L1001568.jpg screws.centres"
+    },
+    "shape.back_panel_raise": {
+      "value": 2.0,
+      "kind": "estimated",
+      "basis": "How far those panels stand proud of the back face; end-left.jpg shows a step.",
+      "bound_mm": 1.0
+    },
+    "shape.back_panel_width": {
+      "value": 50.0,
+      "kind": "estimated",
+      "basis": "The raised panels on the back of each wing, from their outer ends inward, back.jpg.",
+      "bound_mm": 5.0
+    },
+    "shape.back_screws": {
+      "value": [
+        [
+          68.0,
+          27.0
+        ],
+        [
+          68.0,
+          127.0
+        ],
+        [
+          273.0,
+          27.0
+        ],
+        [
+          273.0,
+          127.0
+        ]
+      ],
+      "kind": "measured",
+      "source": "back.jpg, the four screw holes inboard of the panels, read against the case's sides and the module's top and bottom",
+      "note": "Face mm, seen from the front (x runs as on the front)."
+    },
+    "shape.end_grip_ribs": {
+      "value": 6.0,
+      "kind": "estimated",
+      "basis": "Vertical ribs on the wing ends' front half, edge-bottom-2.jpg; the count is a read, the pitch 4 mm a guess.",
+      "bound_mm": 2.0
+    },
+    "shape.shoulder": {
+      "value": 8.0,
+      "kind": "estimated",
+      "basis": "The 45-degree chamfers where the module's outline meets the wings, front.jpg and back.jpg.",
+      "bound_mm": 3.0
     },
     "skill_hub.centre": {
       "value": [

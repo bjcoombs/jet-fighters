@@ -72,10 +72,18 @@ def centroid(mask, region):
     return xx.mean() + x0, yy.mean() + y0
 
 
+def case_mask(im: Image.Image):
+    """The rendered case against the render's flat background: anything that is not
+    the background's colour. The shells wear the photographs now, so a red mask
+    would miss their shadowed parts."""
+    a = np.array(im.convert("RGB")).astype(int)
+    bg = a[4, 4]
+    return np.abs(a - bg).sum(2) > 60
+
+
 def features_front(im: Image.Image) -> dict[str, tuple[float, float]]:
-    """Positions as fractions of the case: (x / width, y / height of the red bbox)."""
-    red = red_mask(im)
-    case = bbox(red, min_count=40)
+    """Positions as fractions of the case: (x / width, y / height of the case's bbox)."""
+    case = bbox(case_mask(im), min_count=40)
     if case is None:
         return {}
     cx0, cy0, cx1, cy1 = case
@@ -115,8 +123,9 @@ def features_front(im: Image.Image) -> dict[str, tuple[float, float]]:
 
 
 def features_board(im: Image.Image) -> dict[str, tuple[float, float]]:
+    # From the front with the front shell hidden, the back shell shows its plain
+    # red interior; the photograph is on its far side.
     red = red_mask(im)
-    # Ignore the loose door and strap at the photograph's edges: take the largest band.
     case = bbox(red, min_count=150)
     if case is None:
         return {}

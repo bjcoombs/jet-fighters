@@ -86,7 +86,8 @@ comment**.
 dimensions read off the photographs against the chip's pin pitch (`pixels.json` ->
 `measure.py` -> `dimensions.json`, every figure measured with its source or estimated with
 its basis), and a Blender script that builds every part from them headless and exports the
-model with a label, its evidence and an explode vector on each node. The `.glb` is
+model with a label, its evidence and an explode vector on each node. The shells wear the
+owner's front and back photographs, rectified by `photos.py` into `textures/`. The `.glb` is
 committed and deterministic; `npm run model` rebuilds it, `npm run model:render` also
 re-renders the comparisons against the photographs in `docs/evidence/`. **A dimension is
 changed in `pixels.json` or in `measure.py`'s estimates and regenerated, never typed into
