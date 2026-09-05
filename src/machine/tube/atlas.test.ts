@@ -84,7 +84,7 @@ describe('atlas.json shape', () => {
 
 describe('geometry invariants', () => {
   // The scope window is a circle fused with a rectangle to its left, in atlas
-  // units: src/ui/geometry.ts SCOPE_CIRCLE / SCOPE_RECT translated by (-320, -72).
+  // units: the case drawing's SCOPE_CIRCLE / SCOPE_RECT translated by (-320, -72).
   const CIRCLE = { cx: 213, cy: 150, r: 150 };
   const TAB = { x: 0, y: 78, width: 213, height: 144 };
   const inWindow = (x: number, y: number) =>

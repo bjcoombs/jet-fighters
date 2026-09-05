@@ -4,8 +4,8 @@
  *
  * There are only four controls on the real unit - the fire button, the
  * three-position lane lever, the skill dial and the power switch - and this
- * module translates the keyboard and screen taps into movements of exactly
- * those. It emits no game concepts, because there are none outside the ROM: a
+ * module translates the keyboard into movements of exactly those; the modelled
+ * controls and the touch bar (src/viewer3d/) produce the same movements. It emits no game concepts, because there are none outside the ROM: a
  * {@link MachineInput} is "a contact moved", and what the game makes of it is
  * the ROM's business, discovered on its next strobe of the input matrix.
  *
@@ -13,12 +13,13 @@
  * also releases it. The ROM samples the matrix on its own sweep; a press that
  * was never released would read as a jammed button.
  *
- * The pure mapping helpers (key classification, spring-lever lane resolution,
- * touch-thirds math) are exported and unit-tested without a DOM. The DOM
- * listener wiring is intentionally thin.
+ * The pure mapping helpers (key classification, spring-lever lane resolution)
+ * are exported and unit-tested without a DOM. The DOM listener wiring is
+ * intentionally thin.
  */
 
-import type { ControlsConfig, Lane, SkillLevel } from '../ui/controls.js';
+export type Lane = 0 | 1 | 2;
+export type SkillLevel = 1 | 2 | 3;
 
 /**
  * A movement of one case control.
@@ -32,7 +33,7 @@ export type MachineInput =
   | { readonly type: 'SKILL'; readonly level: SkillLevel }
   | { readonly type: 'POWER'; readonly on: boolean };
 
-/** Consumer of control movements (the frame driver in main.ts). */
+/** Consumer of control movements (the frame driver, src/app/driver.ts). */
 export type InputCallback = (input: MachineInput) => void;
 
 /** Handle returned by {@link createInputSystem}; tears down all listeners. */
@@ -65,7 +66,7 @@ export type KeyAction =
  * - P -> power switch
  * - 1 / 2 / 3 -> skill dial
  *
- * `M` is deliberately unbound here: it toggles mute in main.ts, which is a
+ * `M` is deliberately unbound here: it toggles mute in the page, which is a
  * property of the browser's speaker rather than of the machine.
  */
 export function classifyKey(key: string): KeyAction {
@@ -128,19 +129,6 @@ export function removeDirection(
   return held.filter((d) => d !== dir);
 }
 
-/**
- * Map a vertical tap to a lane by screen thirds: the top third is lane 0, the
- * middle third lane 1, the bottom third lane 2. `offsetY` is the tap's distance
- * from the top of the element; `height` is the element's height.
- */
-export function laneFromThirds(offsetY: number, height: number): Lane {
-  if (height <= 0) return 1;
-  const fraction = offsetY / height;
-  if (fraction < 1 / 3) return 0;
-  if (fraction < 2 / 3) return 1;
-  return 2;
-}
-
 /** Translate a boolean power-switch position into its control movement. */
 export function powerInput(on: boolean): MachineInput {
   return { type: 'POWER', on };
@@ -151,10 +139,6 @@ export function powerInput(on: boolean): MachineInput {
 export interface InputOptions {
   /** Target for keyboard listeners. Defaults to the global `window`. */
   readonly keyboardTarget?: Pick<Window, 'addEventListener' | 'removeEventListener'>;
-  /** Screen/canvas element to wire tap-to-move + double-tap-to-fire touch. */
-  readonly screenElement?: HTMLElement;
-  /** Max gap (ms) between taps to count as a double-tap fire. Defaults to 300. */
-  readonly doubleTapMs?: number;
 }
 
 /** Elements whose own keyboard behaviour should not be hijacked by the game. */
@@ -171,9 +155,8 @@ function isEditableTarget(target: EventTarget | null): boolean {
 
 /**
  * Create the input system: attaches keyboard handling (lane hold, fire
- * press/release, power switch, skill dial) and, when a `screenElement` is
- * supplied, mobile touch controls. Returns a handle whose `destroy()` removes
- * every listener it added.
+ * press/release, power switch, skill dial). Returns a handle whose `destroy()`
+ * removes every listener it added.
  */
 export function createInputSystem(
   callback: InputCallback,
@@ -252,89 +235,12 @@ export function createInputSystem(
   target.addEventListener('keyup', onKeyUp as EventListener);
   target.addEventListener('blur', onBlur);
 
-  const detachTouch = options.screenElement
-    ? attachScreenTouch(options.screenElement, callback, {
-        doubleTapMs: options.doubleTapMs,
-      })
-    : null;
-
   return {
     destroy(): void {
       target.removeEventListener('keydown', onKeyDown as EventListener);
       target.removeEventListener('keyup', onKeyUp as EventListener);
       target.removeEventListener('blur', onBlur);
-      detachTouch?.();
     },
-  };
-}
-
-/**
- * Adapter bridging the on-case controls to the same callback, so a pointer on
- * the drawn fire button and the space bar reach the machine by one path.
- */
-export function createControlsAdapter(callback: InputCallback): ControlsConfig {
-  return {
-    onFire: (pressed) => callback({ type: 'FIRE', pressed }),
-    onLaneChange: (lane) => callback({ type: 'LANE', lane }),
-    onSkillChange: (level) => callback({ type: 'SKILL', level }),
-    onPowerToggle: (on) => callback(powerInput(on)),
-  };
-}
-
-/** Options for {@link attachScreenTouch}. */
-export interface ScreenTouchOptions {
-  /** Max gap (ms) between taps to count as a double-tap fire. Defaults to 300. */
-  readonly doubleTapMs?: number;
-}
-
-/**
- * Wire mobile screen-area touch on `element` (canvas / screen window):
- *
- * - A single tap sets the launcher lane by vertical third: top -> lane 0,
- *   middle -> lane 1, bottom -> lane 2.
- * - A double-tap (two taps within `doubleTapMs`) presses fire; lifting the
- *   finger releases it.
- *
- * Uses `event.timeStamp` for double-tap timing, so no clock leaks in. Returns a
- * detach function that removes the listeners.
- */
-export function attachScreenTouch(
-  element: HTMLElement,
-  callback: InputCallback,
-  options: ScreenTouchOptions = {},
-): () => void {
-  const doubleTapMs = options.doubleTapMs ?? 300;
-  let lastTapAt = Number.NEGATIVE_INFINITY;
-  let firing = false;
-
-  const release = (): void => {
-    if (!firing) return;
-    firing = false;
-    callback({ type: 'FIRE', pressed: false });
-  };
-
-  const onPointerDown = (event: PointerEvent): void => {
-    event.preventDefault();
-    const rect = element.getBoundingClientRect();
-    const lane = laneFromThirds(event.clientY - rect.top, rect.height);
-    callback({ type: 'LANE', lane });
-
-    if (event.timeStamp - lastTapAt <= doubleTapMs) {
-      firing = true;
-      callback({ type: 'FIRE', pressed: true });
-      lastTapAt = Number.NEGATIVE_INFINITY; // consume, so a third tap restarts
-    } else {
-      lastTapAt = event.timeStamp;
-    }
-  };
-
-  element.addEventListener('pointerdown', onPointerDown as EventListener);
-  element.addEventListener('pointerup', release);
-  element.addEventListener('pointercancel', release);
-  return () => {
-    element.removeEventListener('pointerdown', onPointerDown as EventListener);
-    element.removeEventListener('pointerup', release);
-    element.removeEventListener('pointercancel', release);
   };
 }
 
@@ -350,7 +256,7 @@ const HELP_ROWS: ReadonlyArray<readonly [keys: string, action: string]> = [
 
 /**
  * Build a small, dismissable help overlay: a floating "?" toggle that reveals a
- * panel listing the keyboard controls. Returns the root element for main.ts to
+ * panel listing the keyboard controls. Returns the root element for the page to
  * mount (typically over a corner of the case); nothing is auto-attached to the
  * document. Styling is inline so it stays self-contained and does not disturb
  * the case aesthetic.
@@ -358,8 +264,6 @@ const HELP_ROWS: ReadonlyArray<readonly [keys: string, action: string]> = [
 export interface HelpOptions {
   /** Rows a page adds under the machine's: the 3D page's view and dock keys. */
   readonly extraRows?: ReadonlyArray<readonly [keys: string, action: string]>;
-  /** The link at the foot: the flat page points at the 3D one, and the 3D page back. */
-  readonly link?: { readonly href: string; readonly text: string };
 }
 
 export function createHelpOverlay(doc: Document = document, options: HelpOptions = {}): HTMLElement {
@@ -400,14 +304,6 @@ export function createHelpOverlay(doc: Document = document, options: HelpOptions
     row.append(k, a);
     panel.appendChild(row);
   }
-
-  // The same unit in three dimensions, on its own page. A relative link, so it
-  // resolves under the deployed base path as well as the dev server's.
-  const link = doc.createElement('a');
-  link.href = options.link?.href ?? '3d.html';
-  link.textContent = options.link?.text ?? 'See the unit in 3D';
-  link.style.cssText = 'display:block;margin-top:8px;color:#8fc7ff;';
-  panel.appendChild(link);
 
   let open = false;
   const setOpen = (next: boolean): void => {

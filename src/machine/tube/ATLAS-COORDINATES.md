@@ -12,7 +12,7 @@ Paths in this document are relative to the repository root.
 
 | Property | Value |
 | --- | --- |
-| Space | The scope bounding box of `src/ui/geometry.ts`, origin translated to (0, 0) |
+| Space | The scope bounding box of the case drawing (`CIRCLE` and `RECT` in `layout.ts`), origin translated to (0, 0) |
 | viewBox | `0 0 363 300` (`atlas.viewBox`) |
 | Unit | 1 atlas unit = 1 case-SVG viewBox unit (`CASE_VIEWBOX` is 896 x 440) |
 | Origin | Top-left of the scope bounding box |
@@ -32,9 +32,11 @@ const px = { x: seg.bounds.x * scale, y: seg.bounds.y * scale };
 
 ### Where 363 x 300 comes from
 
-`src/ui/geometry.ts` is the single source of truth for the scope window: a circle
-(`SCOPE_CIRCLE`, centre 533,222 radius 150) fused with a rectangle to its left
-(`SCOPE_RECT`, 320,150 213x144), all in case viewBox units. Their union bounding
+`src/machine/tube/layout.ts` (`VIEWBOX`, `CIRCLE`, `RECT`) is the single source of truth
+for the scope window. The figures came from the flat drawing of the case that preceded
+the model (`src/ui/geometry.ts`, retired when the model became the page and kept in git
+history): a circle (`SCOPE_CIRCLE`, centre 533,222 radius 150) fused with a rectangle to
+its left (`SCOPE_RECT`, 320,150 213x144), all in case viewBox units. Their union bounding
 box is `x 320..683, y 72..372` - 363 x 300 units. Translating the origin to
 (0, 0) gives the atlas space, in which the scope circle is centre (213, 150)
 radius 150 and the left tab is `0,78 213x144`.
@@ -884,7 +886,7 @@ yet:
    dark end rather than raising brightness, which blows out the lit segments:
    `magick <photo> -crop WxH+X+Y +repage -colorspace gray -level 8%,28% -resize 350% out.png`
 2. Express every measurement as a fraction of a printed feature that also exists
-   in `src/ui/geometry.ts` or in the layout table above, never in raw pixels. For
+   in the layout table above, never in raw pixels. For
    *positions* on the printed layout, measure only along the horizontal centre
    line unless the photo is square on. For *sprite sizes*, compare each axis
    against a printed feature on that same axis (column width horizontally, lane

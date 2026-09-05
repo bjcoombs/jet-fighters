@@ -1,7 +1,7 @@
 // Keeping a canvas's backing store matched to the pixels it is shown at.
 //
-// Shared by the flat page and the 3D page; both draw at the device's real
-// resolution and both have to notice when that changes under them.
+// The page draws at the device's real resolution and has to notice when that
+// changes under it.
 
 /**
  * Ceiling on the effective device pixel ratio.

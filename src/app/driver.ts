@@ -24,10 +24,10 @@
 // the core and invalidates RAM. The real unit has no reset button, so neither
 // does this.
 //
-// Two pages share this driver - the flat case in `src/main.ts` and the 3D model
-// in `src/viewer3d/` - which is why it lives here rather than in either. Each
-// page builds its own canvas and controls and hands the driver the renderer;
-// the driver owns the board, the speaker and the loop.
+// The page (`src/viewer3d/`) builds its canvas and controls and hands the
+// driver the renderer; the driver owns the board, the speaker and the loop. It
+// lives here rather than in the page so that nothing about the machine's clock
+// depends on how the machine is shown.
 
 import { SpeakerDriver, type AudioContextLike } from '../machine/audio/driver.js';
 import { Board, type MachineImage } from '../machine/board/board.js';

@@ -1,6 +1,6 @@
 // `three` is the site's one runtime dependency, and it is confined to this page.
 //
-// The machine, the input layer, the flat case and the driver are dependency-free
+// The machine, the input layer and the driver are dependency-free
 // by rule (CLAUDE.md, "Architecture rules"); a WebGL library reaching into any of
 // them would be a change to what the emulation is, not to how it is shown. This
 // test reads the import graph and says so.

@@ -143,7 +143,7 @@
     "flag_blue": {"box": [3595, 2085, 3645, 2135], "take": "median"}
   },
   "svg": {
-    "$comment": "The flat page's case drawing, src/ui/geometry.ts and src/ui/case.ts, in its 896 x 440 viewBox units, for the cross-check the PRD asks for. Copied with citation, not imported.",
+    "$comment": "The flat drawing of the case that preceded the model (src/ui/geometry.ts and src/ui/case.ts, retired when the model became the page; git history), in its 896 x 440 viewBox units, for the cross-check the 3D PRD asks for. Copied with citation.",
     "viewbox": [896, 440],
     "body_x": [8, 888],
     "module_y": [32, 426],

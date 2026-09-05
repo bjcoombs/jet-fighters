@@ -6,7 +6,7 @@
 //
 // Everything here is expressed in the atlas coordinate space (viewBox
 // 0 0 363 300, +x right, +y down), which is the scope bounding box of
-// src/ui/geometry.ts with its origin translated to (0, 0). See
+// the case drawing (once src/ui/geometry.ts, retired) with its origin translated to (0, 0). See
 // ATLAS-COORDINATES.md for the derivation.
 //
 // The constants below are **copied** from v1 with their source cited, not
@@ -21,7 +21,7 @@ export const VIEWBOX = { width: 363, height: 300 } as const;
 /**
  * The radar circle in atlas units.
  *
- * src/ui/geometry.ts `SCOPE_CIRCLE` is centre (533, 222) radius 150 in case
+ * The case drawing's `SCOPE_CIRCLE` was centre (533, 222) radius 150 in case
  * viewBox units; the scope bounding box starts at (320, 72), so the circle sits
  * at (213, 150) here. 1 atlas unit = 1 case viewBox unit.
  */
@@ -29,7 +29,7 @@ export const CIRCLE = { cx: 213, cy: 150, r: 150 } as const;
 
 /**
  * The rectangular tab fused onto the circle's left, where SCORE lives.
- * src/ui/geometry.ts `SCOPE_RECT` (320, 150, 213 x 144), origin-translated.
+ * The case drawing's `SCOPE_RECT` (320, 150, 213 x 144), origin-translated.
  */
 export const RECT = { x: 0, y: 78, width: 213, height: 144 } as const;
 
@@ -329,9 +329,9 @@ export interface TubeProjection {
 /**
  * Fit the atlas box into a `cssWidth` x `cssHeight` canvas.
  *
- * The scale is a single scalar so the scope circle stays round, matching
- * `projectScope` in src/ui/geometry.ts; the canvas is sized to the same bounding
- * box by the case shell, so in practice the offsets are zero and this only
+ * The scale is a single scalar so the scope circle stays round, as the case
+ * drawing's `projectScope` once did; the page's tube texture is sized to the
+ * same bounding box, so in practice the offsets are zero and this only
  * absorbs sub-pixel drift. Degenerate sizes project to a zero scale rather than
  * NaN, so a draw before the first resize is a no-op instead of a crash.
  */

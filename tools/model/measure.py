@@ -319,7 +319,7 @@ def main(argv: list[str]) -> int:
         # without them would fail the next build, so fail here instead.
         raise SystemExit(f"colour sampling needs Pillow and NumPy: {exc}") from exc
 
-    # ---- Cross-check against the flat page's SVG, scaled so its body width is the
+    # ---- Cross-check against the retired flat drawing's SVG, scaled so its body width is the
     # measured case width. Reported, not used: the model follows the photographs.
     svg = px["svg"]
     u = case_w / (svg["body_x"][1] - svg["body_x"][0])
@@ -463,7 +463,7 @@ def write_doc_tables(doc: Path, out: dict) -> None:
         f"| Electrolytics | {len(v('electrolytics.cans'))} cans, `electrolytics.cans` |",
         f"| Discretes | {len(v('discretes'))} resistors, diodes, transistors and a disc capacitor, `discretes`, each with the silkscreen value where it is legible |",
         "",
-        "### Cross-check against the flat page's SVG",
+        "### Cross-check against the flat drawing's SVG",
         "",
         "| | SVG | Photograph |",
         "| --- | --- | --- |",

@@ -4,11 +4,8 @@ import {
   resolveLane,
   pushDirection,
   removeDirection,
-  laneFromThirds,
   powerInput,
-  createControlsAdapter,
   type LaneDirection,
-  type MachineInput,
 } from './input.js';
 
 describe('classifyKey', () => {
@@ -103,54 +100,9 @@ describe('pushDirection / removeDirection', () => {
   });
 });
 
-describe('laneFromThirds', () => {
-  it('maps the top third to lane 0', () => {
-    expect(laneFromThirds(0, 300)).toBe(0);
-    expect(laneFromThirds(99, 300)).toBe(0);
-  });
-
-  it('maps the middle third to lane 1', () => {
-    expect(laneFromThirds(100, 300)).toBe(1);
-    expect(laneFromThirds(150, 300)).toBe(1);
-    expect(laneFromThirds(199, 300)).toBe(1);
-  });
-
-  it('maps the bottom third to lane 2', () => {
-    expect(laneFromThirds(200, 300)).toBe(2);
-    expect(laneFromThirds(300, 300)).toBe(2);
-  });
-
-  it('falls back to the centre lane for a zero-height element', () => {
-    expect(laneFromThirds(0, 0)).toBe(1);
-  });
-});
-
 describe('powerInput', () => {
   it('carries the switch position, with no other state attached', () => {
     expect(powerInput(true)).toEqual({ type: 'POWER', on: true });
     expect(powerInput(false)).toEqual({ type: 'POWER', on: false });
-  });
-});
-
-describe('createControlsAdapter', () => {
-  it('bridges on-case controls to control movements', () => {
-    const emitted: MachineInput[] = [];
-    const adapter = createControlsAdapter((i) => emitted.push(i));
-
-    adapter.onFire(true);
-    adapter.onFire(false);
-    adapter.onLaneChange(2);
-    adapter.onSkillChange(3);
-    adapter.onPowerToggle(true);
-    adapter.onPowerToggle(false);
-
-    expect(emitted).toEqual([
-      { type: 'FIRE', pressed: true },
-      { type: 'FIRE', pressed: false },
-      { type: 'LANE', lane: 2 },
-      { type: 'SKILL', level: 3 },
-      { type: 'POWER', on: true },
-      { type: 'POWER', on: false },
-    ]);
   });
 });

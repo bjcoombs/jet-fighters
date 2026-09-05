@@ -2,9 +2,9 @@
 
 A browser emulation of the 1979 Gakken/CGL Jet Fighters tabletop game.
 
-**[Play it here](https://bjcoombs.github.io/jet-fighters/)** - and see the unit in three
-dimensions, orbitable and taken apart, at [`3d.html`](https://bjcoombs.github.io/jet-fighters/3d.html)
-(`docs/prd/jet-fighters-3d.md`; the model comes from `tools/model/`).
+**[Play it here](https://bjcoombs.github.io/jet-fighters/)** - the unit in three dimensions,
+playable as it stands, orbitable and taken apart (`docs/prd/jet-fighters-3d.md`; the model
+comes from `tools/model/`).
 
 | The original 1979 CGL unit | This emulator |
 | :---: | :---: |
@@ -141,11 +141,12 @@ speaker pin, like a real unit with its piezo disconnected.
 
 ## The unit in three dimensions
 
-[`3d.html`](https://bjcoombs.github.io/jet-fighters/3d.html) is the same machine behind the
-glass of a model of the unit: orbit it, lift the red shell off, pull the board out with the
-tube still lit, click the chip to be told what it is, and play - the fire cap, the power
-slide, the launcher lever and the skill flag on the model close the same contacts the flat
-page's controls do, and the keyboard works throughout.
+The page is the machine behind the glass of a model of the unit. It opens on the front
+view, the unit as it sits on a table; orbit it, lift the red shell off, pull the board out
+with the tube still lit, click the chip to be told what it is, and play - the fire cap, the
+power slide, the launcher lever and the skill flag on the model close the same contacts
+the keyboard does. There is no separate flat page: the drawn case that preceded the model
+was a rendering of the same unit, and it is in git history.
 
 One panel runs the page. **View** puts the camera on the front, the back, or inside with
 the lid lifted (`F`, `B`, `I`); **Take apart** is a slider whose three detents are
@@ -194,7 +195,7 @@ Five layers, mirroring the physical machine. Data flows the way electricity did.
 flowchart LR
     ASM[asm/jetfighter.asm<br/>the game program] -->|assembled by tools/tmsasm| ROM[machine image<br/>2048 x 8 bits + 32-slot O PLA]
     ROM --> CPU[src/machine/cpu/tms1370/<br/>TMS1370 core]
-    SW[src/ui/ case controls] -->|K1, K2, K4 on R9/R10; fire on K8| CPU
+    SW[src/viewer3d/ the modelled controls,<br/>src/input/ the keyboard] -->|K1, K2, K4 on R9/R10; fire on K8| CPU
     CPU -->|R0-R8 grids, O0-O7 + R11-R14 plates| BOARD[src/machine/board/<br/>grid x plate PWM state]
     CPU -->|R15 pin edges| SPK[src/machine/audio/<br/>square reconstruction]
     BOARD --> TUBE[src/machine/tube/<br/>segment atlas + phosphor]
@@ -211,17 +212,15 @@ flowchart LR
 | `src/machine/board/` | The board: PWM display state, the K input matrix, R15 edge capture, and the power switch.                                             |
 | `src/machine/tube/`  | The tube: the segment atlas (shape and (grid, plate) address of every phosphor segment) and the renderer's phosphor rise/decay curves. |
 | `src/machine/audio/` | The speaker: cycle-stamped edges placed on a sample timeline and band-limited into a waveform.                                         |
-| `src/ui/`            | The case shell - the moulded body, the scope window, and the four controls.                                                           |
-| `src/input/`         | Keyboard and touch, translated into movements of those same four controls.                                                            |
-| `src/app/`           | The frame driver - the only clock in the program - plus canvas sizing and the mute toggle, shared by both pages.                     |
-| `src/main.ts`        | The flat page: builds the case and hands the driver a renderer.                                                                       |
-| `src/viewer3d/`      | The 3D page: the model from `tools/model/` orbited, taken apart and played, with the renderer's canvas as the tube's texture.         |
+| `src/input/`         | The keyboard, translated into movements of the four case controls.                                                                    |
+| `src/app/`           | The frame driver - the only clock in the program - plus canvas sizing and the mute toggle.                                            |
+| `src/viewer3d/`      | The page: the model from `tools/model/` orbited, taken apart and played, with the renderer's canvas as the tube's texture, and its controls, dock and touch bar. |
 | `tools/model/`       | The unit's dimensions from the photographs, the Blender script that builds the model from them, and the comparison against the photographs. |
 | `tools/probe/`       | The headless machine probe: drives the board from a terminal and reports what the hardware did.                                        |
 
 Two rules hold everything else in place:
 
-- **Nothing owns a clock except `src/main.ts`.** The board advances only when stepped, so
+- **Nothing owns a clock except `src/app/driver.ts`.** The board advances only when stepped, so
   the same machine runs identically in a browser at 60 Hz and in Node as fast as it can.
 - **`src/machine/` never touches the DOM.** That is what lets the probe and the spectral
   tests drive the real machine headlessly, and it is checked by the tests running under

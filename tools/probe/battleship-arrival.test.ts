@@ -120,7 +120,7 @@ const QUANTUM = 128;
 /** One display frame at 60 Hz, the interval `requestAnimationFrame` runs at. */
 const FRAME_MS = 1000 / 60;
 
-/** `MAX_FRAME_MS` from src/main.ts, copied not imported - importing main.ts starts a page. */
+/** `MAX_FRAME_MS` from src/app/driver.ts, copied not imported - the driver is the page's clock, and this loop is a transcription of it. */
 const MAX_FRAME_MS = 100;
 
 /** `battleshipBuzz.repetitionRangeHz`, docs/evidence/audio-reference.md. */

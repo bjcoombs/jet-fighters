@@ -6,7 +6,7 @@
 const STYLE_ID = 'jf3d-style';
 
 const CSS = `
-#app3d {
+#app {
   --jf-font: system-ui, sans-serif;
   --jf-fs-s: 11px;
   --jf-fs: 12px;
@@ -23,14 +23,14 @@ const CSS = `
   --jf-on: rgba(159, 227, 255, 0.25);
   --jf-bottom: 12px;
 }
-#app3d .jf-panel {
+#app .jf-panel {
   background: var(--jf-bg);
   color: var(--jf-fg);
   border-radius: var(--jf-r-l);
   font: var(--jf-fs) var(--jf-font);
   line-height: 1.45;
 }
-#app3d .jf-btn {
+#app .jf-btn {
   padding: 5px 8px;
   border-radius: var(--jf-r);
   border: 1px solid var(--jf-line);
@@ -40,14 +40,14 @@ const CSS = `
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-#app3d .jf-btn:hover { background: var(--jf-btn-hover); }
-#app3d .jf-btn.on { background: var(--jf-on); }
-#app3d .jf-row { display: flex; gap: 6px; }
-#app3d .jf-row > .jf-btn { flex: 1; padding-left: 0; padding-right: 0; }
-#app3d .jf-dim { opacity: var(--jf-dim); }
-#app3d .jf-small { font-size: var(--jf-fs-s); }
+#app .jf-btn:hover { background: var(--jf-btn-hover); }
+#app .jf-btn.on { background: var(--jf-on); }
+#app .jf-row { display: flex; gap: 6px; }
+#app .jf-row > .jf-btn { flex: 1; padding-left: 0; padding-right: 0; }
+#app .jf-dim { opacity: var(--jf-dim); }
+#app .jf-small { font-size: var(--jf-fs-s); }
 
-#app3d .jf-dock {
+#app .jf-dock {
   position: absolute;
   left: 12px;
   top: 44px;
@@ -59,19 +59,19 @@ const CSS = `
   flex-direction: column;
   pointer-events: none;
 }
-#app3d .jf-dock > * { pointer-events: auto; }
-#app3d .jf-dock-tab {
+#app .jf-dock > * { pointer-events: auto; }
+#app .jf-dock-tab {
   align-self: flex-start;
   margin-bottom: 6px;
 }
-#app3d .jf-dock-body {
+#app .jf-dock-body {
   display: flex;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
 }
-#app3d .jf-dock[data-collapsed] .jf-dock-body { display: none; }
-#app3d .jf-section {
+#app .jf-dock[data-collapsed] .jf-dock-body { display: none; }
+#app .jf-section {
   padding: 10px 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.12);
   display: flex;
@@ -79,13 +79,13 @@ const CSS = `
   gap: 8px;
   flex: none;
 }
-#app3d .jf-section:first-child { border-top: 0; }
-#app3d .jf-section.jf-parts { flex: 1 1 auto; min-height: 0; overflow: auto; gap: 2px; }
-#app3d .jf-h { font-weight: 600; font-size: var(--jf-fs-l); display: flex; justify-content: space-between; align-items: baseline; }
-#app3d .jf-h .jf-keys { font-weight: 400; }
-#app3d .jf-slider { width: 100%; margin: 0; }
-#app3d .jf-group { margin-top: 6px; font-weight: 600; font-size: var(--jf-fs-s); letter-spacing: 0.04em; text-transform: uppercase; opacity: var(--jf-dim); }
-#app3d .jf-part {
+#app .jf-section:first-child { border-top: 0; }
+#app .jf-section.jf-parts { flex: 1 1 auto; min-height: 0; overflow: auto; gap: 2px; }
+#app .jf-h { font-weight: 600; font-size: var(--jf-fs-l); display: flex; justify-content: space-between; align-items: baseline; }
+#app .jf-h .jf-keys { font-weight: 400; }
+#app .jf-slider { width: 100%; margin: 0; }
+#app .jf-group { margin-top: 6px; font-weight: 600; font-size: var(--jf-fs-s); letter-spacing: 0.04em; text-transform: uppercase; opacity: var(--jf-dim); }
+#app .jf-part {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -93,11 +93,11 @@ const CSS = `
   border-radius: var(--jf-r);
   cursor: pointer;
 }
-#app3d .jf-part:hover { background: var(--jf-btn-hover); }
-#app3d .jf-part.on { background: var(--jf-on); }
-#app3d .jf-part input { margin: 0; }
-#app3d .jf-part.hidden-part span { opacity: 0.45; }
-#app3d .jf-detail {
+#app .jf-part:hover { background: var(--jf-btn-hover); }
+#app .jf-part.on { background: var(--jf-on); }
+#app .jf-part input { margin: 0; }
+#app .jf-part.hidden-part span { opacity: 0.45; }
+#app .jf-detail {
   margin: 2px 4px 6px 24px;
   padding: 6px 8px;
   border-radius: var(--jf-r);
@@ -107,8 +107,8 @@ const CSS = `
   flex-direction: column;
   gap: 4px;
 }
-#app3d .jf-detail[hidden], #app3d .jf-tooltip[hidden] { display: none; }
-#app3d kbd {
+#app .jf-detail[hidden], #app .jf-tooltip[hidden] { display: none; }
+#app kbd {
   display: inline-block;
   min-width: 1.1em;
   padding: 0 4px;
@@ -118,7 +118,7 @@ const CSS = `
   text-align: center;
   opacity: 0.85;
 }
-#app3d .jf-tooltip {
+#app .jf-tooltip {
   position: absolute;
   z-index: 11;
   pointer-events: none;
@@ -129,7 +129,7 @@ const CSS = `
   font: var(--jf-fs) var(--jf-font);
   white-space: nowrap;
 }
-#app3d .jf-hint {
+#app .jf-hint {
   position: absolute;
   left: 50%;
   top: 12px;
@@ -144,7 +144,7 @@ const CSS = `
   pointer-events: none;
   transition: opacity 0.4s;
 }
-#app3d .jf-status {
+#app .jf-status {
   position: absolute;
   left: 50%;
   top: 50%;
@@ -152,7 +152,7 @@ const CSS = `
   z-index: 10;
   padding: 8px 12px;
 }
-#app3d .jf-touch-bar {
+#app .jf-touch-bar {
   position: absolute;
   left: 0;
   right: 0;
@@ -169,7 +169,7 @@ const CSS = `
   user-select: none;
   font-family: var(--jf-font);
 }
-#app3d .jf-touch-bar .jf-btn {
+#app .jf-touch-bar .jf-btn {
   border-radius: var(--jf-r-l);
   font-size: 16px;
   font-weight: 600;

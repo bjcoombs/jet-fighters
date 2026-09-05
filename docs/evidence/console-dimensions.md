@@ -133,7 +133,7 @@ the right wing's smooth strip **246.0-279.1**, its raised block **279.1-337.5**.
 | Electrolytics | 5 cans, `electrolytics.cans` |
 | Discretes | 16 resistors, diodes, transistors and a disc capacitor, `discretes`, each with the silkscreen value where it is legible |
 
-### Cross-check against the flat page's SVG
+### Cross-check against the flat drawing's SVG
 
 | | SVG | Photograph |
 | --- | --- | --- |
@@ -180,19 +180,21 @@ which is how far a side view would be expected to move it.
 The assembled unit, then, is about 340 x 145 x 36 mm at the module and 31 mm at the
 wings, with the last two figures carrying the largest uncertainty of anything here.
 
-## Cross-check against the flat page's SVG
+## Cross-check against the flat drawing's SVG
 
-`src/ui/geometry.ts` and `src/ui/case.ts` draw the case in an 896 x 440 box. Scaled so
-the SVG body width (880 units) equals the measured case width, the generated table above
+The flat drawing of the case that preceded the model (`src/ui/geometry.ts` and
+`src/ui/case.ts`, retired when the model became the page and kept in git history) drew
+the case in an 896 x 440 box; its figures are in `pixels.json` under `svg`. Scaled so the
+SVG body width (880 units) equals the measured case width, the generated table above
 compares them. The proportions of the case and the size of the scope agree to within
 3%. Two things do not: the SVG's circle sits lower in the module than the photograph's
 (the real glass comes to within 9 mm of the module's top edge; the SVG leaves 23), and
 the SVG's rectangle stops well above the circle's bottom while the real window's
 rectangle runs to within 8 mm of it. Both are visible by holding `device-front-lit.jpg`
-beside the deployed page. **The model follows the photographs; the SVG is left alone**,
-per the PRD - the tube renderer's own layout (`src/machine/tube/layout.ts`) shares the
-SVG's rectangle and moving one means moving both, which is a change to the flat page and
-not part of this work.
+against the model's front view. **The model follows the photographs.** The tube
+renderer's own layout (`src/machine/tube/layout.ts`) still carries the SVG's rectangle,
+registered onto the model's glass through the circle (`src/viewer3d/registration.ts`),
+and moving that rectangle is a change to the renderer and not part of this work.
 
 ## Colours
 

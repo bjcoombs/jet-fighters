@@ -9,42 +9,29 @@
       body {
         margin: 0;
         height: 100%;
-        background: radial-gradient(circle at 50% 30%, #23262c 0%, #0a0a0b 70%);
+        background: #0a0a0b;
         color: #e0e0e0;
         font-family: system-ui, sans-serif;
         overflow: hidden;
-        /* The case is letterboxed inside the page by its 896:440 aspect ratio,
-           so there is always bare page around it - and a tap that misses the
-           fire button lands there. Without this, iOS Safari reads two quick
-           misses as a double-tap and zooms into the display, which is exactly
-           what a player firing fast produces. `manipulation` keeps pinch-zoom
-           (an accessibility affordance) and drops only double-tap-to-zoom.
-           The case itself already sets this; the page around it did not. */
-        touch-action: manipulation;
-        /* A held fire button is a press-and-hold, which iOS answers with the
-           selection callout and magnifier loupe. */
+        touch-action: none;
         -webkit-touch-callout: none;
         -webkit-tap-highlight-color: transparent;
-        /* Landscape iOS otherwise rubber-bands the whole page on a swipe that
-           starts on the case. */
         overscroll-behavior: none;
       }
-      body {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
       #app {
+        position: relative;
         width: 100%;
         height: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+      }
+      #app canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
       }
     </style>
   </head>
   <body>
     <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="/src/viewer3d/main.ts"></script>
   </body>
 </html>
