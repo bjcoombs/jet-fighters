@@ -27,21 +27,16 @@ export function buildTouchBar({ apply, state }: TouchBarOptions): HTMLElement {
   const bar = document.createElement('div');
   bar.setAttribute('role', 'group');
   bar.setAttribute('aria-label', 'Touch controls');
-  bar.style.cssText =
-    `position:absolute;left:0;right:0;bottom:0;height:${TOUCH_BAR_HEIGHT_PX}px;z-index:12;` +
-    'display:flex;gap:8px;align-items:stretch;padding:8px 10px;box-sizing:border-box;' +
-    'background:linear-gradient(to top,rgba(0,0,0,0.75),rgba(0,0,0,0.35));' +
-    'touch-action:none;-webkit-user-select:none;user-select:none;font-family:system-ui,sans-serif;';
+  bar.className = 'jf-touch-bar';
+  bar.style.height = `${TOUCH_BAR_HEIGHT_PX}px`;
 
   const button = (label: string, flex: number, aria: string): HTMLButtonElement => {
     const b = document.createElement('button');
     b.type = 'button';
     b.textContent = label;
     b.setAttribute('aria-label', aria);
-    b.style.cssText =
-      `flex:${flex};border-radius:10px;border:1px solid rgba(255,255,255,0.35);` +
-      'background:rgba(255,255,255,0.1);color:#eee;font-size:16px;font-weight:600;' +
-      'touch-action:none;-webkit-tap-highlight-color:transparent;cursor:pointer;';
+    b.className = 'jf-btn';
+    b.style.flex = String(flex);
     return b;
   };
 
@@ -68,13 +63,13 @@ export function buildTouchBar({ apply, state }: TouchBarOptions): HTMLElement {
   const release = (): void => {
     if (!firing) return;
     firing = false;
-    fire.style.background = 'rgba(255,255,255,0.1)';
+    fire.classList.remove('on');
     apply({ type: 'FIRE', pressed: false });
   };
   fire.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     firing = true;
-    fire.style.background = 'rgba(159,227,255,0.35)';
+    fire.classList.add('on');
     apply({ type: 'FIRE', pressed: true });
   });
   for (const type of ['pointerup', 'pointercancel'] as const) {

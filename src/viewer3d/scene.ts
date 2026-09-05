@@ -73,6 +73,18 @@ export interface ConsoleScene {
   render(): void;
   /** Put the camera where the front photograph was taken from. */
   frameFront(): void;
+  /** Where the camera stands and looks for a named view. */
+  poseFor(view: ViewName): CameraPose;
+}
+
+/** The three views the page can be asked for. */
+export type ViewName = 'front' | 'back' | 'inside';
+
+export const VIEWS: readonly ViewName[] = ['front', 'back', 'inside'];
+
+export interface CameraPose {
+  readonly position: Vector3;
+  readonly target: Vector3;
 }
 
 /**
@@ -126,7 +138,7 @@ export async function createConsoleScene(canvas: HTMLCanvasElement, url: string,
   scene.add(key);
   const fill = new HemisphereLight(0xd8e2f2, 0x3a2a26, 0.9);
   scene.add(fill);
-  const bounce = new DirectionalLight(0xffe9dc, 0.7);
+  const bounce = new DirectionalLight(0xffe9dc, 1.3);
   bounce.position.set(-0.3, -0.6, -0.4);
   scene.add(bounce);
 
@@ -179,17 +191,39 @@ export async function createConsoleScene(canvas: HTMLCanvasElement, url: string,
   ground.name = 'ground_shadow';
   scene.add(ground);
 
+  // Horizontal field of the photograph's lens, and how far back that puts the
+  // camera to frame the case as the photograph does.
+  const hfov = 2 * Math.atan(PHOTO_SENSOR_MM / (2 * PHOTO_FOCAL_MM));
+  const frontDist = size.x / 2 / PHOTO_CASE_FRACTION / Math.tan(hfov / 2);
+
+  // The case's top edge stays up the screen in every view: the camera's up is
+  // -Z, so a front view looks down on the face and a back view up at the back
+  // with the same edge up. The inside view is for the lid lifted off: from over
+  // the player's edge at about thirty degrees, low enough to see the whole
+  // board under the raised shell rather than the shell's underside.
+  const poseFor = (view: ViewName): CameraPose => {
+    switch (view) {
+      case 'front':
+        return { position: new Vector3(centre.x, bounds.max.y + frontDist, centre.z + 1e-4), target: centre.clone() };
+      case 'back':
+        return { position: new Vector3(centre.x, bounds.min.y - frontDist, centre.z + 1e-4), target: centre.clone() };
+      case 'inside':
+        return {
+          position: new Vector3(centre.x, centre.y + frontDist * 0.8, centre.z + frontDist * 1.3),
+          target: centre.clone(),
+        };
+    }
+  };
+
   const frameFront = (): void => {
-    const aspect = camera.aspect;
-    // Horizontal field of the photograph's lens, then the vertical one three.js wants.
-    const hfov = 2 * Math.atan(PHOTO_SENSOR_MM / (2 * PHOTO_FOCAL_MM));
-    const vfov = 2 * Math.atan(Math.tan(hfov / 2) / aspect);
+    // The vertical field three.js wants, from the lens's horizontal one.
+    const vfov = 2 * Math.atan(Math.tan(hfov / 2) / camera.aspect);
     camera.fov = (vfov * 180) / Math.PI;
-    const half = size.x / 2 / PHOTO_CASE_FRACTION;
-    const dist = half / Math.tan(hfov / 2);
-    camera.position.set(centre.x, bounds.max.y + dist, centre.z + 1e-4);
+    const pose = poseFor('front');
+    camera.position.copy(pose.position);
     camera.up.set(0, 0, -1);
-    camera.lookAt(centre);
+    controls.target.copy(pose.target);
+    camera.lookAt(pose.target);
     camera.updateProjectionMatrix();
     controls.update();
   };
@@ -218,6 +252,7 @@ export async function createConsoleScene(canvas: HTMLCanvasElement, url: string,
       renderer.render(scene, camera);
     },
     frameFront,
+    poseFor,
   };
 }
 
