@@ -31,6 +31,8 @@ const symbol = (() => {
 const ROCKET_COLUMN_ADDRESS = symbol('FILE_STATE') * 16 + symbol('NIB_RCOL');
 /** Where the lane-0 missile records its column; the nibble index is the lane. */
 const MISSILE_COLUMN_ADDRESS = symbol('FILE_MISS') * 16 + 0;
+/** `ST_PLAY` is zero; anything else and the game is over, and no shot flies again. */
+const STATE_ADDRESS = symbol('FILE_STATE') * 16 + symbol('NIB_STATE');
 
 /** A low/high pair spent low first steps on the sweep after it reaches zero. */
 const pairSweeps = (lo: string, hi: string): number => symbol(hi) * 16 + symbol(lo) + 1;
@@ -39,8 +41,10 @@ const MISSILE_SWEEPS = pairSweeps('MISSILE_LO', 'MISSILE_HI');
 
 /** A sweep with a sound in it parks; this is the ceiling one is given to finish. */
 const SWEEP_CEILING_CYCLES = Math.round(0.7 * CYCLE_HZ);
-/** Emulated seconds to watch a game: a parked one is over well inside this. */
+/** Emulated seconds to watch a game at most; a game that ends sooner is left at its end. */
 const HORIZON_S = 60;
+/** Wall-clock allowance for four emulated games, as the other probe suites give theirs. */
+const TEST_TIMEOUT_MS = 60_000;
 /** Dwells wanted from each shot before the comparison means anything. */
 const DWELLS_WANTED = 4;
 
@@ -59,7 +63,7 @@ function columnDwells(address: number, lane: number, fire: boolean): number[] {
   let since = 0;
   let firing = false;
   const target = Math.round(HORIZON_S * CYCLE_HZ);
-  while (machine.cycles < target) {
+  while (machine.cycles < target && (machine.ram[STATE_ADDRESS] as number) === 0) {
     machine.runSweeps(1, SWEEP_CEILING_CYCLES);
     const sweep = machine.sweepCount;
     if (fire) {
@@ -96,5 +100,5 @@ describe('the rocket and the missile', () => {
     expect(missile.length, 'no missiles flew far enough to be timed').toBeGreaterThanOrEqual(DWELLS_WANTED);
     expect(new Set(missile), 'the missile is the measured cadence and should be steady').toEqual(new Set([MISSILE_SWEEPS]));
     expect(new Set(rocket), 'the rocket does not hold the missile\'s cadence').toEqual(new Set([ROCKET_SWEEPS]));
-  });
+  }, TEST_TIMEOUT_MS);
 });
