@@ -321,15 +321,6 @@ def wear_photo(obj: bpy.types.Object, photo: bpy.types.Material, facing: float) 
         poly.material_index = 1 if poly.normal.z * facing > 0.7 else 0
 
 
-def shoulders(z0: float, z1: float, leg: float) -> list[bpy.types.Object]:
-    """Four 45-degree chamfer cutters where the module's outline meets the wings."""
-    out = []
-    for k, (x, sx) in enumerate(((MODULE_X[0], 1), (MODULE_X[1], -1))):
-        out.append(prism(f"sh{k}a", [(fx(x), fy(0)), (fx(x + sx * leg), fy(0)), (fx(x), fy(leg))], z0, z1))
-        out.append(prism(f"sh{k}b", [(fx(x), fy(H)), (fx(x + sx * leg), fy(H)), (fx(x), fy(H - leg))], z0, z1))
-    return out
-
-
 def extras(obj: bpy.types.Object, label: str, evidence: str, explode: tuple[float, float, float] = (0.0, 0.0, 0.0)) -> None:
     """Name the part for the viewer. `explode` is in mm, Blender frame; stored in metres, glTF frame."""
     ex, ey, ez = explode
@@ -363,16 +354,39 @@ def shade_smooth(obj: bpy.types.Object, angle_deg: float = 35.0) -> None:
 # --------------------------------------------------------------------------------------
 
 
-def outline_solid(name: str, z0: float, z1: float, mat, inset: float = 0.0, module_top: float | None = None) -> bpy.types.Object:
-    """The case's plan outline - wings and module - extruded from z0 to z1.
-
-    `inset` shrinks the outline uniformly (for a cavity). The module block runs the full
-    module height; the wings hang from WING_TOP to WING_BOTTOM.
+def outline_points(inset: float = 0.0, chamfer: float | None = None) -> list[tuple[float, float]]:
+    """The case's plan outline as one polygon, clockwise from the top-left of the left
+    wing: two wings hanging from WING_TOP to WING_BOTTOM, the module between them
+    running the full module height, its four corners chamfered by `chamfer` where
+    they meet the wings. `inset` shrinks it uniformly, for a cavity.
     """
     i = inset
-    wings = box(f"{name}_wings", fx(0 + i), fx(W - i), fy(WING_BOTTOM - i), fy(WING_TOP + i), z0, z1, mat)
-    mod = box(f"{name}_module", fx(MODULE_X[0] + i), fx(MODULE_X[1] - i), fy(H - i), fy(0 + i), z0, z1, mat)
-    return fuse(wings, mod)
+    c = (SHOULDER if chamfer is None else chamfer)
+    c = max(0.0, c - i * 1.5)
+    x0, x1 = 0 + i, W - i
+    m0, m1 = MODULE_X[0] + i, MODULE_X[1] - i
+    wt, wb = WING_TOP + i, WING_BOTTOM - i
+    mt, mb = 0 + i, H - i
+    face = [
+        (x0, wt), (m0, wt), (m0, mt + c), (m0 + c, mt), (m1 - c, mt), (m1, mt + c), (m1, wt),
+        (x1, wt), (x1, wb), (m1, wb), (m1, mb - c), (m1 - c, mb), (m0 + c, mb), (m0, mb - c), (m0, wb), (x0, wb),
+    ]
+    return [(fx(x), fy(y)) for x, y in face]
+
+
+def module_points(inset: float = 0.0) -> list[tuple[float, float]]:
+    """The module's own outline, chamfered, for the part of it that stands above the wings."""
+    i = inset
+    c = max(0.0, SHOULDER - i * 1.5)
+    m0, m1 = MODULE_X[0] + i, MODULE_X[1] - i
+    mt, mb = 0 + i, H - i
+    face = [(m0, mt + c), (m0 + c, mt), (m1 - c, mt), (m1, mt + c), (m1, mb - c), (m1 - c, mb), (m0 + c, mb), (m0, mb - c)]
+    return [(fx(x), fy(y)) for x, y in face]
+
+
+def outline_solid(name: str, z0: float, z1: float, mat, inset: float = 0.0) -> bpy.types.Object:
+    """The case's plan outline extruded from z0 to z1, as one prism - no unions."""
+    return prism(name, outline_points(inset), z0, z1, mat)
 
 
 # --------------------------------------------------------------------------------------
@@ -391,28 +405,24 @@ def window_cutter(name: str, z0: float, z1: float, grow: float = 0.0) -> bpy.typ
 
 def build_front_shell() -> bpy.types.Object:
     red = MATERIALS["red_abs"]
-    # Outer solid. The wings stand at Z_WING and the module at Z_MODULE, joined by
-    # channels at Z_CHANNEL that carry three ribs each.
-    left_wing = box("fs_left", fx(0), fx(LEFT_STRIP[1]), fy(WING_BOTTOM), fy(WING_TOP), 0, Z_WING, red)
-    right_wing = box("fs_right", fx(MODULE_X[1] + CHANNEL_W), fx(W), fy(WING_BOTTOM), fy(WING_TOP), 0, Z_WING, red)
-    module = box("fs_module", fx(MODULE_X[0]), fx(MODULE_X[1]), fy(H), fy(0), 0, Z_MODULE, red)
-    # The channels run the wings' full height; their cavity stops short of the
-    # module's lower edge so the wall is solid where the wings run on below it.
-    chan_l = box("fs_chan_l", fx(LEFT_STRIP[1]), fx(MODULE_X[0]), fy(WING_BOTTOM), fy(WING_TOP), 0, Z_CHANNEL, red)
-    chan_r = box("fs_chan_r", fx(MODULE_X[1]), fx(MODULE_X[1] + CHANNEL_W), fy(WING_BOTTOM), fy(WING_TOP), 0, Z_CHANNEL, red)
-    shell = fuse(left_wing, right_wing, module, chan_l, chan_r)
+    # Outer solid: the whole outline to the wings' height as one prism, the module's
+    # extra height as a second prism fused on (overlapping, never coplanar), and the
+    # two ribbed channels recessed out of it. Unions of exactly abutting boxes are
+    # where the boolean solver silently drops a piece; cuts are dependable.
+    shell = outline_solid("front_shell", 0, Z_WING, red)
     shell.name = "front_shell"
-    cut(shell, *shoulders(-1, Z_MODULE + 1, SHOULDER))
+    fuse(shell, prism("fs_module_cap", module_points(), Z_WING - 1.0, Z_MODULE, red))
+    for x0, x1 in ((LEFT_STRIP[1], MODULE_X[0]), (MODULE_X[1], MODULE_X[1] + CHANNEL_W)):
+        cut(shell, box("chan", fx(x0), fx(x1), fy(WING_BOTTOM + 1), fy(WING_TOP - 1), Z_CHANNEL, Z_MODULE + 1))
 
-    # Cavity: the same shapes, inset by the wall, open at the parting line.
-    cav = fuse(
-        box("cav_l", fx(WALL), fx(LEFT_STRIP[1] - WALL), fy(WING_BOTTOM - WALL), fy(WING_TOP + WALL), -1, Z_WING - WALL),
-        box("cav_r", fx(MODULE_X[1] + CHANNEL_W + WALL), fx(W - WALL), fy(WING_BOTTOM - WALL), fy(WING_TOP + WALL), -1, Z_WING - WALL),
-        box("cav_m", fx(MODULE_X[0] + WALL), fx(MODULE_X[1] - WALL), fy(H - WALL), fy(WALL), -1, Z_MODULE - WALL),
-        box("cav_cl", fx(LEFT_STRIP[1] - WALL), fx(MODULE_X[0] + WALL), fy(H - 1.0 - WALL), fy(WING_TOP + WALL), -1, Z_CHANNEL - WALL),
-        box("cav_cr", fx(MODULE_X[1] - WALL), fx(MODULE_X[1] + CHANNEL_W + WALL), fy(H - 1.0 - WALL), fy(WING_TOP + WALL), -1, Z_CHANNEL - WALL),
-    )
-    cut(cav, *shoulders(-2, Z_MODULE + 1, max(0.5, SHOULDER - WALL * 1.5)))
+    # Cavity: the outline inset by the wall, open at the parting line, lower under
+    # the channels so their floors keep a wall, and solid under the module's lower
+    # edge where the wings run on below it.
+    cav = outline_solid("cav", -1, Z_WING - WALL, None, inset=WALL)
+    fuse(cav, prism("cav_cap", module_points(WALL), Z_WING - WALL - 1.0, Z_MODULE - WALL, None))
+    for x0, x1 in ((LEFT_STRIP[1], MODULE_X[0]), (MODULE_X[1], MODULE_X[1] + CHANNEL_W)):
+        cut(cav, box("cav_chan", fx(x0 - WALL), fx(x1 + WALL), fy(WING_BOTTOM + 1), fy(WING_TOP - 1), Z_CHANNEL - WALL, Z_MODULE + 1))
+        cut(cav, box("cav_lip", fx(x0 - WALL), fx(x1 + WALL), fy(WING_BOTTOM + 1), fy(H - 1.0 - WALL), -2, Z_MODULE + 1))
     cut(shell, cav)
 
     # Grips on the wing ends: a run of vertical grooves on the front half.
@@ -587,12 +597,10 @@ def build_back_shell() -> bpy.types.Object:
     red = MATERIALS["red_abs"]
     shell = outline_solid("back_shell", -Z_BACK, 0, red)
     shell.name = "back_shell"
-    cut(shell, *shoulders(-Z_BACK - 1, 1, SHOULDER))
     # The raised panels on the back of each wing, from the ends inward.
     for x0, x1 in ((2.0, BACK_PANEL_W), (W - BACK_PANEL_W, W - 2.0)):
         fuse(shell, box("panel", fx(x0), fx(x1), fy(WING_BOTTOM - 8), fy(WING_TOP + 6), Z_BACK_FACE, -Z_BACK + 0.5, red))
     cav = outline_solid("back_cav", -Z_BACK + WALL, 1, None, inset=WALL)
-    cut(cav, *shoulders(-Z_BACK, 2, max(0.5, SHOULDER - WALL * 1.5)))
     cut(shell, cav)
     # The four screws that hold the halves together, inboard of the panels.
     for k, (sx_, sy_) in enumerate(D["shape.back_screws"]):
