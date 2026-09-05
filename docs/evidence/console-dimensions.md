@@ -119,9 +119,9 @@ the right wing's smooth strip **246.0-279.1**, its raised block **279.1-337.5**.
 | | mm |
 | --- | --- |
 | Board | x 55.1-342.4, y 16.2-154.4; outline in `pcb.outline`, bottom edge stepping down for a central tongue and the right end |
-| Tube shroud | x 97.9-232.5, y 46.3-101.7 |
-| Tube glass | x 104.9-222.9, y 49.9-93.7 |
-| Tube face (printed segments) | x 109.4-215.0, y 55.5-84.7 |
+| Tube shroud | x 97.9-232.5, y 41.5-96.9 |
+| Tube glass | x 104.9-222.9, y 45.1-88.9 |
+| Tube face (printed segments) | x 109.4-215.0, y 50.7-79.9 |
 | TMS1370 | pins x 239.0-287.3, body y 61.1-79.1; body length 51.2 |
 | Battery box | x -0.8-44.2, y 48.8-140.9, against the left wall |
 | Resistor row | 17 resistors, x 115.0-221.8, y 20.7-35.3 |
@@ -180,6 +180,7 @@ which is how far a side view would be expected to move it.
 | Back panel width | 50 | The raised panels on the back of each wing, from their outer ends inward, `back.jpg` | 5 |
 | Back panel raise | 2 | How far those panels stand proud of the back face; `end-left.jpg` shows a step | 1 |
 | End grip ribs | 6 | Vertical ribs on the wing ends' front half, `edge-bottom-2.jpg`; the count is a read, the 4 mm pitch a guess | 2 |
+| Tube y on the board | board reads shifted -4.8 | The board photograph reads the tube 5 mm low against where the scope circle registers the segments; the shroud, glass and face move together so the face is centred on the phosphor. The x reads agree with the atlas to 2 mm and are unchanged | 3 |
 
 The assembled unit, then, is about 340 x 145 x 58 mm at the module and 52 mm at the
 wings, with the last two figures carrying the largest uncertainty of anything here.

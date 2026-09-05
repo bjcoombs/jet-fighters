@@ -34,14 +34,18 @@ describe('registration of the renderer on the glass', () => {
 
   it('lands the tube face on the renderer\'s field, within the reads\' tolerance', () => {
     // The photograph's printed face and the renderer's segment band were measured
-    // independently; the circle registration should bring them together to within
-    // a few units. This is the check the dimensions document calls consistent.
+    // independently in x; the circle registration should bring them together to
+    // within a few units. In y the face is placed by this registration (measure.py,
+    // "registered to the phosphor"), centred on the segments, so the check there
+    // is that the field sits inside the face and about its middle.
     const [x0, y0] = toUnits(TUBE_FACE_MM.left, TUBE_FACE_MM.top);
-    const [x1] = toUnits(TUBE_FACE_MM.right, TUBE_FACE_MM.bottom);
+    const [x1, y1] = toUnits(TUBE_FACE_MM.right, TUBE_FACE_MM.bottom);
     const tolerance = 12; // units, about 5 mm
     expect(Math.abs(x0 - PLAYFIELD.x)).toBeLessThan(tolerance);
     expect(Math.abs(x1 - (PLAYFIELD.x + PLAYFIELD.width))).toBeLessThan(tolerance);
-    expect(Math.abs(y0 - FIELD.y)).toBeLessThan(tolerance);
+    expect(y0).toBeLessThanOrEqual(FIELD.y);
+    expect(y1).toBeGreaterThanOrEqual(FIELD.y + FIELD.height);
+    expect(Math.abs((y0 + y1) / 2 - (FIELD.y + FIELD.height / 2))).toBeLessThan(tolerance);
   });
 
   it('keeps the transforms inside the canvas', () => {

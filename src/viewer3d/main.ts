@@ -114,9 +114,15 @@ async function start(mount: HTMLElement): Promise<void> {
   if (hint) mount.appendChild(hint);
 
   // The flag pivots on its hub: move the geometry so the part's origin is there.
+  // The part is a mesh with two materials (the blue flag, the steel screw), which
+  // the loader hands over as a group of one mesh per material, so every mesh
+  // under it moves; an earlier check for a single mesh let this quietly stop
+  // applying, and the flag then turned about the case's centre.
   const flag = scene.parts.get('skill_flag');
-  if (flag && flag.object instanceof Mesh) {
-    flag.object.geometry.translate(-SKILL_HUB_LOCAL[0], 0, -SKILL_HUB_LOCAL[1]);
+  if (flag) {
+    flag.object.traverse((obj) => {
+      if (obj instanceof Mesh) obj.geometry.translate(-SKILL_HUB_LOCAL[0], 0, -SKILL_HUB_LOCAL[1]);
+    });
     flag.object.position.set(SKILL_HUB_LOCAL[0], 0, SKILL_HUB_LOCAL[1]);
     flag.restPosition.copy(flag.object.position);
   }

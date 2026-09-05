@@ -959,11 +959,12 @@
     },
     "tube.face_y": {
       "value": [
-        55.5,
-        84.7
+        50.7,
+        79.9
       ],
-      "kind": "measured",
-      "source": "board-L1001568.jpg tube.face_y"
+      "kind": "estimated",
+      "basis": "The board read, 55.5-84.7 (board-L1001568.jpg face_y), shifted -4.8 mm with the rest of the tube so the printed face is centred on the segments where the scope circle registers them (54.6-75.9).",
+      "bound_mm": 3.0
     },
     "tube.glass_x": {
       "value": [
@@ -975,11 +976,18 @@
     },
     "tube.glass_y": {
       "value": [
-        49.9,
-        93.7
+        45.1,
+        88.9
       ],
+      "kind": "estimated",
+      "basis": "The board read, 49.9-93.7 (board-L1001568.jpg glass_y), shifted -4.8 mm with the rest of the tube so the printed face is centred on the segments where the scope circle registers them (54.6-75.9).",
+      "bound_mm": 3.0
+    },
+    "tube.registration_dy": {
+      "value": -4.8,
       "kind": "measured",
-      "source": "board-L1001568.jpg tube.glass_y"
+      "source": "Derived: the segments' centre through the scope circle less the board read's face centre",
+      "note": "mm; how far the tube's y reads were shifted."
     },
     "tube.shroud_x": {
       "value": [
@@ -991,11 +999,12 @@
     },
     "tube.shroud_y": {
       "value": [
-        46.3,
-        101.7
+        41.5,
+        96.9
       ],
-      "kind": "measured",
-      "source": "board-L1001568.jpg tube.shroud_y"
+      "kind": "estimated",
+      "basis": "The board read, 46.3-101.7 (board-L1001568.jpg shroud_y), shifted -4.8 mm with the rest of the tube so the printed face is centred on the segments where the scope circle registers them (54.6-75.9).",
+      "bound_mm": 3.0
     },
     "tube.thickness": {
       "value": 11.0,
