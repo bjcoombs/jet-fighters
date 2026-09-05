@@ -20,7 +20,10 @@ npm run model:render                                     # plus the two comparis
 npm run model:blend                                      # also tools/model/console.blend, to open in the app
 ```
 
-The `.glb` is committed so a clean checkout builds the site without Blender. Nothing on the
+The `.glb` is committed so a clean checkout builds the site without Blender. The plan
+outline of the case - wings, shoulders, module - is one function, `outline_points` in
+`build_console.py`, and both shells, their cavities and the rib clip are prisms of it at
+an inset; a change to the outline is made there once. Nothing on the
 model is a photograph: the shells are bevelled geometry in plastics whose colours
 `measure.py` samples from the front photograph (white-balanced on the sticker's print), the
 stipple is a seeded normal map the script generates, and every printed or moulded word is a
