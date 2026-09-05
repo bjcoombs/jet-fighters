@@ -51,8 +51,9 @@ def blue_mask(im):
 
 
 def dark_mask(im):
+    """The black glass: dark and unsaturated, so a shadowed red wall does not count."""
     r, g, b, s, v = channels(im)
-    return v < 0.2
+    return (v < 0.2) & (s < 0.35)
 
 
 def bbox(mask, min_count=1):
@@ -114,19 +115,20 @@ def features_front(im: Image.Image) -> dict[str, tuple[float, float]]:
         out["sticker"] = frac(sticker)
     # Window: the dark region inside the middle half.
     dark = dark_mask(im)
-    win = bbox(dark[cy0:cy1, cx0 + w // 4 : cx1 - w // 4], min_count=20)
+    # The window cannot reach the case's top edge; the search starts 3% down so
+    # the module's shadowed top wall is not read as glass.
+    top = cy0 + int(h * 0.03)
+    win = bbox(dark[top:cy1, cx0 + w // 4 : cx1 - w // 4], min_count=20)
     if win:
         wx0, wy0, wx1, wy1 = win
-        out["window_left_top"] = frac((wx0 + cx0 + w // 4, wy0 + cy0))
-        out["window_right_bottom"] = frac((wx1 + cx0 + w // 4, wy1 + cy0))
+        out["window_left_top"] = frac((wx0 + cx0 + w // 4, wy0 + top))
+        out["window_right_bottom"] = frac((wx1 + cx0 + w // 4, wy1 + top))
     return out
 
 
 def features_board(im: Image.Image) -> dict[str, tuple[float, float]]:
-    # From the front with the front shell hidden, the back shell shows its plain
-    # red interior; the photograph is on its far side.
     red = red_mask(im)
-    case = bbox(red, min_count=150)
+    case = bbox(case_mask(im), min_count=150)
     if case is None:
         return {}
     cx0, cy0, cx1, cy1 = case
@@ -139,7 +141,9 @@ def features_board(im: Image.Image) -> dict[str, tuple[float, float]]:
     r, g, b, s, v = channels(im)
     # The board's brown against the shell's red: same hue family, lower saturation
     # and value. Thresholds are wide because the render's shading is not the sun's.
-    brown = (r > 0.2) & (r > g * 1.3) & (r < g * 2.4) & (r > b * 1.6) & (s > 0.3) & (s < 0.9) & (v > 0.12)
+    # Phenolic brown against the shell's red, lit or in shadow: more green in it than
+    # any red plastic has, and less blue than a highlight on red.
+    brown = (r > 0.2) & (r > g * 1.3) & (r < g * 2.6) & (g > r * 0.3) & (b < g * 0.8) & (s > 0.3) & (s < 0.9) & (v > 0.12)
     board = bbox(brown[cy0:cy1, cx0:cx1], min_count=80)
     if board:
         out["board_left_top"] = frac((board[0] + cx0, board[1] + cy0))

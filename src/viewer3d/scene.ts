@@ -14,12 +14,17 @@ import {
   DirectionalLight,
   DoubleSide,
   Group,
+  HemisphereLight,
   Mesh,
   MeshBasicMaterial,
   MeshPhysicalMaterial,
+  MeshStandardMaterial,
+  PCFSoftShadowMap,
   PerspectiveCamera,
+  PlaneGeometry,
   PMREMGenerator,
   Scene,
+  ShadowMaterial,
   SRGBColorSpace,
   Vector3,
   WebGLRenderer,
@@ -91,22 +96,39 @@ export async function createConsoleScene(canvas: HTMLCanvasElement, url: string,
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
   renderer.setClearColor(new Color(0x0a0a0b), 1);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = PCFSoftShadowMap;
 
   const scene = new Scene();
-  // A neutral room for the plastics' reflections; the glass needs something to
-  // reflect or it reads as matte black.
+  // A neutral room for the plastics' reflections, kept faint: glossy ABS mirrors
+  // a bright room as a wash across the whole face as the unit turns, and the
+  // owner read that as a dulled surface. The lights carry the form instead.
   const pmrem = new PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  scene.environmentIntensity = 0.35;
+  scene.environmentIntensity = 0.12;
 
-  const key = new DirectionalLight(0xffffff, 1.4);
-  // Off the vertical, so its reflection in the window is not under the camera's
-  // first view straight down onto the glass.
-  key.position.set(0.6, 0.5, -0.5);
+  // One key light with a soft shadow, high and to one side as a desk lamp would
+  // be; a sky-to-ground hemisphere for the fill; a little back-light from below
+  // and behind so the underside reads when the unit is turned over.
+  const key = new DirectionalLight(0xfff2e6, 2.6);
+  key.position.set(0.45, 0.8, 0.3);
+  key.castShadow = true;
+  key.shadow.mapSize.set(2048, 2048);
+  key.shadow.camera.left = -0.3;
+  key.shadow.camera.right = 0.3;
+  key.shadow.camera.top = 0.3;
+  key.shadow.camera.bottom = -0.3;
+  key.shadow.camera.near = 0.1;
+  key.shadow.camera.far = 3;
+  key.shadow.bias = -0.0002;
+  key.shadow.normalBias = 0.0005;
+  key.shadow.radius = 4;
   scene.add(key);
-  const fill = new DirectionalLight(0xbfd0ff, 0.4);
-  fill.position.set(-0.4, 0.3, -0.2);
+  const fill = new HemisphereLight(0xd8e2f2, 0x3a2a26, 0.9);
   scene.add(fill);
+  const bounce = new DirectionalLight(0xffe9dc, 0.7);
+  bounce.position.set(-0.3, -0.6, -0.4);
+  scene.add(bounce);
 
   const camera = new PerspectiveCamera(40, 1, 0.01, 10);
   const controls = new OrbitControls(camera, canvas);
@@ -141,6 +163,21 @@ export async function createConsoleScene(canvas: HTMLCanvasElement, url: string,
   const size = bounds.getSize(new Vector3());
   const centre = bounds.getCenter(new Vector3());
   controls.target.copy(centre);
+
+  // Everything casts and receives; the unit stands on a plane that shows nothing
+  // but its shadow, so it reads as resting on something rather than floating.
+  model.traverse((obj) => {
+    if (obj instanceof Mesh) {
+      obj.castShadow = true;
+      obj.receiveShadow = true;
+    }
+  });
+  const ground = new Mesh(new PlaneGeometry(2, 2), new ShadowMaterial({ opacity: 0.45 }));
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = bounds.min.y - 0.0005;
+  ground.receiveShadow = true;
+  ground.name = 'ground_shadow';
+  scene.add(ground);
 
   const frameFront = (): void => {
     const aspect = camera.aspect;
@@ -194,6 +231,10 @@ function tuneMaterials(model: Group, textures?: TubeTextures): void {
   model.traverse((obj) => {
     if (!(obj instanceof Mesh)) return;
     const mat = obj.material;
+    if (mat instanceof MeshStandardMaterial && obj.name !== 'window' && obj.name !== 'tube_glass') {
+      // The exporter's coat and roughness stand; only the room's share is trimmed.
+      mat.envMapIntensity = 0.5;
+    }
     if (obj.name === 'tube_face' && textures) {
       // The canvas already carries the phosphor's colour, bloom and decay; it
       // is shown verbatim, outside tone mapping, as a light source would be.

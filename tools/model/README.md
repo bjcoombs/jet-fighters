@@ -11,19 +11,20 @@ The physical unit as a glTF, built in Blender from measured dimensions, for the 
 | `build_console.py` | Runs inside Blender. Builds every part from `dimensions.json`, names it, tags it with `extras`, exports `public/models/console.glb`. |
 | `blender.sh` | Finds Blender and runs the build headless. |
 | `compare.py` | A render from a camera matched to a photograph, side by side with it, and the positions of the features both can be read for. |
-| `photos.py` | Rectifies the owner's front and back photographs (`assets/reference/case/`) by homography into `textures/front.jpg` and `back.jpg`, face millimetres at 9 px/mm, and samples the plastic's colour. |
-| `textures/` | **Generated** by `photos.py`, committed: the images the shells wear. |
+| `label.txt` | The back label's text, transcribed from `assets/reference/case/back.jpg`; the script sets it as flat text meshes on the label. |
 
 ```
 python3 tools/model/measure.py --overlay docs/evidence --doc docs/evidence/console-dimensions.md   # reads -> mm, and the doc's tables
 npm run model                                            # mm -> public/models/console.glb
 npm run model:render                                     # plus the two comparison renders
 npm run model:blend                                      # also tools/model/console.blend, to open in the app
-python3 tools/model/photos.py                            # photographs -> textures/
 ```
 
-The `.glb` is committed so a clean checkout builds the site without Blender; it embeds the
-two photograph textures, which is most of its size. The `.blend` is not committed - the
+The `.glb` is committed so a clean checkout builds the site without Blender. Nothing on the
+model is a photograph: the shells are bevelled geometry in plastics whose colours
+`measure.py` samples from the front photograph (white-balanced on the sticker's print), the
+stipple is a seeded normal map the script generates, and every printed or moulded word is a
+text mesh in Blender's bundled font. The `.blend` is not committed - the
 script is the source - and `npm run model:blend` writes one for review in the Blender app. It is
 deterministic: two runs of `npm run model` produce the same bytes, so a PR that changes
 geometry shows a real diff. Blender 4.2 or later; the macOS app bundle is found

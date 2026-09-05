@@ -67,7 +67,8 @@ SHOULDER = D["shape.shoulder"]
 BACK_PANEL_W = D["shape.back_panel_width"]
 BACK_PANEL_RAISE = D["shape.back_panel_raise"]
 Z_BACK_FACE = -Z_BACK - BACK_PANEL_RAISE  # the wings' raised panels; the module's back is at -Z_BACK
-TEXTURES = ROOT / "tools/model/textures"
+LABEL_TEXT = ROOT / "tools/model/label.txt"
+EMBOSS = 0.3  # how far moulded text stands proud of its face, mm
 STIPPLE_RAISE = 1.5  # the raised, stippled blocks on the wings; estimated
 
 WING_TOP = D["case.wing_top_below_module_top"]
@@ -138,41 +139,86 @@ def hexrgb(h: str) -> tuple[float, float, float]:
     return tuple(int(h[i : i + 2], 16) / 255 for i in (0, 2, 4))
 
 
-def photo_material(name: str, image_path: Path, roughness: float = 0.5) -> bpy.types.Material:
-    """A material whose base colour is a rectified photograph (tools/model/photos.py).
+def plastic(name: str, rgb: tuple[float, float, float], roughness: float, coat: float = 0.0) -> bpy.types.Material:
+    """Moulded plastic: a base colour, its roughness, and a thin gloss coat where the
+    surface is polished - what makes ABS read as ABS under a light."""
+    mat = material(name, rgb, roughness=roughness)
+    bsdf = mat.node_tree.nodes["Principled BSDF"]
+    if coat:
+        bsdf.inputs["Coat Weight"].default_value = coat
+        bsdf.inputs["Coat Roughness"].default_value = 0.12
+    return mat
 
-    The image is referenced from disk; the glTF exporter embeds it.
+
+def stipple_image(size: int = 256, seed: int = 7, grains: int = 900) -> bpy.types.Image:
+    """The wings' stipple as a tileable normal map, from a seed and a formula.
+
+    Grains are small rounded bumps at seeded positions, wrapped at the edges so the
+    tile repeats without a seam; the normal is the height field's gradient. Packed
+    into the file so the exporter embeds it.
     """
-    if name in MATERIALS:
-        return MATERIALS[name]
-    mat = bpy.data.materials.new(name)
-    mat.use_nodes = True
+    import numpy as np
+
+    rng = np.random.default_rng(seed)
+    h = np.zeros((size, size), float)
+    yy, xx = np.mgrid[0:size, 0:size]
+    for _ in range(grains):
+        cx, cy = rng.uniform(0, size, 2)
+        r = rng.uniform(2.0, 4.0)
+        a = rng.uniform(0.5, 1.0)
+        dx = (xx - cx + size / 2) % size - size / 2
+        dy = (yy - cy + size / 2) % size - size / 2
+        h += a * np.exp(-(dx * dx + dy * dy) / (2 * r * r))
+    gx = (np.roll(h, -1, axis=1) - np.roll(h, 1, axis=1)) * 0.5
+    gy = (np.roll(h, -1, axis=0) - np.roll(h, 1, axis=0)) * 0.5
+    strength = 1.2
+    nx, ny, nz = -gx * strength, -gy * strength, np.ones_like(h)
+    norm = np.sqrt(nx * nx + ny * ny + nz * nz)
+    rgb = np.stack([nx / norm, ny / norm, nz / norm], axis=-1) * 0.5 + 0.5
+    img = bpy.data.images.new("stipple_normal", size, size, alpha=True)
+    img.colorspace_settings.name = "Non-Color"
+    pixels = np.concatenate([rgb, np.ones((size, size, 1))], axis=-1).astype(np.float32).ravel()
+    img.pixels.foreach_set(pixels)
+    img.pack()
+    return img
+
+
+def stipple_material(name: str, rgb: tuple[float, float, float], tile_mm: float = 6.0) -> bpy.types.Material:
+    """The raised blocks' plastic with the generated stipple on it. UVs are the face
+    frame (0..1 across the case); the mapping tiles the map every `tile_mm`."""
+    mat = plastic(name, rgb, roughness=0.75)
     nodes = mat.node_tree.nodes
+    links = mat.node_tree.links
     bsdf = nodes["Principled BSDF"]
-    bsdf.inputs["Roughness"].default_value = roughness
+    coord = nodes.new("ShaderNodeTexCoord")
+    mapping = nodes.new("ShaderNodeMapping")
+    mapping.inputs["Scale"].default_value = (W / tile_mm, WING_BOTTOM / tile_mm, 1.0)
     tex = nodes.new("ShaderNodeTexImage")
-    tex.image = bpy.data.images.load(str(image_path))
-    tex.image.colorspace_settings.name = "sRGB"
-    mat.node_tree.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
-    MATERIALS[name] = mat
+    tex.image = stipple_image()
+    tex.interpolation = "Linear"
+    nmap = nodes.new("ShaderNodeNormalMap")
+    nmap.inputs["Strength"].default_value = 0.8
+    links.new(coord.outputs["UV"], mapping.inputs["Vector"])
+    links.new(mapping.outputs["Vector"], tex.inputs["Vector"])
+    links.new(tex.outputs["Color"], nmap.inputs["Color"])
+    links.new(nmap.outputs["Normal"], bsdf.inputs["Normal"])
     return mat
 
 
 def materials() -> None:
-    # Case red: the mean of the front photograph's left wing block, written by
-    # tools/model/photos.py beside the textures. The faces the photographs cover
-    # get the photographs themselves; this is for the walls and the moulding's
-    # sides. The stippled blocks are the same pigment, rougher.
-    plastic = json.loads((TEXTURES / "plastic.json").read_text())["red_abs_srgb"]
-    material("red_abs", hexrgb(plastic), roughness=0.55)
-    material("red_stipple", hexrgb(plastic), roughness=0.9)
-    photo_material("front_photo", TEXTURES / "front.jpg")
-    photo_material("back_photo", TEXTURES / "back.jpg")
-    # The fire cap and skill flag: a deep blue, device-front-lit.jpg.
-    material("blue_control", hexrgb("#2f3f9e"), roughness=0.45)
-    # The sticker: light cornflower, src/ui/case.ts's sample rgb(129,159,213).
-    material("sticker_blue", hexrgb("#819fd5"), roughness=0.6)
-    material("black_plastic", hexrgb("#1a1a1c"), roughness=0.6)
+    # Every colour from the owner's front photograph, sampled by tools/model/measure.py
+    # at regions named in pixels.json: the lit module face for the red, the cap's crown
+    # and the sticker for the blues, the switch thumb for the black.
+    red = hexrgb(D["colour.red_abs_srgb"])
+    plastic("red_abs", red, roughness=0.42, coat=0.3)
+    stipple_material("red_stipple", red)
+    plastic("blue_control", hexrgb(D["colour.blue_control_srgb"]), roughness=0.4, coat=0.35)
+    plastic("flag_blue", hexrgb(D["colour.flag_blue_srgb"]), roughness=0.4, coat=0.35)
+    plastic("sticker_blue", hexrgb(D["colour.sticker_blue_srgb"]), roughness=0.55)
+    material("print_white", hexrgb("#f4f5f7"), roughness=0.6)
+    material("print_black", hexrgb("#141414"), roughness=0.7)
+    material("label_paper", hexrgb("#e6e2d6"), roughness=0.85)
+    plastic("black_plastic", hexrgb(D["colour.black_plastic_srgb"]), roughness=0.5, coat=0.2)
     material("steel", hexrgb("#b8bcc2"), roughness=0.35, metallic=1.0)
     # The smoked window: near-black tint, some transmission so the tube reads through it.
     material("smoked_glass", hexrgb("#120c0c"), roughness=0.12, transmission=0.6, alpha=0.85)
@@ -304,21 +350,46 @@ def uv_project_top(obj: bpy.types.Object, x0: float, x1: float, y0: float, y1: f
     bm.free()
 
 
-def wear_photo(obj: bpy.types.Object, photo: bpy.types.Material, facing: float) -> None:
-    """Project the face-frame photograph onto the faces that look `facing` (+1 front, -1 back).
-
-    UVs span the whole face, module top-left to bottom-right, on every face; the
-    photograph's material goes on the faces whose normal points out of that face,
-    the plastic's plain colour stays on the rest.
-    """
-    # The textures cover the whole silhouette, module top to the wings' lower edge.
+def face_uvs(obj: bpy.types.Object) -> None:
+    """UVs spanning the whole face, module top-left to the wings' lower edge, on every
+    face: what the stipple mapping tiles over."""
     uv_project_top(obj, fx(0), fx(W), fy(WING_BOTTOM), fy(0))
-    plain = obj.data.materials[0] if obj.data.materials else MATERIALS["red_abs"]
-    obj.data.materials.clear()
-    obj.data.materials.append(plain)
-    obj.data.materials.append(photo)
-    for poly in obj.data.polygons:
-        poly.material_index = 1 if poly.normal.z * facing > 0.7 else 0
+
+
+def bevel(obj: bpy.types.Object, width: float = 0.8, segments: int = 2) -> None:
+    """Round the edges the way moulded plastic's are: a bevel on the edges sharper
+    than 30 degrees, applied here and now rather than at export, so that anything
+    computed from the mesh afterwards - the face UVs - sees the final vertices. UVs
+    interpolated by the modifier at export time came out differently run to run."""
+    mod = obj.modifiers.new("bevel", "BEVEL")
+    mod.width = width
+    mod.segments = segments
+    mod.limit_method = "ANGLE"
+    mod.angle_limit = math.radians(30)
+    mod.use_clamp_overlap = True
+    # The bevel's strips absorb the turn and the flat faces keep their own normal.
+    # Without this the smooth-by-angle pass tilts a face's corner normals towards
+    # the strips (two segments on a right angle step 30 degrees, under its 35)
+    # and the interpolation across the big n-gons shows as waves in the highlight.
+    mod.harden_normals = True
+    with bpy.context.temp_override(object=obj, active_object=obj, selected_objects=[obj]):
+        bpy.ops.object.modifier_apply(modifier=mod.name)
+
+
+def emboss(name: str, body: str, size: float, x: float, y: float, face_z: float, mat, outward: float = 1.0, rotation_z: float = 0.0, shear: float = 0.0, align: str = "LEFT", raise_mm: float = EMBOSS, resolution: int = 3) -> bpy.types.Object:
+    """Text standing `raise_mm` proud of a face at `face_z`. `outward` +1 for a face
+    that looks +Z (the front), -1 for one that looks -Z (the back, where the text is
+    mirrored so it reads from behind). A raise of 0 lays flat print on the face."""
+    if raise_mm <= 0:
+        obj = text_mesh(name, body, size, x, y, face_z + 0.03 * outward, mat, thickness=0.0, rotation_z=rotation_z, shear=shear, align=align, resolution=resolution)
+    else:
+        z0 = face_z - 0.05 * outward
+        obj = text_mesh(name, body, size, x, y, z0, mat, thickness=raise_mm + 0.05, rotation_z=rotation_z, shear=shear, align=align, resolution=resolution)
+        # text_mesh centres the extrusion on z0; push it outward so it sits on the face.
+        obj.location.z = face_z + (raise_mm / 2 - 0.05) * outward
+    if outward < 0:
+        obj.scale.x = -1.0
+    return obj
 
 
 def extras(obj: bpy.types.Object, label: str, evidence: str, explode: tuple[float, float, float] = (0.0, 0.0, 0.0)) -> None:
@@ -485,9 +556,14 @@ def build_front_shell() -> bpy.types.Object:
         m.rotation_euler = (0, 0, a - math.pi / 2)
         m.location = (cx, cy, 0)
         marks.append(m)
-    join(shell, *blocks, *ribs, tab_obj, *marks)
+    # The moulded ON / OFF beside the switch, reading up the case.
+    p_on = D["controls.power.thumb_centre"]
+    on = emboss("mould_on", "ON", 3.0, fx(p_on[0] + 13.5), fy(p_on[1] - 6.0), Z_WING, red, rotation_z=math.radians(90))
+    off = emboss("mould_off", "OFF", 3.0, fx(p_on[0] + 13.5), fy(p_on[1] + 17.0), Z_WING, red, rotation_z=math.radians(90))
+    join(shell, *blocks, *ribs, tab_obj, *marks, on, off)
     shade_smooth(shell)
-    wear_photo(shell, MATERIALS["front_photo"], +1)
+    bevel(shell)
+    face_uvs(shell)
     extras(shell, "Front shell: one red ABS moulding - two wings and the raised scope module, the ribbed channels between them, and the openings for the four controls.", "device-front-lit.jpg, device-front-gameplay.jpg, clip.mov", (0, 0, 120))
     return shell
 
@@ -527,10 +603,24 @@ def build_scope_mask(shell: bpy.types.Object) -> bpy.types.Object:
 
 
 def build_sticker(shell: bpy.types.Object) -> bpy.types.Object:
+    """The JET FIGHTERS / CGL sticker: a blue plate with the wordmark raised in white.
+    The original's typeface is a heavy italic sans; Blender's bundled font, sheared,
+    stands in for it, and docs/evidence/console-dimensions.md says so."""
     s = D["face.sticker"]
-    st = box("sticker", fx(s["x"][0]), fx(s["x"][1]), fy(s["y"][1]), fy(s["y"][0]), Z_WING + STIPPLE_RAISE, Z_WING + STIPPLE_RAISE + 0.4, MATERIALS["sticker_blue"])
-    wear_photo(st, MATERIALS["front_photo"], +1)
-    extras(st, "The JET FIGHTERS / CGL sticker.", "device-front-gameplay.jpg", (0, 0, 15))
+    x0, x1 = s["x"]
+    y0, y1 = s["y"]
+    z_top = Z_WING + STIPPLE_RAISE + 0.4
+    st = box("sticker", fx(x0), fx(x1), fy(y1), fy(y0), Z_WING + STIPPLE_RAISE, z_top, MATERIALS["sticker_blue"])
+    white = MATERIALS["print_white"]
+    cx = fx((x0 + x1) / 2)
+    wm = [
+        emboss("st_jet", "JET", 6.2, cx + 0.5, fy(y0 + 9.5), z_top, white, shear=0.28, align="CENTER"),
+        emboss("st_fighters", "FIGHTERS", 4.9, cx, fy(y0 + 16.5), z_top, white, shear=0.28, align="CENTER"),
+        emboss("st_cgl", "CGL", 3.4, cx, fy(y0 + 23.5), z_top, white, shear=0.2, align="CENTER", raise_mm=0.1),
+    ]
+    join(st, *wm)
+    bevel(st, width=0.25, segments=1)
+    extras(st, "The JET FIGHTERS / CGL sticker.", "device-front-gameplay.jpg, case/front.jpg", (0, 0, 15))
     parent(st, shell)
     return st
 
@@ -547,6 +637,7 @@ def build_controls(shell: bpy.types.Object) -> list[bpy.types.Object]:
     dome = cylinder("fire_dome", fx(f[0]), fy(f[1]), D["controls.fire.cap_radius"] - 0.8, Z_WING + D["depth.fire_cap_height"] - 0.01, Z_WING + D["depth.fire_cap_height"] + 1.2, blue, r2=D["controls.fire.cap_radius"] - 4)
     fuse(cap, dome)
     shade_smooth(cap)
+    bevel(cap, width=0.5)
     extras(cap, "Fire button: the blue cap. Pressing it closes the K8 contact, the one input the program reads without strobing.", "device-front-lit.jpg", (0, 0, 25))
     parent(cap, shell)
     out.append(cap)
@@ -556,6 +647,7 @@ def build_controls(shell: bpy.types.Object) -> list[bpy.types.Object]:
     tr = D["controls.power.travel_y"]
     # Modelled at the OFF end of its travel (toward the case bottom): a unit on a shelf.
     thumb = box("power_thumb", fx(p[0] - ps[0] / 2), fx(p[0] + ps[0] / 2), fy(tr[1] + ps[1] / 2), fy(tr[1] - ps[1] / 2), Z_WING - 4, Z_WING + 2.5, black)
+    bevel(thumb, width=0.4, segments=1)
     extras(thumb, "Power switch: a black slide. ON toward the case top, OFF toward the bottom. The only reset the unit has.", "device-front-lit.jpg", (0, 0, 20))
     parent(thumb, shell)
     out.append(thumb)
@@ -571,17 +663,19 @@ def build_controls(shell: bpy.types.Object) -> list[bpy.types.Object]:
     sk = D["controls.skill.hub_centre"]
     hub_r = D["controls.skill.hub_radius"]
     zf = Z_WING + STIPPLE_RAISE
-    hub = cylinder("skill_flag", fx(sk[0]), fy(sk[1]), hub_r, zf - 2, zf + D["depth.skill_flag_height"] - 1.5, blue, segments=48)
+    flag_blue = MATERIALS["flag_blue"]
+    hub = cylinder("skill_flag", fx(sk[0]), fy(sk[1]), hub_r, zf - 2, zf + D["depth.skill_flag_height"] - 1.5, flag_blue, segments=48)
     L = D["controls.skill.flag_length"]
     # The flag hangs down and to the right of the hub at rest (skill 1): from the photo,
     # tip at +63, +55 px of the hub in image space, i.e. below-right.
-    flag = box("flag", 0, L, -4.0, 4.0, zf - 1.5, zf + D["depth.skill_flag_height"] - 2.5, blue)
+    flag = box("flag", 0, L, -4.0, 4.0, zf - 1.5, zf + D["depth.skill_flag_height"] - 2.5, flag_blue)
     flag.rotation_euler = (0, 0, math.radians(-40))
     flag.location = (fx(sk[0]), fy(sk[1]), 0)
     join(hub, flag)
     screw = cylinder("skill_screw", fx(sk[0]), fy(sk[1]), 2.2, zf + D["depth.skill_flag_height"] - 1.6, zf + D["depth.skill_flag_height"] - 0.9, steel, segments=24)
     join(hub, screw)
     shade_smooth(hub)
+    bevel(hub, width=0.4, segments=1)
     extras(hub, "Skill lever: a blue flag on a screwed hub, turned to 1, 2 or 3 against the moulded marks. Sets which K line the strobe finds closed.", "device-front-lit.jpg", (0, 0, 20))
     parent(hub, shell)
     out.append(hub)
@@ -623,7 +717,16 @@ def build_back_shell() -> bpy.types.Object:
     lab_cx = (MODULE_X[0] + MODULE_X[1]) / 2
     lab_cy = H / 2
     cut(shell, box("label_cut", fx(lab_cx - lab_w / 2), fx(lab_cx + lab_w / 2), fy(lab_cy + lab_h / 2), fy(lab_cy - lab_h / 2), -Z_BACK - 1, -Z_BACK + 0.6))
-    label = box("back_label", fx(lab_cx - lab_w / 2 + 0.3), fx(lab_cx + lab_w / 2 - 0.3), fy(lab_cy + lab_h / 2 - 0.3), fy(lab_cy - lab_h / 2 + 0.3), -Z_BACK + 0.55, -Z_BACK + 0.6, material("label_paper", hexrgb("#e9e6dc"), roughness=0.8))
+    label = box("back_label", fx(lab_cx - lab_w / 2 + 0.3), fx(lab_cx + lab_w / 2 - 0.3), fy(lab_cy + lab_h / 2 - 0.3), fy(lab_cy - lab_h / 2 + 0.3), -Z_BACK + 0.55, -Z_BACK + 0.6, MATERIALS["label_paper"])
+    # The instruction label's text, transcribed from case/back.jpg into label.txt,
+    # printed in black; from behind the face looks -Z, so the text is mirrored.
+    lines = LABEL_TEXT.read_text().rstrip("\n").split("\n")
+    black = MATERIALS["print_black"]
+    lz = -Z_BACK + 0.55
+    title = emboss("lab_title", lines[0], 3.6, fx(lab_cx + lab_w / 2 - 3.0), fy(lab_cy - lab_h / 2 + 5.5), lz, black, outward=-1, raise_mm=0, resolution=2)
+    body = emboss("lab_body", "\n".join(lines[1:]), 1.55, fx(lab_cx + lab_w / 2 - 3.0), fy(lab_cy - lab_h / 2 + 9.0), lz, black, outward=-1, raise_mm=0, resolution=1)
+    made = emboss("mould_made", "MADE IN JAPAN", 2.4, fx((MODULE_X[0] + MODULE_X[1]) / 2 + 12.0), fy(4.5), -Z_BACK, red, outward=-1)
+    join(label, title, body)
 
     # Diagonal ribs across the back face, 45 degrees, clipped to the outline and kept off
     # the door and the label.
@@ -644,9 +747,10 @@ def build_back_shell() -> bpy.types.Object:
     cut(clip, box("clip_door", door[0] - 2, door[1] + 2, door[2] - 2, door[3] + 2, -Z_BACK - 3, 1))
     cut(clip, box("clip_label", fx(lab_cx - lab_w / 2 - 3), fx(lab_cx + lab_w / 2 + 3), fy(lab_cy + lab_h / 2 + 3), fy(lab_cy - lab_h / 2 - 3), -Z_BACK - 3, 1))
     intersect(ribs, clip)
-    join(shell, ribs, label)
+    join(shell, ribs, label, made)
     shade_smooth(shell)
-    wear_photo(shell, MATERIALS["back_photo"], -1)
+    bevel(shell)
+    face_uvs(shell)
     extras(shell, "Back shell: the same outline, moulded with diagonal ribs, the battery door opening and the instruction label's recess. The board sits on its bosses.", "back-instructions-label.jpg, board-L1001568.jpg", (0, 0, -80))
     return shell
 
@@ -664,7 +768,9 @@ def build_battery_door(shell: bpy.types.Object) -> bpy.types.Object:
     for k in range(6):
         y = fy(bb_y[1] - 6 - k * 3.0)
         cut(door, box(f"ridge{k}", fx(bb_x[0] + 6), fx(bb_x[1] - 6), y - 0.6, y + 0.6, Z_BACK_FACE - 1, Z_BACK_FACE + 0.4))
-    wear_photo(door, MATERIALS["back_photo"], -1)
+    open_text = emboss("mould_open", "OPEN", 2.6, ax, fy(bb_y[0] + 22.0), Z_BACK_FACE, MATERIALS["red_abs"], outward=-1, align="CENTER")
+    join(door, open_text)
+    bevel(door, width=0.5, segments=1)
     extras(door, "Battery door, with its OPEN arrow and grip ridges.", "board-L1001568.jpg (loose, top left)", (0, 0, -130))
     parent(door, shell)
     return door
@@ -675,13 +781,17 @@ def build_battery_door(shell: bpy.types.Object) -> bpy.types.Object:
 # --------------------------------------------------------------------------------------
 
 
-def text_mesh(name: str, body: str, size: float, x: float, y: float, z: float, mat, thickness: float = 0.15, rotation_z: float = 0.0) -> bpy.types.Object:
-    """A short run of text as a thin mesh lying on the XY plane at z, left-aligned at (x, y)."""
+def text_mesh(name: str, body: str, size: float, x: float, y: float, z: float, mat, thickness: float = 0.15, rotation_z: float = 0.0, shear: float = 0.0, align: str = "LEFT", resolution: int = 3) -> bpy.types.Object:
+    """A run of text as a thin mesh lying on the XY plane at z, anchored at (x, y).
+    Blender's bundled font, so the result is the same on every machine. Thickness 0
+    gives a flat, front-face-only glyph, for small print that is read, not felt."""
     curve = bpy.data.curves.new(name, type="FONT")
     curve.body = body
     curve.size = size
     curve.extrude = thickness / 2
-    curve.resolution_u = 4
+    curve.shear = shear
+    curve.align_x = align
+    curve.resolution_u = resolution
     obj = bpy.data.objects.new(name, curve)
     COLLECTION.objects.link(obj)
     obj.location = (x, y, z)
@@ -930,6 +1040,7 @@ def build_board_hardware(board: bpy.types.Object) -> list[bpy.types.Object]:
     for k, xo in enumerate((10.0, 30.0)):
         contacts.append(box(f"contact{k}", fx(bx_[0] + xo), fx(bx_[0] + xo + 6), fy(by_[0] + 6), fy(by_[0] + 1), z_floor + 4, z_floor + D["battery_box.height"] - 3, steel))
     join(bb, *contacts)
+    bevel(bb, width=0.5, segments=1)
     extras(bb, "The battery box under the left wing, with its two contacts, loaded through the door in the back.", "board-L1001568.jpg", (0, 0, 30))
     parent(bb, board)
     out.append(bb)

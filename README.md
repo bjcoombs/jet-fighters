@@ -158,7 +158,10 @@ access to the unit for that. Every figure is read off two photographs against th
 object of known size in them, the TMS1370's 2.54 mm pin pitch, and recorded with its source
 in [`tools/model/dimensions.json`](tools/model/dimensions.json); a Blender script builds
 every part from that file and exports the model with a label, its evidence and an explode
-vector on each node. Renders from cameras matched to the photographs sit beside them in
+vector on each node. Nothing on the model is a photograph: the shells are
+bevelled geometry in plastics whose colours are sampled from the front photograph, the
+stipple is a generated normal map, and every printed or moulded word is a text mesh, so
+zooming in finds edges rather than pixels. Renders from cameras matched to the photographs sit beside them in
 [`docs/evidence/console-model-front.jpg`](docs/evidence/console-model-front.jpg) and
 [`console-model-board.jpg`](docs/evidence/console-model-board.jpg), and
 [`tools/model/compare.py`](tools/model/compare.py) reads both images with the same masks:
