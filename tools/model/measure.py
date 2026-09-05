@@ -319,6 +319,34 @@ def main(argv: list[str]) -> int:
         # without them would fail the next build, so fail here instead.
         raise SystemExit(f"colour sampling needs Pillow and NumPy: {exc}") from exc
 
+    # ---- The tube's place on the board, registered to the phosphor ---------------
+    # The board photograph reads the tube at the board plane, but the printed face
+    # stands above it and is read through the front glass, and its y reads land
+    # about 5 mm low against where the window's registration puts the segments:
+    # on the model the segments crowded the face's top edge with a blank band
+    # below. The segments' own place is the stronger figure - the atlas is traced
+    # from the tube photograph and registered to the front photograph through the
+    # scope circle, the one feature both frames draw - so the tube's three y
+    # ranges are shifted together until the printed face is centred on the
+    # segments. The x reads already agree with the atlas to within 2 mm and are
+    # left as read. The board reads are kept in each entry's basis.
+    atlas = json.load((ROOT / "src/machine/tube/atlas.json").open())
+    ys = [(seg["bounds"]["y"], seg["bounds"]["y"] + seg["bounds"]["height"]) for seg in atlas["segments"]]
+    seg_top_u, seg_bottom_u = min(y for y, _ in ys), max(y for _, y in ys)
+    # The atlas's radar circle: centre (213, 150), radius 150 in its own units -
+    # src/machine/tube/layout.ts CIRCLE, copied with citation, not imported.
+    circle_cy_u, circle_r_u = 150.0, 150.0
+    ccx, ccy = d.entries["scope.circle_centre"]["value"]
+    mm_per_unit = d.entries["scope.circle_radius"]["value"] / circle_r_u
+    seg_top = ccy + (seg_top_u - circle_cy_u) * mm_per_unit
+    seg_bottom = ccy + (seg_bottom_u - circle_cy_u) * mm_per_unit
+    face_read = d.entries["tube.face_y"]["value"]
+    tube_dy = _r((seg_top + seg_bottom) / 2 - (face_read[0] + face_read[1]) / 2)
+    for key in ("tube.shroud_y", "tube.glass_y", "tube.face_y"):
+        read = d.entries[key]["value"]
+        d.estimated(key, [_r(read[0] + tube_dy), _r(read[1] + tube_dy)], f"The board read, {read[0]}-{read[1]} ({src_b} {key.split('.')[1]}), shifted {tube_dy:+} mm with the rest of the tube so the printed face is centred on the segments where the scope circle registers them ({_r(seg_top)}-{_r(seg_bottom)}).", 3.0)
+    d.measured("tube.registration_dy", tube_dy, "Derived: the segments' centre through the scope circle less the board read's face centre", "mm; how far the tube's y reads were shifted.")
+
     # ---- Cross-check against the retired flat drawing's SVG, scaled so its body width is the
     # measured case width. Reported, not used: the model follows the photographs.
     svg = px["svg"]
