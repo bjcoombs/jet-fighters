@@ -1,312 +1,258 @@
 # Jet Fighters
 
-A browser emulation of the 1979 Gakken/CGL Jet Fighters tabletop game.
-
-**[Play it here](https://bjcoombs.github.io/jet-fighters/)** - the unit in three dimensions,
-playable as it stands, orbitable and taken apart (`docs/prd/jet-fighters-3d.md`; the model
-comes from `tools/model/`).
+**[Play it here](https://bjcoombs.github.io/jet-fighters/).** A 1979 CGL Jet Fighters, taken
+apart, measured against the pitch of its chip's pins, and rebuilt in a browser - not the
+game, the machine. It opens as the unit sits on a table. Turn it over, lift the red shell
+off, pull the board out with the tube still lit, and keep playing.
 
 | The original 1979 CGL unit | This emulator |
 | :---: | :---: |
 | <img src="assets/reference/readme-real-tube.jpg" alt="The scope of an original CGL Jet Fighters unit, powered on"> | <img src="assets/reference/readme-emulated-tube.jpg" alt="The same view of this emulator running in a browser"> |
 
-This is not a re-implementation of the game's rules. It emulates the machine that played
-them: a 4-bit microcontroller executing a small mask ROM, scanning a two-phosphor vacuum
-fluorescent tube one grid at a time, and making sound by toggling a single pin.
+## What the machine is
 
-The rules live in `asm/jetfighter.asm` - assembly source in this repository, written under
-the real chip's program and RAM ceilings. The timing, the display shimmer and the sound are
-not approximated; they fall out of running it. When the machine plays a note it stops
-scanning the tube, because it has one core and no sound hardware - so on the real unit, and
-on this one, **every beep is also a visible blink of the whole display**.
+Gakken built it (model 81582); Computer Games Limited sold it in Britain. Inside is a
+4-bit Texas Instruments **TMS1370**, custom mask **MP2110**, driving a two-phosphor vacuum
+fluorescent tube one grid at a time and making sound by toggling a single pin. It has one
+core and no sound hardware, so when it plays a note it stops scanning the tube: on the
+real unit, and on this one, **every beep is also a visible blink of the whole display.**
 
-The processor is a **Texas Instruments TMS1370**, custom mask **MP2110** - legible in
-[the teardown photograph](assets/reference/tube-teardown/), and named in MAME's own device
-list as *"1980, Gakken Invader/Tandy Fire Away"*. So the unit runs the Gakken Invader
-program behind Jet Fighters artwork, which is why its logic reads as Space Invaders. The
-core in `src/machine/cpu/tms1370/` is that part: 9 display grids on R0-R8, 12 plates on
-O0-O7 plus R11-R14, four input pins, one instruction per six oscillator pulses, and an
-output PLA that gives the program 32 plate patterns and no thirty-third.
+This repository does not re-implement the game's rules. It emulates that machine - the
+chip is legible in [the teardown photograph](assets/reference/tube-teardown/) - and the
+game it runs is `asm/jetfighter.asm`, assembly source in this repository, written under
+the chip's 2048-word program and 128-nibble RAM ceilings. The timing, the display shimmer
+and the sound are not approximated; they fall out of running it.
 
-The instruction rate itself is **not measured**. It is MAME's fitted oscillator
-approximation divided by the architectural divide-by-six, and it carries that figure's
-stated tolerance; [`docs/research/mp2110-timing-measurement.md`](docs/research/mp2110-timing-measurement.md)
-records what would replace it with a measurement, and every cadence constant derived from
-it is marked provisional.
-[`docs/evidence/open-questions.md`](docs/evidence/open-questions.md) records what else is
-still unsettled, including the earlier misidentification and how it entered.
+The instruction rate is **not measured**: it is MAME's fitted oscillator approximation
+over the architectural divide-by-six, every cadence constant derived from it is marked
+provisional, and
+[`docs/research/mp2110-timing-measurement.md`](docs/research/mp2110-timing-measurement.md)
+records what a measurement would take.
 
-## What the teardown changed
+## Writing a game in nibbles
 
-Most of what this emulator knows about the tube, it learned late, and by being wrong first.
+The program's own header states the five properties of the chip that shape every page of
+it, and not one of them is a preference.
 
-Until late on, every sprite came from photographs and video of the unit *playing* - which
-means through a smoked filter, in sunlight, sampled slower than the tube refreshes. Then
-the owner took the unit apart and photographed the bare glass, unpowered, at 46.7
-megapixels. Every segment visible at once, no filter, no multiplexing to defeat.
+1. **The O port is a 32-entry PLA, not a latch.** A jet column's visible states come to
+   96 masks against 32 slots, so a grid cannot be drawn in one strobe: the sweep draws one
+   lane family per pass, four passes a frame. The arithmetic is in
+   [`docs/research/pla-design.md`](docs/research/pla-design.md); the table is the
+   project's own, and MAME's copy of Gakken's has not been looked at.
+2. **The status latch is loaded by exactly one instruction.** A bank crossing costs three,
+   so the sweep crosses twice a frame and never once per grid.
+3. **One level of subroutine return.** A call inside a subroutine silently loses the outer
+   return address, so the game is a flat loop of page branches and four leaf routines
+   that call nothing. The assembler rejects the mistake.
+4. **A branch is conditional only when the test is the instruction before it.** Anything
+   between makes it unconditional, and it assembles cleanly on real silicon.
+5. **The program counter is a shift register.** A label is a state, not a position; the
+   n-th instruction of a page is not at offset n.
 
-Almost everything downstream of that turned out to be an assumption we had promoted to a
-test:
+The score, the jets, the lives and the skill are nibbles the program put in its 128 of
+RAM; there is no game state anywhere else, and a control reaches the game only by closing
+a contact the program reads on its next sweep. The power switch is the only reset:
+switching on brings RAM up undefined, which the program then clears, and switching off
+lets it die with the supply. The real unit has no restart button, and neither does this.
 
-- **Five score segments were phosphor the glass does not have.** The hundreds digit is not
-  a seven-segment digit - it is two printed strokes, because the score caps at 199 and it
-  only ever needs to draw a `1`. A conformance test had already flagged those five as
-  never-driven, and had been given the wrong reason; the photograph supplied the right one.
-- **The jets are fifteen distinct shapes**, one per lane per column, not one outline
-  translated across the field. Within a single cell the top lane banks one way, the middle
-  flies level with a forked twin tail, the bottom banks the other. The animation is printed
-  on the glass; the program only chooses which area to light.
-- **The sprite lattice had been derived from the sprites themselves**, which silently
-  assumed they sit centred in their printed cells. They do not - they sit 16% left of
-  centre. Every test passed, because "each jet is inside its own cell" is true of any
-  self-consistent frame, right or wrong.
-- **The "march beep" we had tuned the game's speed against was the player's own gun.** Its
-  pulses fall in the gaps between the squadron's steps. The cadence floor had been anchored
-  to it, so the game ran roughly twice as fast as the real one at every skill level.
-- **The battleship's buzz was never missing** - it was playing at the right pitch, and every
-  note reached the speaker. It was a tenth of its measured length, so three of them landed
-  far enough apart to be indistinguishable from jet-march blips. The fault was in the
-  spacing, and every single-layer test was green.
+## Held to evidence
 
-The tube had one more thing to give. Magnify the display and it resolves a dot screen in
-the phosphor and a honeycomb in the dark field - and those turn out to be **the same
-structure**: the control grid, an etched mesh in front of the anode, measured at a
-10.83 px period on a 31 degree axis in the red phosphor, the cyan phosphor and the dark
-field alike. One mesh, composited as a shadow, produces both appearances. Zoom in and you
-can see it.
+Every line of this repository was written by Claude, in Claude Code - Opus 5 and Fable 5,
+across the days in the commit log. I supplied the machine, the photographs, the recordings
+and the judgement about what the real unit does. I had held off on this project because
+agentic coding did not feel ready for something with this shape: no reference
+implementation to copy, a correctness standard that lives in a physical object on a desk,
+and thousands of small decisions that are each individually plausible and collectively
+wrong if nobody checks them against the thing itself.
 
-Everything asserted above is a measurement with its provenance recorded. Where the video
-and the bare tube disagree, the teardown wins, and the disagreements are written down
-rather than absorbed - see [`docs/evidence/`](docs/evidence/) for the audio bands, the tube's
-refresh and persistence, the timing analysis, and an explicit list of what is still
-unsettled.
+Most of what the emulator knows about the tube it learned late, and by being wrong first.
+Until late on, every sprite came from photographs and video of the unit *playing*: through
+a smoked filter, in sunlight, sampled slower than the tube refreshes. Then I took the unit
+apart and photographed the bare glass, unpowered, at 46.7 megapixels, and almost
+everything downstream turned out to be an assumption we had promoted to a test. Five
+score segments were phosphor the glass does not have: the hundreds digit is two printed
+strokes, because the score caps at 199. The jets are fifteen distinct shapes, one per lane
+per column, printed on the glass; the program only chooses which to light. The sprite
+lattice had been derived from the sprites themselves, which assumed they sit centred in
+their cells; they sit 16% left of centre, and every test passed, because "each jet is
+inside its own cell" is true of any self-consistent frame. The "march beep" the game's
+speed was tuned against was the player's own gun, so the game ran twice as fast as the
+real one. And the battleship's buzz was never missing, only a tenth of its measured
+length. Magnify the display and the dot screen in the phosphor and the honeycomb in the
+dark field turn out to be **the same structure**, the control grid, an etched mesh at a
+10.83 px period on a 31 degree axis; one mesh, composited as a shadow, produces both.
 
-## How this was built
+What made the work trustworthy is not that the model got things right - that list is what
+it got confidently, thoroughly wrong. It is that it could be **held to evidence**: made to
+measure rather than assert, to record how it knows each thing, and to say plainly what it
+could not determine. Findings carry their provenance and sample counts. Assertions are
+checked by mutation. Where two sources disagree, the disagreement is written down in
+[`docs/evidence/`](docs/evidence/) rather than averaged away. The two ways the project has
+repeatedly gone wrong are named so they can be recognised on sight: **phantom segments**,
+phosphor the glass does not have, found three times; and **beliefs promoted to
+constraints**, an assertion describing what we decided rather than what the machine does,
+found four.
 
-Every line of this repository was written by Claude, working in Claude Code - Opus 5 and
-Fable 5, across the days in the commit log. The owner supplied the machine, the
-photographs, the recordings, and the judgement about what the real unit does.
+Some of it came from the model refusing instructions. Told to remap the sprite grid one
+way, it measured and held its ground; obeying would have mirrored the playfield and
+deleted three real segments. Told the battleship's pitch encoding was capped, it measured,
+found the pitch correct, and declined to redesign it. Told a path-simplification step was
+throwing away sprite detail, it measured that step at a tenth of the error and looked
+elsewhere. Each instruction was simply wrong, and each would have shipped.
 
-That was the point of attempting it. This is a project I had wanted to try for a while and
-had held off on, because agentic coding did not feel ready for something with this shape:
-no reference implementation to copy, a correctness standard that lives in a physical object
-on a desk, and thousands of small decisions that are each individually plausible and
-collectively wrong if nobody checks them against the thing itself.
+## What the model found along the way
 
-What made it work is not that the model got things right. The section above is a list of
-things it got confidently, thoroughly wrong - and those are the ones that were caught.
-What made it work is that it could be **held to evidence**: made to measure rather than
-assert, made to record how it knows each thing, and made to say plainly what it could not
-determine.
+Each of these is recorded in the document it came from.
 
-Some of that came from the model refusing instructions. Told to remap the sprite grid one
-way, it measured, disagreed, and held its ground - obeying would have mirrored the
-playfield and deleted three real segments. Told the battleship's pitch encoding was capped
-and to redesign it, it measured, found the pitch already correct, and declined to build the
-change. Told that a path-simplification step was throwing away sprite detail, it measured
-that step at a tenth of the error and went looking elsewhere. Every one of those was a
-lead-agent instruction that was simply wrong, and each would have shipped.
+- **The chip.** The project spent its first weeks emulating a Hitachi HMCS44, on two
+  stacked inferences never checked against the part. The teardown photograph shows
+  `MP2110` beside the TI logo, and MAME's device list names that mask as the Gakken
+  Invader program - which is why the game reads as Space Invaders. The largest error in
+  the project, visible in a committed photograph for a day before anyone read it:
+  [`docs/evidence/open-questions.md`](docs/evidence/open-questions.md), section 7. A dump
+  of that ROM exists in MAME and is deliberately not consulted: the game here is
+  reconstructed from the outside, and the dump is held back as the check on it.
+- **A photograph bounding a depth it was never taken to show.** In the board photograph
+  the board's edge reads 7 px inside the shell's rim; 15 mm below the rim it would have
+  read 70 px further in, so the board sits within about 3 mm of it - a depth read out of
+  parallax, in [`docs/evidence/console-dimensions.md`](docs/evidence/console-dimensions.md).
+- **The PLA arithmetic** above, which turned "draw the display" into a four-pass sweep
+  with a stated instruction bound.
+- **The tube face on the renderer's field.** The model's glass and the renderer's drawing
+  share one feature, the radar circle; registered through it, the renderer's drawing lands
+  where the photographs show the tube's edges. The flat drawing's window rectangle, which
+  the tube layout inherited, stops 20 mm short of the real one's; the document says so
+  and leaves the layout alone.
 
-The rest came from method. Findings carry their provenance and the count of samples behind
-them. Assertions are checked by mutation - break the thing on purpose and confirm the test
-notices. Where two sources disagree, the disagreement is written down rather than averaged
-away. And the two ways this project has repeatedly gone wrong are named in the notes so
-they can be recognised on sight: **phantom segments**, phosphor the glass does not have,
-found three times; and **beliefs promoted to constraints**, an assertion describing what we
-decided rather than what the machine does, found four.
+## An AI reviewer and 1979 assembly
 
-None of that is specific to emulation. It is what it takes to trust work you did not do by
-hand.
+CodeRabbit reviews every pull request here, and it left 18 comments on
+`asm/jetfighter.asm` alone across seven of them - a reviewer with no training on this ROM,
+reading 1976 silicon's register map.
 
-## Controls
-
-| Action        | Keyboard                | On-case control               |
-| ------------- | ----------------------- | ----------------------------- |
-| Move launcher | Arrow Up / Down, W / S  | Launcher lever (3 lanes)      |
-| Fire missile  | Space / Enter           | Blue fire button              |
-| Skill level   | 1 / 2 / 3               | Rotary skill dial (1 / 2 / 3) |
-| Power         | P                       | ON/OFF slide switch           |
-| Mute          | M                       | Speaker button on the case    |
-
-The lever and the fire button are held contacts: the machine reads them off its input
-matrix on each display sweep, exactly as the real unit does.
-
-**The power switch is the only reset.** Switching on resets the processor and brings RAM
-up undefined, which the game program then clears; switching off halts it and the RAM
-contents die with the supply. That is how the real unit starts a new game, and there is
-deliberately no restart button here either.
-
-Mute silences the browser's output, not the machine - the program keeps toggling the
-speaker pin, like a real unit with its piezo disconnected.
+On the pull request that gave the game two positioned planes, it found that `sr_retreat`
+still walked the three retired lane-rank nibbles, so a surviving squadron no longer fell
+back after a capture; the write landed in unused RAM and nothing reported it. A Major
+finding, correct, in a routine the change had not touched. On the one that drew all three
+lanes of the missile rank, it warned that a second missile in another lane would never
+advance. I showed it the fire gate - one missile at a time, tested against the stored
+lane, so the second shot is never created - and it re-read the code, withdrew the finding,
+and recorded the exchange as a learning it has applied since. The rest were of the same
+shape: a probe that counted discarded frames toward its sample, a hunt that could finish
+before it had tried every offset it had just been given. Two reviewers who have never
+seen the machine, checking each other against the code, is much of why the ROM's later
+changes landed clean.
 
 ## The unit in three dimensions
 
-The page is the machine behind the glass of a model of the unit. It opens on the front
-view, the unit as it sits on a table; orbit it, lift the red shell off, pull the board out
-with the tube still lit, click the chip to be told what it is, and play - the fire cap, the
-power slide, the launcher lever and the skill flag on the model close the same contacts
-the keyboard does. There is no separate flat page: the drawn case that preceded the model
-was a rendering of the same unit, and it is in git history.
+No dimension was measured with a ruler; I no longer have access to the unit. Every figure
+is read off the photographs against the one object of known size in them, the TMS1370's
+2.54 mm pin pitch, and recorded with its source in
+[`tools/model/dimensions.json`](tools/model/dimensions.json). A Blender script builds every
+part from that file, headless and deterministically, with a label, its evidence and an
+explode vector on each node. Renders from matched cameras sit beside the photographs in [`docs/evidence/console-model-front.jpg`](docs/evidence/console-model-front.jpg)
+and [`console-model-board.jpg`](docs/evidence/console-model-board.jpg);
+[`tools/model/compare.py`](tools/model/compare.py) reads both with the same masks, and the
+front agrees to within 1.5% of the case width.
 
-One panel runs the page. **View** puts the camera on the front, the back, or inside with
-the lid lifted (`F`, `B`, `I`); **Take apart** is a slider whose three detents are
-assembled, lid off and exploded (`E` steps through them), with "Bare board" to take the
-case off and leave the board and the lit tube to play, and "Show all" to bring it back;
-**Parts** lists every labelled part in its group with a checkbox for whether it is shown,
-lights a part up under the pointer, and opens its label and evidence when clicked (`H`
-hides it, `Esc` lets go). Clicking a part on the model does the same. On a phone the panel
-starts folded and the four controls are also a bar of buttons along the bottom (lane up
-and down, fire held while touched, power, skill), because the modelled ones are a few
-millimetres across; add `#touch` to the address to see the bar on a desktop.
+No photograph is edge-on, so every depth is an estimate with a stated basis and bound.
+The first pass put the case at 36 mm deep from what the parts inside had to clear; then
+I photographed its ends, which showed 58, and the parting line moved to where the
+parallax between the window's print and the segments says the glass must be. The
+launcher's mechanism and one toothed disc on the board are labelled unidentified, because
+the photographs do not say.
 
-**What it is built from.** No dimension was measured with a ruler; the owner has no further
-access to the unit for that. Every figure is read off two photographs against the one
-object of known size in them, the TMS1370's 2.54 mm pin pitch, and recorded with its source
-in [`tools/model/dimensions.json`](tools/model/dimensions.json); a Blender script builds
-every part from that file and exports the model with a label, its evidence and an explode
-vector on each node. Nothing on the model is a photograph: the shells are
-bevelled geometry in plastics whose colours are sampled from the front photograph, the
-stipple is a generated normal map, and every printed or moulded word is a text mesh, so
-zooming in finds edges rather than pixels. Renders from cameras matched to the photographs sit beside them in
-[`docs/evidence/console-model-front.jpg`](docs/evidence/console-model-front.jpg) and
-[`console-model-board.jpg`](docs/evidence/console-model-board.jpg), and
-[`tools/model/compare.py`](tools/model/compare.py) reads both images with the same masks:
-the front agrees to within 1.5% of the case width.
+The shells wore the photographs for a while, rectified and baked on, and up close that is
+what it looked like: shadows frozen into the surface, moulded marks as pictures
+of marks. They came off again. Nothing on the model is a photograph now - bevelled
+geometry in plastics whose colours are sampled from the front photograph, a seeded
+stipple, and a text mesh for every printed or moulded word, so zooming in finds edges
+rather than pixels. The flat drawing of the case that preceded the model was a rendering
+of the same unit, and it is in git history.
 
-**What is estimated.** No photograph is edge-on, so every depth - the shells, the tube's
-thickness, how high the board sits - is an estimate with a stated basis and bound, in
-[`docs/evidence/console-dimensions.md`](docs/evidence/console-dimensions.md). The assembled
-unit comes out at about 340 x 145 x 58 mm, with the last figure the least certain thing in
-the model. The launcher lever's mechanism and one toothed black disc on the board are
-labelled unidentified, because the photographs do not say.
+One panel runs the page: **View** (front, back, inside; `F`, `B`, `I`), **Take apart** (a
+slider with detents at assembled, lid off and exploded; `E` steps through them, "Bare
+board" plays the board alone) and **Parts** (every labelled part, its visibility, and its
+evidence when clicked; `H` hides, `Esc` lets go). On a phone the four controls are also a
+bar along the bottom; `#touch` on the address shows it on a desktop.
 
-**Regenerating it.** `npm run model` rebuilds `public/models/console.glb` headless (Blender
-4.2+, found automatically on macOS or via `BLENDER`); two runs are byte-identical, so a
-change in geometry shows as a real diff. `python3 tools/model/measure.py --overlay
-docs/evidence --doc docs/evidence/console-dimensions.md` re-derives the dimensions from the
-pixel reads and rewrites the document's tables. The one runtime dependency the site has,
-`three`, is confined to the 3D page by a test that reads the import graph.
-
-## Architecture
-
-Five layers, mirroring the physical machine. Data flows the way electricity did.
-
-```mermaid
-flowchart LR
-    ASM[asm/jetfighter.asm<br/>the game program] -->|assembled by tools/tmsasm| ROM[machine image<br/>2048 x 8 bits + 32-slot O PLA]
-    ROM --> CPU[src/machine/cpu/tms1370/<br/>TMS1370 core]
-    SW[src/viewer3d/ the modelled controls,<br/>src/input/ the keyboard] -->|K1, K2, K4 on R9/R10; fire on K8| CPU
-    CPU -->|R0-R8 grids, O0-O7 + R11-R14 plates| BOARD[src/machine/board/<br/>grid x plate PWM state]
-    CPU -->|R15 pin edges| SPK[src/machine/audio/<br/>square reconstruction]
-    BOARD --> TUBE[src/machine/tube/<br/>segment atlas + phosphor]
-    MAIN[src/app/driver.ts<br/>the only clock] -.->|steps| CPU
-    MAIN -.->|draws| TUBE
-    MAIN -.->|drains| SPK
-```
-
-| Path                 | What lives there                                                                                                                     |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `asm/jetfighter.asm` | The game itself - every rule, cadence, sound and score, in TMS1000-family assembly under the chip's 2048-word program and 128-nibble RAM ceilings. |
-| `tools/tmsasm/`      | The assembler, its CLI, its five static analyses, and the Vite plugin that makes an `.asm` file an importable module.                  |
-| `src/machine/cpu/tms1370/` | The CPU core: 4-bit ALU, LFSR program counter, one-level stack, R/O/K ports, output PLA. Advances only when stepped.             |
-| `src/machine/board/` | The board: PWM display state, the K input matrix, R15 edge capture, and the power switch.                                             |
-| `src/machine/tube/`  | The tube: the segment atlas (shape and (grid, plate) address of every phosphor segment) and the renderer's phosphor rise/decay curves. |
-| `src/machine/audio/` | The speaker: cycle-stamped edges placed on a sample timeline and band-limited into a waveform.                                         |
-| `src/input/`         | The keyboard, translated into movements of the four case controls.                                                                    |
-| `src/app/`           | The frame driver - the only clock in the program - plus canvas sizing and the mute toggle.                                            |
-| `src/viewer3d/`      | The page: the model from `tools/model/` orbited, taken apart and played, with the renderer's canvas as the tube's texture, and its controls, dock and touch bar. |
-| `tools/model/`       | The unit's dimensions from the photographs, the Blender script that builds the model from them, and the comparison against the photographs. |
-| `tools/probe/`       | The headless machine probe: drives the board from a terminal and reports what the hardware did.                                        |
-
-Two rules hold everything else in place:
-
-- **Nothing owns a clock except `src/app/driver.ts`.** The board advances only when stepped, so
-  the same machine runs identically in a browser at 60 Hz and in Node as fast as it can.
-- **`src/machine/` never touches the DOM.** That is what lets the probe and the spectral
-  tests drive the real machine headlessly, and it is checked by the tests running under
-  the `node` environment.
-
-There is no game state outside the emulated RAM. The score, the jets, the lives and the
-skill level are nibbles the program put there; a control movement reaches the game only by
-closing a contact the program reads on its next sweep.
-
-## Development
+## Running it, changing it, watching it without a browser
 
 ```bash
 npm install && npm run dev
 ```
 
-Scripts:
+The site has one runtime dependency, `three`, confined to the page's own directory by a
+test that reads the import graph.
 
-- `npm run build` - type-check and produce a production build in `dist/`
-- `npm test` - run the Vitest suite
-- `npm run lint` - lint the sources
-- `npm run preview` - preview the production build locally
+| Action        | Keyboard                | On the model                  |
+| ------------- | ----------------------- | ----------------------------- |
+| Move launcher | Arrow Up / Down, W / S  | Launcher lever (3 lanes)      |
+| Fire missile  | Space / Enter           | Blue fire button              |
+| Skill level   | 1 / 2 / 3               | Skill flag (1 / 2 / 3)        |
+| Power         | P                       | ON/OFF slide switch           |
+| Mute          | M                       | Speaker button, top left      |
 
-Zero runtime dependencies. Everything above ships as the application's own code.
+The lever and the fire button are held contacts, read off the input matrix each sweep.
+Mute silences the browser, not the machine: the program keeps toggling the pin, like a
+unit with its piezo disconnected.
 
-### Changing the game
-
-Game behaviour is changed by editing `asm/jetfighter.asm`, not by editing TypeScript. The
-Vite plugin in `tools/tmsasm/vite-plugin.ts` assembles it on import, so `npm run dev`
-reassembles and reloads the moment the assembly changes - there is no generated ROM file
-to go stale.
-
-Assemble it yourself, with a listing showing address, opcode and source line:
+**Changing the game** means editing `asm/jetfighter.asm`, never TypeScript. The Vite plugin
+in `tools/tmsasm/vite-plugin.ts` assembles it on import, so there is no generated ROM to
+go stale. Assemble it with a listing:
 
 ```bash
 npx vite-node tools/tmsasm/cli.ts asm/jetfighter.asm --listing /tmp/jetfighter.lst
 ```
 
-The assembler enforces the real ceilings: overflowing 2048 program words or 128 RAM
-nibbles is an error, not a warning. It also rejects five silent-failure classes this
-architecture makes easy to write - a page-crossing branch inside a subroutine, a call
-reachable from inside one, `SETR`/`RSTR` with X out of range, an instruction between a
-status-setting test and its branch, and code laid down in address order rather than in the
-program counter's LFSR order.
+The assembler enforces the real ceilings - 2048 words, 128 nibbles - and rejects five
+silent-failure classes this architecture invites: a page-crossing branch inside a
+subroutine, a call reachable from inside one, `SETR`/`RSTR` with X out of range, an
+instruction between a test and its branch, and code laid down in address order rather
+than the program counter's.
 
-### Watching the machine run, without a browser
+**Watching the machine** needs no browser:
 
 ```bash
-# 250k cycles, a little over four emulated seconds: which grids were strobed,
-# which segments lit and at what duty
+# 250k cycles, about four emulated seconds: grids strobed, segments lit, at what duty
 npx vite-node tools/probe/machine-probe.ts --cycles 250000
-
-# move the lever mid-run and compare the tube before and after
+# move the lever mid-run; capture the R15 edge stream for spectral analysis
 npx vite-node tools/probe/machine-probe.ts --cycles 250000 --input lever=up@120000
-
-# capture the R15 transition stream for spectral analysis
 npx vite-node tools/probe/machine-probe.ts --cycles 250000 --input fire@120000 --emit-edges
 ```
 
-The probe writes one JSON object to stdout and reads everything off the board's own
-observation surface, so what it reports is what the hardware did - not a summary a test
-helper decided to keep.
+The probe reads everything off the board's own observation surface, so what it reports is
+what the hardware did. In a dev build the running machine is also at `window.jetFighters`
+(`board`, `renderer`, the assembler's symbol table, and the scene).
 
-In a dev build the running machine is also reachable from the browser console as
-`window.jetFighters` (`board`, `renderer`, and the assembler's symbol table), which is how
-you inspect RAM or step the core while debugging a ROM change.
+**The layout** mirrors the machine, and data flows the way electricity did: the assembled
+image into `src/machine/cpu/tms1370/`; the controls and keyboard onto its K pins; the
+grids and plates into `src/machine/board/`'s PWM state and on to `src/machine/tube/`'s
+atlas and phosphor; R15's edges into `src/machine/audio/`. `src/app/driver.ts` steps the
+core, draws the tube and drains the speaker, and **nothing else owns a clock**, so the
+same machine runs in a browser at 60 Hz and in Node as fast as it can. `src/machine/`
+**never touches the DOM**, which lets `tools/probe/` and the spectral tests drive it
+headlessly. `src/input/` is the keyboard, `src/viewer3d/` the page, `tools/model/` the
+dimensions, the Blender script and the comparison.
 
-## Evidence
-
-Nothing in the machine layer is tuned by eye. Each of these records what was measured, how,
-and what it does *not* establish:
+Nothing in the machine layer is tuned by eye. Each of these records what was measured and
+what it does *not* establish:
 
 | Document | What it pins down |
 | --- | --- |
-| [`docs/evidence/audio-reference.md`](docs/evidence/audio-reference.md) | Every sound's frequency band, measured from recordings of the real unit, with the one figure that turned out to be a note name substituted for a reading |
-| [`docs/evidence/vfd-appearance.md`](docs/evidence/vfd-appearance.md) | The tube's refresh rate, phosphor persistence per colour, brightness under load, and the blanking that fires with every sound |
-| [`docs/evidence/tube-mesh.md`](docs/evidence/tube-mesh.md) | The control grid's period and angle, and why the dot screen and the honeycomb are one structure |
-| [`docs/evidence/timing-analysis.md`](docs/evidence/timing-analysis.md) | Squadron cadence and battleship crossings, measured frame by frame |
+| [`docs/evidence/audio-reference.md`](docs/evidence/audio-reference.md) | Every sound's frequency band, from recordings; one figure that turned out to be a note name, substituted for a reading |
+| [`docs/evidence/vfd-appearance.md`](docs/evidence/vfd-appearance.md) | Refresh rate, phosphor persistence per colour, brightness under load, the blanking with every sound |
+| [`docs/evidence/tube-mesh.md`](docs/evidence/tube-mesh.md) | The control grid's period and angle |
+| [`docs/evidence/timing-analysis.md`](docs/evidence/timing-analysis.md) | Squadron cadence and battleship crossings, frame by frame |
 | [`assets/reference/sprites/README.md`](assets/reference/sprites/README.md) | Every sprite on the glass, its size, its cell and its lanes |
-| [`src/machine/tube/ATLAS-COORDINATES.md`](src/machine/tube/ATLAS-COORDINATES.md) | The tracing method, the five approaches that failed, and the two ways this atlas has gone wrong |
-| [`docs/evidence/console-dimensions.md`](docs/evidence/console-dimensions.md) | The unit's dimensions from the photographs against the chip's pin pitch: what is measured, what is estimated, and how far the flat page's drawing disagrees |
+| [`src/machine/tube/ATLAS-COORDINATES.md`](src/machine/tube/ATLAS-COORDINATES.md) | The tracing method, the five approaches that failed, the two ways the atlas has gone wrong |
+| [`docs/evidence/console-dimensions.md`](docs/evidence/console-dimensions.md) | The unit's dimensions against the pin pitch: measured, estimated, and how far the flat drawing disagreed |
 | [`docs/evidence/open-questions.md`](docs/evidence/open-questions.md) | What is still unsettled, and what would settle it |
 
 ## Credits
 
-Original game by Gakken (model 81582, 1979), released in the UK by Computer Games
-Limited (CGL). This project is an unaffiliated fan recreation and is not endorsed
-by or associated with Gakken or CGL.
+Original game by Gakken (model 81582, 1979), released in the UK by Computer Games Limited
+(CGL). This project is an unaffiliated fan recreation and is not endorsed by or associated
+with Gakken or CGL.
 
 Licensed under the [MIT License](LICENSE).
