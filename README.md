@@ -128,7 +128,7 @@ Each of these is recorded in the document it came from.
 
 CodeRabbit reviews every pull request here, and it left 18 comments on
 `asm/jetfighter.asm` alone across seven of them - a reviewer with no training on this ROM,
-reading a register map in an instruction set from 1976.
+reading 1976 silicon's register map.
 
 On the pull request that gave the game two positioned planes, it found that `sr_retreat`
 still walked the three retired lane-rank nibbles, so a surviving squadron no longer fell
@@ -150,8 +150,7 @@ is read off the photographs against the one object of known size in them, the TM
 2.54 mm pin pitch, and recorded with its source in
 [`tools/model/dimensions.json`](tools/model/dimensions.json). A Blender script builds every
 part from that file, headless and deterministically, with a label, its evidence and an
-explode vector on each node. Renders from cameras matched to the photographs sit beside
-them in [`docs/evidence/console-model-front.jpg`](docs/evidence/console-model-front.jpg)
+explode vector on each node. Renders from matched cameras sit beside the photographs in [`docs/evidence/console-model-front.jpg`](docs/evidence/console-model-front.jpg)
 and [`console-model-board.jpg`](docs/evidence/console-model-board.jpg);
 [`tools/model/compare.py`](tools/model/compare.py) reads both with the same masks, and the
 front agrees to within 1.5% of the case width.
