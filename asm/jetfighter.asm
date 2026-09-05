@@ -237,10 +237,12 @@
 .EQU NIB_TICK,       0          ; sweeps, wrapping every sixteen. The only clock.
 .EQU NIB_ENTRY_LO,   1          ; sweeps until the next jet is released, low
 .EQU NIB_ENTRY_HI,   2          ;   "                                   high
-                                ; nibble 3 is free: the missile's flight timer
-                                ; used to live here as a single nibble and has
-                                ; moved to FILE_MISS as a pair. See MISSILE_LO.
-.EQU NIB_RSTEP,      4          ; sweeps until the jet's rocket advances
+.EQU NIB_RSTEP_LO,   3          ; sweeps until the jet's rocket advances, low
+.EQU NIB_RSTEP_HI,   4          ;   "                                   high
+                                ; nibble 3 held the missile's flight timer as a
+                                ; single nibble before it moved to FILE_MISS as
+                                ; a pair; the rocket's timer became a pair for
+                                ; the same reason and took it. See ROCKET_LO.
 .EQU NIB_KSTEP,      5          ; sweeps the burst stays on the glass
 .EQU NIB_ROCK_LO,    6          ; sweeps to the next rocket launch, low
 .EQU NIB_ROCK_HI,    7          ;   "                              high
@@ -671,13 +673,17 @@
 .EQU MISSILE_LO,    15          ; 1 * 16 + 15 + 1 = 32 sweeps, and 500 ms a
 .EQU MISSILE_HI,     1          ;   column MEASURED off this machine
 ;
-; PROVISIONAL. v1 moved a rocket one column per 60 Hz tick; T8 of
-; docs/evidence/timing-analysis.md is unmeasured. The rocket is the one shot the
-; player has to *respond* to - the only defence is to move the lever out of its
-; lane before it lands - so its flight is the game's reaction window, and 7
-; sweeps is 97 ms a column, putting a mid-board flight inside the 300-500 ms a
-; see-decide-move response costs.
-.EQU ROCKET_SWEEPS,  7          ; 97 ms a column
+; OWNER'S TESTIMONY, 2026-09-05: the jets' rocket travels at the same speed as
+; the player's missile. T8 of docs/evidence/timing-analysis.md is still
+; unmeasured from video, so the rocket is wound to the missile's MEASURED
+; cadence - the same pair, 32 sweeps and 500 ms a column - and the two shots
+; cross the field at one rate. This replaces a PROVISIONAL 7 sweeps, 97 ms a
+; column, reasoned from a reaction window rather than from the unit: the owner
+; reported the rocket reaching him five times faster than his own shot reached
+; the jets, which is what 7 against 32 is. A single nibble cannot count 32, so
+; the step is a low/high pair like the missile's, spent low first.
+.EQU ROCKET_LO,     15          ; 1 * 16 + 15 + 1 = 32 sweeps a column, the
+.EQU ROCKET_HI,      1          ;   missile's own pair
 
 ; --- The squadron's march ----------------------------------------------------
 ;
@@ -2645,18 +2651,23 @@ tr_to_launch:
         BR   rocket_launch
 tr_flying:
         LDX  FILE_TIME
-        TCY  NIB_RSTEP
-        DMAN                    ; A <- one sweep off the step
+        TCY  NIB_RSTEP_LO
+        DMAN                    ; a pair, spent low first
+        BR   tr_step_left
+        TAM                     ; the low nibble wrapping spends a high one
+        TCY  NIB_RSTEP_HI
+        DMAN
         BR   tr_step_left
         BR   rocket_move
 tr_step_left:
-        TAM
+        TAM                     ; Y is on whichever nibble was spent
         BR   tr_done
 
 rocket_move:
         LDX  FILE_TIME
-        TCY  NIB_RSTEP
-        TCMIY ROCKET_SWEEPS
+        TCY  NIB_RSTEP_LO
+        TCMIY ROCKET_LO         ; wound for the next column
+        TCMIY ROCKET_HI         ; NIB_RSTEP_HI follows NIB_RSTEP_LO
         LDX  FILE_STATE
         TCY  NIB_RCOL
         IMAC                    ; inward: toward the player
@@ -3492,8 +3503,9 @@ rf_fire:
         TCY  NIB_RLANE
         TAM
         LDX  FILE_TIME
-        TCY  NIB_RSTEP
-        TCMIY ROCKET_SWEEPS
+        TCY  NIB_RSTEP_LO
+        TCMIY ROCKET_LO         ; a whole column's flight before the first step
+        TCMIY ROCKET_HI         ; NIB_RSTEP_HI follows NIB_RSTEP_LO
         COMC
         LDP  P_ROCKET
         BR   tr_done
