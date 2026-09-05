@@ -396,9 +396,10 @@ def build_front_shell() -> bpy.types.Object:
     left_wing = box("fs_left", fx(0), fx(LEFT_STRIP[1]), fy(WING_BOTTOM), fy(WING_TOP), 0, Z_WING, red)
     right_wing = box("fs_right", fx(MODULE_X[1] + CHANNEL_W), fx(W), fy(WING_BOTTOM), fy(WING_TOP), 0, Z_WING, red)
     module = box("fs_module", fx(MODULE_X[0]), fx(MODULE_X[1]), fy(H), fy(0), 0, Z_MODULE, red)
-    # The channels stop at the module's lower edge; the wings run on below it.
-    chan_l = box("fs_chan_l", fx(LEFT_STRIP[1]), fx(MODULE_X[0]), fy(H - 1.0), fy(WING_TOP), 0, Z_CHANNEL, red)
-    chan_r = box("fs_chan_r", fx(MODULE_X[1]), fx(MODULE_X[1] + CHANNEL_W), fy(H - 1.0), fy(WING_TOP), 0, Z_CHANNEL, red)
+    # The channels run the wings' full height; their cavity stops short of the
+    # module's lower edge so the wall is solid where the wings run on below it.
+    chan_l = box("fs_chan_l", fx(LEFT_STRIP[1]), fx(MODULE_X[0]), fy(WING_BOTTOM), fy(WING_TOP), 0, Z_CHANNEL, red)
+    chan_r = box("fs_chan_r", fx(MODULE_X[1]), fx(MODULE_X[1] + CHANNEL_W), fy(WING_BOTTOM), fy(WING_TOP), 0, Z_CHANNEL, red)
     shell = fuse(left_wing, right_wing, module, chan_l, chan_r)
     shell.name = "front_shell"
     cut(shell, *shoulders(-1, Z_MODULE + 1, SHOULDER))
