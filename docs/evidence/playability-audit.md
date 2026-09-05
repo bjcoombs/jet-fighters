@@ -141,8 +141,8 @@ rm_arrived:
 
 There is no penalty for standing in the lane at any point during the flight, and the
 flight is about 0.7 s at `ROCKET_SWEEPS` = 7, 97 ms a column (since replaced by the pair
-`ROCKET_LO`/`ROCKET_HI`, 32 sweeps and 500 ms a column, the missile's own cadence, on the
-owner's testimony of 2026-09-05 - a flight of about 1.5 s). The rocket is drawn in its
+`ROCKET_LO`/`ROCKET_HI`, 24 sweeps and 375 ms a column, three quarters of the missile's
+interval, on the owner's testimony of 2026-09-05 - a flight of about 1.1 s). The rocket is drawn in its
 lane for that whole time. So the entire defence is *be somewhere else when it lands*, and
 the player is told where it will land for the whole approach.
 

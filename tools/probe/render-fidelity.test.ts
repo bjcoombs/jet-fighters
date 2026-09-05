@@ -82,8 +82,8 @@
 // jet there, so widening the window in time does not make an offset in lane
 // legal.
 
-import { describe, it, expect, vi } from 'vitest';
-import { CYCLE_HZ } from '../../src/machine/cpu/tms1370/timing.js';
+import { describe, it, expect, vi } from "vitest";
+import { CYCLE_HZ } from "../../src/machine/cpu/tms1370/timing.js";
 import {
   Tms1370Machine,
   assembleGame,
@@ -92,7 +92,7 @@ import {
   slotsOf,
   squadronMap,
   type Plane,
-} from './tms1370-probe.js';
+} from "./tms1370-probe.js";
 
 /**
  * Wall-clock allowance for every drive in this file.
@@ -271,14 +271,20 @@ const roving = (tap: number): { lane: number; fire: boolean } => {
   };
 };
 
-function sample(lane: number, lever?: (tap: number) => { lane: number; fire: boolean }): readonly Sample[] {
+function sample(
+  lane: number,
+  lever?: (tap: number) => { lane: number; fire: boolean },
+  phase = 0,
+): readonly Sample[] {
   const machine = new Tms1370Machine();
   machine.setContacts({ skill: 1, lane, fire: false });
   const samples: Sample[] = [];
   let taps = 0;
   while (machine.cycles < RUN_CYCLES) {
     if (lever === undefined) {
-      machine.setContacts({ fire: Math.floor(taps / 10) % 2 === 0 });
+      // `phase` shifts the press pattern by that many samples: a different game,
+      // since the ROM's entropy is latched off the presses.
+      machine.setContacts({ fire: Math.floor((taps + phase) / 10) % 2 === 0 });
     } else {
       machine.setContacts(lever(taps));
     }
@@ -295,18 +301,31 @@ function sample(lane: number, lever?: (tap: number) => { lane: number; fire: boo
       continue;
     }
     const ram = machine.ram;
-    const nibble = (file: number, index: number): number => ram[file * 16 + index] as number;
+    const nibble = (file: number, index: number): number =>
+      ram[file * 16 + index] as number;
     samples.push({
       seconds: machine.cycles / CYCLE_HZ,
-      jets: Array.from({ length: LANE_COUNT }, (_unused, l) => rowColumns(planesOf(ram, SQUADRON), l)),
+      jets: Array.from({ length: LANE_COUNT }, (_unused, l) =>
+        rowColumns(planesOf(ram, SQUADRON), l),
+      ),
       slots: slotsOf(ram, SQUADRON),
-      near: Array.from({ length: GRID_COL_LAST + 1 }, (_unused, g) => nibble(FILE_D0, g)),
-      far: Array.from({ length: GRID_COL_LAST + 1 }, (_unused, g) => nibble(FILE_D1, g)),
+      near: Array.from({ length: GRID_COL_LAST + 1 }, (_unused, g) =>
+        nibble(FILE_D0, g),
+      ),
+      far: Array.from({ length: GRID_COL_LAST + 1 }, (_unused, g) =>
+        nibble(FILE_D1, g),
+      ),
       rocketCol: nibble(FILE_STATE, NIB_RCOL),
       rocketLane: nibble(FILE_STATE, NIB_RLANE),
-      pair: Array.from({ length: GRID_COL_LAST + 1 }, (_unused, g) => nibble(FILE_D2, g)),
-      plate: Array.from({ length: GRID_COL_LAST + 1 }, (_unused, g) => nibble(FILE_D3, g)),
-      missiles: Array.from({ length: LANE_COUNT }, (_unused, l) => missileCol(ram, l)),
+      pair: Array.from({ length: GRID_COL_LAST + 1 }, (_unused, g) =>
+        nibble(FILE_D2, g),
+      ),
+      plate: Array.from({ length: GRID_COL_LAST + 1 }, (_unused, g) =>
+        nibble(FILE_D3, g),
+      ),
+      missiles: Array.from({ length: LANE_COUNT }, (_unused, l) =>
+        missileCol(ram, l),
+      ),
       kills: nibble(FILE_STATE, NIB_KILLS),
       refreshing: machine.isRefreshing(),
     });
@@ -317,14 +336,18 @@ function sample(lane: number, lever?: (tap: number) => { lane: number; fire: boo
 /** The squadron as `row:column` pairs, for a failure message a reader can use. */
 function describePlanes(shot: Sample): string {
   return shot.slots
-    .map((plane, slot) => `${slot}=${plane.column === 0 ? 'empty' : `${plane.row}:${plane.column}`}`)
-    .join(' ');
+    .map(
+      (plane, slot) =>
+        `${slot}=${plane.column === 0 ? "empty" : `${plane.row}:${plane.column}`}`,
+    )
+    .join(" ");
 }
 
 /** The lane bitmap the squadron justifies for `grid`, from the plane slots alone. */
 function jetBitmap(jets: readonly number[], grid: number): number {
   return jets.reduce(
-    (bits, grids, lane) => ((grids & (1 << grid)) !== 0 ? bits | (1 << lane) : bits),
+    (bits, grids, lane) =>
+      (grids & (1 << grid)) !== 0 ? bits | (1 << lane) : bits,
     0,
   );
 }
@@ -369,13 +392,15 @@ function missileBitmap(shot: Sample, grid: number): number {
 
 /** The lane bitmap the one rocket the ROM can hold justifies for `grid`. */
 function rocketBitmap(shot: Sample, grid: number): number {
-  return shot.rocketCol === grid && shot.rocketLane < LANE_COUNT ? 1 << shot.rocketLane : 0;
+  return shot.rocketCol === grid && shot.rocketLane < LANE_COUNT
+    ? 1 << shot.rocketLane
+    : 0;
 }
 
 /** Every lever detent, because the bug's size was a function of exactly this. */
 const DETENTS = [0, 1, 2] as const;
 
-describe('the near pass draws the squadron where the squadron is', () => {
+describe("the near pass draws the squadron where the squadron is", () => {
   for (const detent of DETENTS) {
     // The lever is what made the old fault vary: `NIB_RBIT` carried whatever
     // `rd_launcher` left, so lane 0 looked almost right and lane 1 was a
@@ -392,7 +417,9 @@ describe('the near pass draws the squadron where the squadron is', () => {
           if (drawn > NEAR_INDEX_MAX) {
             continue; // asserted at zero by its own test below
           }
-          const justified = recentlyJustified(shots, index, grid, (at, g) => jetBitmap(at.jets, g));
+          const justified = recentlyJustified(shots, index, grid, (at, g) =>
+            jetBitmap(at.jets, g),
+          );
           const spurious = drawn & ~justified;
           if (spurious !== 0) {
             wrong.push(
@@ -403,9 +430,10 @@ describe('the near pass draws the squadron where the squadron is', () => {
           }
         }
       });
-      expect(wrong.slice(0, 5), `${wrong.length} samples drew a jet in a lane no jet was in`).toEqual(
-        [],
-      );
+      expect(
+        wrong.slice(0, 5),
+        `${wrong.length} samples drew a jet in a lane no jet was in`,
+      ).toEqual([]);
     });
 
     it(`draws every jet in the cell it stands in, lever in lane ${detent}`, () => {
@@ -474,14 +502,15 @@ describe('the near pass draws the squadron where the squadron is', () => {
         }
         closeStay(shots[shots.length - 1]?.seconds ?? 0);
       }
-      expect(undrawn.slice(0, 5), `${undrawn.length} planes were never drawn where they stood`).toEqual(
-        [],
-      );
+      expect(
+        undrawn.slice(0, 5),
+        `${undrawn.length} planes were never drawn where they stood`,
+      ).toEqual([]);
     });
   }
 });
 
-describe('a near nibble is a near index, and never a far one', () => {
+describe("a near nibble is a near index, and never a far one", () => {
   for (const detent of DETENTS) {
     // The half of the fault the owner reported as "bullets come from all over
     // the place". `AMAAC` is four bits wide and the near group is eight of the
@@ -510,7 +539,7 @@ describe('a near nibble is a near index, and never a far one', () => {
   }
 });
 
-describe('the far pass draws a rocket only where a rocket is', () => {
+describe("the far pass draws a rocket only where a rocket is", () => {
   for (const detent of DETENTS) {
     // `NIB_RCOL` and `NIB_RLANE` are one nibble each, so the ROM can hold
     // exactly one rocket: one column, one lane. Anything else on a playfield
@@ -532,7 +561,8 @@ describe('the far pass draws a rocket only where a rocket is', () => {
         for (let grid = GRID_COL_FIRST; grid <= GRID_COL_LAST; grid += 1) {
           const drawn = shot.far[grid] as number;
           const bitmap = drawn >= OPLA_A_FAR ? drawn - OPLA_A_FAR : 0;
-          const spurious = bitmap & ~recentlyJustified(shots, index, grid, rocketBitmap);
+          const spurious =
+            bitmap & ~recentlyJustified(shots, index, grid, rocketBitmap);
           if (spurious !== 0) {
             phantoms.push(
               `t=${shot.seconds.toFixed(2)}s grid ${grid}: far nibble lights rocket lane(s) ` +
@@ -553,7 +583,7 @@ describe('the far pass draws a rocket only where a rocket is', () => {
   }
 });
 
-describe('the player\'s shot is drawn in the lane it flies down', () => {
+describe("the player's shot is drawn in the lane it flies down", () => {
   // ## Why this exists before the change it guards
   //
   // `rd_missile` is about to become a three-lane walk, and a three-lane walk in
@@ -586,7 +616,12 @@ describe('the player\'s shot is drawn in the lane it flies down', () => {
           return;
         }
         for (let grid = GRID_COL_FIRST; grid <= GRID_COL_LAST; grid += 1) {
-          const justified = recentlyJustified(shots, index, grid, missileBitmap);
+          const justified = recentlyJustified(
+            shots,
+            index,
+            grid,
+            missileBitmap,
+          );
 
           // lanes 0 and 1, through the pair group
           const drawn = shot.pair[grid] as number;
@@ -601,7 +636,10 @@ describe('the player\'s shot is drawn in the lane it flies down', () => {
           }
 
           // lane 2, through the R-plate file
-          if ((shot.plate[grid] as number) === RPL_R11 && (justified & (1 << 2)) === 0) {
+          if (
+            (shot.plate[grid] as number) === RPL_R11 &&
+            (justified & (1 << 2)) === 0
+          ) {
             wrong.push(
               `t=${shot.seconds.toFixed(2)}s grid ${grid}: R-plate names the lane-2 missile ` +
                 `with shots at [${shot.missiles}]`,
@@ -609,14 +647,15 @@ describe('the player\'s shot is drawn in the lane it flies down', () => {
           }
         }
       });
-      expect(wrong.slice(0, 5), `${wrong.length} samples drew a shot the player has not got`).toEqual(
-        [],
-      );
+      expect(
+        wrong.slice(0, 5),
+        `${wrong.length} samples drew a shot the player has not got`,
+      ).toEqual([]);
     });
   }
 });
 
-describe('a shot in flight is drawn somewhere', () => {
+describe("a shot in flight is drawn somewhere", () => {
   // The other direction, and it is not symmetric with the one above. A check
   // that only rejects lanes it should not see passes for a render step that
   // draws *nothing*: deliberately dropping `rd_missile`'s plate-8 arm, which is
@@ -665,19 +704,23 @@ describe('a shot in flight is drawn somewhere', () => {
               ? (shot.pair[grid] as number) - OPLA_A_PAIR
               : 0;
           const litOnPort = (pairBitmap & (1 << lane)) !== 0;
-          const litOnPlate = lane === 2 && (shot.plate[grid] as number) === RPL_R11;
+          const litOnPlate =
+            lane === 2 && (shot.plate[grid] as number) === RPL_R11;
           if (litOnPort || litOnPlate) {
             drawn = true;
           }
         }
         close(shots[shots.length - 1]?.seconds ?? 0);
       }
-      expect(undrawn.slice(0, 5), `${undrawn.length} shots were never drawn`).toEqual([]);
+      expect(
+        undrawn.slice(0, 5),
+        `${undrawn.length} shots were never drawn`,
+      ).toEqual([]);
     });
   }
 });
 
-describe('each lane of the rank is drawn under its own plate and no other', () => {
+describe("each lane of the rank is drawn under its own plate and no other", () => {
   // The off-by-one check for `rd_missile`'s three-lane render, and the reason it
   // is separate from the two assertions above.
   //
@@ -743,7 +786,10 @@ describe('each lane of the rank is drawn under its own plate and no other', () =
       // claim is "only lane `detent` is ever lit", which a ROM that draws no
       // missile at all satisfies perfectly. This file has already shipped one
       // assertion that passed because its drive never fired.
-      expect(drawnFrames, `no shot was ever drawn in lane ${detent}`).toBeGreaterThan(0);
+      expect(
+        drawnFrames,
+        `no shot was ever drawn in lane ${detent}`,
+      ).toBeGreaterThan(0);
       expect(
         wrong.slice(0, 5),
         `${wrong.length} frames drew a lane-${detent} shot somewhere other than lane ${detent}`,
@@ -752,7 +798,7 @@ describe('each lane of the rank is drawn under its own plate and no other', () =
   }
 });
 
-describe('a pair nibble is a pair index, and never off the end of the group', () => {
+describe("a pair nibble is a pair index, and never off the end of the group", () => {
   // The pair group is four slots - `OPLA_A_PAIR` plus a two-plate bitmap - so a
   // lane bit of 4 walks off the end of it exactly as a lane bit of 8 walks off
   // the end of the near group. `AMAAC` is four bits wide, so the sum wraps rather
@@ -772,12 +818,15 @@ describe('a pair nibble is a pair index, and never off the end of the group', ()
           if (drawn < OPLA_A_PAIR) {
             strays.push(
               `t=${shot.seconds.toFixed(2)}s grid ${grid}: pair nibble ${drawn} is below ` +
-                `OPLA_A_PAIR, so the pair pass would emit a ${drawn < 8 ? 'digit' : 'blank-digit'} slot`,
+                `OPLA_A_PAIR, so the pair pass would emit a ${drawn < 8 ? "digit" : "blank-digit"} slot`,
             );
           }
         }
       }
-      expect(strays.slice(0, 5), `${strays.length} samples left the pair group`).toEqual([]);
+      expect(
+        strays.slice(0, 5),
+        `${strays.length} samples left the pair group`,
+      ).toEqual([]);
     });
   }
 });
@@ -796,7 +845,7 @@ describe('a pair nibble is a pair index, and never off the end of the group', ()
  */
 const ATTRIBUTION_SAMPLES = 2;
 
-describe('a kill is credited to the lane the shot was flying down', () => {
+describe("a kill is credited to the lane the shot was flying down", () => {
   // The second seam of the multi-missile change, and the one that survives a
   // careful reading. `missile_kill` reads the lane from a stored nibble and
   // clears that lane's jet. Once `missile_step` becomes a walk the lane is the
@@ -828,67 +877,103 @@ describe('a kill is credited to the lane the shot was flying down', () => {
   //
   // Read off the state rather than the picture, because the claim is about which
   // jet the ROM removed and not about where it drew the burst.
+  /**
+   * Press-pattern phases to try before the drive is declared to have shot
+   * nothing down. One scripted game is one draw of the ROM's entropy, and
+   * whether a jet ever crosses the lever's lane in it is that draw's business:
+   * with the rocket at 24 sweeps a column, lane 0 saw no jet in the 31 s its
+   * game lasted at phase 0. The attribution check is the same whichever game
+   * it lands in.
+   */
+  const FIRE_PHASES = 10;
+
+  /** Every kill in `shots` attributed to the lane the shot flew down; `checked` kills, and the `wrong` ones described. */
+  function attribute(shots: readonly Sample[]): {
+    checked: number;
+    wrong: string[];
+  } {
+    const wrong: string[] = [];
+    let checked = 0;
+    shots.forEach((shot, index) => {
+      const before = shots[index - 1];
+      if (before === undefined || shot.kills <= before.kills) {
+        return;
+      }
+      // The lane that lost a plane across this sample is the one to attribute
+      // the kill to, and it is read **per slot** rather than off the per-lane
+      // bitmap. Two planes can stand in the same cell, and `jets` merges them
+      // into one bit: killing one of the pair leaves the bitmap identical, the
+      // kill looks like nothing happened, and it is skipped without ever being
+      // attributed. A slot going from flying to empty is the event itself.
+      const emptied = [
+        ...new Set(
+          shot.slots
+            .map((plane, slot) => ({ plane, was: before.slots[slot] as Plane }))
+            .filter(({ plane, was }) => was.column !== 0 && plane.column === 0)
+            .map(({ was }) => was.row),
+        ),
+      ];
+      if (emptied.length === 0) {
+        return; // the wave reset in the same sample; nothing to attribute
+      }
+      checked += 1;
+      const recent = shots.slice(
+        Math.max(0, index - ATTRIBUTION_SAMPLES),
+        index,
+      );
+      for (const lane of emptied) {
+        // The shot and the jet it hit, in the same lane and within a column of
+        // one another, in one of the samples just before the kill.
+        const met = recent.some((at) => {
+          const shotAt = at.missiles[lane] as number;
+          const grids = at.jets[lane] as number;
+          if (shotAt === 0) return false;
+          // A plane on the shot's own grid, or on the next one in - the same
+          // one-column allowance as before, read out of the bitmap.
+          return (
+            ((grids >> shotAt) & 1) !== 0 || ((grids >> (shotAt - 1)) & 1) !== 0
+          );
+        });
+        if (!met) {
+          wrong.push(
+            `t=${shot.seconds.toFixed(2)}s: a kill emptied lane(s) ${emptied}, and lane ` +
+              `${lane} lost a plane (grids ${before.jets[lane]} -> ${shot.jets[lane]}) ` +
+              `with no shot of the ` +
+              `player's standing on it - shots were ` +
+              recent.map((at) => `[${at.missiles}]`).join(" then "),
+          );
+        }
+      }
+    });
+    return { checked, wrong };
+  }
+
   for (const detent of DETENTS) {
     it(`removes the jet the shot was aimed at, lever in lane ${detent}`, () => {
-      const shots = sample(detent);
-      const wrong: string[] = [];
-      let checked = 0;
-      shots.forEach((shot, index) => {
-        const before = shots[index - 1];
-        if (before === undefined || shot.kills <= before.kills) {
-          return;
-        }
-        // The lane that lost a plane across this sample is the one to attribute
-        // the kill to, and it is read **per slot** rather than off the per-lane
-        // bitmap. Two planes can stand in the same cell, and `jets` merges them
-        // into one bit: killing one of the pair leaves the bitmap identical, the
-        // kill looks like nothing happened, and it is skipped without ever being
-        // attributed. A slot going from flying to empty is the event itself.
-        const emptied = [
-          ...new Set(
-            shot.slots
-              .map((plane, slot) => ({ plane, was: before.slots[slot] as Plane }))
-              .filter(({ plane, was }) => was.column !== 0 && plane.column === 0)
-              .map(({ was }) => was.row),
-          ),
-        ];
-        if (emptied.length === 0) {
-          return; // the wave reset in the same sample; nothing to attribute
-        }
-        checked += 1;
-        const recent = shots.slice(Math.max(0, index - ATTRIBUTION_SAMPLES), index);
-        for (const lane of emptied) {
-          // The shot and the jet it hit, in the same lane and within a column of
-          // one another, in one of the samples just before the kill.
-          const met = recent.some((at) => {
-            const shotAt = at.missiles[lane] as number;
-            const grids = at.jets[lane] as number;
-            if (shotAt === 0) return false;
-            // A plane on the shot's own grid, or on the next one in - the same
-            // one-column allowance as before, read out of the bitmap.
-            return ((grids >> shotAt) & 1) !== 0 || ((grids >> (shotAt - 1)) & 1) !== 0;
-          });
-          if (!met) {
-            wrong.push(
-              `t=${shot.seconds.toFixed(2)}s: a kill emptied lane(s) ${emptied}, and lane ` +
-                `${lane} lost a plane (grids ${before.jets[lane]} -> ${shot.jets[lane]}) ` +
-                `with no shot of the ` +
-                `player's standing on it - shots were ` +
-                recent.map((at) => `[${at.missiles}]`).join(' then '),
-            );
-          }
-        }
-      });
+      let result = { checked: 0, wrong: [] as string[] };
+      for (
+        let phase = 0;
+        phase < FIRE_PHASES && result.checked === 0;
+        phase += 1
+      ) {
+        result = attribute(sample(detent, undefined, phase));
+      }
       // Non-vacuity, in the shape `tms1370-rom.test.ts` names: a check over kills
       // that never happened is a check over nothing, and this file has already
       // shipped one assertion that passed because its drive never fired.
-      expect(checked, 'no jet was shot down in this run').toBeGreaterThan(0);
-      expect(wrong.slice(0, 5), `${wrong.length} kills credited the wrong lane`).toEqual([]);
+      expect(
+        result.checked,
+        `no jet was shot down in ${FIRE_PHASES} games`,
+      ).toBeGreaterThan(0);
+      expect(
+        result.wrong.slice(0, 5),
+        `${result.wrong.length} kills credited the wrong lane`,
+      ).toEqual([]);
     });
   }
 });
 
-describe('the player can have a shot in more than one lane at once', () => {
+describe("the player can have a shot in more than one lane at once", () => {
   // The third seam. **This was `it.fails()` until the per-lane gate landed**,
   // and the conversion to a plain `it()` here is the obligation that mechanism
   // came with, discharged.
@@ -934,7 +1019,7 @@ describe('the player can have a shot in more than one lane at once', () => {
   // Read off the drawn picture rather than off state, deliberately: it is the
   // one claim here that is about what the player sees, it is what the owner
   // described, and it does not assume where per-lane state ends up living.
-  it('draws shots in two lanes at the same instant', () => {
+  it("draws shots in two lanes at the same instant", () => {
     const lanesSeen = new Set<number>();
     let bestFrame = 0;
     // One roving run rather than three parked ones - see `roving`. A parked
@@ -960,8 +1045,13 @@ describe('the player can have a shot in more than one lane at once', () => {
     }
     // Every lane must be reachable at all, or the check below could pass on a
     // ROM that simply never draws two of them.
-    expect([...lanesSeen].sort(), 'the shot never reached some lane').toEqual([0, 1, 2]);
-    expect(bestFrame, 'no frame ever held shots in two lanes at once').toBeGreaterThan(1);
+    expect([...lanesSeen].sort(), "the shot never reached some lane").toEqual([
+      0, 1, 2,
+    ]);
+    expect(
+      bestFrame,
+      "no frame ever held shots in two lanes at once",
+    ).toBeGreaterThan(1);
   });
 
   // The other half of the rule, and the half a passing seam test cannot see.
@@ -979,7 +1069,7 @@ describe('the player can have a shot in more than one lane at once', () => {
   // only thing that can raise it is `fire_missile` writing GRID_COL_LAST. So a
   // rise while the lane was already occupied is exactly a shot fired into an
   // occupied lane, with no need to model the edge-triggered press at all.
-  it('refuses a second shot in a lane that already holds one', () => {
+  it("refuses a second shot in a lane that already holds one", () => {
     let occupiedPresses = 0;
     for (const detent of DETENTS) {
       const shots = sample(detent);
@@ -998,8 +1088,9 @@ describe('the player can have a shot in more than one lane at once', () => {
     // Non-vacuity, in the shape `tms1370-rom.test.ts` names: the check above is
     // a check over nothing unless the drive actually spent time with a shot in
     // flight in the lever's own lane while fire was being tapped.
-    expect(occupiedPresses, 'no sample ever caught a shot in flight in the lever lane').toBeGreaterThan(
-      100,
-    );
+    expect(
+      occupiedPresses,
+      "no sample ever caught a shot in flight in the lever lane",
+    ).toBeGreaterThan(100);
   });
 });

@@ -1,12 +1,14 @@
-// The jets' rocket and the player's missile cross the field at one rate.
+// The jets' rocket crosses the field a little faster than the player's missile.
 //
-// The owner's testimony (2026-09-05): the rocket reaches him at the speed his
-// own shot reaches the jets. The missile's cadence is MEASURED from video (500 ms
-// a column, n = 744, `asm/jetfighter.asm` MISSILE_LO); the rocket's was a
-// PROVISIONAL 7 sweeps and is now the missile's own pair. This holds the two
-// together off the running machine rather than by reading the constants: each
-// shot's column nibble is watched sweep by sweep, and every dwell on a column
-// must be the same count of sweeps for both.
+// The owner's testimony (2026-09-05): the rocket reaches him at about the speed
+// his own shot reaches the jets, and at exactly that speed it felt slightly slow
+// against the hardware. The missile's cadence is MEASURED from video (500 ms a
+// column, n = 744, `asm/jetfighter.asm` MISSILE_LO); the rocket's was a
+// PROVISIONAL 7 sweeps and is now a pair at three quarters of the missile's.
+// This holds both off the running machine rather than by reading the constants:
+// each shot's column nibble is watched sweep by sweep, every dwell on a column
+// must be its own pair's count, and the rocket's must sit between the missile's
+// and two thirds of it - faster, but only slightly.
 //
 // Skill 3, where rockets are most frequent, and a parked lever, which is what
 // `launcher-lives.test.ts` uses to see them land; one game per lane, because a
@@ -87,11 +89,12 @@ function columnDwells(address: number, lane: number, fire: boolean): number[] {
 }
 
 describe('the rocket and the missile', () => {
-  it('are wound to the same pair in the ROM', () => {
-    expect(ROCKET_SWEEPS).toBe(MISSILE_SWEEPS);
+  it('are wound so the rocket is faster than the missile, but only slightly', () => {
+    expect(ROCKET_SWEEPS).toBeLessThan(MISSILE_SWEEPS);
+    expect(ROCKET_SWEEPS).toBeGreaterThanOrEqual((MISSILE_SWEEPS * 2) / 3);
   });
 
-  it('dwell the same number of sweeps on every column, measured off the running machine', () => {
+  it('dwell their own pair\'s sweeps on every column, measured off the running machine', () => {
     // A parked game ends after a rocket or two, so the rockets come from one
     // game per lane; the missiles from one game that fires.
     const rocket = [0, 1, 2].flatMap((lane) => columnDwells(ROCKET_COLUMN_ADDRESS, lane, false));
@@ -99,6 +102,6 @@ describe('the rocket and the missile', () => {
     expect(rocket.length, 'no rockets flew far enough to be timed').toBeGreaterThanOrEqual(DWELLS_WANTED);
     expect(missile.length, 'no missiles flew far enough to be timed').toBeGreaterThanOrEqual(DWELLS_WANTED);
     expect(new Set(missile), 'the missile is the measured cadence and should be steady').toEqual(new Set([MISSILE_SWEEPS]));
-    expect(new Set(rocket), 'the rocket does not hold the missile\'s cadence').toEqual(new Set([ROCKET_SWEEPS]));
+    expect(new Set(rocket), 'the rocket does not hold its own cadence').toEqual(new Set([ROCKET_SWEEPS]));
   }, TEST_TIMEOUT_MS);
 });

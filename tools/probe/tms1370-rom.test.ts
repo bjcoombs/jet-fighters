@@ -328,6 +328,17 @@ function parkedGame(
   const policy = defend ? defending(skill) : undefined;
   let flying = false;
   let lane = lever;
+  // The lanes with a jet in them at the previous sample. A launch is read on
+  // the first sample that finds the rocket in flight, up to 5 ms after the
+  // sweep that fired it, and a defended run can shoot that very jet down in the
+  // same window: `rf_look` launches from it and `missile_walk` removes it in one
+  // sweep. The lane it occupied at launch is then in the sample before.
+  let previouslyOccupied: number[] = [];
+  // And the launch's lane is read on the sample after. The samples are cut by
+  // cycle count, not by sweep, and one landed inside `rf_fire` between the
+  // column's `TAM` and the lane's: the column read as in flight and the lane
+  // as the previous rocket's. 5 ms later the routine has long finished.
+  let pending: readonly number[] | null = null;
   while (machine.cycles < seconds(forSeconds)) {
     machine.step(CYCLE_HZ / 200);
     const ram = machine.ram;
@@ -368,13 +379,16 @@ function parkedGame(
       }
     }
     const column = ram[FILE_STATE * 16 + NIB_RCOL] as number;
+    const occupied = [...new Set(planesOf(ram, SQUADRON).map((plane) => plane.row))].sort();
+    if (pending !== null) {
+      launches.push({ lane: ram[FILE_STATE * 16 + NIB_RLANE] as number, occupied: pending });
+      pending = null;
+    }
     if (column !== 0 && !flying) {
-      launches.push({
-        lane: ram[FILE_STATE * 16 + NIB_RLANE] as number,
-        occupied: [...new Set(planesOf(ram, SQUADRON).map((plane) => plane.row))].sort(),
-      });
+      pending = [...new Set([...occupied, ...previouslyOccupied])].sort();
     }
     flying = column !== 0;
+    previouslyOccupied = occupied;
   }
   return { launches, lanes: launches.map((launch) => launch.lane), litCells: machine.litCells };
 }
