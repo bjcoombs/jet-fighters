@@ -673,17 +673,18 @@
 .EQU MISSILE_LO,    15          ; 1 * 16 + 15 + 1 = 32 sweeps, and 500 ms a
 .EQU MISSILE_HI,     1          ;   column MEASURED off this machine
 ;
-; OWNER'S TESTIMONY, 2026-09-05: the jets' rocket travels at the same speed as
-; the player's missile. T8 of docs/evidence/timing-analysis.md is still
-; unmeasured from video, so the rocket is wound to the missile's MEASURED
-; cadence - the same pair, 32 sweeps and 500 ms a column - and the two shots
-; cross the field at one rate. This replaces a PROVISIONAL 7 sweeps, 97 ms a
-; column, reasoned from a reaction window rather than from the unit: the owner
-; reported the rocket reaching him five times faster than his own shot reached
-; the jets, which is what 7 against 32 is. A single nibble cannot count 32, so
-; the step is a low/high pair like the missile's, spent low first.
-.EQU ROCKET_LO,     15          ; 1 * 16 + 15 + 1 = 32 sweeps a column, the
-.EQU ROCKET_HI,      1          ;   missile's own pair
+; OWNER'S TESTIMONY, 2026-09-05, in two steps. First: the jets' rocket travels
+; at about the speed of the player's missile - a PROVISIONAL 7 sweeps, 97 ms a
+; column, reasoned from a reaction window rather than from the unit, had it
+; reaching him five times faster than his own shot reached the jets. Wound to
+; the missile's MEASURED 32 sweeps, he then found it slightly slow against the
+; hardware, so it is a quarter faster: 24 sweeps, 375 ms a column against the
+; missile's 500. T8 of docs/evidence/timing-analysis.md is still unmeasured
+; from video, and that measurement is what would replace this figure. A single
+; nibble cannot count 24, so the step is a low/high pair like the missile's,
+; spent low first.
+.EQU ROCKET_LO,      7          ; 1 * 16 + 7 + 1 = 24 sweeps a column, three
+.EQU ROCKET_HI,      1          ;   quarters of the missile's 32
 
 ; --- The squadron's march ----------------------------------------------------
 ;
