@@ -7,7 +7,12 @@
     "rim_distance_mm": 347.0,
     "horizontal_fov_deg": 65.5,
     "shell_angular_width_deg": 52.4,
-    "mm_per_px_front": 0.28772
+    "mm_per_px_front": 0.28772,
+    "colour_gain": [
+      1.702,
+      1.69,
+      1.632
+    ]
   },
   "dimensions": {
     "battery_box.height": {
@@ -92,6 +97,31 @@
       "kind": "measured",
       "source": "board-L1001568.jpg chip.pins_x",
       "note": "20 pins a side; the body is 0.6 in wide by convention for this package."
+    },
+    "colour.black_plastic_srgb": {
+      "value": "#360e08",
+      "kind": "measured",
+      "source": "assets/reference/case/front.jpg colours.black_plastic (median), white-balanced on the sticker's print"
+    },
+    "colour.blue_control_srgb": {
+      "value": "#414977",
+      "kind": "measured",
+      "source": "assets/reference/case/front.jpg colours.blue_control (median), white-balanced on the sticker's print"
+    },
+    "colour.flag_blue_srgb": {
+      "value": "#52659d",
+      "kind": "measured",
+      "source": "assets/reference/case/front.jpg colours.flag_blue (median), white-balanced on the sticker's print"
+    },
+    "colour.red_abs_srgb": {
+      "value": "#ce1b17",
+      "kind": "measured",
+      "source": "assets/reference/case/front.jpg colours.red_abs (bright), white-balanced on the sticker's print"
+    },
+    "colour.sticker_blue_srgb": {
+      "value": "#385a90",
+      "kind": "measured",
+      "source": "assets/reference/case/front.jpg colours.sticker_blue (median), white-balanced on the sticker's print"
     },
     "controls.fire.body_radius": {
       "value": 18.0,
@@ -224,10 +254,10 @@
       "source": "board-L1001568.jpg dc_jack.y"
     },
     "depth.back_shell": {
-      "value": 28.0,
+      "value": 44.0,
       "kind": "estimated",
-      "basis": "The end views (assets/reference/case/end-left.jpg, end-right.jpg): the end face is about 60 mm deep against the case's 147.5 mm height, parted near its middle. Perspective in a hand-held close-up inflates it a little.",
-      "bound_mm": 8.0
+      "basis": "The end views (assets/reference/case/end-left.jpg, end-right.jpg) put the whole case at about 58 mm; the front shell takes 14 of it (see depth.front_shell_module), the back the rest. The line the end views show at mid-depth is read as the wings' panel step rather than the parting line.",
+      "bound_mm": 10.0
     },
     "depth.fire_cap_height": {
       "value": 6.0,
@@ -236,16 +266,16 @@
       "bound_mm": 2.0
     },
     "depth.front_shell_module": {
-      "value": 34.0,
+      "value": 14.0,
       "kind": "estimated",
-      "basis": "The wing face plus the step the module stands proud by, read as about 6 mm in front-oblique.jpg.",
-      "bound_mm": 8.0
+      "basis": "The smoked window sits nearly flush with the module face and a few millimetres above the tube: the printed frame and the segments show little parallax in front-oblique.jpg, and the emulation's glass must sit close for the same reason. Tube top 8 mm above the rim, glass 4 mm above that, 2 mm of lip.",
+      "bound_mm": 4.0
     },
     "depth.front_shell_wing": {
-      "value": 28.0,
+      "value": 8.0,
       "kind": "estimated",
-      "basis": "The end views: the front shell's half of the end face, about equal to the back's.",
-      "bound_mm": 8.0
+      "basis": "The module face less the step it stands proud by, about 6 mm in front-oblique.jpg.",
+      "bound_mm": 4.0
     },
     "depth.lever_pin_height": {
       "value": 4.0,

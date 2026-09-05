@@ -1,0 +1,13 @@
+JETFIGHTERS
+1. Set skill control to desired level. Slide
+    power on/off switch to "on".
+2. Move the Missile launcher lever up and
+    down to aim at Jet-Fighter or Battle-
+    ship, and press Missile launch button.
+3. Game ends when you obtained 199
+    points or when all Missile Launchers
+    are destroyed by Jet-Fighter's rockets
+    or when Jet-Fighter captures your
+    Missile Launcher.
+4. To start new game simply slide switch
+    to "off" and then to "on" again.

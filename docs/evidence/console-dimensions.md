@@ -166,9 +166,9 @@ which is how far a side view would be expected to move it.
 | | mm | Basis | Bound |
 | --- | --- | --- | --- |
 | Rim above board | 3 | The board's edge reads at the shell wall in the board photograph; a deeper board would read well inside it | 5 |
-| Back shell depth | 28 | The end views (`assets/reference/case/end-left.jpg`, `end-right.jpg`): the end face is about 60 mm deep against the case's 147.5 mm height, parted near its middle | 8 |
-| Front shell, wing face | 28 | The end views: the front shell's half of the end face, about equal to the back's | 8 |
-| Front shell, module face | 34 | The wing face plus the step the module stands proud by, about 6 mm in `front-oblique.jpg` | 8 |
+| Back shell depth | 44 | The end views put the whole case at about 58 mm; the front shell takes 14 of it and the back the rest. The line at mid-depth in the end views is read as the wings' panel step, not the parting line | 10 |
+| Front shell, wing face | 8 | The module face less the 6 mm step it stands proud by | 4 |
+| Front shell, module face | 14 | The smoked window sits nearly flush with the module face and a few mm above the tube: the printed frame and the segments show little parallax in `front-oblique.jpg`. Tube top 8 mm above the rim, glass 4 mm above that, 2 mm of lip | 4 |
 | Window recess | 2 | The smoked window sits inside a lip | 1 |
 | Wall thickness | 2 | Moulded ABS of the period | 0.5 |
 | Tube thickness | 11 | Flat VFD envelopes of this size | 2 |
@@ -193,6 +193,19 @@ beside the deployed page. **The model follows the photographs; the SVG is left a
 per the PRD - the tube renderer's own layout (`src/machine/tube/layout.ts`) shares the
 SVG's rectangle and moving one means moving both, which is a change to the flat page and
 not part of this work.
+
+## Colours
+
+Sampled by `measure.py` from `case/front.jpg` at boxes named in `pixels.json`, then
+white-balanced: the sticker's white print is the one known white in the photograph, its
+brightest pixels are taken as #f0f0f0, and every sample is scaled by that gain per
+channel. The red is the lit part of the module face above the window (the pixels above
+the 70th percentile of luminance in the box); the blues and the black are medians. They
+are in `dimensions.json` under `colour.*` and the Blender script reads them there.
+
+The typefaces are not measured: the sticker's heavy italic and the label's sans are
+stood in for by Blender's bundled font, sheared for the sticker, and the moulded ON, OFF,
+OPEN and MADE IN JAPAN likewise.
 
 ## The owner's case photographs
 

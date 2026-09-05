@@ -285,6 +285,38 @@ def main(argv: list[str]) -> int:
     )
     d.measured("electrolytics.cans", [[bx(a), by(b), bx(c), by(e)] for a, b, c, e in B["electrolytics"]["cans"]], f"{src_b} electrolytics.cans")
 
+    # ---- Colours, sampled from the owner's front photograph. "bright" takes the mean
+    # of the pixels above the 70th percentile of luminance in the box - the lit plastic
+    # rather than its shading - and "median" the per-channel median.
+    try:
+        from PIL import Image  # optional: without it the colours keep their last values
+        import numpy as np
+
+        col = px["colours"]
+        im = np.array(Image.open(ROOT / col["file"]).convert("RGB")).astype(float)
+        # The photograph is under-exposed and warm. The sticker's white print is the
+        # one known white in it: the brightest pixels of the sticker box, per channel,
+        # are taken as #f0f0f0, and every sample is scaled by that gain.
+        wx0, wy0, wx1, wy1 = col["white_reference"]["box"]
+        white = np.percentile(im[wy0:wy1, wx0:wx1].reshape(-1, 3), 98, axis=0)
+        gain = 240.0 / np.maximum(white, 1.0)
+        scale_detail["colour_gain"] = [_r(float(g), 3) for g in gain]
+        for name, spec in col.items():
+            if not isinstance(spec, dict) or "box" not in spec or name == "white_reference":
+                continue
+            x0, y0, x1, y1 = spec["box"]
+            region = im[y0:y1, x0:x1].reshape(-1, 3)
+            if spec["take"] == "bright":
+                lum = region @ np.array([0.2126, 0.7152, 0.0722])
+                region = region[lum >= np.percentile(lum, 70)]
+                rgb = region.mean(0)
+            else:
+                rgb = np.median(region, axis=0)
+            rgb = np.clip(rgb * gain, 0, 255)
+            d.measured(f"colour.{name}_srgb", "#%02x%02x%02x" % tuple(int(round(c)) for c in rgb), f"{col['file']} colours.{name} ({spec['take']}), white-balanced on the sticker's print")
+    except ImportError:
+        pass
+
     # ---- Cross-check against the flat page's SVG, scaled so its body width is the
     # measured case width. Reported, not used: the model follows the photographs.
     svg = px["svg"]
@@ -319,9 +351,9 @@ def main(argv: list[str]) -> int:
     # ---- Depth. Nothing photographs the unit edge-on, so every figure here is an
     # estimate with its basis; the bound is what a side view would be expected to move it by.
     d.estimated("depth.rim_above_board", sh["rim_above_board_mm"]["value"], sh["rim_above_board_mm"]["$comment"], 5.0)
-    d.estimated("depth.back_shell", 28.0, "The end views (assets/reference/case/end-left.jpg, end-right.jpg): the end face is about 60 mm deep against the case's 147.5 mm height, parted near its middle. Perspective in a hand-held close-up inflates it a little.", 8.0)
-    d.estimated("depth.front_shell_wing", 28.0, "The end views: the front shell's half of the end face, about equal to the back's.", 8.0)
-    d.estimated("depth.front_shell_module", 34.0, "The wing face plus the step the module stands proud by, read as about 6 mm in front-oblique.jpg.", 8.0)
+    d.estimated("depth.back_shell", 44.0, "The end views (assets/reference/case/end-left.jpg, end-right.jpg) put the whole case at about 58 mm; the front shell takes 14 of it (see depth.front_shell_module), the back the rest. The line the end views show at mid-depth is read as the wings' panel step rather than the parting line.", 10.0)
+    d.estimated("depth.front_shell_wing", 8.0, "The module face less the step it stands proud by, about 6 mm in front-oblique.jpg.", 4.0)
+    d.estimated("depth.front_shell_module", 14.0, "The smoked window sits nearly flush with the module face and a few millimetres above the tube: the printed frame and the segments show little parallax in front-oblique.jpg, and the emulation's glass must sit close for the same reason. Tube top 8 mm above the rim, glass 4 mm above that, 2 mm of lip.", 4.0)
     d.estimated("shape.shoulder", 8.0, "The 45-degree chamfers where the module's outline meets the wings, front.jpg and back.jpg.", 3.0)
     d.estimated("shape.back_panel_width", 50.0, "The raised panels on the back of each wing, from their outer ends inward, back.jpg.", 5.0)
     d.estimated("shape.back_panel_raise", 2.0, "How far those panels stand proud of the back face; end-left.jpg shows a step.", 1.0)
