@@ -355,7 +355,14 @@ const HELP_ROWS: ReadonlyArray<readonly [keys: string, action: string]> = [
  * document. Styling is inline so it stays self-contained and does not disturb
  * the case aesthetic.
  */
-export function createHelpOverlay(doc: Document = document): HTMLElement {
+export interface HelpOptions {
+  /** Rows a page adds under the machine's: the 3D page's view and dock keys. */
+  readonly extraRows?: ReadonlyArray<readonly [keys: string, action: string]>;
+  /** The link at the foot: the flat page points at the 3D one, and the 3D page back. */
+  readonly link?: { readonly href: string; readonly text: string };
+}
+
+export function createHelpOverlay(doc: Document = document, options: HelpOptions = {}): HTMLElement {
   const root = doc.createElement('div');
   root.className = 'jf-help';
   root.style.cssText =
@@ -382,7 +389,7 @@ export function createHelpOverlay(doc: Document = document): HTMLElement {
   title.style.cssText = 'font-weight:600;margin-bottom:6px;';
   panel.appendChild(title);
 
-  for (const [keys, action] of HELP_ROWS) {
+  for (const [keys, action] of [...HELP_ROWS, ...(options.extraRows ?? [])]) {
     const row = doc.createElement('div');
     row.style.cssText = 'display:flex;justify-content:space-between;gap:16px;';
     const k = doc.createElement('span');
@@ -397,8 +404,8 @@ export function createHelpOverlay(doc: Document = document): HTMLElement {
   // The same unit in three dimensions, on its own page. A relative link, so it
   // resolves under the deployed base path as well as the dev server's.
   const link = doc.createElement('a');
-  link.href = '3d.html';
-  link.textContent = 'See the unit in 3D';
+  link.href = options.link?.href ?? '3d.html';
+  link.textContent = options.link?.text ?? 'See the unit in 3D';
   link.style.cssText = 'display:block;margin-top:8px;color:#8fc7ff;';
   panel.appendChild(link);
 

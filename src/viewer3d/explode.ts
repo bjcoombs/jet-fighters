@@ -7,9 +7,12 @@
 // large one. Nothing else about a part changes: the assembled position is
 // exactly the exported one, at factor 0.
 //
-// Presets give each part a target factor; the slider gives every part the same
-// one. Targets are eased over a short time so a preset reads as the unit coming
-// apart rather than jumping.
+// One slider is the state. Its first half lifts the lid - the front shell and
+// what is mounted on it - and its second half spreads everything else, so the
+// three detents are the three arrangements: 0 assembled, 1/2 lid off, 1
+// exploded. A preset is a detent; between detents the unit is part way. Targets
+// are eased over a short time so a preset reads as the unit coming apart rather
+// than jumping.
 
 import { Vector3 } from 'three';
 
@@ -23,16 +26,40 @@ export const PRESETS: readonly Preset[] = ['assembled', 'lid-off', 'exploded'];
 /** Parts that move for `lid-off`: the front shell and what is mounted on it. */
 const LID = new Set(['front_shell', 'window', 'scope_mask', 'sticker', 'fire_cap', 'power_thumb', 'lever_pin', 'skill_flag']);
 
+/** The slider value each preset sits at. */
+export const PRESET_AMOUNT: Readonly<Record<Preset, number>> = { assembled: 0, 'lid-off': 0.5, exploded: 1 };
+
 /** The factor a preset gives a part. */
 export function presetFactor(preset: Preset, partName: string): number {
-  switch (preset) {
-    case 'assembled':
-      return 0;
-    case 'lid-off':
-      return LID.has(partName) ? 1 : 0;
-    case 'exploded':
-      return 1;
+  return sliderFactor(PRESET_AMOUNT[preset], partName);
+}
+
+/**
+ * The factor a slider value gives a part: the lid over the first half of the
+ * travel, everything else over the second. Pure.
+ */
+export function sliderFactor(amount: number, partName: string): number {
+  const a = Math.min(1, Math.max(0, amount));
+  return LID.has(partName) ? Math.min(1, 2 * a) : Math.max(0, 2 * a - 1);
+}
+
+/** The preset a slider value is sitting on, if it is on one. */
+export function presetAt(amount: number): Preset | null {
+  for (const preset of PRESETS) {
+    if (Math.abs(amount - PRESET_AMOUNT[preset]) < 1e-6) return preset;
   }
+  return null;
+}
+
+/** The preset after `amount`, round the three: the E key's cycle. */
+export function nextPreset(amount: number): Preset {
+  const at = presetAt(amount);
+  if (at === null) {
+    // Between detents: on to the next one up, or round to the start from the top.
+    const up = PRESETS.find((p) => PRESET_AMOUNT[p] > amount);
+    return up ?? 'assembled';
+  }
+  return PRESETS[(PRESETS.indexOf(at) + 1) % PRESETS.length];
 }
 
 /** Where a part sits at a factor: rest plus its local explode vector times factor. Pure. */
@@ -55,12 +82,14 @@ export interface Exploder {
    * modelled controls move this way. Applied every frame until cleared.
    */
   setOffset(name: string, offset: Vector3 | null): void;
-  /** Every part to the same factor, over `EASE_MS`. */
-  setAmount(factor: number): void;
-  /** A named arrangement. */
+  /** The slider to `amount`, 0..1, every part to its factor for it, over `EASE_MS`. */
+  setAmount(amount: number): void;
+  /** A named arrangement: the slider to its detent. */
   setPreset(preset: Preset): void;
-  /** The factor the slider shows: the mean of the current targets. */
+  /** The slider's value. */
   readonly amount: number;
+  /** Called after the amount changes. */
+  onChange(listener: () => void): void;
   /** Advance the easing and apply positions. Called every rendered frame. */
   update(nowMs: number): void;
 }
@@ -79,16 +108,22 @@ export function createExploder(parts: ReadonlyMap<string, Part>): Exploder {
     motions.push({ part, from: 0, to: 0, current: 0, startMs: -Infinity });
   }
   let lastNow = 0;
+  let amount = 0;
   const offsets = new Map<string, Vector3>();
+  const listeners: (() => void)[] = [];
 
-  const retarget = (targetFor: (name: string) => number): void => {
+  const setAmount = (next: number): void => {
+    const clamped = Math.min(1, Math.max(0, next));
+    if (clamped === amount) return;
+    amount = clamped;
     for (const m of motions) {
-      const to = targetFor(m.part.name);
+      const to = sliderFactor(amount, m.part.name);
       if (to === m.to) continue;
       m.from = m.current;
       m.to = to;
       m.startMs = lastNow;
     }
+    for (const l of listeners) l();
   };
 
   const update = (nowMs: number): void => {
@@ -110,12 +145,13 @@ export function createExploder(parts: ReadonlyMap<string, Part>): Exploder {
       if (offset) offsets.set(name, offset);
       else offsets.delete(name);
     },
-    setAmount: (factor) => retarget(() => Math.min(1, Math.max(0, factor))),
-    setPreset: (preset) => retarget((name) => presetFactor(preset, name)),
+    setAmount,
+    setPreset: (preset) => setAmount(PRESET_AMOUNT[preset]),
     get amount() {
-      const moving = motions.filter((m) => m.part.explodeLocal.lengthSq() > 0);
-      if (moving.length === 0) return 0;
-      return moving.reduce((sum, m) => sum + m.to, 0) / moving.length;
+      return amount;
+    },
+    onChange(listener) {
+      listeners.push(listener);
     },
     update,
   };

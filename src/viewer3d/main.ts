@@ -11,16 +11,26 @@ import { createDriver } from '../app/driver.js';
 import { buildMuteToggle } from '../app/mute-toggle.js';
 import { createHelpOverlay, createInputSystem } from '../input/index.js';
 import { CONTROL_UNDER, PIN_REST_LOCAL_Z, SKILL_HUB_LOCAL, controlAtFacePoint, inputForPress, isControl, laneFromSlotOffset, poseFor, type ControlName, type ControlState } from './controls3d.js';
+import { buildDock, titleOf } from './dock.js';
 import { createExploder } from './explode.js';
-import { buildExplodePanel, buildInfoPanel, buildTooltip, titleOf } from './panel.js';
+import { buildTooltip } from './panel.js';
 import { createPicker } from './picking.js';
-import { createConsoleScene, type Part } from './scene.js';
+import { createConsoleScene, type Part, type ViewName } from './scene.js';
+import { injectStyles } from './styles.js';
 import { TOUCH_BAR_HEIGHT_PX, buildTouchBar, isCoarsePointer } from './touch-bar.js';
 import { createTubeTextures } from './tube-texture.js';
 import { createVisibility } from './visibility.js';
-import { Box3, Mesh, Plane, Raycaster, Vector2, Vector3 } from 'three';
+import { Box3, Mesh, Plane, Quaternion, Raycaster, Vector2, Vector3 } from 'three';
 
 const MODEL_URL = `${import.meta.env.BASE_URL}models/console.glb`;
+
+/** Below this width the dock starts folded: a phone in either hand. */
+const NARROW_PX = 500;
+
+/** How fast a modelled control settles into its new place: a press, not a jump. */
+const CONTROL_EASE_MS = 90;
+
+const HINT_KEY = 'jf3d-hint-seen';
 
 const app = document.querySelector<HTMLElement>('#app3d');
 if (app) {
@@ -28,19 +38,29 @@ if (app) {
 }
 
 async function start(mount: HTMLElement): Promise<void> {
+  injectStyles();
   const canvas = document.createElement('canvas');
   mount.appendChild(canvas);
-  mount.appendChild(buildChrome());
 
   // The machine, dark, painting an offscreen canvas the model will wear.
   const textures = createTubeTextures();
   const driver = createDriver({ image: { rom, opla }, renderer: textures.renderer });
   createInputSystem(driver.apply, { screenElement: canvas });
   mount.appendChild(buildMuteToggle(driver));
-  mount.appendChild(createHelpOverlay());
+  mount.appendChild(
+    createHelpOverlay(document, {
+      extraRows: [
+        ['F / B / I', 'Front, back, inside views'],
+        ['E', 'Take apart, step by step'],
+        ['H', 'Hide the focused part'],
+        ['Esc', 'Clear the focus'],
+      ],
+      link: { href: './', text: 'The flat page' },
+    }),
+  );
   driver.start();
 
-  const status = buildStatus('Loading the model…');
+  const status = buildStatus('Loading the model\u2026');
   mount.appendChild(status);
   let scene;
   try {
@@ -55,20 +75,45 @@ async function start(mount: HTMLElement): Promise<void> {
   // `#touch` in the URL shows the bar on any device, for trying it.
   const coarse = isCoarsePointer() || window.location.hash.includes('touch');
   const slackMm = coarse ? 6 : 0;
-  const panelBottom = coarse ? TOUCH_BAR_HEIGHT_PX + 8 : 12;
+  const narrow = window.innerWidth < NARROW_PX;
+  mount.style.setProperty('--jf-bottom', `${coarse ? TOUCH_BAR_HEIGHT_PX + 8 : 12}px`);
 
   // Taking it apart, hiding what is in the way, and pointing at what is inside.
   const exploder = createExploder(scene.parts);
   const visibility = createVisibility(scene.parts);
   const picker = createPicker(canvas, scene.camera, scene.parts);
   const tooltip = buildTooltip();
-  const info = buildInfoPanel((part) => visibility.hide(part.name), panelBottom);
-  mount.append(buildExplodePanel(exploder, visibility, panelBottom), tooltip.el, info.el);
+  const dock = buildDock({
+    parts: scene.parts,
+    exploder,
+    visibility,
+    picker,
+    collapsed: narrow,
+    onView: (view) => goToView(view),
+    onFocus: (part) => {
+      if (part) focusOn(part);
+    },
+  });
+  mount.append(dock.el, tooltip.el);
+  // The dock's keys, beside the machine's: the input system takes its own and
+  // leaves the rest, and these do not overlap (dock.test.ts).
+  window.addEventListener('keydown', (e) => {
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    const target = e.target as HTMLElement | null;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+    if (dock.key(e.key)) e.preventDefault();
+  });
   // With the case off the board is the thing to look at; bring the camera to it.
   visibility.onChange(() => {
     const pcb = scene.parts.get('pcb');
     if (pcb && visibility.hidden.length > 0 && visibility.isHidden('front_shell')) focusOn(pcb);
   });
+  // A hand on the model unmarks the view.
+  scene.controls.addEventListener('start', () => dock.setView(null));
+
+  // One line for the first visit, gone at the first touch.
+  const hint = buildHint();
+  if (hint) mount.appendChild(hint);
 
   // The flag pivots on its hub: move the geometry so the part's origin is there.
   const flag = scene.parts.get('skill_flag');
@@ -179,50 +224,86 @@ async function start(mount: HTMLElement): Promise<void> {
     pressAt = null;
     if (moved > 6) return;
     const hit = picker.pick(e.clientX, e.clientY);
-    if (hit) {
-      info.show(hit.part);
-      focusOn(hit.part);
-    } else {
-      info.hide();
-    }
+    dock.focus(hit ? hit.part : null);
   });
 
-  // Easing the camera onto a part: target to its centre, distance to fit it,
-  // direction kept.
-  let focus: { fromPos: Vector3; toPos: Vector3; fromTarget: Vector3; toTarget: Vector3; start: number } | null = null;
+  // Easing the camera: onto a part - target to its centre, distance to fit it,
+  // direction kept - or to one of the named views.
+  // The camera swings round the target rather than moving straight to the new
+  // place: from the front to the back the straight line passes through the
+  // unit, and the orbit controls lose their bearings at the middle of it.
+  interface Flight {
+    fromTarget: Vector3;
+    toTarget: Vector3;
+    fromDir: Vector3;
+    turn: Quaternion;
+    fromDist: number;
+    toDist: number;
+    start: number;
+  }
+  let focus: Flight | null = null;
+  const flyTo = (position: Vector3, target: Vector3): void => {
+    const fromDir = scene.camera.position.clone().sub(scene.controls.target);
+    const fromDist = fromDir.length();
+    fromDir.normalize();
+    const toDir = position.clone().sub(target);
+    const toDist = toDir.length();
+    toDir.normalize();
+    const turn = new Quaternion();
+    // Straight over to the far side: tumble over the case's long axis.
+    if (fromDir.dot(toDir) < -0.9999) turn.setFromAxisAngle(new Vector3(1, 0, 0), Math.PI);
+    else turn.setFromUnitVectors(fromDir, toDir);
+    focus = { fromTarget: scene.controls.target.clone(), toTarget: target, fromDir, turn, fromDist, toDist, start: -1 };
+  };
   const focusOn = (part: Part): void => {
     const bounds = new Box3().setFromObject(part.object);
     const centre = bounds.getCenter(new Vector3());
     const radius = bounds.getSize(new Vector3()).length() / 2;
     const dir = scene.camera.position.clone().sub(scene.controls.target).normalize();
     const dist = Math.max(0.12, radius * 2.6);
-    focus = {
-      fromPos: scene.camera.position.clone(),
-      toPos: centre.clone().add(dir.multiplyScalar(dist)),
-      fromTarget: scene.controls.target.clone(),
-      toTarget: centre,
-      start: -1,
-    };
+    flyTo(centre.clone().add(dir.multiplyScalar(dist)), centre);
   };
+  const goToView = (view: ViewName): void => {
+    // Inside is the board seen with the lid lifted off it.
+    if (view === 'inside' && exploder.amount < 0.5) exploder.setPreset('lid-off');
+    const pose = scene.poseFor(view);
+    flyTo(pose.position, pose.target);
+    dock.setView(view);
+  };
+  dock.setView('front');
 
+  // The controls' pose is the board's own reading of them, so the keyboard
+  // moves the modelled parts as much as the pointer does. Each eases to its
+  // place over a few frames: the cap sinks, the slide travels, the flag turns.
+  const eased = new Map<ControlName, { offset: Vector3; rotationY: number }>();
+  let lastFrame = 0;
   const frame = (now: number): void => {
     textures.upload(now, driver.board.power.state === 'on');
-    // The controls' pose is the board's own reading of them, so the keyboard
-    // moves the modelled parts as much as the pointer does.
+    const dt = lastFrame ? now - lastFrame : 16;
+    lastFrame = now;
+    const k = Math.min(1, dt / CONTROL_EASE_MS);
     const pose = poseFor(stateOf());
     for (const name of Object.keys(pose) as ControlName[]) {
       const part = scene.parts.get(name);
       if (!part) continue;
-      exploder.setOffset(name, pose[name].offset.lengthSq() > 0 ? pose[name].offset : null);
-      part.object.rotation.y = pose[name].rotationY;
+      let cur = eased.get(name);
+      if (!cur) {
+        cur = { offset: pose[name].offset.clone(), rotationY: pose[name].rotationY };
+        eased.set(name, cur);
+      }
+      cur.offset.lerp(pose[name].offset, k);
+      cur.rotationY += (pose[name].rotationY - cur.rotationY) * k;
+      exploder.setOffset(name, cur.offset.lengthSq() > 1e-9 ? cur.offset : null);
+      part.object.rotation.y = cur.rotationY;
     }
     exploder.update(now);
     if (focus) {
       if (focus.start < 0) focus.start = now;
       const t = Math.min(1, (now - focus.start) / 500);
       const k = 1 - (1 - t) ** 3;
-      scene.camera.position.lerpVectors(focus.fromPos, focus.toPos, k);
       scene.controls.target.lerpVectors(focus.fromTarget, focus.toTarget, k);
+      const dir = focus.fromDir.clone().applyQuaternion(new Quaternion().slerp(focus.turn, k));
+      scene.camera.position.copy(scene.controls.target).addScaledVector(dir, focus.fromDist + (focus.toDist - focus.fromDist) * k);
       if (t >= 1) focus = null;
     }
     scene.render();
@@ -235,31 +316,40 @@ async function start(mount: HTMLElement): Promise<void> {
   }
 }
 
-/** The corner chrome: a way back to the flat page, and what this is. */
-function buildChrome(): HTMLElement {
-  const bar = document.createElement('div');
-  // Right of the mute toggle, which takes the corner on both pages.
-  bar.style.cssText =
-    'position:absolute;top:8px;left:44px;z-index:10;display:flex;gap:8px;align-items:center;' +
-    'font-size:12px;color:#ddd;';
-  const back = document.createElement('a');
-  back.href = './';
-  back.textContent = '← Flat page';
-  back.style.cssText =
-    'padding:5px 9px;border-radius:14px;border:1px solid rgba(255,255,255,0.35);' +
-    'background:rgba(0,0,0,0.55);color:#eee;text-decoration:none;';
-  const hint = document.createElement('span');
-  hint.textContent = 'Drag to orbit, scroll to zoom, right-drag to pan';
-  hint.style.cssText = 'opacity:0.7;';
-  bar.append(back, hint);
-  return bar;
+/**
+ * One line for a first visit, gone at the first pointer or key. Remembered in
+ * the browser so it is not shown again; where storage is unavailable it shows
+ * each time, which is the lesser harm.
+ */
+function buildHint(): HTMLElement | null {
+  try {
+    if (localStorage.getItem(HINT_KEY)) return null;
+  } catch {
+    // Storage blocked: show it.
+  }
+  const el = document.createElement('div');
+  el.className = 'jf-hint';
+  el.textContent = 'Drag to orbit \u00b7 P for power \u00b7 click the controls';
+  const dismiss = (): void => {
+    // Faded by the stylesheet's transition; removed when it has faded.
+    el.addEventListener('transitionend', () => el.remove());
+    el.style.opacity = '0';
+    try {
+      localStorage.setItem(HINT_KEY, '1');
+    } catch {
+      // Storage blocked: nothing to remember it in.
+    }
+    window.removeEventListener('pointerdown', dismiss);
+    window.removeEventListener('keydown', dismiss);
+  };
+  window.addEventListener('pointerdown', dismiss);
+  window.addEventListener('keydown', dismiss);
+  return el;
 }
 
 function buildStatus(text: string): HTMLElement {
   const el = document.createElement('div');
+  el.className = 'jf-panel jf-status';
   el.textContent = text;
-  el.style.cssText =
-    'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:10;' +
-    'padding:8px 12px;border-radius:8px;background:rgba(0,0,0,0.7);color:#eee;font-size:13px;';
   return el;
 }

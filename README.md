@@ -147,11 +147,16 @@ tube still lit, click the chip to be told what it is, and play - the fire cap, t
 slide, the launcher lever and the skill flag on the model close the same contacts the flat
 page's controls do, and the keyboard works throughout.
 
-On a phone the four controls are also a bar of buttons along the bottom (lane up and
-down, fire held while touched, power, skill), because the modelled ones are a few
-millimetres across; add `#touch` to the address to see the bar on a desktop. "Bare
-board" takes the case off and leaves the board and the lit tube to play; clicking any
-part offers to hide it, and "Show all" brings everything back.
+One panel runs the page. **View** puts the camera on the front, the back, or inside with
+the lid lifted (`F`, `B`, `I`); **Take apart** is a slider whose three detents are
+assembled, lid off and exploded (`E` steps through them), with "Bare board" to take the
+case off and leave the board and the lit tube to play, and "Show all" to bring it back;
+**Parts** lists every labelled part in its group with a checkbox for whether it is shown,
+lights a part up under the pointer, and opens its label and evidence when clicked (`H`
+hides it, `Esc` lets go). Clicking a part on the model does the same. On a phone the panel
+starts folded and the four controls are also a bar of buttons along the bottom (lane up
+and down, fire held while touched, power, skill), because the modelled ones are a few
+millimetres across; add `#touch` to the address to see the bar on a desktop.
 
 **What it is built from.** No dimension was measured with a ruler; the owner has no further
 access to the unit for that. Every figure is read off two photographs against the one

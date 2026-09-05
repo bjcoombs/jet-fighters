@@ -1,7 +1,7 @@
 import { Group, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 
-import { EASE_MS, createExploder, ease, positionAt, presetFactor } from './explode.js';
+import { EASE_MS, createExploder, ease, nextPreset, positionAt, presetAt, presetFactor, sliderFactor } from './explode.js';
 import type { Part } from './scene.js';
 
 function part(name: string, explode?: readonly [number, number, number], rest = new Vector3(0.01, 0.02, 0.03)): Part {
@@ -41,6 +41,33 @@ describe('presets', () => {
       expect(presetFactor('assembled', name)).toBe(0);
       expect(presetFactor('exploded', name)).toBe(1);
     }
+  });
+});
+
+describe('the slider', () => {
+  it('lifts the lid over its first half and spreads the rest over its second', () => {
+    expect(sliderFactor(0, 'front_shell')).toBe(0);
+    expect(sliderFactor(0.25, 'front_shell')).toBeCloseTo(0.5, 9);
+    expect(sliderFactor(0.5, 'front_shell')).toBe(1);
+    expect(sliderFactor(0.75, 'front_shell')).toBe(1);
+    expect(sliderFactor(0.5, 'tms1370')).toBe(0);
+    expect(sliderFactor(0.75, 'tms1370')).toBeCloseTo(0.5, 9);
+    expect(sliderFactor(1, 'tms1370')).toBe(1);
+  });
+
+  it('sits on a preset only at its detent', () => {
+    expect(presetAt(0)).toBe('assembled');
+    expect(presetAt(0.5)).toBe('lid-off');
+    expect(presetAt(1)).toBe('exploded');
+    expect(presetAt(0.3)).toBeNull();
+  });
+
+  it('cycles the detents and steps up from between them', () => {
+    expect(nextPreset(0)).toBe('lid-off');
+    expect(nextPreset(0.5)).toBe('exploded');
+    expect(nextPreset(1)).toBe('assembled');
+    expect(nextPreset(0.2)).toBe('lid-off');
+    expect(nextPreset(0.7)).toBe('exploded');
   });
 });
 
@@ -85,6 +112,16 @@ describe('createExploder', () => {
     expect(shell.object.position.y).toBeCloseTo(0.14, 9);
     expect(chip.object.position.y).toBeCloseTo(0.02, 9);
     expect(ex.amount).toBe(0.5);
+  });
+
+  it('tells a listener when the amount moves, and not when it does not', () => {
+    const ex = createExploder(new Map([['front_shell', part('front_shell', [0, 0.12, 0])]]));
+    let calls = 0;
+    ex.onChange(() => (calls += 1));
+    ex.setAmount(0.4);
+    ex.setAmount(0.4);
+    ex.setPreset('exploded');
+    expect(calls).toBe(2);
   });
 
   it('ease starts at zero, ends at one, and is monotonic', () => {
