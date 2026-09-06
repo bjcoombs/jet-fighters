@@ -95,8 +95,8 @@ export interface DockOptions {
   readonly picker: Picker;
   /** Ease the camera to a view. The dock marks it until the camera is moved by hand. */
   readonly onView: (view: ViewName) => void;
-  /** Ease the camera onto a part, or clear the focus. */
-  readonly onFocus: (part: Part | null) => void;
+  /** Ease the camera onto a part: the row's button, or a double-click on the model. */
+  readonly onLook: (part: Part) => void;
   /** Start folded to its tab: phones. */
   readonly collapsed?: boolean;
 }
@@ -107,6 +107,8 @@ export interface Dock {
   setView(view: ViewName | null): void;
   /** Focus a part from outside (a click on the model): its row opens and scrolls into view. */
   focus(part: Part | null): void;
+  /** Unfold the panel, if it is folded to its tab. */
+  open(): void;
   readonly focused: Part | null;
   /** The key handler, for the page's window listener. True if the key was the dock's. */
   key(key: string): boolean;
@@ -117,11 +119,12 @@ export function buildDock(o: DockOptions): Dock {
   el.className = 'jf-dock';
   if (o.collapsed) el.dataset.collapsed = '';
 
-  const tab = button('', () => {
-    if ('collapsed' in el.dataset) delete el.dataset.collapsed;
+  const setOpen = (open: boolean): void => {
+    if (open) delete el.dataset.collapsed;
     else el.dataset.collapsed = '';
     syncTab();
-  });
+  };
+  const tab = button('', () => setOpen('collapsed' in el.dataset));
   tab.classList.add('jf-dock-tab');
   const syncTab = (): void => {
     const open = !('collapsed' in el.dataset);
@@ -143,7 +146,7 @@ export function buildDock(o: DockOptions): Dock {
     viewButtons.set(v, b);
     viewRow.appendChild(b);
   }
-  view.append(viewRow, note('Drag to orbit, scroll to zoom, right-drag to pan.'));
+  view.append(viewRow, note('Drag to orbit, scroll to zoom, right-drag to pan. Click a part to select it, double-click to look at it; the controls only work the machine.'));
 
   // Take apart.
   const apart = section('Take apart', ['E']);
@@ -267,17 +270,23 @@ export function buildDock(o: DockOptions): Dock {
           ev.textContent = `Evidence: ${part.extras.evidence}`;
           r.detail.appendChild(ev);
         }
-        const hide = button('Hide this part', () => {
+        // Looking is asked for, never a side effect of selecting: a click on the
+        // model that happened to be a press on a control used to fly the camera.
+        const actions = document.createElement('div');
+        actions.className = 'jf-row';
+        const look = button('Look at it', () => o.onLook(part));
+        const hide = button('Hide it', () => {
           o.visibility.hide(part.name);
           setFocus(null);
         });
+        look.classList.add('jf-small');
         hide.classList.add('jf-small');
-        r.detail.appendChild(hide);
+        actions.append(look, hide);
+        r.detail.appendChild(actions);
         r.detail.hidden = false;
         if (!fromDock) r.row.scrollIntoView({ block: 'nearest' });
       }
     }
-    o.onFocus(part);
   };
 
   o.exploder.onChange(syncExplode);
@@ -293,6 +302,7 @@ export function buildDock(o: DockOptions): Dock {
       syncView();
     },
     focus: (part) => setFocus(part),
+    open: () => setOpen(true),
     get focused() {
       return focused;
     },
