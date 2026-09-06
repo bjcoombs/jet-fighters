@@ -173,8 +173,11 @@ of the same unit, and it is in git history.
 One panel runs the page: **View** (front, back, inside; `F`, `B`, `I`), **Take apart** (a
 slider with detents at assembled, lid off and exploded; `E` steps through them, "Bare
 board" plays the board alone) and **Parts** (every labelled part, its visibility, and its
-evidence when clicked; `H` hides, `Esc` lets go). On a phone the four controls are also a
-bar along the bottom; `#touch` on the address shows it on a desktop.
+evidence when clicked; `H` hides, `Esc` lets go). Clicking a part on the model selects it
+the same way; a double-click, or "Look at it" in its row, brings the camera to it. The
+four controls only ever work the machine: pressing one never moves the camera. On a phone
+the four controls are also a bar along the bottom; `#touch` on the address shows it on a
+desktop.
 
 ## Running it, changing it, watching it without a browser
 

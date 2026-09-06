@@ -31,6 +31,9 @@ const CONTROL_EASE_MS = 90;
 
 const HINT_KEY = 'jf3d-hint-seen';
 
+/** From this width the dock opens by itself to show a part clicked on the model. */
+const WIDE_PX = 900;
+
 const app = document.querySelector<HTMLElement>('#app');
 if (app) {
   void start(app);
@@ -88,9 +91,7 @@ async function start(mount: HTMLElement): Promise<void> {
     // Folded until asked for: the page opens as the unit and nothing else.
     collapsed: true,
     onView: (view) => goToView(view),
-    onFocus: (part) => {
-      if (part) focusOn(part);
-    },
+    onLook: (part) => focusOn(part),
   });
   mount.append(dock.el, tooltip.el);
   // The dock's keys, beside the machine's: the input system takes its own and
@@ -170,11 +171,14 @@ async function start(mount: HTMLElement): Promise<void> {
   let active: ControlName | null = null;
 
   // A click is a press and release without much travel; anything longer is
-  // the orbit, and orbiting over a part must not select it.
+  // the orbit, and orbiting over a part must not select it. A press on one of
+  // the four controls is neither: it works the machine and nothing else - not
+  // a selection, not a camera move - so the hand on the controls and the hand
+  // on the model never fight.
   let pressAt: { x: number; y: number } | null = null;
   canvas.addEventListener('pointerdown', (e) => {
-    pressAt = { x: e.clientX, y: e.clientY };
     active = controlUnderPointer(e.clientX, e.clientY);
+    pressAt = active ? null : { x: e.clientX, y: e.clientY };
     if (!active) return;
     // OrbitControls listens on the same canvas; it checks this flag first.
     scene.controls.enabled = false;
@@ -229,6 +233,16 @@ async function start(mount: HTMLElement): Promise<void> {
     if (moved > 6) return;
     const hit = picker.pick(e.clientX, e.clientY);
     dock.focus(hit ? hit.part : null);
+    // Selecting shows the part's row; on a screen with room, the panel opens to
+    // show it. The camera stays where it is.
+    if (hit && !coarse && window.innerWidth >= WIDE_PX) dock.open();
+  });
+  // Looking closely is a double-click, or the row's button; never a click.
+  canvas.addEventListener('dblclick', (e) => {
+    const hit = picker.pick(e.clientX, e.clientY);
+    if (!hit || isControl(hit.part.name) || hit.part.name in CONTROL_UNDER) return;
+    dock.focus(hit.part);
+    focusOn(hit.part);
   });
 
   // Easing the camera: onto a part - target to its centre, distance to fit it,
