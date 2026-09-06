@@ -240,7 +240,8 @@ async function start(mount: HTMLElement): Promise<void> {
   // Looking closely is a double-click, or the row's button; never a click.
   canvas.addEventListener('dblclick', (e) => {
     const hit = picker.pick(e.clientX, e.clientY);
-    if (!hit || isControl(hit.part.name) || hit.part.name in CONTROL_UNDER) return;
+    // The same classification a press uses: a well round a control counts as it.
+    if (!hit || controlUnderPointer(e.clientX, e.clientY)) return;
     dock.focus(hit.part);
     focusOn(hit.part);
   });
