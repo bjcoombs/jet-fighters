@@ -123,7 +123,7 @@ the right wing's smooth strip **246.0-279.1**, its raised block **279.1-337.5**.
 | Tube glass | x 104.9-222.9, y 45.1-88.9 |
 | Tube face (printed segments) | x 109.4-215.0, y 50.7-79.9 |
 | TMS1370 | pins x 239.0-287.3, body y 61.1-79.1; body length 51.2 |
-| Battery box | x -0.8-44.2, y 48.8-140.9, against the left wall |
+| Battery box | x -0.8-61.2, y 48.8-140.9, against the left wall |
 | Resistor row | 17 resistors, x 115.0-221.8, y 20.7-35.3 |
 | Lever disc | centre (313.0, 33.0), radius 26.6, the pin protruding to x 334.1 |
 | Skill hub | centre (313.0, 134.0) |
@@ -183,6 +183,8 @@ which is how far a side view would be expected to move it.
 | Case corner radius | 2.5 | The wings' outer corners in plan, `case/front.jpg` at about 10.4 px/mm: the corner rounds over 25 px or so | 1 |
 | Block corner radius | 6 | The raised stippled blocks' corners in plan, `case/front.jpg`; visibly rounder than the case's own | 2 |
 | Edge fillet | 1.2 | The highlight band along the front face's edge in `case/front.jpg` is about 12 px wide; `end-left.jpg` shows the same soft profile | 0.5 |
+| Battery bay width | 62 | Four AA cells side by side plus the walls; the board's left end is hidden under the bay in `board-L1001568.jpg`, so the 44 mm read was its visible edge. Two wired terminals at the top and two link tabs at the bottom are four cells alternating in series | 3 |
+| AA cell | 14.5 x 50.5 | IEC AA, four of them on the owner's testimony; copper top, black body, no maker's mark | 0 |
 | Tube y on the board | board reads shifted -4.8 | The board photograph reads the tube 5 mm low against where the scope circle registers the segments; the shroud, glass and face move together so the face is centred on the phosphor. The x reads agree with the atlas to 2 mm and are unchanged | 3 |
 
 The assembled unit, then, is about 340 x 145 x 58 mm at the module and 52 mm at the

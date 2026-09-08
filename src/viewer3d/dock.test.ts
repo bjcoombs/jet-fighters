@@ -38,6 +38,10 @@ describe('groups', () => {
     expect(groupOf('pcb')).toBe('Board');
     expect(groupOf('tms1370')).toBe('Board');
     expect(groupOf('electrolytics')).toBe('Board');
+    expect(groupOf('battery_2')).toBe('Power');
+    expect(groupOf('battery_tape')).toBe('Power');
+    expect(groupOf('battery_box')).toBe('Power');
+    expect(groupOf('dc_jack')).toBe('Power');
   });
 
   it('lists groups in their order, parts in the given order, and leaves the root out', () => {
@@ -47,6 +51,7 @@ describe('groups', () => {
     expect(g.get('Board')).toEqual(['tms1370', 'pcb']);
     expect(g.get('Tube')).toEqual(['window']);
     expect(g.get('Controls')).toEqual(['fire_cap']);
+    expect(g.get('Power')).toEqual([]);
   });
 });
 
