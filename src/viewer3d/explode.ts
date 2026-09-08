@@ -84,6 +84,8 @@ export interface Exploder {
   setOffset(name: string, offset: Vector3 | null): void;
   /** The slider to `amount`, 0..1, every part to its factor for it, over `EASE_MS`. */
   setAmount(amount: number): void;
+  /** The slider to `amount` at once, no easing: the opening sequence drives it frame by frame. */
+  jump(amount: number): void;
   /** A named arrangement: the slider to its detent. */
   setPreset(preset: Preset): void;
   /** The slider's value. */
@@ -126,6 +128,18 @@ export function createExploder(parts: ReadonlyMap<string, Part>): Exploder {
     for (const l of listeners) l();
   };
 
+  const jump = (next: number): void => {
+    const clamped = Math.min(1, Math.max(0, next));
+    const changed = clamped !== amount;
+    amount = clamped;
+    for (const m of motions) {
+      m.from = m.current;
+      m.to = sliderFactor(amount, m.part.name);
+      m.startMs = -Infinity;
+    }
+    if (changed) for (const l of listeners) l();
+  };
+
   const update = (nowMs: number): void => {
     lastNow = nowMs;
     for (const m of motions) {
@@ -146,6 +160,7 @@ export function createExploder(parts: ReadonlyMap<string, Part>): Exploder {
       else offsets.delete(name);
     },
     setAmount,
+    jump,
     setPreset: (preset) => setAmount(PRESET_AMOUNT[preset]),
     get amount() {
       return amount;

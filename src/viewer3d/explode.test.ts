@@ -114,6 +114,22 @@ describe('createExploder', () => {
     expect(ex.amount).toBe(0.5);
   });
 
+  it('jumps every part to its place at once', () => {
+    const shell = part('front_shell', [0, 0.12, 0]);
+    const chip = part('tms1370', [0, 0.03, 0]);
+    const ex = createExploder(new Map([['front_shell', shell], ['tms1370', chip]]));
+    ex.update(0);
+    ex.jump(1);
+    ex.update(1);
+    expect(shell.object.position.y).toBeCloseTo(0.14, 9);
+    expect(chip.object.position.y).toBeCloseTo(0.05, 9);
+    expect(ex.amount).toBe(1);
+    ex.jump(0.5);
+    ex.update(2);
+    expect(shell.object.position.y).toBeCloseTo(0.14, 9);
+    expect(chip.object.position.y).toBeCloseTo(0.02, 9);
+  });
+
   it('tells a listener when the amount moves, and not when it does not', () => {
     const ex = createExploder(new Map([['front_shell', part('front_shell', [0, 0.12, 0])]]));
     let calls = 0;

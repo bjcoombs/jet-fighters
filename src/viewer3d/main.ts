@@ -15,6 +15,7 @@ import { createHelpOverlay, createInputSystem } from '../input/index.js';
 import { CONTROL_UNDER, PIN_REST_LOCAL_Z, SKILL_HUB_LOCAL, controlAtFacePoint, inputForPress, isControl, laneFromSlotOffset, poseFor, type ControlName, type ControlState } from './controls3d.js';
 import { buildDock, titleOf } from './dock.js';
 import { createExploder } from './explode.js';
+import { INTRO, introAt } from './intro.js';
 import { buildTooltip } from './panel.js';
 import { createPicker } from './picking.js';
 import { createConsoleScene, type Part, type ViewName } from './scene.js';
@@ -22,7 +23,7 @@ import { injectStyles } from './styles.js';
 import { TOUCH_BAR_HEIGHT_PX, buildTouchBar, isCoarsePointer } from './touch-bar.js';
 import { createTubeTextures } from './tube-texture.js';
 import { createVisibility } from './visibility.js';
-import { Box3, Mesh, Plane, Quaternion, Raycaster, Vector2, Vector3 } from 'three';
+import { Box3, Mesh, MeshBasicMaterial, Plane, Quaternion, Raycaster, Vector2, Vector3 } from 'three';
 
 const MODEL_URL = `${import.meta.env.BASE_URL}models/console.glb`;
 
@@ -30,6 +31,9 @@ const MODEL_URL = `${import.meta.env.BASE_URL}models/console.glb`;
 const CONTROL_EASE_MS = 90;
 
 const HINT_KEY = 'jf3d-hint-seen';
+
+/** The orbit's closest approach, as scene.ts sets it; the opening lowers it and puts it back. */
+const ORBIT_MIN_DISTANCE = 0.12;
 
 /** From this width the dock opens by itself to show a part clicked on the model. */
 const WIDE_PX = 900;
@@ -44,8 +48,16 @@ async function start(mount: HTMLElement): Promise<void> {
   const canvas = document.createElement('canvas');
   mount.appendChild(canvas);
 
-  // The machine, dark, painting an offscreen canvas the model will wear.
-  const textures = createTubeTextures();
+  // Fingers: a control bar along the bottom, and wider targets on the model.
+  // `#touch` in the URL shows the bar on any device, for trying it.
+  const coarse = isCoarsePointer() || window.location.hash.includes('touch');
+
+  // The machine, dark, painting an offscreen canvas the model will wear. On a
+  // desktop the canvas is drawn at eight backing pixels a renderer unit, which
+  // is what lets the control grid's honeycomb resolve (src/machine/tube/mesh.ts
+  // fades it in above three pixels a period); a phone keeps four, for its fill
+  // rate, and does without the opening that shows it.
+  const textures = createTubeTextures(coarse ? 4 : 8);
   const driver = createDriver({ image: { rom, opla }, renderer: textures.renderer });
   createInputSystem(driver.apply);
   mount.appendChild(buildMuteToggle(driver));
@@ -72,9 +84,6 @@ async function start(mount: HTMLElement): Promise<void> {
   }
   status.remove();
 
-  // Fingers: a control bar along the bottom, and wider targets on the model.
-  // `#touch` in the URL shows the bar on any device, for trying it.
-  const coarse = isCoarsePointer() || window.location.hash.includes('touch');
   const slackMm = coarse ? 6 : 0;
   mount.style.setProperty('--jf-bottom', `${coarse ? TOUCH_BAR_HEIGHT_PX + 8 : 12}px`);
 
@@ -110,9 +119,11 @@ async function start(mount: HTMLElement): Promise<void> {
   // A hand on the model unmarks the view.
   scene.controls.addEventListener('start', () => dock.setView(null));
 
-  // One line for the first visit, gone at the first touch.
-  const hint = buildHint();
-  if (hint) mount.appendChild(hint);
+  // One line for the first visit, gone at the first touch; after the opening.
+  const showHint = (): void => {
+    const hint = buildHint();
+    if (hint) mount.appendChild(hint);
+  };
 
   // The flag pivots on its hub: move the geometry so the part's origin is there.
   // The part is a mesh with two materials (the blue flag, the steel screw), which
@@ -291,6 +302,72 @@ async function start(mount: HTMLElement): Promise<void> {
   };
   dock.setView('front');
 
+  // The opening: from black, the tube close enough to see the grid's honeycomb
+  // over the ghost segments, the board's parts gathering as the camera pulls
+  // back over the player's edge - the one way out that never crosses the lifted
+  // lid - and the lid seating as the camera swings up to the front. Skipped on
+  // a phone (the texture there cannot show the honeycomb) and for anyone who
+  // asked for less motion; any press or key ends it early.
+  const reducedMotion = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let intro: { start: number; swung: boolean; faceCentre: Vector3; dir: Vector3; endTarget: Vector3; endDist: number; veil: HTMLElement } | null = null;
+  // The tube face is drawn at twice unity (scene.ts), for the smoked window.
+  // With the camera on the bare glass in the opening it is lifted further, so
+  // the ghost segments and the grid read, and eased back as the camera leaves.
+  const faceMaterial = ((): MeshBasicMaterial | null => {
+    const face = scene.parts.get('tube_face');
+    return face && face.object instanceof Mesh && face.object.material instanceof MeshBasicMaterial ? face.object.material : null;
+  })();
+  const FACE_EXPOSURE = 2;
+  const OPENING_EXPOSURE = 7;
+  // A press or a key during the opening ends it and does nothing else: taken in
+  // the capture phase and stopped there, so it neither fires the machine nor
+  // presses a modelled control on the way through.
+  const skipIntro = (event: Event): void => {
+    if (!intro) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    endIntro();
+  };
+  const endIntro = (): void => {
+    if (!intro) return;
+    window.removeEventListener('pointerdown', skipIntro, true);
+    window.removeEventListener('keydown', skipIntro, true);
+    intro.veil.remove();
+    faceMaterial?.color.setScalar(FACE_EXPOSURE);
+    intro = null;
+    focus = null;
+    exploder.jump(0);
+    scene.frameFront();
+    scene.controls.minDistance = ORBIT_MIN_DISTANCE;
+    scene.controls.enabled = true;
+    dock.setView('front');
+    showHint();
+  };
+  if (coarse || reducedMotion) {
+    showHint();
+  } else {
+    const veil = document.createElement('div');
+    veil.className = 'jf-veil';
+    mount.appendChild(veil);
+    exploder.jump(1);
+    exploder.update(0);
+    scene.model.updateMatrixWorld(true);
+    const face = scene.parts.get('tube_face');
+    const faceCentre = face ? new Box3().setFromObject(face.object).getCenter(new Vector3()) : scene.controls.target.clone();
+    const inside = scene.poseFor('inside');
+    const dir = inside.position.clone().sub(inside.target).normalize();
+    intro = { start: -1, swung: false, faceCentre, dir, endTarget: inside.target, endDist: inside.position.distanceTo(inside.target), veil };
+    scene.controls.enabled = false;
+    // The orbit's floor of 120 mm would hold the camera off the tube; the
+    // opening stands 22 mm from it. Restored when the opening ends.
+    scene.controls.minDistance = INTRO.startDistance / 2;
+    scene.controls.target.copy(faceCentre);
+    scene.camera.position.copy(faceCentre).addScaledVector(dir, INTRO.startDistance);
+    scene.camera.lookAt(faceCentre);
+    window.addEventListener('pointerdown', skipIntro, { capture: true });
+    window.addEventListener('keydown', skipIntro, { capture: true });
+  }
+
   // The controls' pose is the board's own reading of them, so the keyboard
   // moves the modelled parts as much as the pointer does. Each eases to its
   // place over a few frames: the cap sinks, the slide travels, the flag turns.
@@ -314,6 +391,26 @@ async function start(mount: HTMLElement): Promise<void> {
       cur.rotationY += (pose[name].rotationY - cur.rotationY) * k;
       exploder.setOffset(name, cur.offset.lengthSq() > 1e-9 ? cur.offset : null);
       part.object.rotation.y = cur.rotationY;
+    }
+    if (intro) {
+      if (intro.start < 0) {
+        intro.start = now;
+        // The veil lifts over the hold, by the stylesheet's transition.
+        requestAnimationFrame(() => intro && (intro.veil.style.opacity = '0'));
+      }
+      const at = introAt(now - intro.start);
+      exploder.jump(at.amount);
+      faceMaterial?.color.setScalar(OPENING_EXPOSURE + (FACE_EXPOSURE - OPENING_EXPOSURE) * at.pull);
+      if (!at.seating) {
+        scene.controls.target.lerpVectors(intro.faceCentre, intro.endTarget, at.pull);
+        const dist = INTRO.startDistance + (intro.endDist - INTRO.startDistance) * at.pull;
+        scene.camera.position.copy(scene.controls.target).addScaledVector(intro.dir, dist);
+      } else if (!intro.swung) {
+        intro.swung = true;
+        const front = scene.poseFor('front');
+        flyTo(front.position, front.target);
+      }
+      if (at.done) endIntro();
     }
     exploder.update(now);
     if (focus) {

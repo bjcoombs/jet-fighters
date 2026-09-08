@@ -129,6 +129,15 @@ const CSS = `
   font: var(--jf-fs) var(--jf-font);
   white-space: nowrap;
 }
+#app .jf-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  background: #000;
+  opacity: 1;
+  pointer-events: none;
+  transition: opacity 1.1s ease-out;
+}
 #app .jf-hint {
   position: absolute;
   left: 50%;
