@@ -136,6 +136,23 @@ Settled here so that no task re-opens them.
    Widening a bound in the commit that failed to hit it is the failure this closes. The
    rule covers `owner-entity-model.md`'s 60-107 s regime and `playability-audit.md`'s
    policy set as well, which R5 is checked against.
+9. **Three readiness findings are rejected, and the reasons are here rather than in a
+   review thread nobody will find.**
+   - *"The kills ladder must keep some range at skill 3."* The countdown's unit is sixteen
+     sweeps, so at 15.24 ms a sweep the rungs near the bottom are 244 and 488 ms nominal.
+     The band the skill-3 clip supports is 267-467 ms and it contains exactly **one** of
+     them. A flat skill-3 ladder is therefore what the measurement implies, not a
+     shortcut around it, and the clip agrees from the other side: its 267 ms reading is at
+     score 0-1 and its 467 ms at score 20, so if anything the unit was faster early. There
+     is no measured descent at skill 3 to reproduce.
+   - *"A claim that the timing audit has a row per file can only be falsified by reading
+     every file."* Reading them is what the audit is; that is the work, and its extent is
+     bounded by the grep rather than by judgement. The reviewer's cost is one `rg` and a
+     row count.
+   - *"The missile's arming sites cannot be enumerated by a cold reader."* They can, and
+     R1 now names them. There are three, not the two the review assumed: the arm in
+     `fire_missile` on the rank-empty branch, the reload inside the missile walk, and the
+     initial wind in `reset`. Enumerating them is what turned the third one up.
 
 ## Requirements
 
@@ -148,8 +165,10 @@ Sizing is by complexity in story points, per the Fibonacci scale.
 
 Acceptance:
 
-- All three load sites (`fire_missile`'s rank-empty arm, the reload in the missile walk,
-  and the reset routine) use the equates and not literals.
+- The three sites that load the missile countdown - the arm in `fire_missile` on the
+  branch taken when the whole rank was empty, the reload inside the missile walk, and the
+  initial wind in `reset` - load the equates by name and carry no numeric literal. They are
+  named here so a reviewer can check them rather than search for them.
 - `tools/probe/drives/missile-transit.ts` reports the ROM and the recording agreeing
   rather than "Nx faster than the ROM", and its `ROM_SECONDS_PER_COLUMN` is derived - read
   from the assembled symbols or computed from the equates and the sweep length. A typed
@@ -169,8 +188,10 @@ Acceptance:
   events is re-checked against the new step. `docs/evidence/open-questions.md` section
   11a names that class. The audit lives at `docs/evidence/timing-audit.md` and its
   membership is a grep, not a judgement: one row per file that
-  `rg -lF '.step(' tools/probe --glob '*.ts'` returns, `step` being the cycle-budget
-  method both `Tms1370Machine` and `Board` expose. That is 22 files today. Every one is a
+  `rg -lF '.step(' tools/probe --glob '*.ts'` returns **when run at HEAD**, `step` being the
+  cycle-budget method both `Tms1370Machine` and `Board` expose. It returns 22 files at
+  BASE, which is context rather than the number to hit: a requirement that adds a drive
+  owes a row for it. Every one is a
   row, each recording whether its assertions count a game event - kills, score, launches,
   march steps or game length - and where they do, whether it was checked or moved and
   against what. R1 and R6 share the table; there is one, not two, and R6's half is the
@@ -189,9 +210,14 @@ Acceptance:
 - Scope containment: `git diff BASE HEAD` is empty under
   `src/viewer3d/`, `public/models/`, `tools/model/`, `tools/trace/`,
   `src/machine/tube/atlas.json` and `tools/tmsasm/`. Those are cut below, and the atlas and
-  the model have regeneration rules a run under pace pressure could bypass quietly. BASE is
-  the merge commit of the PR that lands this PRD, resolved at verification time rather than
-  written down as a sha here, so a commit landing on `main` in between moves it too.
+  the model have regeneration rules a run under pace pressure could bypass quietly.
+
+BASE is the merge commit of the PR that lands this PRD, resolved once at the run's start
+with `git log --format='%H %s' main | rg ' \(#194\)$' | tail -1` and fixed for the run.
+A squash merge's subject ends with the pull request number, so the pattern is anchored and
+a later commit mentioning #194 in its body cannot match; `tail -1` takes the oldest match,
+which is the merge itself. `docs/contract/v4.contract.md` says the same thing in the same
+words, and this is the one definition.
 
 ### R2 - The march note lasts as long as the notes that blank the real display (5 points)
 
@@ -217,6 +243,10 @@ Acceptance:
   reaches it without leaning on R3's cadence change. The remaining gap to the 14-17%
   `vfd-appearance.md` section 5 measures is stated in the document with what still accounts
   for it. A floor that falls fails this requirement whatever the measured fraction does.
+  There is a ceiling too: the sound-attributable fraction does not exceed the upper figure
+  `vfd-appearance.md` section 5 holds current (0.17 at the time of writing). A machine
+  darker than the one it copies is as wrong as one brighter, and overshooting is the
+  cheapest way to buy a floor.
 - Each floor's new value carries the measurement that justifies it and the run that
   produced it, in the shape `docs/evidence/cadence-rederivation.md` uses.
 - `tools/probe/drives/march-tone-identity.ts` still separates section 16's short
@@ -282,20 +312,26 @@ Acceptance:
   skill, the highest kills count it reached, and the floors are numbers rather than its own
   choice: kills 0 through at least 5 at skill 3, because the defect sits at 4 and the step
   back up sits at 5, and 0 through at least 3 at skills 1 and 2.
-- `STEP_HI` is never written below `STEP_HI_MIN` at any (skill, kills) the game reaches,
-  read out of RAM rather than computed.
-- The measured wall-clock step interval is non-increasing as kills rise, at every skill.
-  On `main` a fifth kill at skill 3 makes the squadron slower than a fourth; after this it
-  does not.
+- **The falsifier is the descent, not the floor.** For every consecutive pair of kills
+  counts at every skill, the measured step interval at the higher count is less than or
+  equal to the interval at the lower. The pair the defect lives on is skill 3, kills 4
+  against kills 5: `march-wall-clock.ts` measures kills 4 at 321 ms, and a fifth kill
+  returns `STEP_HI` to the 32-sweep rung, whose measured interval at that skill is 606 ms.
+  With `STEP_HI_MIN` at 0, "nothing is written below the floor" is true of the defective
+  build too, so it cannot be the test.
+- The structural check is secondary and is made as well, not instead: `step_reload`'s floor
+  branch loads `STEP_HI_MIN` by name and carries no numeric literal at that site.
 - `tools/probe/march-cadence.test.ts`'s `it.fails('floors STEP_HI at STEP_HI_MIN when the
   rung lands on zero')` becomes an ordinary passing test, and its companion vacuity guard
   ("reaches the rung whose arithmetic lands on zero") is still green, so the assertion is
   still measuring a rung the machine reaches by its own rules with nothing poked.
-- `tools/probe/drives/march-wall-clock.test.ts`'s paired assertion, that the sub-floor
-  rung is still reachable, is inverted rather than deleted, so the pair keeps its opposite
-  polarity.
-- The file's own header sentence calling sixteen sweeps "a cadence no skill setting and no
-  score can produce" is corrected to whatever the ladder can now produce.
+- `tools/probe/drives/march-wall-clock.test.ts`'s "reaches a rung below the floor its own
+  constants document" is inverted rather than deleted: a test of the same shape asserting
+  the opposite, under a title that says so, so an inversion is distinguishable from a
+  removal by reading the file.
+- `tools/probe/march-cadence.test.ts`'s own header sentence, calling sixteen sweeps "a
+  cadence no skill setting and no score can produce", is corrected in that file to whatever
+  the ladder can now produce.
 - R3 lands first. This requirement raises the game's slowest rung, and doing it before the
   dial is re-derived would slow the game at exactly the point the owner says it is already
   too slow.
@@ -320,11 +356,18 @@ Acceptance:
 - **Not unwinnable**: at least one policy wins at least once at skill 3.
 - **Not trivially winnable**: no policy wins every one of its ten games at any skill, and
   at least one (policy, skill) pair reaches a game over.
-- The drive is deterministic given its input schedule - this machine has no random source
-  outside `NIB_ENT`, which is stirred by the fire presses the schedule itself dictates - so
-  the schedule is committed with the drive and every recorded figure is reproducible by
-  re-running it. The recorded section is the authority only while a cold re-run agrees with
-  it.
+- The policy implementations are byte-identical to BASE except where the document records
+  a change and why. `git diff BASE HEAD` on the drive shows the schedule and the reporting
+  extended and the policies untouched, so "the same policies at a new speed" is a fact
+  rather than a claim: a policy quietly made worse moves the win rate as surely as the ROM
+  does.
+- The ten games in a pair are ten distinct schedules, not one schedule run ten times, and
+  the drive states how they differ. A per-game start offset in sweeps is the intended
+  shape, because the offset is what moves `NIB_ENT` and with it the entry positions.
+- The drive is deterministic given its schedule - this machine has no random source outside
+  `NIB_ENT`, which the schedule's own fire presses stir, and emulated time is exact - so the
+  schedule is committed and the re-run tolerance is exact equality, not a band. The recorded
+  section is the authority only while a cold re-run reproduces it exactly.
 - **Not trivially fast**: at skill 3, the median time to win across every winning game is
   strictly greater than the upper end of the regime `docs/evidence/owner-entity-model.md`
   names as the trivial one - 107 s at the time of writing, read from the document at
@@ -364,9 +407,10 @@ Acceptance:
 - `tools/probe/drives/entry-onto-missile.ts` is re-run and its census in
   `open-questions.md` section 14 replaced with the new figures. The section is rewritten
   from open to settled, naming the decision and its cost.
-- The page budget is stated before and after - the word total and the fullest pages at
-  BASE beside the same figures at HEAD - so a collision test that fitted by a single word is
-  visible rather than inferred. `P_SPAWN` is at 63 of 64 words and
+- The page budget is stated before and after - the word total and the fullest pages at BASE
+  beside the same figures at HEAD, both read from the assembler listing - in
+  `docs/evidence/open-questions.md`'s rewritten section 14, beside the decision that spent
+  the words. A PR body alone does not do: the budget has to survive the merge. `P_SPAWN` is at 63 of 64 words and
   `P_STROBE` at 64 of 64 on the current listing; the program is at 1655 of 2048 words with
   32 of 32 pages used, so the site the check lands on has to be chosen against the listing
   rather than found by trying.
