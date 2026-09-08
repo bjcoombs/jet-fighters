@@ -828,6 +828,24 @@
       "source": "back.jpg, the four screw holes inboard of the panels, read against the case's sides and the module's top and bottom",
       "note": "Face mm, seen from the front (x runs as on the front)."
     },
+    "shape.block_corner_radius": {
+      "value": 6.0,
+      "kind": "estimated",
+      "basis": "The raised stippled blocks' corners in plan, case/front.jpg; visibly rounder than the case's own corners.",
+      "bound_mm": 2.0
+    },
+    "shape.corner_radius": {
+      "value": 2.5,
+      "kind": "estimated",
+      "basis": "The wings' outer corners in plan: in case/front.jpg at about 10.4 px/mm the corner rounds over 25 px or so.",
+      "bound_mm": 1.0
+    },
+    "shape.edge_radius": {
+      "value": 1.2,
+      "kind": "estimated",
+      "basis": "The fillet along the shells' outer edges: the highlight band on the front face's edge in case/front.jpg is about 12 px wide, and end-left.jpg shows the same soft profile.",
+      "bound_mm": 0.5
+    },
     "shape.end_grip_ribs": {
       "value": 6.0,
       "kind": "estimated",

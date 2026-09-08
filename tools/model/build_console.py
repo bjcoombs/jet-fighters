@@ -64,6 +64,9 @@ Z_BOARD_BOTTOM = Z_BOARD_TOP - D["pcb.thickness"]
 Z_WINDOW = Z_MODULE - D["depth.window_recess"]
 Z_CHANNEL = Z_WING - 5.0  # the ribbed channel floor between wing and module; estimated
 SHOULDER = D["shape.shoulder"]
+CORNER_R = D["shape.corner_radius"]        # the wings' outer corners, in plan
+BLOCK_R = D["shape.block_corner_radius"]   # the raised blocks' corners, in plan
+EDGE_R = D["shape.edge_radius"]            # the fillet along the shells' edges
 BACK_PANEL_W = D["shape.back_panel_width"]
 BACK_PANEL_RAISE = D["shape.back_panel_raise"]
 Z_BACK_FACE = -Z_BACK - BACK_PANEL_RAISE  # the wings' raised panels; the module's back is at -Z_BACK
@@ -425,22 +428,41 @@ def shade_smooth(obj: bpy.types.Object, angle_deg: float = 35.0) -> None:
 # --------------------------------------------------------------------------------------
 
 
+def arc(cx: float, cy: float, r: float, a0: float, a1: float, n: int = 6) -> list[tuple[float, float]]:
+    """Points along a corner's arc in face coordinates (y down), from angle `a0` to
+    `a1` in degrees, `n` segments. A zero radius is the corner point itself."""
+    if r <= 0:
+        return [(cx, cy)]
+    return [(cx + r * math.cos(math.radians(a0 + (a1 - a0) * k / n)), cy + r * math.sin(math.radians(a0 + (a1 - a0) * k / n))) for k in range(n + 1)]
+
+
+def rounded_rect_points(x0: float, x1: float, yt: float, yb: float, r: float) -> list[tuple[float, float]]:
+    """A rectangle in face coordinates with its four corners rounded by `r`, clockwise
+    from the top-left, mapped to the model's frame."""
+    r = max(0.0, min(r, (x1 - x0) / 2, (yb - yt) / 2))
+    face = [*arc(x0 + r, yt + r, r, 180, 270), *arc(x1 - r, yt + r, r, 270, 360), *arc(x1 - r, yb - r, r, 0, 90), *arc(x0 + r, yb - r, r, 90, 180)]
+    return [(fx(x), fy(y)) for x, y in face]
+
+
 def outline_points(inset: float = 0.0, chamfer: float | None = None) -> list[tuple[float, float]]:
     """The case's plan outline as one polygon, clockwise from the top-left of the left
-    wing: two wings hanging from WING_TOP to WING_BOTTOM, the module between them
-    running the full module height, its four corners chamfered by `chamfer` where
-    they meet the wings. `inset` shrinks it uniformly, for a cavity.
+    wing: two wings hanging from WING_TOP to WING_BOTTOM, their outer corners rounded
+    by the case's corner radius, the module between them running the full module
+    height, its four corners chamfered by `chamfer` where they meet the wings.
+    `inset` shrinks it uniformly, for a cavity.
     """
     i = inset
     c = (SHOULDER if chamfer is None else chamfer)
     c = max(0.0, c - i * 1.5)
+    r = max(0.0, CORNER_R - i)
     x0, x1 = 0 + i, W - i
     m0, m1 = MODULE_X[0] + i, MODULE_X[1] - i
     wt, wb = WING_TOP + i, WING_BOTTOM - i
     mt, mb = 0 + i, H - i
     face = [
-        (x0, wt), (m0, wt), (m0, mt + c), (m0 + c, mt), (m1 - c, mt), (m1, mt + c), (m1, wt),
-        (x1, wt), (x1, wb), (m1, wb), (m1, mb - c), (m1 - c, mb), (m0 + c, mb), (m0, mb - c), (m0, wb), (x0, wb),
+        *arc(x0 + r, wt + r, r, 180, 270), (m0, wt), (m0, mt + c), (m0 + c, mt), (m1 - c, mt), (m1, mt + c), (m1, wt),
+        *arc(x1 - r, wt + r, r, 270, 360), *arc(x1 - r, wb - r, r, 0, 90), (m1, wb), (m1, mb - c), (m1 - c, mb), (m0 + c, mb), (m0, mb - c), (m0, wb),
+        *arc(x0 + r, wb - r, r, 90, 180),
     ]
     return [(fx(x), fy(y)) for x, y in face]
 
@@ -529,8 +551,8 @@ def build_front_shell() -> bpy.types.Object:
     # Raised, stippled blocks on the wings; the moulded 1/2/3 arc sits on the right one.
     stip = MATERIALS["red_stipple"]
     blocks = [
-        box("stipple_l", fx(LEFT_BLOCK[0]), fx(LEFT_BLOCK[1]), fy(WING_BOTTOM - 1), fy(WING_TOP + 1), Z_WING - 0.5, Z_WING + STIPPLE_RAISE, stip),
-        box("stipple_r", fx(RIGHT_BLOCK[0]), fx(RIGHT_BLOCK[1]), fy(WING_BOTTOM - 1), fy(WING_TOP + 1), Z_WING - 0.5, Z_WING + STIPPLE_RAISE, stip),
+        prism("stipple_l", rounded_rect_points(LEFT_BLOCK[0], LEFT_BLOCK[1], WING_TOP + 1, WING_BOTTOM - 1, BLOCK_R), Z_WING - 0.5, Z_WING + STIPPLE_RAISE, stip),
+        prism("stipple_r", rounded_rect_points(RIGHT_BLOCK[0], RIGHT_BLOCK[1], WING_TOP + 1, WING_BOTTOM - 1, BLOCK_R), Z_WING - 0.5, Z_WING + STIPPLE_RAISE, stip),
     ]
     for b in blocks:
         # The blocks carry the same openings, so cut them with the same cutters.
@@ -562,7 +584,7 @@ def build_front_shell() -> bpy.types.Object:
     off = emboss("mould_off", "OFF", 3.0, fx(p_on[0] + 13.5), fy(p_on[1] + 17.0), Z_WING, red, rotation_z=math.radians(90))
     join(shell, *blocks, *ribs, tab_obj, *marks, on, off)
     shade_smooth(shell)
-    bevel(shell)
+    bevel(shell, width=EDGE_R, segments=3)
     face_uvs(shell)
     extras(shell, "Front shell: one red ABS moulding - two wings and the raised scope module, the ribbed channels between them, and the openings for the four controls.", "device-front-lit.jpg, device-front-gameplay.jpg, clip.mov", (0, 0, 120))
     return shell
@@ -749,7 +771,7 @@ def build_back_shell() -> bpy.types.Object:
     intersect(ribs, clip)
     join(shell, ribs, label, made)
     shade_smooth(shell)
-    bevel(shell)
+    bevel(shell, width=EDGE_R, segments=3)
     face_uvs(shell)
     extras(shell, "Back shell: the same outline, moulded with diagonal ribs, the battery door opening and the instruction label's recess. The board sits on its bosses.", "back-instructions-label.jpg, board-L1001568.jpg", (0, 0, -80))
     return shell
