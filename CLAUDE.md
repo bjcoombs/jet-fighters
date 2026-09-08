@@ -148,8 +148,9 @@ The rules that keep it honest:
 - Base branch: `main`
 - Required approvals: 0 (solo-maintainer repo - merge with `--admin` once required checks are green)
 - Markdown-only approvals: 0
-- CI patterns: `ci` workflow (lint + test + build) required; `pages` deploy runs on main only
+- CI patterns: `ci` workflow (lint + test + build) required; `pages` deploy runs on main only. A CodeRabbit check that reports SUCCESS while its only comment says "review limit reached" counts as not reviewed, not as a passing review; do not merge an AI-authored docs PR on that signal alone (open-questions.md section 4 records why).
 - Bot reviewer rules: none
+- Retro log: `~/.claude/projects/-Users-ben-dev-github-com-bjcoombs-jet-fighters/memory/marathon-retros.md` (path is outside the repo, in the project memory directory; the lead reads its Template Changes table before spawning and appends each run's retrospective after completion)
 
 ### Two things that have cost this project a red `main`
 
