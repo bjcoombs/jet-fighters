@@ -903,6 +903,89 @@ v2 document with its own marker and this is one video-side reading - but it shou
 be quoted as independent corroboration of the 205 ms row, because it is downstream of
 it.
 
+## The squadron's row changes, measured
+
+**Measured 2026-09-08 on `~/Downloads/'jetfighers video.mov'`, the owner's skill-3
+clip, 697 frames at 30 fps.** The run that produced every figure below:
+
+```
+python3 tools/video/clip.py ~/Downloads/'jetfighers video.mov' /tmp/jf
+python3 tools/video/rows.py /tmp/jf
+```
+
+The clip is not committed and is referenced by path, as `IMG_6113.mov` is.
+
+### Why a new instrument was needed for this row
+
+The owner, 2026-08-25 (`docs/evidence/owner-entity-model.md` point 4): "at most two
+jets approach at once and they change row" - while marching, not only on entry.
+Nothing already in this repository could see that, and the two reasons are separate:
+
+| Instrument | Why it is blind to a row change |
+| --- | --- |
+| `assets/reference/skill3-video-cells.csv` and every drive that reads it | `tools/video/cells.py` isolates **cyan**. The jets are red. |
+| `tools/video/sprites.py`'s linker, which `measure.py` drives | Links with `max_lane_drift = 8.0` px against a **21 px** lane pitch, so a track that changed row is broken in two and each half read as a plane that held one row. |
+
+`tools/video/rows.py` reads the red channel and does not link at all: it integrates a
+box at each (row, grid) of the fitted lattice and calls a lit cell going dark beside a
+neighbour lighting an event. Nothing decides which plane is which, so nothing can
+invent a track; what it can still do is find adjacency by chance, and that is what its
+control measures.
+
+### What the clip holds
+
+337 of the 697 frames have the tube lit - the rest are the blanking a note causes, and
+carry no measurement. In those,
+
+| | count |
+| --- | --- |
+| row changes (a lit cell moving one row, its grid held) | **13** |
+| the same detector on cells rolled to independent phases, 200 trials | **1.6 +- 1.3** |
+| z | **+8.6** |
+| column steps, for scale, over the same frames | 7 |
+
+The control keeps every cell's lit fraction and run lengths and destroys only the
+alignment between cells, so it is the count adjacency alone produces. 13 against 1.6
+is not adjacency.
+
+### The pattern
+
+| | reading |
+| --- | --- |
+| direction | +1 x8, -1 x5 |
+| wraps (0 to 2 or 2 to 0) | **0 of 13** |
+| size of a change | one row, every time |
+| grid it happened on | 1 x0, 2 x6, 3 x2, 4 x4, 5 x1 |
+| pair of rows exchanged | 0<->1 x6, 1<->2 x7 |
+| change frames that moved both planes | 1 of 12 |
+| between row changes | 300, 333, 367, 433, 633, 867, 967, 1467, 2600, 4900 ms |
+| between column steps, same clip | 267, 467, 1133, 1533, 1833, 7900 ms |
+
+**What this settles.**
+
+- The row moves **while the grid is held**, so it is the march and not the entry.
+- **A `+1 mod 3` rotation is rejected.** It wraps about a third of its changes and
+  none of 13 wrapped; (2/3)^13 = 0.005. The rule turns round at the edges.
+- Changes fall at **every distance** from the launcher, so this is not something that
+  happens on arrival, and a rule gated on one particular grid is a reading of
+  convenience rather than of the recording.
+- They fall on the squadron-step grid: the short gaps between changes, 300-433 ms, sit
+  beside 267-467 ms between column steps in the same stretch.
+- **Planes change independently.** One frame of the twelve moved both, and the clip
+  has a plane holding its row through a step on which the other moved (f72 and f80).
+
+**What it does not settle**, and the ROM says so at the site rather than burying it:
+
+- *which* steps a plane changes on. The clip has steps that moved a column and not a
+  row and steps that moved a row and not a column, which fits a rule where the two
+  alternate as well as one where the row change is gated on position.
+- *which* pair of rows a change is between. 6 against 7 does not separate them.
+
+`asm/jetfighter.asm`'s `jm_row` changes the row on the one step that carries a plane
+off grid 3, exchanging the top and middle rows and leaving the bottom row where it is.
+Its header sets out why that gate and that pair, out of the several this measurement
+permits, and `tools/probe/mid-march-row.test.ts` is what holds the behaviour.
+
 ## Evidence gap
 
 **Still blocked on: the owner-supplied per-skill gameplay video, 15-20 s per skill
