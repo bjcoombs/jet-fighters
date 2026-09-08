@@ -53,18 +53,20 @@ export function dockKey(key: string): DockAction | null {
 /** Every key the dock answers to, for the collision check and the help. */
 export const DOCK_KEYS: readonly string[] = ['f', 'b', 'i', 'e', 'h', 'Escape'];
 
-export type PartGroup = 'Case' | 'Board' | 'Tube' | 'Controls';
+export type PartGroup = 'Case' | 'Board' | 'Tube' | 'Controls' | 'Power';
 
-export const GROUPS: readonly PartGroup[] = ['Case', 'Board', 'Tube', 'Controls'];
+export const GROUPS: readonly PartGroup[] = ['Case', 'Board', 'Tube', 'Controls', 'Power'];
 
 const CASE = new Set(['front_shell', 'back_shell', 'battery_door', 'scope_mask', 'sticker']);
 const CONTROLS = new Set(['fire_cap', 'power_thumb', 'lever_pin', 'skill_flag', 'fire_switch', 'power_switch', 'lever_disc', 'skill_hub', 'toothed_disc']);
+const POWER = new Set(['battery_box', 'battery_tape', 'dc_jack']);
 
-/** The group a part is listed under: the tube and its window, the case, the controls inside and out, and the board for the rest. */
+/** The group a part is listed under: the tube and its window, the case, the controls inside and out, the cells and what feeds them, and the board for the rest. */
 export function groupOf(name: string): PartGroup {
   if (name.startsWith('tube_') || name === 'window') return 'Tube';
   if (CASE.has(name)) return 'Case';
   if (CONTROLS.has(name)) return 'Controls';
+  if (POWER.has(name) || /^battery_\d+$/.test(name)) return 'Power';
   return 'Board';
 }
 

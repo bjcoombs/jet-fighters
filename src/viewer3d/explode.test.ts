@@ -1,7 +1,7 @@
 import { Group, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 
-import { EASE_MS, createExploder, ease, nextPreset, positionAt, presetAt, presetFactor, sliderFactor } from './explode.js';
+import { EASE_MS, bandOf, cellIndex, createExploder, ease, nextPreset, positionAt, presetAt, presetFactor, sliderFactor } from './explode.js';
 import type { Part } from './scene.js';
 
 function part(name: string, explode?: readonly [number, number, number], rest = new Vector3(0.01, 0.02, 0.03)): Part {
@@ -45,14 +45,23 @@ describe('presets', () => {
 });
 
 describe('the slider', () => {
-  it('lifts the lid over its first half and spreads the rest over its second', () => {
+  it('lifts the lid over its first half, then the body, then the door, then the cells', () => {
     expect(sliderFactor(0, 'front_shell')).toBe(0);
     expect(sliderFactor(0.25, 'front_shell')).toBeCloseTo(0.5, 9);
     expect(sliderFactor(0.5, 'front_shell')).toBe(1);
     expect(sliderFactor(0.75, 'front_shell')).toBe(1);
     expect(sliderFactor(0.5, 'tms1370')).toBe(0);
-    expect(sliderFactor(0.75, 'tms1370')).toBeCloseTo(0.5, 9);
-    expect(sliderFactor(1, 'tms1370')).toBe(1);
+    expect(sliderFactor(0.65, 'tms1370')).toBeCloseTo(0.5, 9);
+    expect(sliderFactor(0.8, 'tms1370')).toBe(1);
+    expect(sliderFactor(0.8, 'battery_door')).toBe(0);
+    expect(sliderFactor(0.85, 'battery_door')).toBeCloseTo(0.5, 9);
+    expect(sliderFactor(0.9, 'battery_door')).toBe(1);
+    expect(sliderFactor(0.9, 'battery_3')).toBe(0);
+    expect(sliderFactor(1, 'battery_3')).toBe(1);
+    expect(bandOf('window')).toBe('lid');
+    expect(bandOf('back_shell')).toBe('body');
+    expect(cellIndex('battery_4')).toBe(3);
+    expect(cellIndex('battery_box')).toBe(-1);
   });
 
   it('sits on a preset only at its detent', () => {
@@ -128,6 +137,18 @@ describe('createExploder', () => {
     ex.update(2);
     expect(shell.object.position.y).toBeCloseTo(0.14, 9);
     expect(chip.object.position.y).toBeCloseTo(0.02, 9);
+  });
+
+  it('jumps parts to their own factors and reads the slider as their mean', () => {
+    const shell = part('front_shell', [0, 0.12, 0]);
+    const door = part('battery_door', [0, -0.13, 0]);
+    const ex = createExploder(new Map([['front_shell', shell], ['battery_door', door]]));
+    ex.update(0);
+    ex.jumpParts((name) => (name === 'battery_door' ? 1 : 0));
+    ex.update(1);
+    expect(shell.object.position.y).toBeCloseTo(0.02, 9);
+    expect(door.object.position.y).toBeCloseTo(-0.11, 9);
+    expect(ex.amount).toBe(0.5);
   });
 
   it('tells a listener when the amount moves, and not when it does not', () => {

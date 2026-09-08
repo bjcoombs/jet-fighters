@@ -15,7 +15,7 @@ import { createHelpOverlay, createInputSystem } from '../input/index.js';
 import { CONTROL_UNDER, PIN_REST_LOCAL_Z, SKILL_HUB_LOCAL, controlAtFacePoint, inputForPress, isControl, laneFromSlotOffset, poseFor, type ControlName, type ControlState } from './controls3d.js';
 import { buildDock, titleOf } from './dock.js';
 import { createExploder } from './explode.js';
-import { INTRO, introAt } from './intro.js';
+import { INTRO, type IntroPhase, introAt, introFactor } from './intro.js';
 import { buildTooltip } from './panel.js';
 import { createPicker } from './picking.js';
 import { createConsoleScene, type Part, type ViewName } from './scene.js';
@@ -34,6 +34,9 @@ const HINT_KEY = 'jf3d-hint-seen';
 
 /** The orbit's closest approach, as scene.ts sets it; the opening lowers it and puts it back. */
 const ORBIT_MIN_DISTANCE = 0.12;
+
+/** Metres below the battery bay the opening's camera stands to watch the cells go in: past the cells and the door where they wait, 135 and 130 mm out. */
+const BAY_DISTANCE = 0.36;
 
 /** From this width the dock opens by itself to show a part clicked on the model. */
 const WIDE_PX = 900;
@@ -309,7 +312,7 @@ async function start(mount: HTMLElement): Promise<void> {
   // a phone (the texture there cannot show the honeycomb) and for anyone who
   // asked for less motion; any press or key ends it early.
   const reducedMotion = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let intro: { start: number; swung: boolean; faceCentre: Vector3; dir: Vector3; endTarget: Vector3; endDist: number; veil: HTMLElement } | null = null;
+  let intro: { start: number; cued: IntroPhase | null; faceCentre: Vector3; dir: Vector3; endTarget: Vector3; endDist: number; bay: { position: Vector3; target: Vector3 }; veil: HTMLElement } | null = null;
   // The tube face is drawn at twice unity (scene.ts), for the smoked window.
   // With the camera on the bare glass in the opening it is lifted further, so
   // the ghost segments and the grid read, and eased back as the camera leaves.
@@ -356,7 +359,20 @@ async function start(mount: HTMLElement): Promise<void> {
     const faceCentre = face ? new Box3().setFromObject(face.object).getCenter(new Vector3()) : scene.controls.target.clone();
     const inside = scene.poseFor('inside');
     const dir = inside.position.clone().sub(inside.target).normalize();
-    intro = { start: -1, swung: false, faceCentre, dir, endTarget: inside.target, endDist: inside.position.distanceTo(inside.target), veil };
+    // The bay from below, the way the unit is turned over to load it: the same
+    // up as the back view, close enough that the cells fill the frame.
+    // Measured with the unit assembled: the cells are the bay's children, and
+    // taken apart they would pull its bounds out through the back.
+    exploder.jump(0);
+    exploder.update(0);
+    scene.model.updateMatrixWorld(true);
+    const bayPart = scene.parts.get('battery_box');
+    const bayCentre = bayPart ? new Box3().setFromObject(bayPart.object).getCenter(new Vector3()) : scene.poseFor('back').target;
+    const bay = { position: bayCentre.clone().add(new Vector3(0, -BAY_DISTANCE, 0)), target: bayCentre };
+    exploder.jump(1);
+    exploder.update(0);
+    scene.model.updateMatrixWorld(true);
+    intro = { start: -1, cued: null, faceCentre, dir, endTarget: inside.target, endDist: inside.position.distanceTo(inside.target), bay, veil };
     scene.controls.enabled = false;
     // The orbit's floor of 120 mm would hold the camera off the tube; the
     // opening stands 22 mm from it. Restored when the opening ends.
@@ -399,16 +415,23 @@ async function start(mount: HTMLElement): Promise<void> {
         requestAnimationFrame(() => intro && (intro.veil.style.opacity = '0'));
       }
       const at = introAt(now - intro.start);
-      exploder.jump(at.amount);
+      exploder.jumpParts((name) => introFactor(at, name));
       faceMaterial?.color.setScalar(OPENING_EXPOSURE + (FACE_EXPOSURE - OPENING_EXPOSURE) * at.pull);
-      if (!at.seating) {
+      if (at.phase === 'hold' || at.phase === 'pull') {
         scene.controls.target.lerpVectors(intro.faceCentre, intro.endTarget, at.pull);
         const dist = INTRO.startDistance + (intro.endDist - INTRO.startDistance) * at.pull;
         scene.camera.position.copy(scene.controls.target).addScaledVector(intro.dir, dist);
-      } else if (!intro.swung) {
-        intro.swung = true;
-        const front = scene.poseFor('front');
-        flyTo(front.position, front.target);
+      } else if (at.phase !== intro.cued) {
+        // Each later phase cues one camera flight on its first frame: up to the
+        // front as the lid seats, under to the bay for the cells, back to the
+        // front once the door is on.
+        intro.cued = at.phase;
+        if (at.phase === 'seat' || at.phase === 'return') {
+          const front = scene.poseFor('front');
+          flyTo(front.position, front.target);
+        } else if (at.phase === 'flip') {
+          flyTo(intro.bay.position, intro.bay.target);
+        }
       }
       if (at.done) endIntro();
     }

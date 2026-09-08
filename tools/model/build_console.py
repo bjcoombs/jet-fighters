@@ -223,6 +223,11 @@ def materials() -> None:
     material("label_paper", hexrgb("#e6e2d6"), roughness=0.85)
     plastic("black_plastic", hexrgb(D["colour.black_plastic_srgb"]), roughness=0.5, coat=0.2)
     material("steel", hexrgb("#b8bcc2"), roughness=0.35, metallic=1.0)
+    # The cells: a copper top and a black body, the alkaline livery of the period,
+    # with no maker's mark - that is a trademark and not a measurement.
+    material("cell_copper", hexrgb("#b87333"), roughness=0.3, metallic=1.0)
+    material("cell_black", hexrgb("#1c1b1a"), roughness=0.45)
+    material("tape_white", hexrgb("#f2f0ea"), roughness=0.85)
     # The smoked window: near-black tint, some transmission so the tube reads through it.
     material("smoked_glass", hexrgb("#120c0c"), roughness=0.12, transmission=0.6, alpha=0.85)
     # The tube face placeholder; the viewer replaces this with the renderer's canvas.
@@ -793,7 +798,9 @@ def build_battery_door(shell: bpy.types.Object) -> bpy.types.Object:
     open_text = emboss("mould_open", "OPEN", 2.6, ax, fy(bb_y[0] + 22.0), Z_BACK_FACE, MATERIALS["red_abs"], outward=-1, align="CENTER")
     join(door, open_text)
     bevel(door, width=0.5, segments=1)
-    extras(door, "Battery door, with its OPEN arrow and grip ridges.", "board-L1001568.jpg (loose, top left)", (0, 0, -130))
+    # Taken apart it slides off the way its arrow says, down the case, and lifts a
+    # little: straight out it would sit between the viewer and the cells going in.
+    extras(door, "Battery door, with its OPEN arrow and grip ridges. It slides off along the case, the way the arrow points.", "board-L1001568.jpg (loose, top left); back.jpg", (0, -100, -40))
     parent(door, shell)
     return door
 
@@ -996,6 +1003,64 @@ def build_passives(board: bpy.types.Object) -> list[bpy.types.Object]:
     return out
 
 
+def build_cells(bay: bpy.types.Object, cell_x: list[float], cell_d: float, cell_len: float, by_: list[float], z_floor: float, bb_h: float) -> list[bpy.types.Object]:
+    """Four AA cells lying along the bay, side by side, alternating in polarity so a
+    strap at each end puts them in series: the terminals at the top end, straps
+    linking 1-2 and 3-4 at the bottom and 2-3 at the top. A white tape lies under
+    them and turns up the bottom wall, the tab the owner pulls to lift them out.
+    Each cell is its own part, out through the door when the unit is taken apart."""
+    out = []
+    r = cell_d / 2
+    y_mid = (by_[0] + by_[1]) / 2
+    y_top, y_bot = y_mid - cell_len / 2, y_mid + cell_len / 2   # face mm, y down
+    cz = z_floor + r + 0.8                                       # resting just off the door
+    copper_len = 15.0
+    nub_r, nub_len = 2.75, 1.0
+    for k, cx in enumerate(cell_x):
+        positive_at_top = k % 2 == 0
+        # Body: the copper cap at the positive end, black the rest of the way.
+        if positive_at_top:
+            cap_y = (y_top + nub_len, y_top + nub_len + copper_len)
+            body_y = (cap_y[1], y_bot)
+            nub_y = (y_top, y_top + nub_len)
+        else:
+            cap_y = (y_bot - nub_len - copper_len, y_bot - nub_len)
+            body_y = (y_top, cap_y[0])
+            nub_y = (y_bot - nub_len, y_bot)
+        cell = cylinder(f"battery_{k + 1}", fx(cx), cz, r, fy(body_y[1]), fy(body_y[0]), MATERIALS["cell_black"], axis="Y", segments=48)
+        cap = cylinder(f"cap{k}", fx(cx), cz, r, fy(cap_y[1]), fy(cap_y[0]), MATERIALS["cell_copper"], axis="Y", segments=48)
+        nub = cylinder(f"nub{k}", fx(cx), cz, nub_r, fy(nub_y[1]), fy(nub_y[0]), MATERIALS["steel"], axis="Y", segments=24)
+        # The flat negative end, a steel disc just proud of the body.
+        neg_y = (y_bot - 0.3, y_bot) if positive_at_top else (y_top, y_top + 0.3)
+        neg = cylinder(f"neg{k}", fx(cx), cz, r - 1.0, fy(neg_y[1]), fy(neg_y[0]), MATERIALS["steel"], axis="Y", segments=48)
+        # The wrapper's print, flat on the side that faces the door, reading along the cell.
+        label = emboss(f"cell_print{k}", "AA  1.5V", 2.6, fx(cx) + 1.0, fy(y_mid) - 7.0, cz - r, MATERIALS["print_white"], outward=-1.0, rotation_z=math.radians(90), raise_mm=0.0, resolution=2)
+        join(cell, cap, nub, neg, label)
+        sign = "+ at the top" if positive_at_top else "+ at the bottom"
+        extras(cell, f"AA cell {k + 1} of {len(cell_x)}, {sign}: the four lie side by side and alternate, so the straps at the ends put them in series. Copper top, black body; no maker's mark, since that would be a trademark and not a measurement.", "owner's testimony; board-L1001568.jpg (the bay's terminals and tabs)", (0, 0, -135))
+        parent(cell, bay)
+        out.append(cell)
+    # The straps: 1-2 and 3-4 at the bottom, 2-3 at the top, joined onto the bay.
+    straps = []
+    strap_z = (z_floor + 3.0, z_floor + bb_h - WALL)
+    for (a, b, y) in ((0, 1, y_bot + 1.0), (2, 3, y_bot + 1.0), (1, 2, y_top - 1.0)):
+        straps.append(box(f"strap{a}{b}", fx(cell_x[a]) - 3, fx(cell_x[b]) + 3, fy(y + 0.6), fy(y - 0.6), strap_z[0], strap_z[1], MATERIALS["steel"]))
+    join(bay, *straps)
+    # The tape: a strip behind the middle pair, against the bay's closed side, down
+    # the bottom wall to the door, and a tab lying over the lip to pull.
+    tape_w = 12.0
+    tx = (cell_x[1] + cell_x[2]) / 2
+    z_plate = z_floor + bb_h - WALL
+    tape = box("battery_tape", fx(tx - tape_w / 2), fx(tx + tape_w / 2), fy(by_[1] - WALL), fy(y_top + 4.0), z_plate - 0.7, z_plate - 0.2, MATERIALS["tape_white"])
+    drop = box("tape_drop", fx(tx - tape_w / 2), fx(tx + tape_w / 2), fy(by_[1] - WALL), fy(by_[1] - WALL - 0.5), z_floor + 0.3, z_plate - 0.2, MATERIALS["tape_white"])
+    tab = box("tape_tab", fx(tx - tape_w / 2), fx(tx + tape_w / 2), fy(by_[1] - WALL), fy(by_[1] - WALL - 9.0), z_floor + 0.3, z_floor + 0.8, MATERIALS["tape_white"])
+    join(tape, drop, tab)
+    extras(tape, "The white pull tape under the cells, turned up the bay's end wall: the owner pulls it to lift the cells out.", "owner's testimony", (0, 0, 0))
+    parent(tape, bay)
+    out.append(tape)
+    return out
+
+
 def build_board_hardware(board: bpy.types.Object) -> list[bpy.types.Object]:
     out = []
     black = MATERIALS["black_plastic"]
@@ -1057,15 +1122,25 @@ def build_board_hardware(board: bpy.types.Object) -> list[bpy.types.Object]:
     # On the back shell's floor, beside the board, not on it: the board's outline
     # starts to the box's right.
     z_floor = -Z_BACK + WALL
-    bb = box("battery_box", fx(clamp_x(bx_[0])), fx(bx_[1]), fy(clamp_y(by_[1])), fy(by_[0]), z_floor, z_floor + D["battery_box.height"], MATERIALS["red_abs"])
+    bb_h = D["battery_box.height"]
+    bb = box("battery_box", fx(clamp_x(bx_[0])), fx(bx_[1]), fy(clamp_y(by_[1])), fy(by_[0]), z_floor, z_floor + bb_h, MATERIALS["red_abs"])
+    # A tray, closed on the board side and open to the door: the cells go in and
+    # come out through the back.
+    cut(bb, box("bb_cavity", fx(clamp_x(bx_[0]) + WALL), fx(bx_[1] - WALL), fy(clamp_y(by_[1]) - WALL), fy(by_[0] + WALL), z_floor - 1.0, z_floor + bb_h - WALL))
+    # The two wired terminals at the top end, as the board photograph shows them.
     contacts = []
-    for k, xo in enumerate((10.0, 30.0)):
-        contacts.append(box(f"contact{k}", fx(bx_[0] + xo), fx(bx_[0] + xo + 6), fy(by_[0] + 6), fy(by_[0] + 1), z_floor + 4, z_floor + D["battery_box.height"] - 3, steel))
+    n_cells = int(D["battery.count"])
+    cell_d = D["battery.diameter"]
+    cell_len = D["battery.length"]
+    cell_x = [bx_[0] + WALL + cell_d / 2 + k * cell_d for k in range(n_cells)]
+    for k in (0, n_cells - 1):
+        contacts.append(box(f"contact{k}", fx(cell_x[k] - 3), fx(cell_x[k] + 3), fy(by_[0] + WALL + 3.5), fy(by_[0] + WALL + 0.5), z_floor + 4, z_floor + bb_h - WALL + 0.5, steel))
     join(bb, *contacts)
     bevel(bb, width=0.5, segments=1)
-    extras(bb, "The battery box under the left wing, with its two contacts, loaded through the door in the back.", "board-L1001568.jpg", (0, 0, 30))
+    extras(bb, f"The battery bay under the left wing: a tray for {n_cells} AA cells side by side, closed on the board side, loaded through the door in the back. Its two wired terminals are at the top end.", "board-L1001568.jpg", (0, 0, 30))
     parent(bb, board)
     out.append(bb)
+    out.extend(build_cells(bb, cell_x, cell_d, cell_len, by_, z_floor, bb_h))
 
     screws = []
     for k, (cx, cy) in enumerate(D["screws.centres"]):

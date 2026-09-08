@@ -171,8 +171,8 @@ rather than pixels. The flat drawing of the case that preceded the model was a r
 of the same unit, and it is in git history.
 
 The page opens on the tube itself, close enough to see the control grid's honeycomb over
-the unlit segments, and draws back as the board's parts gather and the lid seats; a press or
-a key skips it. One panel runs the page: **View** (front, back, inside; `F`, `B`, `I`), **Take apart** (a
+the unlit segments, draws back as the board's parts gather and the lid seats, then turns the
+unit over to load its four AA cells and close the door; a press or a key skips it. One panel runs the page: **View** (front, back, inside; `F`, `B`, `I`), **Take apart** (a
 slider with detents at assembled, lid off and exploded; `E` steps through them, "Bare
 board" plays the board alone) and **Parts** (every labelled part, its visibility, and its
 evidence when clicked; `H` hides, `Esc` lets go). Clicking a part on the model selects it

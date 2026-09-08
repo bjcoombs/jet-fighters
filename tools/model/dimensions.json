@@ -15,6 +15,24 @@
     ]
   },
   "dimensions": {
+    "battery.count": {
+      "value": 4,
+      "kind": "estimated",
+      "basis": "The owner's testimony: four AA cells.",
+      "bound_mm": 0.0
+    },
+    "battery.diameter": {
+      "value": 14.5,
+      "kind": "estimated",
+      "basis": "IEC AA (LR6): 14.5 mm across, 50.5 mm long including the positive nub.",
+      "bound_mm": 0.0
+    },
+    "battery.length": {
+      "value": 50.5,
+      "kind": "estimated",
+      "basis": "IEC AA (LR6).",
+      "bound_mm": 0.0
+    },
     "battery_box.height": {
       "value": 18.0,
       "kind": "estimated",
@@ -24,10 +42,11 @@
     "battery_box.x": {
       "value": [
         -0.8,
-        44.2
+        61.2
       ],
-      "kind": "measured",
-      "source": "board-L1001568.jpg battery_box.x"
+      "kind": "estimated",
+      "basis": "The owner's unit takes four AA cells, side by side across the bay in series: 4 x 14.5 mm plus the bay's walls is 62. The board read (board-L1001568.jpg battery_box.x) gave the visible edge at 44.2 mm, but the board's left end is hidden under the bay in the same photograph, so the bay reaches past it. From the board side the bay shows two wired terminals at its top and two link tabs at its bottom, which is four cells alternating.",
+      "bound_mm": 3.0
     },
     "battery_box.y": {
       "value": [
