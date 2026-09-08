@@ -319,8 +319,19 @@ async function start(mount: HTMLElement): Promise<void> {
   })();
   const FACE_EXPOSURE = 2;
   const OPENING_EXPOSURE = 7;
+  // A press or a key during the opening ends it and does nothing else: taken in
+  // the capture phase and stopped there, so it neither fires the machine nor
+  // presses a modelled control on the way through.
+  const skipIntro = (event: Event): void => {
+    if (!intro) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    endIntro();
+  };
   const endIntro = (): void => {
     if (!intro) return;
+    window.removeEventListener('pointerdown', skipIntro, true);
+    window.removeEventListener('keydown', skipIntro, true);
     intro.veil.remove();
     faceMaterial?.color.setScalar(FACE_EXPOSURE);
     intro = null;
@@ -353,8 +364,8 @@ async function start(mount: HTMLElement): Promise<void> {
     scene.controls.target.copy(faceCentre);
     scene.camera.position.copy(faceCentre).addScaledVector(dir, INTRO.startDistance);
     scene.camera.lookAt(faceCentre);
-    window.addEventListener('pointerdown', endIntro, { once: true });
-    window.addEventListener('keydown', endIntro, { once: true });
+    window.addEventListener('pointerdown', skipIntro, { capture: true });
+    window.addEventListener('keydown', skipIntro, { capture: true });
   }
 
   // The controls' pose is the board's own reading of them, so the keyboard
