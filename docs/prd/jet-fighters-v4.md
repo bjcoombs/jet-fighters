@@ -132,9 +132,10 @@ Settled here so that no task re-opens them.
    requirements are checked against, and only the contract's own bytes are frozen. So the
    rule is stated once and applies to all of them: any band that differs from the figure
    the contract records as current is accompanied, in the same document, by the
-   re-measurement and the command that produced it, visible in `git diff` against the
-   run's base commit. Widening a bound in the commit that failed to hit it is the failure
-   this closes.
+   re-measurement and the command that produced it, visible in `git diff BASE HEAD`.
+   Widening a bound in the commit that failed to hit it is the failure this closes. The
+   rule covers `owner-entity-model.md`'s 60-107 s regime and `playability-audit.md`'s
+   policy set as well, which R5 is checked against.
 
 ## Requirements
 
@@ -156,8 +157,9 @@ Acceptance:
 - `tools/probe/missile-rank.test.ts` is green with its six per-lane pass-through
   assertions intact and its LEAVE and ARRIVE non-vacuity floors still met. The phase
   relationship between a 9-sweep shot step and a march step is not the one the BLOCKS
-  cadences were tuned against; where a cadence moves, the change is documented at the
-  site with what it was tuned to produce.
+  cadences were tuned against; where a BLOCKS cadence moves, the change is documented at
+  the site with what it was tuned to produce, and a cadence changed with no such comment
+  is not acceptable however green the test is.
 - `GAP_UNITS_HELD_FIRE` in `tools/probe/battleship-arrival.test.ts` is still derived from
   `MISSILE_FLIGHT_SWEEPS` and `GAP_PRESCALE_SWEEPS` and still outlasts a flight: the
   flight falls from 160 sweeps to 45 and the hold from 12 units to about 5, and the
@@ -165,22 +167,31 @@ Acceptance:
   re-derived from scratch.
 - Every drive whose horizon is sized in emulated cycles while its assertion counts game
   events is re-checked against the new step. `docs/evidence/open-questions.md` section
-  11a names that class. The audit is a committed table naming every such drive, each
-  marked checked or moved, and it lists the instruments checked and not only the ones
-  that moved. R1 and R6 share it; there is one table, not two.
+  11a names that class. The audit lives at `docs/evidence/timing-audit.md` and its
+  membership is a grep, not a judgement: one row per file that
+  `rg -lF '.step(' tools/probe --glob '*.ts'` returns, `step` being the cycle-budget
+  method both `Tms1370Machine` and `Board` expose. That is 22 files today. Every one is a
+  row, each recording whether its assertions count a game event - kills, score, launches,
+  march steps or game length - and where they do, whether it was checked or moved and
+  against what. R1 and R6 share the table; there is one, not two, and R6's half is the
+  rows whose assertions count kills, score or game length, re-checked against the moved
+  kill count.
 - The whole tree stays green, not the files this requirement names: `npm run lint`,
   `npm test` and `npm run build` all exit 0, with no test newly skipped and none newly
-  marked `it.fails` against the run's base commit.
+  marked `it.fails` against BASE.
 - The two floors this run inherits are driven rather than assumed. V7 is
   `tools/probe/tms1370-rom.test.ts`'s "flies a rocket down every one of the three lanes".
   V8 is `tools/probe/machine-probe.test.ts`'s "holds a period inside the 1480-1632 Hz band
-  measured from the real unit" and `src/machine/audio/spectral.test.ts`'s "lands inside the
-  1480-1632 Hz band that criterion V8 asserts". Both this requirement and R2 move sounds
-  within a sweep of that burst.
-- Scope containment: `git diff` against the run's base commit is empty under
+  measured from the real unit" and "keeps the burst shorter than 150 ms", and
+  `src/machine/audio/spectral.test.ts`'s "lands inside the 1480-1632 Hz band that criterion
+  V8 asserts" - the duration half as well as the band, because both this requirement and R2
+  move sounds within a sweep of that burst.
+- Scope containment: `git diff BASE HEAD` is empty under
   `src/viewer3d/`, `public/models/`, `tools/model/`, `tools/trace/`,
   `src/machine/tube/atlas.json` and `tools/tmsasm/`. Those are cut below, and the atlas and
-  the model have regeneration rules a run under pace pressure could bypass quietly.
+  the model have regeneration rules a run under pace pressure could bypass quietly. BASE is
+  the merge commit of the PR that lands this PRD, resolved at verification time rather than
+  written down as a sha here, so a commit landing on `main` in between moves it too.
 
 ### R2 - The march note lasts as long as the notes that blank the real display (5 points)
 
@@ -239,6 +250,8 @@ Acceptance:
 
 - Skill 3, fresh squadron, measured wall clock between column changes is inside the band
   `docs/evidence/timing-analysis.md` holds current for the skill-3 clip.
+- `tools/probe/drives/march-wall-clock.ts` reports a fresh-squadron row at each of skills
+  1, 2 and 3; that is where the next figure is read from.
 - Skill 2, fresh squadron, is strictly between skill 1's interval and skill 3's, so the
   dial is monotone across its own notches and not only in kills.
 - Skill 1, fresh squadron, is within 20% of the 2033/2050 ms slow march the same document
@@ -265,8 +278,10 @@ Acceptance:
 
 - A new test, `tools/probe/march-ladder.test.ts`, plays games at all three skills with
   nothing poked, reads `STEP_HI` out of RAM at every reload across every kills count those
-  games reach, and times the wall clock between column changes at each. It states the
-  counts that make each of its assertions non-vacuous.
+  games reach, and times the wall clock between column changes at each. It states, per
+  skill, the highest kills count it reached, and the floors are numbers rather than its own
+  choice: kills 0 through at least 5 at skill 3, because the defect sits at 4 and the step
+  back up sits at 5, and 0 through at least 3 at skills 1 and 2.
 - `STEP_HI` is never written below `STEP_HI_MIN` at any (skill, kills) the game reaches,
   read out of RAM rather than computed.
 - The measured wall-clock step interval is non-increasing as kills rise, at every skill.
@@ -305,6 +320,11 @@ Acceptance:
 - **Not unwinnable**: at least one policy wins at least once at skill 3.
 - **Not trivially winnable**: no policy wins every one of its ten games at any skill, and
   at least one (policy, skill) pair reaches a game over.
+- The drive is deterministic given its input schedule - this machine has no random source
+  outside `NIB_ENT`, which is stirred by the fire presses the schedule itself dictates - so
+  the schedule is committed with the drive and every recorded figure is reproducible by
+  re-running it. The recorded section is the authority only while a cold re-run agrees with
+  it.
 - **Not trivially fast**: at skill 3, the median time to win across every winning game is
   strictly greater than the upper end of the regime `docs/evidence/owner-entity-model.md`
   names as the trivial one - 107 s at the time of writing, read from the document at
@@ -332,7 +352,7 @@ Acceptance:
   lever's lane, and a wave release timed onto a live shot's cell. It states its floors and
   the counts it met, in the shape `tools/probe/mid-march-row.test.ts` states its own: at
   least 12 fired-onto-grid-5 cases, and at least 30 spawn arrivals - the count
-  `entry-onto-missile.ts`'s census measured on the run's base commit.
+  `entry-onto-missile.ts`'s census measured at BASE.
 - In both cases the coincidence resolves as a kill, and the two resolve the same way as
   each other.
 - `tools/probe/missile-rank.test.ts`'s "excludes spawn coincidences without excluding most
@@ -344,7 +364,9 @@ Acceptance:
 - `tools/probe/drives/entry-onto-missile.ts` is re-run and its census in
   `open-questions.md` section 14 replaced with the new figures. The section is rewritten
   from open to settled, naming the decision and its cost.
-- The page budget is stated before and after. `P_SPAWN` is at 63 of 64 words and
+- The page budget is stated before and after - the word total and the fullest pages at
+  BASE beside the same figures at HEAD - so a collision test that fitted by a single word is
+  visible rather than inferred. `P_SPAWN` is at 63 of 64 words and
   `P_STROBE` at 64 of 64 on the current listing; the program is at 1655 of 2048 words with
   32 of 32 pages used, so the site the check lands on has to be chosen against the listing
   rather than found by trying.
