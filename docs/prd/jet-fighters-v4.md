@@ -127,6 +127,14 @@ Settled here so that no task re-opens them.
    hit - is defensible and is rejected here for one reason: it makes the outcome depend
    on which of two writes happened first inside one sweep, which is the machine state
    `jet_enter`'s header already calls "a trap for every probe written afterwards".
+8. **A band this run moves is moved with a measurement, or it is not moved.** Three
+   requirements here rewrite sections of `docs/evidence/` that hold the figures other
+   requirements are checked against, and only the contract's own bytes are frozen. So the
+   rule is stated once and applies to all of them: any band that differs from the figure
+   the contract records as current is accompanied, in the same document, by the
+   re-measurement and the command that produced it, visible in `git diff` against the
+   run's base commit. Widening a bound in the commit that failed to hit it is the failure
+   this closes.
 
 ## Requirements
 
@@ -142,8 +150,9 @@ Acceptance:
 - All three load sites (`fire_missile`'s rank-empty arm, the reload in the missile walk,
   and the reset routine) use the equates and not literals.
 - `tools/probe/drives/missile-transit.ts` reports the ROM and the recording agreeing
-  rather than "Nx faster than the ROM", and its `ROM_SECONDS_PER_COLUMN` is derived from
-  the equates rather than typed.
+  rather than "Nx faster than the ROM", and its `ROM_SECONDS_PER_COLUMN` is derived - read
+  from the assembled symbols or computed from the equates and the sweep length. A typed
+  0.137 does not satisfy this.
 - `tools/probe/missile-rank.test.ts` is green with its six per-lane pass-through
   assertions intact and its LEAVE and ARRIVE non-vacuity floors still met. The phase
   relationship between a 9-sweep shot step and a march step is not the one the BLOCKS
@@ -156,8 +165,22 @@ Acceptance:
   re-derived from scratch.
 - Every drive whose horizon is sized in emulated cycles while its assertion counts game
   events is re-checked against the new step. `docs/evidence/open-questions.md` section
-  11a names that class; the audit lists the instruments checked, not only the ones that
-  moved.
+  11a names that class. The audit is a committed table naming every such drive, each
+  marked checked or moved, and it lists the instruments checked and not only the ones
+  that moved. R1 and R6 share it; there is one table, not two.
+- The whole tree stays green, not the files this requirement names: `npm run lint`,
+  `npm test` and `npm run build` all exit 0, with no test newly skipped and none newly
+  marked `it.fails` against the run's base commit.
+- The two floors this run inherits are driven rather than assumed. V7 is
+  `tools/probe/tms1370-rom.test.ts`'s "flies a rocket down every one of the three lanes".
+  V8 is `tools/probe/machine-probe.test.ts`'s "holds a period inside the 1480-1632 Hz band
+  measured from the real unit" and `src/machine/audio/spectral.test.ts`'s "lands inside the
+  1480-1632 Hz band that criterion V8 asserts". Both this requirement and R2 move sounds
+  within a sweep of that burst.
+- Scope containment: `git diff` against the run's base commit is empty under
+  `src/viewer3d/`, `public/models/`, `tools/model/`, `tools/trace/`,
+  `src/machine/tube/atlas.json` and `tools/tmsasm/`. Those are cut below, and the atlas and
+  the model have regeneration rules a run under pace pressure could bypass quietly.
 
 ### R2 - The march note lasts as long as the notes that blank the real display (5 points)
 
@@ -166,16 +189,23 @@ Acceptance:
 
 Acceptance:
 
-- The emitted note's duration, measured off R15 edges by the probe rather than computed
-  from the constants, is inside the band `docs/evidence/open-questions.md` section 16
+- A new drive and test, `tools/probe/drives/march-note-length.ts` and its `.test.ts`,
+  reduce the note's emitted duration from R15 speaker edges rather than computing it from
+  the constants, print that duration and the number of notes observed, and assert a
+  non-vacuity floor on the count, in the shape `tools/probe/drives/README.md` describes.
+  A run that observed no note fails rather than passing over an empty set.
+- The duration it reports is inside the band `docs/evidence/open-questions.md` section 16
   holds current at verification time. The band is read from the document, not copied into
   a test as a literal.
-- Three blanking floors **rise**, toward the 14-17% `vfd-appearance.md` section 5
-  measures, and their tests are green at the raised values:
+- Three blanking floors **at least double** from the values they carry on the run's base
+  commit, and their tests are green at the raised values:
   `tools/probe/sweep-timing.test.ts`'s sound-attributable blank fraction (0.03) and its
   dark-read fraction (0.02), and `tools/probe/blank-to-glass.test.ts`'s dark-frame
-  fraction (0.02). A floor that falls fails this requirement whatever the measured
-  fraction does.
+  fraction (0.02), so at least 0.06, 0.04 and 0.04. Doubling is the floor rather than the
+  target because the blank is the sound and the note's own duration roughly doubles, which
+  reaches it without leaning on R3's cadence change. The remaining gap to the 14-17%
+  `vfd-appearance.md` section 5 measures is stated in the document with what still accounts
+  for it. A floor that falls fails this requirement whatever the measured fraction does.
 - Each floor's new value carries the measurement that justifies it and the run that
   produced it, in the shape `docs/evidence/cadence-rederivation.md` uses.
 - `tools/probe/drives/march-tone-identity.ts` still separates section 16's short
@@ -209,6 +239,8 @@ Acceptance:
 
 - Skill 3, fresh squadron, measured wall clock between column changes is inside the band
   `docs/evidence/timing-analysis.md` holds current for the skill-3 clip.
+- Skill 2, fresh squadron, is strictly between skill 1's interval and skill 3's, so the
+  dial is monotone across its own notches and not only in kills.
 - Skill 1, fresh squadron, is within 20% of the 2033/2050 ms slow march the same document
   anchors `STEP_HI_MAX` on. Whichever constants move to hold both ends is the work's
   business; `STEP_HI_MAX` is not frozen here, only the pace it produces.
@@ -231,8 +263,12 @@ zero does not borrow. The repair is one instruction; the ordering is the require
 
 Acceptance:
 
+- A new test, `tools/probe/march-ladder.test.ts`, plays games at all three skills with
+  nothing poked, reads `STEP_HI` out of RAM at every reload across every kills count those
+  games reach, and times the wall clock between column changes at each. It states the
+  counts that make each of its assertions non-vacuous.
 - `STEP_HI` is never written below `STEP_HI_MIN` at any (skill, kills) the game reaches,
-  read out of RAM by the probe over played games rather than computed.
+  read out of RAM rather than computed.
 - The measured wall-clock step interval is non-increasing as kills rise, at every skill.
   On `main` a fifth kill at skill 3 makes the squadron slower than a fourth; after this it
   does not.
@@ -256,19 +292,30 @@ with a measurement and not with an argument.
 
 Acceptance:
 
-- A committed drive plays at least ten complete games per (policy, skill) pair over the
-  policy set `docs/evidence/playability-audit.md` already names - greedy, dodge,
-  defensive, dodgeOnly - at skills 1, 2 and 3, and records outcome and time to that
-  outcome. Inputs reach the machine only by closing contacts on the K matrix.
+- `tools/probe/drives/playability-audit.ts` and its `.test.ts` are **extended, not
+  replaced**, to play at least ten complete games per (policy, skill) pair over the policy
+  set `docs/evidence/playability-audit.md` already names - greedy, dodge, defensive,
+  dodgeOnly - at skills 1, 2 and 3, recording outcome and time to that outcome. Inputs
+  reach the machine only by closing contacts on the K matrix.
 - The result is a section in `docs/evidence/playability-audit.md`, pinned to the commit it
-  was measured on, with the same figures against the 500 ms ROM for comparison. That
-  document's own rule applies: a claim states the states it was quantified across.
-- **Not unwinnable**: at least one (policy, skill) pair reaches a win at skill 3.
-- **Not trivially winnable**: at least one (policy, skill) pair reaches a game over.
-- Where a policy's win time falls inside the 60-107 s the survey warned about, that is
-  recorded as the measurement it is, with the two changes since - the per-lane rank and
-  `jm_capture`'s settled any-lane capture - named as what makes the old figure
-  untransferable. It is not grounds on its own to revert R1.
+  was measured on. The comparison against the slower ROM is **cited from that document's
+  existing f3e0769 baseline**, not retyped, so no column of the table is a number nobody
+  can reproduce. That document's own rule applies: a claim states the states it was
+  quantified across.
+- **Not unwinnable**: at least one policy wins at least once at skill 3.
+- **Not trivially winnable**: no policy wins every one of its ten games at any skill, and
+  at least one (policy, skill) pair reaches a game over.
+- **Not trivially fast**: at skill 3, the median time to win across every winning game is
+  strictly greater than the upper end of the regime `docs/evidence/owner-entity-model.md`
+  names as the trivial one - 107 s at the time of writing, read from the document at
+  verification time.
+- A build that meets the first two bounds and misses the third has reproduced exactly the
+  failure the survey predicted of a faster missile. **The repair is not reverting R1.** The
+  survey's own sentence is that responsiveness and difficulty are controlled by different
+  things; the difficulty knobs this run has are R3's ladder and the rocket cadence, and the
+  fix goes there. The two changes since the survey - the per-lane rank and `jm_capture`'s
+  settled any-lane capture - are what make its 60-107 s figure untransferable, and they are
+  named in the section.
 
 ### R6 - A shot and a jet on one cell is a hit, whichever arrived last (8 points)
 
@@ -280,16 +327,20 @@ closed at one site in the missile walk, per decision 6.
 
 Acceptance:
 
-- A probe test constructs **each** case through the K matrix, with no `pokeRam`: a fire
-  press timed onto a jet standing at grid 5 in the lever's lane, and a wave release timed
-  onto a live shot's cell. Each case is constructed enough times to be non-vacuous, and
-  the test says how many, in the shape `tools/probe/mid-march-row.test.ts` states its
-  floors.
+- A new test, `tools/probe/onto-occupied-cell.test.ts`, constructs **each** case through
+  the K matrix with no `pokeRam`: a fire press timed onto a jet standing at grid 5 in the
+  lever's lane, and a wave release timed onto a live shot's cell. It states its floors and
+  the counts it met, in the shape `tools/probe/mid-march-row.test.ts` states its own: at
+  least 12 fired-onto-grid-5 cases, and at least 30 spawn arrivals - the count
+  `entry-onto-missile.ts`'s census measured on the run's base commit.
 - In both cases the coincidence resolves as a kill, and the two resolve the same way as
   each other.
 - `tools/probe/missile-rank.test.ts`'s "excludes spawn coincidences without excluding most
-  of the evidence" is revisited rather than left standing: the exclusion exists because
-  spawns escaped, and if they no longer do, the exclusion is what has to justify itself.
+  of the evidence" ends in one of two observable states, because revisiting is a mental act
+  and leaves no trace: either the exclusion is removed and the file records why, or it is
+  kept and the test prints the count of coincidences it excluded and asserts it against a
+  stated floor. The exclusion exists because spawns escaped; if they no longer do, it is
+  what has to justify itself.
 - `tools/probe/drives/entry-onto-missile.ts` is re-run and its census in
   `open-questions.md` section 14 replaced with the new figures. The section is rewritten
   from open to settled, naming the decision and its cost.
@@ -317,10 +368,11 @@ Acceptance:
 - `docs/contract/v4.contract.md` states the property as the per-launch occupancy
   falsifier plus a read-site closure, and says in prose why the sequence-equality version
   was wrong. `docs/contract/v3-entities.contract.md` is not edited.
-- A structural test counts `NIB_ROTOR`'s instruction sites in `asm/jetfighter.asm` and
-  asserts every one of them is inside `rocket_fire`, in the shape
-  `tools/probe/entropy-nibble.test.ts` uses for `NIB_ENT`: word-boundary matched, comment
-  and `.EQU` lines dropped, and the nearest label above each site named. There are four on
+- A structural assertion added to `tools/probe/entropy-nibble.test.ts` - the file that
+  already owns nibble-site closure - counts `NIB_ROTOR`'s instruction sites in
+  `asm/jetfighter.asm` and asserts every one of them is inside `rocket_fire`, in the shape
+  that file uses for `NIB_ENT`: word-boundary matched, comment and `.EQU` lines dropped,
+  and the nearest label above each site named. There are four on
   `main`, in `rf_try`, `rf_wrap`, `rf_look` and `rf_fire`, and nothing asserts it today.
 - `tools/probe/tms1370-rom.test.ts`'s occupancy assertion and its `requireNonVacuous`
   guard are unchanged.
