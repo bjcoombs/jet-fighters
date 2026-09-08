@@ -18,6 +18,7 @@ python3 tools/model/measure.py --overlay docs/evidence --doc docs/evidence/conso
 npm run model                                            # mm -> public/models/console.glb
 npm run model:render                                     # plus the two comparison renders
 npm run model:blend                                      # also tools/model/console.blend, to open in the app
+npm run model:open                                       # the same, then opens it in Blender (macOS `open`)
 ```
 
 The `.glb` is committed so a clean checkout builds the site without Blender. The plan

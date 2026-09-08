@@ -180,6 +180,9 @@ which is how far a side view would be expected to move it.
 | Back panel width | 50 | The raised panels on the back of each wing, from their outer ends inward, `back.jpg` | 5 |
 | Back panel raise | 2 | How far those panels stand proud of the back face; `end-left.jpg` shows a step | 1 |
 | End grip ribs | 6 | Vertical ribs on the wing ends' front half, `edge-bottom-2.jpg`; the count is a read, the 4 mm pitch a guess | 2 |
+| Case corner radius | 2.5 | The wings' outer corners in plan, `case/front.jpg` at about 10.4 px/mm: the corner rounds over 25 px or so | 1 |
+| Block corner radius | 6 | The raised stippled blocks' corners in plan, `case/front.jpg`; visibly rounder than the case's own | 2 |
+| Edge fillet | 1.2 | The highlight band along the front face's edge in `case/front.jpg` is about 12 px wide; `end-left.jpg` shows the same soft profile | 0.5 |
 | Tube y on the board | board reads shifted -4.8 | The board photograph reads the tube 5 mm low against where the scope circle registers the segments; the shroud, glass and face move together so the face is centred on the phosphor. The x reads agree with the atlas to 2 mm and are unchanged | 3 |
 
 The assembled unit, then, is about 340 x 145 x 58 mm at the module and 52 mm at the
