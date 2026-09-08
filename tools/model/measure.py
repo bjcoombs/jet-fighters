@@ -258,13 +258,18 @@ def main(argv: list[str]) -> int:
     d.measured("chip.body_length", _r((chip["body_x"][1] - chip["body_x"][0]) * s_board), f"{src_b} chip.body_x", "A 40-pin 0.6 in DIP body is 51.5-52.6 mm; this is the check on the scale bar.")
 
     bb = B["battery_box"]
-    bb_read = bxr(*bb["x"])
-    d.estimated("battery_box.x", [bb_read[0], _r(bb_read[0] + 62.0)], f"The owner's unit takes four AA cells, side by side across the bay in series: 4 x 14.5 mm plus the bay's walls is 62. The board read ({src_b} battery_box.x) gave the visible edge at {bb_read[1]} mm, but the board's left end is hidden under the bay in the same photograph, so the bay reaches past it. From the board side the bay shows two wired terminals at its top and two link tabs at its bottom, which is four cells alternating.", 3.0)
+    d.measured("battery_box.x", bxr(*bb["x"]), f"{src_b} battery_box.x")
     d.measured("battery_box.y", byr(*bb["y"]), f"{src_b} battery_box.y")
-    d.estimated("battery.count", 4, "The owner's testimony: four AA cells.", 0.0)
+    d.estimated("battery.count", 4, "The owner's testimony and photographs (case/bay-open.jpg, bay-empty.jpg): four AA cells.", 0.0)
     d.estimated("battery.diameter", 14.5, "IEC AA (LR6): 14.5 mm across, 50.5 mm long including the positive nub.", 0.0)
     d.estimated("battery.length", 50.5, "IEC AA (LR6).", 0.0)
-    d.estimated("battery_box.height", 18.0, "AA cells are 14.5 mm across, plus the box's walls. The box stands on the back shell's floor beside the board - the board's outline starts to its right - and reaches about the rim.", 4.0)
+    # The bay inside the housing: two cells side by side under the door and two
+    # beneath them, the owner's photographs of it open and empty.
+    d.estimated("battery_bay.width", 30.0, "Two AA cells side by side, case/bay-open.jpg, plus a millimetre: the cavity's width across the case.", 2.0)
+    d.estimated("battery_bay.y", [74.5, 134.5], "The door's span along the case in case/back.jpg, 13 to 73 mm from the case's bottom edge at 9.4 px/mm; a cell and its contacts fit in the 60.", 3.0)
+    d.estimated("battery_bay.layers", 2, "case/bay-empty.jpg: at the bottom end, coil springs for the pair by the door and flat tabs behind them for the pair beneath; and the loading label's diagram of four cells two deep.", 0.0)
+    d.estimated("battery_bay.label", [30.0, 24.0], "The loading diagram printed on the bay's inner side wall, case/bay-empty.jpg: about 30 mm along the bay and 24 deep.", 4.0)
+    d.estimated("battery_box.height", 34.0, "Two layers of AA cells, 14.5 mm each, with a millimetre between and the housing's walls: case/bay-empty.jpg shows the bay two cells deep. The housing stands on the back shell's floor beside the board and reaches about the board's plane, which is why the board's left end is hidden under it in the board photograph.", 4.0)
 
     for name in ("power_switch_body", "dc_jack", "resistor_row", "lamp"):
         e = B[name]
