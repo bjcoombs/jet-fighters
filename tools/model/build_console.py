@@ -731,7 +731,7 @@ def build_back_shell() -> bpy.types.Object:
         cut(shell, box("endrec", fx(x_end) - 1.0, fx(x_end) + sx * 1.2, fy(WING_BOTTOM - 14), fy(WING_TOP + 12), -Z_BACK + 5.0, -4.0))
 
     # Battery door opening in the back face, under the left wing.
-    bb_x = D["battery_box.x"]
+    bb_x = bay_x()
     bb_y = D["battery_box.y"]
     door = (fx(bb_x[0] + 1.0), fx(bb_x[1] - 0.5), fy(bb_y[1] - 1.0), fy(bb_y[0] + 1.0))
     cut(shell, box("door_cut", door[0], door[1], door[2], door[3], Z_BACK_FACE - 1, -Z_BACK + WALL + 0.5))
@@ -782,8 +782,19 @@ def build_back_shell() -> bpy.types.Object:
     return shell
 
 
+def bay_x() -> tuple[float, float]:
+    """The battery bay's x extent as built, one figure for the tray, its cavity, the
+    door and the cells: the read's left edge clamped inside the shell's cavity, and
+    the right edge at least far enough for the cells to lie side by side between
+    the walls with half a millimetre to spare."""
+    bx_ = D["battery_box.x"]
+    x0 = clamp_x(bx_[0])
+    x1 = max(bx_[1], x0 + 2 * WALL + D["battery.count"] * D["battery.diameter"] + 0.5)
+    return x0, x1
+
+
 def build_battery_door(shell: bpy.types.Object) -> bpy.types.Object:
-    bb_x = D["battery_box.x"]
+    bb_x = bay_x()
     bb_y = D["battery_box.y"]
     door = box("battery_door", fx(bb_x[0] + 1.3), fx(bb_x[1] - 0.8), fy(bb_y[1] - 1.3), fy(bb_y[0] + 1.3), Z_BACK_FACE, -Z_BACK + WALL, MATERIALS["red_abs"])
     # The OPEN arrow: a shallow triangular recess near the door's end, as photographed.
@@ -1118,21 +1129,23 @@ def build_board_hardware(board: bpy.types.Object) -> list[bpy.types.Object]:
     parent(hub, board)
     out.append(hub)
 
-    bx_, by_ = D["battery_box.x"], D["battery_box.y"]
+    bx_, by_ = bay_x(), D["battery_box.y"]
     # On the back shell's floor, beside the board, not on it: the board's outline
     # starts to the box's right.
     z_floor = -Z_BACK + WALL
     bb_h = D["battery_box.height"]
-    bb = box("battery_box", fx(clamp_x(bx_[0])), fx(bx_[1]), fy(clamp_y(by_[1])), fy(by_[0]), z_floor, z_floor + bb_h, MATERIALS["red_abs"])
+    bb = box("battery_box", fx(bx_[0]), fx(bx_[1]), fy(clamp_y(by_[1])), fy(by_[0]), z_floor, z_floor + bb_h, MATERIALS["red_abs"])
     # A tray, closed on the board side and open to the door: the cells go in and
     # come out through the back.
-    cut(bb, box("bb_cavity", fx(clamp_x(bx_[0]) + WALL), fx(bx_[1] - WALL), fy(clamp_y(by_[1]) - WALL), fy(by_[0] + WALL), z_floor - 1.0, z_floor + bb_h - WALL))
+    cut(bb, box("bb_cavity", fx(bx_[0] + WALL), fx(bx_[1] - WALL), fy(clamp_y(by_[1]) - WALL), fy(by_[0] + WALL), z_floor - 1.0, z_floor + bb_h - WALL))
     # The two wired terminals at the top end, as the board photograph shows them.
     contacts = []
     n_cells = int(D["battery.count"])
     cell_d = D["battery.diameter"]
     cell_len = D["battery.length"]
-    cell_x = [bx_[0] + WALL + cell_d / 2 + k * cell_d for k in range(n_cells)]
+    # The cells side by side from the cavity's left wall, centred in what is left.
+    slack = (bx_[1] - bx_[0] - 2 * WALL) - n_cells * cell_d
+    cell_x = [bx_[0] + WALL + slack / 2 + cell_d / 2 + k * cell_d for k in range(n_cells)]
     for k in (0, n_cells - 1):
         contacts.append(box(f"contact{k}", fx(cell_x[k] - 3), fx(cell_x[k] + 3), fy(by_[0] + WALL + 3.5), fy(by_[0] + WALL + 0.5), z_floor + 4, z_floor + bb_h - WALL + 0.5, steel))
     join(bb, *contacts)
