@@ -18,7 +18,7 @@
     "battery.count": {
       "value": 4,
       "kind": "estimated",
-      "basis": "The owner's testimony: four AA cells.",
+      "basis": "The owner's testimony and photographs (case/bay-open.jpg, bay-empty.jpg): four AA cells.",
       "bound_mm": 0.0
     },
     "battery.diameter": {
@@ -33,20 +33,49 @@
       "basis": "IEC AA (LR6).",
       "bound_mm": 0.0
     },
-    "battery_box.height": {
-      "value": 18.0,
+    "battery_bay.label": {
+      "value": [
+        30.0,
+        24.0
+      ],
       "kind": "estimated",
-      "basis": "AA cells are 14.5 mm across, plus the box's walls. The box stands on the back shell's floor beside the board - the board's outline starts to its right - and reaches about the rim.",
+      "basis": "The loading diagram printed on the bay's inner side wall, case/bay-empty.jpg: about 30 mm along the bay and 24 deep.",
+      "bound_mm": 4.0
+    },
+    "battery_bay.layers": {
+      "value": 2,
+      "kind": "estimated",
+      "basis": "case/bay-empty.jpg: springs at two depths at the bottom end, and the loading label's diagram of four cells two deep.",
+      "bound_mm": 0.0
+    },
+    "battery_bay.width": {
+      "value": 30.0,
+      "kind": "estimated",
+      "basis": "Two AA cells side by side, case/bay-open.jpg, plus a millimetre: the cavity's width across the case.",
+      "bound_mm": 2.0
+    },
+    "battery_bay.y": {
+      "value": [
+        74.5,
+        134.5
+      ],
+      "kind": "estimated",
+      "basis": "The door's span along the case in case/back.jpg, 13 to 73 mm from the case's bottom edge at 9.4 px/mm; a cell and its contacts fit in the 60.",
+      "bound_mm": 3.0
+    },
+    "battery_box.height": {
+      "value": 34.0,
+      "kind": "estimated",
+      "basis": "Two layers of AA cells, 14.5 mm each, with a millimetre between and the housing's walls: case/bay-empty.jpg shows the bay two cells deep. The housing stands on the back shell's floor beside the board and reaches about the board's plane, which is why the board's left end is hidden under it in the board photograph.",
       "bound_mm": 4.0
     },
     "battery_box.x": {
       "value": [
         -0.8,
-        61.2
+        44.2
       ],
-      "kind": "estimated",
-      "basis": "The owner's unit takes four AA cells, side by side across the bay in series: 4 x 14.5 mm plus the bay's walls is 62. The board read (board-L1001568.jpg battery_box.x) gave the visible edge at 44.2 mm, but the board's left end is hidden under the bay in the same photograph, so the bay reaches past it. From the board side the bay shows two wired terminals at its top and two link tabs at its bottom, which is four cells alternating.",
-      "bound_mm": 3.0
+      "kind": "measured",
+      "source": "board-L1001568.jpg battery_box.x"
     },
     "battery_box.y": {
       "value": [
