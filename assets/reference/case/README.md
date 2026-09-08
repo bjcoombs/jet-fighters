@@ -14,7 +14,7 @@ downscaled to 2000 px.
 | `edge-top-oblique.jpg` | The top edge with the front face falling away | The supply socket on the top edge of the module; the module's step |
 | `end-left.jpg`, `end-right.jpg` | The short ends, hand-held | The depth: about 60 mm against the case's 147.5 mm height, parted near its middle; the recessed panel on each end's back half |
 | `bay-open.jpg` | The battery door slid open, two cells in | The bay is two cells wide with the cells along the case; the door slides along them; the white tape runs across under the cells and out the side |
-| `bay-empty.jpg` | Into the empty bay | Two cells deep: coil springs at two depths at the bottom end, strips at the top; the loading diagram printed on the inner side wall |
+| `bay-empty.jpg` | Into the empty bay | Two cells deep: at the bottom end coil springs for the pair by the door and flat tabs behind them for the pair beneath, strips at the top; the loading diagram printed on the inner side wall |
 
 How each figure was read is in `docs/evidence/console-dimensions.md`; the reads are in
 `tools/model/pixels.json`.

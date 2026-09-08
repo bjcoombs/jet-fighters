@@ -733,11 +733,10 @@ def build_back_shell() -> bpy.types.Object:
     # Battery door opening in the back face, under the left wing: the bay's cavity
     # plus the lip the door covers.
     bx, by = bay_cavity_xy()
-    door = (fx(bx[0] - DOOR_LIP + 0.5), fx(bx[1] + DOOR_LIP - 0.5), fy(by[1] + DOOR_LIP - 0.5), fy(by[0] - DOOR_LIP + 0.5))
+    door = (fx(bx[0] - DOOR_LIP), fx(bx[1] + DOOR_LIP), fy(by[1] + DOOR_LIP), fy(by[0] - DOOR_LIP))
     cut(shell, box("door_cut", door[0], door[1], door[2], door[3], Z_BACK_FACE - 1, -Z_BACK + WALL + 0.5))
-    # A ledge the door rests on: leave the wall inset around the opening. Approximated by
-    # cutting the opening 1 mm smaller through the outer 1 mm only - skipped; the door
-    # sits flush in the opening.
+    # The door is built a fifth of a millimetre inside this opening on every side,
+    # and a little thinner than the wall, so the tape's tab can lie under it.
 
     # Instruction label recess on the module's back, centred.
     lab_w, lab_h = 60.0, 40.0
@@ -782,7 +781,8 @@ def build_back_shell() -> bpy.types.Object:
     return shell
 
 
-DOOR_LIP = 2.0  # how far the door overlaps the cavity's walls
+DOOR_LIP = 2.0   # how far the door overlaps the cavity's walls
+TAPE_ROOM = 0.7  # left between the door and the housing for the tape's tab
 
 
 def bay_cavity_xy() -> tuple[tuple[float, float], tuple[float, float]]:
@@ -796,9 +796,9 @@ def bay_cavity_xy() -> tuple[tuple[float, float], tuple[float, float]]:
 
 def build_battery_door(shell: bpy.types.Object) -> bpy.types.Object:
     bx, by = bay_cavity_xy()
-    bb_x = (bx[0] - DOOR_LIP, bx[1] + DOOR_LIP)
-    bb_y = (by[0] - DOOR_LIP, by[1] + DOOR_LIP)
-    door = box("battery_door", fx(bb_x[0]), fx(bb_x[1]), fy(bb_y[1]), fy(bb_y[0]), Z_BACK_FACE, -Z_BACK + WALL, MATERIALS["red_abs"])
+    bb_x = (bx[0] - DOOR_LIP + 0.2, bx[1] + DOOR_LIP - 0.2)
+    bb_y = (by[0] - DOOR_LIP + 0.2, by[1] + DOOR_LIP - 0.2)
+    door = box("battery_door", fx(bb_x[0]), fx(bb_x[1]), fy(bb_y[1]), fy(bb_y[0]), Z_BACK_FACE, -Z_BACK + WALL - TAPE_ROOM, MATERIALS["red_abs"])
     # The OPEN arrow: a shallow triangular recess near the door's end, as photographed.
     ax = fx((bb_x[0] + bb_x[1]) / 2)
     ay = fy(bb_y[0] + 14)
@@ -1052,22 +1052,20 @@ def build_cells(bay: bpy.types.Object, cav_x: tuple[float, float], cav_y: tuple[
         join(cell, cap, nub, neg, label)
         where = "by the door" if cz == z_low else "beneath, by the board"
         sign = "+ at the top" if positive_at_top else "+ at the bottom"
-        extras(cell, f"AA cell {k + 1} of 4, {where}, {sign}: two side by side and two beneath, alternating, so the springs and strips at the ends put them in series. Copper top, black body; no maker's mark, since that would be a trademark and not a measurement.", "bay-open.jpg, bay-empty.jpg (the springs, the strips, the loading diagram); owner's testimony", (0, 0, -135))
+        extras(cell, f"AA cell {k + 1} of 4, {where}, {sign}: two side by side and two beneath, alternating as the loading diagram shows, so the contacts at the ends put them in series. Copper top, black body; no maker's mark, since that would be a trademark and not a measurement.", "bay-open.jpg, bay-empty.jpg (the contacts, the loading diagram); owner's testimony", (0, 0, -135))
         parent(cell, bay)
         out.append(cell)
-    # The contacts: coil springs at the negative ends by the door, strips elsewhere.
+    # The contacts, as bay-empty.jpg shows them: at the bottom end, coil springs
+    # for the pair by the door and flat tabs behind them for the pair beneath; at
+    # the top end, strips for both. Which pole each meets is the cell's business.
     fittings = []
-    for k, (col, cz, positive_at_top) in enumerate(plan):
+    for k, (col, cz, _positive_at_top) in enumerate(plan):
         cx = cols[col]
-        # A spring presses on the flat negative end: at the bottom when the
-        # positive is at the top, and the other way about.
-        if cz == z_low and positive_at_top:
+        if cz == z_low:
             fittings.append(cylinder(f"spring{k}", fx(cx), cz, 3.0, fy(y_bot + 4.0), fy(y_bot + 0.3), steel, axis="Y", segments=16))
-        elif cz == z_low:
-            fittings.append(cylinder(f"spring{k}", fx(cx), cz, 3.0, fy(y_top - 0.3), fy(y_top - 4.0), steel, axis="Y", segments=16))
         else:
-            y = y_top - 1.0 if positive_at_top else y_bot + 1.0
-            fittings.append(box(f"strip{k}", fx(cx) - 4, fx(cx) + 4, fy(y + 0.5), fy(y - 0.5), cz - 5, cz + 5, steel))
+            fittings.append(box(f"tab{k}", fx(cx) - 4, fx(cx) + 4, fy(y_bot + 1.5), fy(y_bot + 0.5), cz - 5, cz + 5, steel))
+        fittings.append(box(f"strip{k}", fx(cx) - 4, fx(cx) + 4, fy(y_top - 0.5), fy(y_top - 1.5), cz - 5, cz + 5, steel))
     join(bay, *fittings)
     # The tape: across the bay's closed side under the bottom pair, down the wall
     # on the case's side - the label is on the other, and bay-empty.jpg shows it
@@ -1076,8 +1074,9 @@ def build_cells(bay: bpy.types.Object, cav_x: tuple[float, float], cav_y: tuple[
     ty = (y_mid - tape_w / 2, y_mid + tape_w / 2)
     z_deep = z_high + r + 0.25
     tape = box("battery_tape", fx(cav_x[0]), fx(cav_x[1] - 0.8), fy(ty[1]), fy(ty[0]), z_deep - 0.25, z_deep + 0.25, MATERIALS["tape_white"])
-    drop = box("tape_drop", fx(cav_x[0]), fx(cav_x[0] + 0.5), fy(ty[1]), fy(ty[0]), z_floor + 0.3, z_deep + 0.25, MATERIALS["tape_white"])
-    tab = box("tape_tab", fx(cav_x[0] - DOOR_LIP), fx(cav_x[0]), fy(ty[1]), fy(ty[0]), z_floor + 0.3, z_floor + 0.8, MATERIALS["tape_white"])
+    drop = box("tape_drop", fx(cav_x[0]), fx(cav_x[0] + 0.5), fy(ty[1]), fy(ty[0]), z_floor - 0.1, z_deep + 0.25, MATERIALS["tape_white"])
+    # Over the wall's end and into the door's opening, under the door.
+    tab = box("tape_tab", fx(cav_x[0] - DOOR_LIP + 0.3), fx(cav_x[0] + 0.5), fy(ty[1]), fy(ty[0]), z_floor - TAPE_ROOM + 0.1, z_floor - 0.1, MATERIALS["tape_white"])
     join(tape, drop, tab)
     extras(tape, "The white pull tape: across the bay's closed side under the cells, down the wall on the case's side and out over the lip, so the owner lifts the cells out by it.", "bay-open.jpg, bay-empty.jpg", (0, 0, 0))
     parent(tape, bay)
@@ -1183,7 +1182,7 @@ def build_board_hardware(board: bpy.types.Object) -> list[bpy.types.Object]:
     bb = box("battery_box", fx(clamp_x(bx_[0])), fx(bx_[1]), fy(clamp_y(by_[1])), fy(by_[0]), z_floor, z_floor + bb_h, MATERIALS["red_abs"])
     cut(bb, box("bb_cavity", fx(cav_x[0]), fx(cav_x[1]), fy(cav_y[1]), fy(cav_y[0]), z_floor - 1.0, z_floor + bb_h - WALL))
     bevel(bb, width=0.5, segments=1)
-    extras(bb, "The battery housing under the left wing: a cavity two AA cells wide and two deep, closed on the board side, loaded through the door in the back. Coil springs take the negative ends at the bottom, strips the positive at the top, and the loading diagram is printed on the inner wall.", "board-L1001568.jpg; bay-open.jpg; bay-empty.jpg", (0, 0, 30))
+    extras(bb, "The battery housing under the left wing: a cavity two AA cells wide and two deep, closed on the board side, loaded through the door in the back. At the bottom end coil springs meet the pair by the door and flat tabs the pair beneath; strips at the top; the loading diagram is printed on the inner wall.", "board-L1001568.jpg; bay-open.jpg; bay-empty.jpg", (0, 0, 30))
     parent(bb, board)
     out.append(bb)
     out.extend(build_cells(bb, cav_x, cav_y, z_floor, bb_h))

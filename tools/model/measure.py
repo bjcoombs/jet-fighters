@@ -267,7 +267,7 @@ def main(argv: list[str]) -> int:
     # beneath them, the owner's photographs of it open and empty.
     d.estimated("battery_bay.width", 30.0, "Two AA cells side by side, case/bay-open.jpg, plus a millimetre: the cavity's width across the case.", 2.0)
     d.estimated("battery_bay.y", [74.5, 134.5], "The door's span along the case in case/back.jpg, 13 to 73 mm from the case's bottom edge at 9.4 px/mm; a cell and its contacts fit in the 60.", 3.0)
-    d.estimated("battery_bay.layers", 2, "case/bay-empty.jpg: springs at two depths at the bottom end, and the loading label's diagram of four cells two deep.", 0.0)
+    d.estimated("battery_bay.layers", 2, "case/bay-empty.jpg: at the bottom end, coil springs for the pair by the door and flat tabs behind them for the pair beneath; and the loading label's diagram of four cells two deep.", 0.0)
     d.estimated("battery_bay.label", [30.0, 24.0], "The loading diagram printed on the bay's inner side wall, case/bay-empty.jpg: about 30 mm along the bay and 24 deep.", 4.0)
     d.estimated("battery_box.height", 34.0, "Two layers of AA cells, 14.5 mm each, with a millimetre between and the housing's walls: case/bay-empty.jpg shows the bay two cells deep. The housing stands on the back shell's floor beside the board and reaches about the board's plane, which is why the board's left end is hidden under it in the board photograph.", 4.0)
 

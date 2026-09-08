@@ -45,7 +45,7 @@
     "battery_bay.layers": {
       "value": 2,
       "kind": "estimated",
-      "basis": "case/bay-empty.jpg: springs at two depths at the bottom end, and the loading label's diagram of four cells two deep.",
+      "basis": "case/bay-empty.jpg: at the bottom end, coil springs for the pair by the door and flat tabs behind them for the pair beneath; and the loading label's diagram of four cells two deep.",
       "bound_mm": 0.0
     },
     "battery_bay.width": {
