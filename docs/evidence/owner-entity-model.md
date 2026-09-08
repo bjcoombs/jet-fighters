@@ -19,7 +19,7 @@ not change because the code caught up.
 | 1. Two planes can share a column | **CLOSED** |
 | 2. Two planes can share a row | **CLOSED** |
 | 3. A plane can appear anywhere on the board | **PARTLY CLOSED** - six entry cells, not fifteen |
-| 4. A plane can change row mid-march | **NOT IMPLEMENTED. Nothing has been built for it.** |
+| 4. A plane can change row mid-march | **CLOSED in #191** - one exchange per lifetime, at grid 3 |
 
 One further defect was **found** by this work rather than closed by it: a plane
 that spawns onto a live missile's cell is not hit by it - 6 of 30 spawn arrivals
@@ -114,14 +114,37 @@ answers task 10's question (b) - what happens to every lane-indexed reader of
 `FILE_JETS` - also has to answer "what moves a plane's row, and how often" once
 positions replace the lane rank.
 
-**NOT IMPLEMENTED, and nothing in the tag that built the position model went near
-it.** A plane's row is written once, by `jet_enter`, and never changes again for
-that plane's lifetime; `jm_move` steps the column alone. The position model is
-what *makes* the change expressible - a row is a nibble a march step could now
-write - but expressible is not implemented, and no probe in `tools/probe/` looks
-for a mid-march row change or would fail if one never happened. What moves a
-plane's row, and how often, is still undesigned. The missile rank is unaffected,
-since it does not read a plane's row at all.
+**CLOSED in #191**, and the measurement came before the rule. The tag that built
+the position model made the change *expressible* - a row is a nibble a march step
+can write - and left it unimplemented: `jet_enter` wrote a row once and `jm_move`
+stepped the column alone, which is what the cold verifier of 2026-09-04 measured
+as 804 of 804 lifetimes holding one row across 907 squadron steps.
+
+The recording was read first, with a new instrument, because neither of the two
+already here can see a row change: the committed cell CSV isolates cyan and the
+jets are red, and `sprites.py`'s linker allows 8 px of lane drift against a 21 px
+lane pitch, so a track that changed row is broken in two and each half read as a
+plane that held one row. `tools/video/rows.py` reads the red channel and links
+nothing. It finds **13 row changes against a shuffled control of 1.6 +- 1.3, z =
++8.6** - every one of them a single row, none wrapping 0 to 2, spread across grids
+2 to 5, with planes changing independently.
+`docs/evidence/timing-analysis.md`, "The squadron's row changes, measured", holds
+the figures and the run command.
+
+The ROM's rule, at `jm_row`: **on the one march step that carries a plane off grid
+3, the top and middle rows exchange places and the bottom row keeps its place.**
+Grid 3 is the one gate every plane crosses, whatever it entered at; a swap is used
+because no map moves all three rows one place each, and the draft that moved all
+three emptied the top row of everything past grid 3 - a safe lane near the
+launcher, which `launcher-lives.test.ts` caught.
+
+**What the recording does not settle is recorded rather than papered over**: which
+steps a plane changes on, and which pair of rows it changes between (0<->1 six
+times, 1<->2 seven - too close to separate). The gate and the pair are the cheapest
+readings of a measurement that permits several, and the ROM says so at the site.
+
+The missile rank is unaffected, since it does not read a plane's row at all;
+`missile-rank.test.ts` is unchanged and green.
 
 ## Why the count is the clue
 
