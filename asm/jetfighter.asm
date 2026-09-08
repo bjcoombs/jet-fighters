@@ -2341,7 +2341,9 @@ jm_waiting:
 ; row nibble, 10 then 12 - because a slot is `NIB_P_BASE + 2n` and stepping the
 ; nibble directly costs one `A2AAC` where converting a slot number would cost a
 ; double. The column sits one nibble above the row, which is what the `A1AAC`
-; below is: the march moves a plane's column and never its row.
+; below is: the march moves a plane's column, and on the one step that carries it
+; off grid 3 its row as well. `jm_row` on P_SPARE is that half, the owner's
+; recording is what put it there, and its header is the rule and the measurement.
 
 jm_step:
         LDX  FILE_JETS
@@ -2359,11 +2361,17 @@ jm_lane:
         BR   jm_move
         BR   jm_lane_next
 jm_move:
+        LDP  P_SPARE            ; the row half of the step runs *first*, so the
+        BR   jm_row             ; pair is never a stepped column beside the row
+                                ; the plane has left - see the jm_row header
+jm_column:                      ; Y is this slot's column nibble again, and X is
+                                ; still FILE_JETS: nothing on the crossing loads
+                                ; either, which is why the LDX that stood here
+                                ; is gone
         IMAC                    ; one grid closer
         TAM
         A10AAC                  ; carry iff it has stepped past grid 5
         BR   jm_to_capture
-        LDX  FILE_JETS
         TCY  NIB_J_MOVED
         TCMIY 1
 jm_lane_next:
@@ -3065,6 +3073,158 @@ bship_kill:
         TCMIY BSHIP_GAP_HI
         LDP  P_SCORE
         BR   score_bship
+
+
+; --- the row half of a march step --------------------------------------------
+;
+; **Entry contract: X is FILE_JETS and Y is the column nibble of the slot being
+; walked**, which is the state `jm_lane` leaves and `jm_move` (P_JETS) hands
+; over, and the column has **not** been stepped yet. It returns to `jm_column`
+; with both of those unchanged, so the walk carries on with no reload of either.
+;
+; **Placed here because P_JETS has no room for it.** That page stood at 61 of 64
+; words with the row change unwritten, and the branch pair costs it two.
+;
+; ## The row moves before the column, and that ordering is the whole of why this
+; ## routine sits in front of the column step rather than after it
+;
+; A plane is two nibbles and this machine writes one at a time, so a step that
+; moves both leaves RAM holding a half-finished pair for a dozen instructions.
+; Nothing inside the ROM can see it - the walk is straight-line and the tube is
+; refreshed from `sweep`, somewhere else entirely - but everything in
+; `tools/probe/` can, because a drive samples RAM out of band.
+;
+; **The two orders are not equally harmless, and this was measured rather than
+; argued.** With the column stepped first the transient is *the plane's old row
+; beside its new column*: a reader that follows rows sees a plane standing where
+; it never stood, and `missile-rank.test.ts` - which classifies an arrival as a
+; march when a plane is on the shot's column having been one grid out in that row
+; a frame ago - duly booked one and charged the collision test a pass-through it
+; had not made. With the row written first the transient is *the plane's new row
+; beside its old column*, which reads as a plane that has changed row and not yet
+; stepped, and the same classifier calls it a spawn and excludes it. Same number
+; of writes, same cycles, one order observable and one not.
+;
+; That is the lesson `jet_enter`'s own header records one page over - "a machine
+; state that is only ever legal between two instructions is a trap for every
+; probe written afterwards" - reached here by a different road, and it cost
+; nothing but the ordering.
+;
+; ## What the owner's recording says, and what it does not
+;
+; `docs/evidence/timing-analysis.md`, "The squadron's row changes", is the
+; measurement: **13 row changes against a shuffled control of 1.6 +- 1.3, z =
+; +8.6**, read off the red channel of the owner's skill-3 clip with
+;
+;     python3 tools/video/clip.py ~/Downloads/'jetfighers video.mov' /tmp/jf
+;     python3 tools/video/rows.py /tmp/jf
+;
+; What it settles:
+;
+;   - a plane's row moves **while its column is held**, so this is the march and
+;     not the entry;
+;   - every change is by **one row**, 8 up and 5 down, and **not one wrapped** 0
+;     to 2 or 2 to 0 in 13 readings. A `+1 mod 3` rotation wraps about a third of
+;     its changes, and (2/3)^13 is 0.005, so the recording positively rejects a
+;     rotation. Whatever the rule is, it moves a row one place and turns round at
+;     the edges;
+;   - changes fall at **every distance** from the launcher - grid 2 x6, grid 3
+;     x2, grid 4 x4, grid 5 x1 - so this is not something that happens on
+;     arrival;
+;   - they fall on the squadron-step grid, at 300-433 ms between changes beside
+;     267-467 ms between column steps in the same stretch;
+;   - **planes change independently**: 1 of the 12 frames carrying a change moved
+;     both planes, and the clip has a plane holding its row through a step on
+;     which the other moved.
+;
+; What it does not settle, said plainly rather than buried: **which** steps a
+; plane changes on, and **which** pair of rows it changes between. The clip has
+; steps that moved a column and not a row and steps that moved a row and not a
+; column, and it has 0<->1 changes (six) and 1<->2 changes (seven) in numbers
+; too close to separate. So the gate below and the pair below are the cheapest
+; readings of a measurement that permits several, and a recording that settled
+; either would move one line of this routine.
+;
+; ## The rule
+;
+;   grid 3, and no other grid   the top row and the middle row change places;
+;                               the bottom row keeps its place
+;
+; **Grid 3 alone, because it is the one gate every plane passes through.** Entry
+; is at grid 1 or 2 and the capture line is grid 5, so a plane crosses grid 3
+; once in its life, exactly once, whatever it entered at - and a plane that has
+; two march steps in it has its row on both sides of that crossing, which is what
+; `tools/probe/mid-march-row.test.ts` reads. A gate at grid 2 would miss the
+; planes that enter there and a gate on a parity would fire twice for some planes
+; and once for others.
+;
+; **A swap, because a swap is a bijection and the alternatives are not.** There
+; is no way to move all three rows one place each: on three rows a step of one
+; either has a fixed point or collides. A draft that sent both edges to the
+; middle and the middle to the bottom moved all three, and it emptied the top row
+; of everything past grid 3 - the top lane became safe near the launcher, which
+; is the "two lanes permanently safe" shape `open-questions.md` section 3d is
+; about, arriving from the march instead of from a shared nibble.
+; `launcher-lives.test.ts` caught it as a centre lever that could no longer lose
+; its third launcher, because the traffic it had drained out of the top row had
+; to go somewhere. Exchanging two rows leaves the distribution exactly as it
+; found it.
+;
+; The bottom row is the fixed point rather than the top or the middle only
+; because one of the three had to be, and the recording does not choose. Two
+; thirds of the planes in a drive change row; the rest are the ones that crossed
+; grid 3 along the bottom.
+;
+; **The three arms all leave through `TCMIY`,** which writes the row and steps Y
+; onto the column nibble above it in one word. The bottom arm writes the row it
+; already holds rather than skipping the write, so Y lands on the column on every
+; path and no `IYC` is needed - and `IYC` would set status, which an
+; unconditional `BR` may not follow (`tools/tmsasm/analysis/status.ts`). This is
+; the same trade `jet_enter`'s two column arms make, for the same reason.
+;
+; **NIB_ENT is not read here and neither is NIB_ROTOR.** The entropy nibble keeps
+; the single reader `entropy-nibble.test.ts` counts, `jet_enter`, and the
+; rocket's round robin stays independent of the player's press pattern - contract
+; criterion E4 and PRD R5. Nothing here needs either: the grid a plane stands on
+; is state the march already has in Y.
+;
+; **A row change is hit-tested exactly as a march step is, and adds no second
+; version of section 14's hole.** It happens inside `jet_march`, one plane at a
+; time, and the pair it leaves is tested by `mw_live` before the missile's next
+; step and by `mw_arrive` after it, which is the same pair of moments that tests
+; every other thing the march does. The hole `open-questions.md` section 14
+; records is a *spawn* - `jet_enter` placing a plane on a live shot - and escapes
+; because a spawn is neither of those moments. `missile-rank.test.ts` is
+; unchanged on this branch and green, and its six per-lane pass-through counts
+; are the assertion that this stayed true.
+
+jm_row:                         ; X is FILE_JETS, Y this slot's column nibble,
+                                ; and the column has NOT been stepped yet
+        TMA                     ; A <- the grid the plane stands on
+        A13AAC                  ; minus three
+        CPAIZ                   ; status = it was standing on grid 3
+        BR   jw_change
+        BR   jw_done            ; every other grid: Y is the column nibble still
+jw_change:
+        DYN                     ; Y <- this slot's row nibble, one below
+        TBIT1 1                 ; status = the row is 2, the bottom one
+        BR   jw_bottom
+        TBIT1 0                 ; status = the row is 1, the middle one
+        BR   jw_middle
+        TCMIY 1                 ; the top row goes down to the middle
+        BR   jw_done
+jw_middle:
+        TCMIY 0                 ; and the middle row up to the top
+        BR   jw_done
+jw_bottom:
+        TCMIY 2                 ; the bottom row keeps its place. Written back
+                                ; rather than skipped, so Y lands on the column
+                                ; nibble on every arm and no `IYC` is needed -
+                                ; `IYC` sets status and the branch below may not
+                                ; follow one
+jw_done:
+        LDP  P_JETS
+        BR   jm_column
 
 ; ============================================================================
 ; Page 15 - reset

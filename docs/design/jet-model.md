@@ -113,11 +113,36 @@ slots.
 reads the lever's lane at all, so it needs only to read a plane's column instead
 of a lane's. This is the cheapest of the conversions.
 
-**Point 4, the mid-march row change, lands here.** A plane's row is a nibble the
-march can write, so changing row is a write to `FILE_JETS[base + 2*plane]`. The
-open question is *what decides it* - a rotor, the entropy nibble, or a fixed
-alternation - and that is a task-12 decision, not a layout one. It must not read
-the entropy nibble: see (g).
+**Point 4, the mid-march row change, lands here, and it is now built.** A plane's
+row is a nibble the march can write, so changing row is a write to
+`FILE_JETS[base + 2*plane]`. What decides it was the open question, and the
+answer came from a measurement rather than from a preference:
+`docs/evidence/timing-analysis.md`, "The squadron's row changes", reads 13 row
+changes off the owner's skill-3 clip against a shuffled control of 1.6 +- 1.3.
+The rule the ROM took from it, at `jm_row` on `P_SPARE`:
+
+> On the one march step that carries a plane off **grid 3**, the top row and the
+> middle row exchange places and the bottom row keeps its place.
+
+Three things about it are worth carrying into any later revision:
+
+- **The row is written before the column, not after.** A plane is two nibbles and
+  this machine writes one at a time, so the step is observable half-done from
+  outside. With the column first the transient is a plane's *old* row beside its
+  *new* column, which `missile-rank.test.ts` classifies as a march arrival and
+  charges the collision test a pass-through nobody made; with the row first it is
+  the plane's *new* row beside its *old* column, which the same classifier reads
+  as a spawn and excludes. Same writes, same cycles, one order observable.
+- **Grid 3 is the gate because it is the one every plane crosses.** Entry is at
+  grid 1 or 2 and the capture line is grid 5, so grid 3 fires exactly once per
+  lifetime whatever the plane entered at.
+- **It is a swap because a swap is a bijection.** No map moves all three rows one
+  place each - on three rows a step of one either has a fixed point or collides -
+  and the draft that moved all three (both edges to the middle, the middle to the
+  bottom) emptied the top row of everything past grid 3. `launcher-lives.test.ts`
+  caught it as a centre lever that could no longer lose its third launcher.
+
+It reads neither the entropy nibble nor `NIB_ROTOR`: see (g).
 
 ---
 
@@ -189,10 +214,17 @@ refuses.
 **The sweep-cycle ceiling binds harder than the word budget.**
 `sweep-timing.test.ts` requires the mean silent sweep keep
 `CYCLE_HZ_MAX / meanSilentCycles > 72.5`; its own comment says *"920 cycles is
-all it takes for `fastest` to fall through 72.5"*. Current mean is ~914, so there
-are about six cycles of headroom. The march runs every sweep. **A per-sweep cost
-increase in `jet_march` is the most likely way this work breaks the tube**, and it
-will not show up as a word-count problem.
+all it takes for `fastest` to fall through 72.5"*. The march runs every sweep.
+**A per-sweep cost increase in `jet_march` is the most likely way this work breaks
+the tube**, and it will not show up as a word-count problem.
+
+The "~914, about six cycles of headroom" this paragraph used to quote was stale.
+Measured 2026-09-08 on `main` and again with `jm_row` added, the mean silent sweep
+is **895.1 cycles on both** - 24.9 of headroom, and unmoved by the row change,
+because the only sweeps that run `jm_row` are march-step sweeps and those carry
+the march beep, so they are not silent sweeps. What a cost put in `jet_march`
+*ahead* of the countdown would do is a different question, and that is the one the
+paragraph is warning about.
 
 ---
 
