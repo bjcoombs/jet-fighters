@@ -188,8 +188,18 @@ is 7/889, and both figures are read from the shared cadence constants rather tha
 `arduboy/src/generated/rom.h`: a 2048-byte `PROGMEM` array, the 32-entry PLA, and the
 source ROM's sha256 in a comment. The header is committed.
 
-**Done when** `npm run arduboy:rom` regenerates it byte-identically from a clean
-checkout, and a CI step fails if the committed header does not match a fresh run.
+`arduboy/tools/gencadence.ts` does the same for the cadence constants, emitting
+`arduboy/src/generated/cadence.h` from `src/machine/board/tms1370-cadence.ts` and
+`src/machine/cpu/tms1370/timing.ts`. Every cadence figure the port uses is a field of
+that header or an expression over one; a literal carrying a comment that cites the
+TypeScript source is a citation, not a provenance, and does not satisfy this.
+
+**Done when** `npm run arduboy:rom` and `npm run arduboy:cadence` regenerate both headers
+byte-identically from a clean checkout, and a CI step fails if either committed header
+does not match a fresh run - demonstrated on a commit that changes `asm/jetfighter.asm`
+without regenerating, not only on one that perturbs the header, since a gate conditioned
+on the generated file's own directory is green on exactly the commit that makes it
+stale.
 
 ### R4 - The sprite atlas, generated from `atlas.json` (5 points)
 
@@ -213,7 +223,10 @@ generator requirement with a machine check and not something the playfield revea
 resolves to a shape and an origin, no cell outside the 94 does, and each bitmap's set
 pixels agree with its path's interior everywhere but within a pixel of the boundary -
 compared per segment, because an aggregate over all 94 hides the blocks behind the
-digits.
+digits. The tolerance is a pixel of the four-times-oversampled comparison grid, not of
+the output bitmap, and no morphological pass runs after rasterization: a one-pixel
+dilation adds only pixels adjacent to a boundary pixel, so it satisfies a tolerance
+phrased in output pixels while fattening every sprite on the panel.
 
 ### R5 - The renderer and the 128x64 layout (5 points)
 
@@ -222,8 +235,12 @@ the 1024-byte frame buffer, which then goes out over SPI. Playfield band at the 
 factor, score beneath it, control indicator in the spare rows.
 
 The reference to compare against is `src/machine/tube/`'s own renderer at the layout
-factor, thresholded to one bit. It is not a second implementation of the Arduboy blit and
-it does not read the generated atlas: a reference built from the same atlas agrees with
+factor, thresholded to one bit with the phosphor at full brightness, the ghost layer and
+bloom disabled, and the threshold at half the segment fill's own alpha. Those settings
+are fixed here rather than left to whoever builds it: bloom on with the threshold dropped
+fattens every reference shape by about a pixel, which is exactly enough to agree with a
+fattened atlas. It is not a second implementation of the Arduboy blit and it does not
+read the generated atlas: a reference built from the same atlas agrees with
 the build by construction whatever either of them draws.
 
 **Done when** frames captured from the host build match that reference over a state set
@@ -260,9 +277,16 @@ a render rather than free-running. The budget to verify:
 | Blitting up to 94 shapes | to be measured |
 | Remaining, divided by 889 | the interpreter's budget |
 
-**This is the requirement that can fail.** If the interpreter costs more than the budget
-allows, the port runs slow and the pace `v4` established is lost. The number is measured
-on the device with a cycle counter, not estimated.
+**This is the requirement that can fail** - and it has to stay able to. The rate is read
+from a counter nothing outside `step()` assigns to, and the catch-up figure is the
+measured shortfall before any resync or clamp, with the number of resets reported and
+zero. A pacer that resyncs the emulated cycle counter whenever it falls behind reports
+the rate back to itself and hits `CYCLE_HZ` exactly however slow the interpreter is,
+while a clamp becomes the catch-up figure's own ceiling. The breakdown covers the
+heaviest sweep observed as well as the median - a full squadron with the battleship up
+and an explosion running is the sweep that decides whether the budget closes, and a
+median deletes it. The number is measured on the device with a cycle counter, not
+estimated.
 
 **Done when** the measured instruction rate over a 60-second run is within 1% of
 `CYCLE_HZ`, the worst-case catch-up interval is under one sweep period, and the report of
@@ -296,15 +320,19 @@ coverage.
 ### R10 - On-target conformance and the flash budget (5 points)
 
 A build flag adds a trace mode: the firmware dumps its segment and speaker trace over the
-CDC port the device already presents. A host script runs the same drives against the
+CDC port the device already presents. The trace build differs from the shipped build only
+by that emission - the flag guards the serialization sites and nothing else, and in
+particular does not compile out the renderer, the SPI transfer or the pacer. A trace
+build missing any of them verifies a binary nobody plays, which is the opposite of this
+requirement's purpose. A host script runs the same drives against the
 flashed binary and compares against the TypeScript core.
 
 `avr-size` reports flash and SRAM against the measured bootloader size, and the build
 fails if either exceeds its budget. The baseline to grow from is 5838 bytes of flash and
 365 of SRAM, measured on 2026-09-20; the frame buffer adds 1024 to the second.
 
-**Done when** the on-target trace matches over one full game, and the size report is
-committed.
+**Done when** every drive matches on the flashed binary, the full game among them driven
+at skill 3, `avr-size` is run over that same binary, and the size report is committed.
 
 ### R11 - Build, flash and CI (3 points)
 
