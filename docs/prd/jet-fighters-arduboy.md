@@ -202,8 +202,18 @@ digit segments, the hundreds bar, the score label - plus a 108-entry table mappi
 Shapes repeat across lanes and columns and are stored once. The table is the only place
 that knows which cell is which.
 
+Shapes are rasterized from each segment's `path`, never filled from its `bounds`. The
+two are not close: a rocket's outline encloses about 7% of its bounding box and a score
+segment about 87%, so a generator that fills the box draws convincing digits and turns
+every jet, battleship, burst, capture and explosion into a solid block. Blocks in the
+right cells at the right instants look like a working game, which is why this is a
+generator requirement with a machine check and not something the playfield reveals.
+
 **Done when** the generated atlas is under 2 KB, every one of the 94 populated cells
-resolves to a shape and an origin, and no cell outside the 94 does.
+resolves to a shape and an origin, no cell outside the 94 does, and each bitmap's set
+pixels agree with its path's interior everywhere but within a pixel of the boundary -
+compared per segment, because an aggregate over all 94 hides the blocks behind the
+digits.
 
 ### R5 - The renderer and the 128x64 layout (5 points)
 
@@ -211,9 +221,15 @@ A sweep boundary triggers a render: cells whose duty exceeded zero blit their sh
 the 1024-byte frame buffer, which then goes out over SPI. Playfield band at the 0.6017
 factor, score beneath it, control indicator in the spare rows.
 
-**Done when** a frame captured from the host build matches a reference rendering of the
-same machine state, and the render plus transfer costs less than 15% of a sweep period
-(R8 measures it).
+The reference to compare against is `src/machine/tube/`'s own renderer at the layout
+factor, thresholded to one bit. It is not a second implementation of the Arduboy blit and
+it does not read the generated atlas: a reference built from the same atlas agrees with
+the build by construction whatever either of them draws.
+
+**Done when** frames captured from the host build match that reference over a state set
+spanning all three skill settings and including the squadron past the ladder's opening
+rungs, and the render plus transfer costs less than 15% of a sweep period (R8 measures
+it).
 
 ### R6 - Controls (3 points)
 
@@ -249,7 +265,11 @@ allows, the port runs slow and the pace `v4` established is lost. The number is 
 on the device with a cycle counter, not estimated.
 
 **Done when** the measured instruction rate over a 60-second run is within 1% of
-`CYCLE_HZ`, and the report of where the cycles went is committed alongside it.
+`CYCLE_HZ`, the worst-case catch-up interval is under one sweep period, and the report of
+where the cycles went is committed alongside it. The catch-up bound is not pedantry: it
+is the only place in this port where device timing meets wall time, since R7 and R10
+compare in emulated-cycle coordinates where jitter is invisible, and tens of milliseconds
+of it smears the pitch of every note.
 
 ### R9 - Host differential conformance (8 points)
 
@@ -260,10 +280,18 @@ duty]` triple and every `[cycle, level]` speaker edge.
 
 Drives cover at minimum: power-on through the first sweep, a full game to game over, the
 win jingle, a capture, and a fire press at a cycle that exercises the entropy
-accumulator.
+accumulator. They span all three skill settings, and at least one reaches the highest
+kills count a played game at skill 3 reaches, so the march ladder's upper rungs and the
+skill-2 and skill-3 step tables are executed rather than merely present. A set run
+entirely at skill 1 spans the five categories and exercises none of that; a full-game
+drive that presses fire zero times is the cheapest way to reach game over without
+exercising anything at all.
 
-**Done when** the traces are equal over every drive, and a deliberately corrupted opcode
-handler makes a drive fail.
+**Done when** the traces are equal over every drive, and five corrupted opcode handlers -
+picked from the assembler listing's opcode histogram, including its three rarest, rather
+than chosen by whoever wrote the core - each make at least one drive fail. One mutant on
+a hot opcode fails every drive in the first hundred instructions and shows nothing about
+coverage.
 
 ### R10 - On-target conformance and the flash budget (5 points)
 
