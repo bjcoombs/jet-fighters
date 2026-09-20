@@ -1,0 +1,12 @@
+{
+  "tools/probe/render-fidelity.test.ts": "2026-09-20",
+  "tools/probe/battleship-arrival.test.ts": "2026-09-20",
+  "tools/model/build_console.py": "2026-09-20",
+  "tools/probe/scoring-ruler.test.ts": "2026-09-20",
+  "tools/probe/launcher-lives.test.ts": "2026-09-20",
+  "tools/probe/sweep-timing.test.ts": "2026-09-20",
+  "tools/probe/tms1370-rom.test.ts": "2026-09-20",
+  "tools/model/measure.py": "2026-09-20",
+  "src/machine/tube/atlas.test.ts": "2026-09-20",
+  "tools/probe/speaker-bands.test.ts": "2026-09-20"
+}

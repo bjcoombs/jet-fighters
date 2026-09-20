@@ -1,0 +1,531 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" width="1600" height="1000" preserveAspectRatio="xMidYMid meet" role="img">
+<title>Complexity Hotspot Heatmap</title>
+<desc>Treemap showing code complexity by file size, hue indicates cyclomatic complexity, saturation indicates git churn</desc>
+<style>
+  rect:hover { stroke: #000; stroke-width: 1.5; }
+  text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #1a1a1a; pointer-events: none; text-anchor: middle; dominant-baseline: middle; }
+</style>
+<rect x="0.00" y="0.00" width="124.64" height="150.61" fill="#d3c9cc" stroke="white" stroke-width="0.5"><title>tools/probe/drives/march-tone-identity.ts
+11,643 est. tokens · 645 loc · ccn 115 · commits (last 12mo) 3</title></rect>
+<rect x="124.64" y="0.00" width="93.87" height="150.61" fill="#d4d1d2" stroke="white" stroke-width="0.5"><title>tools/probe/drives/loss-warning-partials.ts
+8,768 est. tokens · 530 loc · ccn 24 · commits (last 12mo) 3</title></rect>
+<rect x="0.00" y="150.61" width="82.28" height="71.66" fill="#d3cfd1" stroke="white" stroke-width="0.5"><title>tools/probe/drives/missile-transit.ts
+3,657 est. tokens · 244 loc · ccn 68 · commits (last 12mo) 2</title></rect>
+<rect x="82.28" y="150.61" width="69.30" height="71.66" fill="#d2d0d4" stroke="white" stroke-width="0.5"><title>tools/probe/drives/recording.ts
+3,080 est. tokens · 254 loc · ccn 42 · commits (last 12mo) 1</title></rect>
+<rect x="151.58" y="150.61" width="66.93" height="71.66" fill="#d4d1d2" stroke="white" stroke-width="0.5"><title>tools/probe/drives/march-tone-identity.test.ts
+2,975 est. tokens · 156 loc · ccn 28 · commits (last 12mo) 3</title></rect>
+<rect x="0.00" y="222.27" width="78.00" height="58.13" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/probe/drives/score-windows.ts
+2,812 est. tokens · 160 loc · ccn 32 · commits (last 12mo) 1</title></rect>
+<rect x="78.00" y="222.27" width="71.51" height="58.13" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/probe/drives/march-wall-clock.ts
+2,578 est. tokens · 127 loc · ccn 33 · commits (last 12mo) 1</title></rect>
+<rect x="149.50" y="222.27" width="69.01" height="58.13" fill="#d3d1d5" stroke="white" stroke-width="0.5"><title>tools/probe/drives/loss-warning-partials.test.ts
+2,488 est. tokens · 103 loc · ccn 9 · commits (last 12mo) 2</title></rect>
+<rect x="0.00" y="280.40" width="57.88" height="63.51" fill="#d4d1d2" stroke="white" stroke-width="0.5"><title>tools/probe/drives/entry-onto-missile.ts
+2,280 est. tokens · 130 loc · ccn 33 · commits (last 12mo) 3</title></rect>
+<rect x="0.00" y="343.91" width="57.88" height="62.34" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/probe/drives/score-windows.test.ts
+2,238 est. tokens · 96 loc · ccn 14 · commits (last 12mo) 1</title></rect>
+<rect x="0.00" y="406.25" width="57.88" height="49.33" fill="#d5d0cf" stroke="white" stroke-width="0.5"><title>tools/probe/drives/playability-audit.ts
+1,771 est. tokens · 94 loc · ccn 46 · commits (last 12mo) 4</title></rect>
+<rect x="57.88" y="280.40" width="58.93" height="43.61" fill="#d5d2d3" stroke="white" stroke-width="0.5"><title>tools/probe/drives/drives-covered.test.ts
+1,594 est. tokens · 104 loc · ccn 13 · commits (last 12mo) 4</title></rect>
+<rect x="116.81" y="280.40" width="51.05" height="43.61" fill="#d3d1d4" stroke="white" stroke-width="0.5"><title>tools/probe/drives/render-drive.ts
+1,381 est. tokens · 49 loc · ccn 13 · commits (last 12mo) 2</title></rect>
+<rect x="167.86" y="280.40" width="50.65" height="43.61" fill="#d5d1d1" stroke="white" stroke-width="0.5"><title>tools/probe/drives/column-hit-profile.ts
+1,370 est. tokens · 64 loc · ccn 30 · commits (last 12mo) 4</title></rect>
+<rect x="57.88" y="324.02" width="48.62" height="44.71" fill="#d4d1d3" stroke="white" stroke-width="0.5"><title>tools/probe/drives/entry-spread.ts
+1,348 est. tokens · 83 loc · ccn 17 · commits (last 12mo) 3</title></rect>
+<rect x="57.88" y="368.72" width="48.62" height="44.31" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/probe/drives/missile-transit.test.ts
+1,336 est. tokens · 49 loc · ccn 7 · commits (last 12mo) 1</title></rect>
+<rect x="57.88" y="413.03" width="48.62" height="42.55" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/probe/drives/march-wall-clock.test.ts
+1,283 est. tokens · 44 loc · ccn 11 · commits (last 12mo) 1</title></rect>
+<rect x="106.50" y="324.02" width="42.14" height="48.02" fill="#d3d1d4" stroke="white" stroke-width="0.5"><title>tools/probe/drives/parked-endings.ts
+1,255 est. tokens · 67 loc · ccn 14 · commits (last 12mo) 2</title></rect>
+<rect x="148.64" y="324.02" width="37.10" height="48.02" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/probe/drives/render-drive.test.ts
+1,105 est. tokens · 62 loc · ccn 17 · commits (last 12mo) 1</title></rect>
+<rect x="185.74" y="324.02" width="32.77" height="48.02" fill="#d3d2d5" stroke="white" stroke-width="0.5"><title>tools/probe/drives/README.md
+976 est. tokens · 52 loc · ccn 0 · commits (last 12mo) 2</title></rect>
+<rect x="106.50" y="372.04" width="34.85" height="44.13" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/probe/drives/parked-endings.test.ts
+954 est. tokens · 60 loc · ccn 9 · commits (last 12mo) 1</title></rect>
+<rect x="106.50" y="416.17" width="34.85" height="39.41" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/probe/drives/playability-audit.test.ts
+852 est. tokens · 45 loc · ccn 10 · commits (last 12mo) 1</title></rect>
+<rect x="141.35" y="372.04" width="39.92" height="33.69" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/probe/drives/column-hit-profile.test.ts
+834 est. tokens · 38 loc · ccn 10 · commits (last 12mo) 1</title></rect>
+<rect x="181.27" y="372.04" width="37.24" height="33.69" fill="#d4d1d3" stroke="white" stroke-width="0.5"><title>tools/probe/drives/battleship-lead.ts
+778 est. tokens · 40 loc · ccn 18 · commits (last 12mo) 3</title></rect>
+<rect x="141.35" y="405.72" width="45.24" height="25.41" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/probe/drives/battleship-lead.test.ts
+713 est. tokens · 27 loc · ccn 5 · commits (last 12mo) 1</title></rect>
+<rect x="141.35" y="431.14" width="45.24" height="24.45" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/probe/drives/entry-onto-missile.test.ts
+686 est. tokens · 30 loc · ccn 5 · commits (last 12mo) 1</title></rect>
+<rect x="186.59" y="405.72" width="31.92" height="30.06" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/probe/drives/entry-spread.test.ts
+595 est. tokens · 25 loc · ccn 5 · commits (last 12mo) 1</title></rect>
+<rect x="186.59" y="435.78" width="31.92" height="19.80" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/probe/drives/entry-point.ts
+392 est. tokens · 13 loc · ccn 4 · commits (last 12mo) 1</title></rect>
+<rect x="0.00" y="455.58" width="218.51" height="100.96" fill="#d8b5b2" stroke="white" stroke-width="0.5"><title>tools/probe/battleship-arrival.test.ts
+13,682 est. tokens · 542 loc · ccn 116 · commits (last 12mo) 11</title></rect>
+<rect x="218.51" y="0.00" width="157.70" height="134.10" fill="#d9afaa" stroke="white" stroke-width="0.5"><title>tools/probe/sweep-timing.test.ts
+13,116 est. tokens · 403 loc · ccn 119 · commits (last 12mo) 13</title></rect>
+<rect x="376.21" y="0.00" width="155.08" height="134.10" fill="#d9beb8" stroke="white" stroke-width="0.5"><title>tools/probe/scoring-ruler.test.ts
+12,898 est. tokens · 413 loc · ccn 96 · commits (last 12mo) 10</title></rect>
+<rect x="531.29" y="0.00" width="149.46" height="134.10" fill="#d5afad" stroke="white" stroke-width="0.5"><title>tools/probe/launcher-lives.test.ts
+12,431 est. tokens · 429 loc · ccn 131 · commits (last 12mo) 11</title></rect>
+<rect x="218.51" y="134.10" width="136.92" height="144.88" fill="#d7c0bd" stroke="white" stroke-width="0.5"><title>tools/probe/render-fidelity.test.ts
+12,303 est. tokens · 576 loc · ccn 103 · commits (last 12mo) 8</title></rect>
+<rect x="218.51" y="278.98" width="136.92" height="141.66" fill="#d4afaf" stroke="white" stroke-width="0.5"><title>tools/probe/tms1370-rom.test.ts
+12,030 est. tokens · 541 loc · ccn 136 · commits (last 12mo) 10</title></rect>
+<rect x="218.51" y="420.64" width="136.92" height="135.90" fill="#d3aeae" stroke="white" stroke-width="0.5"><title>tools/probe/speaker-bands.test.ts
+11,541 est. tokens · 410 loc · ccn 140 · commits (last 12mo) 10</title></rect>
+<rect x="355.43" y="134.10" width="137.38" height="127.00" fill="#d1c6c9" stroke="white" stroke-width="0.5"><title>tools/probe/positioned-planes.test.ts
+10,821 est. tokens · 479 loc · ccn 145 · commits (last 12mo) 3</title></rect>
+<rect x="492.81" y="134.10" width="94.24" height="127.00" fill="#dac4bc" stroke="white" stroke-width="0.5"><title>tools/probe/blank-to-glass.test.ts
+7,423 est. tokens · 291 loc · ccn 79 · commits (last 12mo) 10</title></rect>
+<rect x="587.05" y="134.10" width="93.70" height="127.00" fill="#dcc9c0" stroke="white" stroke-width="0.5"><title>tools/probe/rom-atlas-conformance.test.ts
+7,380 est. tokens · 272 loc · ccn 63 · commits (last 12mo) 11</title></rect>
+<rect x="355.43" y="261.10" width="110.01" height="105.34" fill="#d6c5c3" stroke="white" stroke-width="0.5"><title>tools/probe/tms1370-probe.ts
+7,187 est. tokens · 441 loc · ccn 101 · commits (last 12mo) 6</title></rect>
+<rect x="355.43" y="366.44" width="110.01" height="95.62" fill="#dcd0c6" stroke="white" stroke-width="0.5"><title>tools/probe/game-lifetime.test.ts
+6,524 est. tokens · 210 loc · ccn 37 · commits (last 12mo) 11</title></rect>
+<rect x="355.43" y="462.06" width="110.01" height="94.48" fill="#d5d0d0" stroke="white" stroke-width="0.5"><title>tools/probe/march-cadence.test.ts
+6,446 est. tokens · 188 loc · ccn 41 · commits (last 12mo) 4</title></rect>
+<rect x="465.44" y="261.10" width="111.73" height="74.97" fill="#d4d0d1" stroke="white" stroke-width="0.5"><title>tools/probe/win-jingle.test.ts
+5,195 est. tokens · 162 loc · ccn 41 · commits (last 12mo) 3</title></rect>
+<rect x="577.17" y="261.10" width="103.58" height="74.97" fill="#d8c4bf" stroke="white" stroke-width="0.5"><title>tools/probe/machine-probe.test.ts
+4,816 est. tokens · 315 loc · ccn 87 · commits (last 12mo) 8</title></rect>
+<rect x="465.44" y="336.07" width="75.88" height="91.97" fill="#d5cfce" stroke="white" stroke-width="0.5"><title>tools/probe/machine-probe.ts
+4,328 est. tokens · 275 loc · ccn 59 · commits (last 12mo) 4</title></rect>
+<rect x="541.32" y="336.07" width="71.85" height="91.97" fill="#d4d1d2" stroke="white" stroke-width="0.5"><title>tools/probe/missile-rank.test.ts
+4,098 est. tokens · 193 loc · ccn 31 · commits (last 12mo) 3</title></rect>
+<rect x="613.16" y="336.07" width="67.59" height="91.97" fill="#d3d1d4" stroke="white" stroke-width="0.5"><title>tools/probe/entry-position.test.ts
+3,855 est. tokens · 174 loc · ccn 19 · commits (last 12mo) 2</title></rect>
+<rect x="465.44" y="428.03" width="90.60" height="64.66" fill="#d3d1d4" stroke="white" stroke-width="0.5"><title>tools/probe/tms1370-timing.test.ts
+3,633 est. tokens · 109 loc · ccn 24 · commits (last 12mo) 2</title></rect>
+<rect x="465.44" y="492.69" width="90.60" height="63.85" fill="#d2d0d4" stroke="white" stroke-width="0.5"><title>tools/probe/mid-march-row.test.ts
+3,588 est. tokens · 174 loc · ccn 43 · commits (last 12mo) 1</title></rect>
+<rect x="556.04" y="428.03" width="66.76" height="63.91" fill="#d2d0d4" stroke="white" stroke-width="0.5"><title>tools/probe/paging.ts
+2,646 est. tokens · 171 loc · ccn 56 · commits (last 12mo) 1</title></rect>
+<rect x="622.80" y="428.03" width="57.95" height="63.91" fill="#d3d1d3" stroke="white" stroke-width="0.5"><title>tools/probe/entropy-nibble.test.ts
+2,297 est. tokens · 96 loc · ccn 25 · commits (last 12mo) 2</title></rect>
+<rect x="556.04" y="491.94" width="35.51" height="64.60" fill="#d3d1d4" stroke="white" stroke-width="0.5"><title>tools/probe/rocket-cadence.test.ts
+1,423 est. tokens · 98 loc · ccn 21 · commits (last 12mo) 2</title></rect>
+<rect x="591.55" y="491.94" width="61.22" height="33.58" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/probe/game-horizons.ts
+1,275 est. tokens · 5 loc · ccn 1 · commits (last 12mo) 1</title></rect>
+<rect x="591.55" y="525.52" width="61.22" height="31.02" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/probe/paging.test.ts
+1,178 est. tokens · 107 loc · ccn 14 · commits (last 12mo) 1</title></rect>
+<rect x="652.77" y="491.94" width="27.98" height="64.60" fill="#d3d1d4" stroke="white" stroke-width="0.5"><title>tools/probe/lever-after-game-over.test.ts
+1,121 est. tokens · 56 loc · ccn 15 · commits (last 12mo) 2</title></rect>
+<rect x="0.00" y="556.54" width="79.55" height="63.91" fill="#d3d0d2" stroke="white" stroke-width="0.5"><title>tools/tmsasm/analysis/analysis.test.ts
+3,153 est. tokens · 282 loc · ccn 53 · commits (last 12mo) 2</title></rect>
+<rect x="79.55" y="556.54" width="64.26" height="63.91" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/tmsasm/analysis/cfg.ts
+2,547 est. tokens · 138 loc · ccn 37 · commits (last 12mo) 1</title></rect>
+<rect x="0.00" y="620.45" width="72.29" height="41.08" fill="#d3d1d4" stroke="white" stroke-width="0.5"><title>tools/tmsasm/analysis/status.ts
+1,842 est. tokens · 76 loc · ccn 20 · commits (last 12mo) 2</title></rect>
+<rect x="0.00" y="661.53" width="72.29" height="39.74" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/tmsasm/analysis/r-outputs.ts
+1,782 est. tokens · 101 loc · ccn 25 · commits (last 12mo) 1</title></rect>
+<rect x="72.29" y="620.45" width="38.36" height="60.60" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/tmsasm/analysis/subroutine.ts
+1,442 est. tokens · 59 loc · ccn 10 · commits (last 12mo) 1</title></rect>
+<rect x="110.66" y="620.45" width="33.15" height="60.60" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/tmsasm/analysis/placement.ts
+1,246 est. tokens · 67 loc · ccn 11 · commits (last 12mo) 1</title></rect>
+<rect x="72.29" y="681.05" width="71.51" height="20.22" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/tmsasm/analysis/index.ts
+897 est. tokens · 40 loc · ccn 2 · commits (last 12mo) 1</title></rect>
+<rect x="143.81" y="556.54" width="98.34" height="144.73" fill="#d2cccf" stroke="white" stroke-width="0.5"><title>tools/tmsasm/assembler.ts
+8,828 est. tokens · 626 loc · ccn 107 · commits (last 12mo) 2</title></rect>
+<rect x="0.00" y="701.28" width="101.68" height="92.63" fill="#d2cfd3" stroke="white" stroke-width="0.5"><title>tools/tmsasm/parser.ts
+5,841 est. tokens · 490 loc · ccn 79 · commits (last 12mo) 1</title></rect>
+<rect x="101.68" y="701.28" width="78.12" height="92.63" fill="#d1cace" stroke="white" stroke-width="0.5"><title>tools/tmsasm/assembler.test.ts
+4,488 est. tokens · 380 loc · ccn 137 · commits (last 12mo) 2</title></rect>
+<rect x="179.80" y="701.28" width="62.35" height="92.63" fill="#d3d1d3" stroke="white" stroke-width="0.5"><title>tools/tmsasm/isa.ts
+3,582 est. tokens · 225 loc · ccn 34 · commits (last 12mo) 2</title></rect>
+<rect x="0.00" y="793.90" width="73.82" height="77.97" fill="#d3cfd2" stroke="white" stroke-width="0.5"><title>tools/tmsasm/lexer.ts
+3,570 est. tokens · 282 loc · ccn 62 · commits (last 12mo) 2</title></rect>
+<rect x="0.00" y="871.88" width="73.82" height="65.35" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/tmsasm/output.ts
+2,992 est. tokens · 177 loc · ccn 36 · commits (last 12mo) 1</title></rect>
+<rect x="0.00" y="937.23" width="73.82" height="62.77" fill="#d2cfd3" stroke="white" stroke-width="0.5"><title>tools/tmsasm/lexer.test.ts
+2,874 est. tokens · 312 loc · ccn 88 · commits (last 12mo) 1</title></rect>
+<rect x="73.82" y="793.90" width="66.41" height="67.98" fill="#d2d0d4" stroke="white" stroke-width="0.5"><title>tools/tmsasm/cli.ts
+2,800 est. tokens · 219 loc · ccn 51 · commits (last 12mo) 1</title></rect>
+<rect x="140.23" y="793.90" width="52.70" height="67.98" fill="#d3d0d2" stroke="white" stroke-width="0.5"><title>tools/tmsasm/output.test.ts
+2,222 est. tokens · 185 loc · ccn 51 · commits (last 12mo) 2</title></rect>
+<rect x="192.94" y="793.90" width="49.22" height="67.98" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/tmsasm/vite-plugin.ts
+2,075 est. tokens · 104 loc · ccn 21 · commits (last 12mo) 1</title></rect>
+<rect x="73.82" y="861.88" width="47.30" height="69.95" fill="#d2d0d4" stroke="white" stroke-width="0.5"><title>tools/tmsasm/isa.test.ts
+2,052 est. tokens · 216 loc · ccn 56 · commits (last 12mo) 1</title></rect>
+<rect x="73.82" y="931.83" width="47.30" height="68.17" fill="#d3ced1" stroke="white" stroke-width="0.5"><title>tools/tmsasm/parser.test.ts
+2,000 est. tokens · 204 loc · ccn 75 · commits (last 12mo) 2</title></rect>
+<rect x="121.12" y="861.88" width="62.01" height="50.54" fill="#d3d1d4" stroke="white" stroke-width="0.5"><title>tools/tmsasm/memory.ts
+1,944 est. tokens · 85 loc · ccn 16 · commits (last 12mo) 2</title></rect>
+<rect x="183.14" y="861.88" width="59.02" height="50.54" fill="#d4d0d1" stroke="white" stroke-width="0.5"><title>tools/tmsasm/example.test.ts
+1,850 est. tokens · 128 loc · ccn 41 · commits (last 12mo) 3</title></rect>
+<rect x="121.12" y="912.42" width="59.74" height="45.26" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/tmsasm/cli.test.ts
+1,677 est. tokens · 150 loc · ccn 32 · commits (last 12mo) 1</title></rect>
+<rect x="121.12" y="957.68" width="59.74" height="42.32" fill="#d2d0d4" stroke="white" stroke-width="0.5"><title>tools/tmsasm/vite-plugin.test.ts
+1,568 est. tokens · 143 loc · ccn 47 · commits (last 12mo) 1</title></rect>
+<rect x="180.86" y="912.42" width="61.29" height="31.33" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/tmsasm/opla-table.test.ts
+1,191 est. tokens · 67 loc · ccn 17 · commits (last 12mo) 1</title></rect>
+<rect x="180.86" y="943.75" width="32.71" height="56.25" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/tmsasm/memory.test.ts
+1,141 est. tokens · 113 loc · ccn 27 · commits (last 12mo) 1</title></rect>
+<rect x="213.57" y="943.75" width="28.58" height="56.25" fill="#d4d2d5" stroke="white" stroke-width="0.5"><title>tools/tmsasm/fixtures/demo.asm
+997 est. tokens · 38 loc · ccn 0 · commits (last 12mo) 3</title></rect>
+<rect x="242.15" y="556.54" width="244.47" height="119.81" fill="#d2b1b1" stroke="white" stroke-width="0.5"><title>tools/model/build_console.py
+18,165 est. tokens · 975 loc · ccn 141 · commits (last 12mo) 9</title></rect>
+<rect x="242.15" y="676.35" width="99.31" height="147.12" fill="#d9c6c0" stroke="white" stroke-width="0.5"><title>tools/model/measure.py
+9,061 est. tokens · 461 loc · ccn 76 · commits (last 12mo) 9</title></rect>
+<rect x="341.46" y="676.35" width="145.16" height="76.07" fill="#d9d5d4" stroke="white" stroke-width="0.5"><title>tools/model/dimensions.json
+6,849 est. tokens · 1082 loc · ccn 0 · commits (last 12mo) 8</title></rect>
+<rect x="341.46" y="752.42" width="58.08" height="71.04" fill="#d6d3d4" stroke="white" stroke-width="0.5"><title>tools/model/pixels.json
+2,559 est. tokens · 191 loc · ccn 0 · commits (last 12mo) 5</title></rect>
+<rect x="399.54" y="752.42" width="56.72" height="71.04" fill="#d5d1d0" stroke="white" stroke-width="0.5"><title>tools/model/compare.py
+2,499 est. tokens · 176 loc · ccn 34 · commits (last 12mo) 4</title></rect>
+<rect x="456.25" y="752.42" width="30.37" height="56.76" fill="#d8d4d4" stroke="white" stroke-width="0.5"><title>tools/model/README.md
+1,069 est. tokens · 52 loc · ccn 0 · commits (last 12mo) 7</title></rect>
+<rect x="456.25" y="809.18" width="16.93" height="14.28" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/model/blender.sh
+150 est. tokens · 11 loc · ccn 4 · commits (last 12mo) 1</title></rect>
+<rect x="473.19" y="809.18" width="13.43" height="14.28" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/model/label.txt
+119 est. tokens · 13 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="486.62" y="556.54" width="194.13" height="96.18" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/trace/seeds.json
+11,580 est. tokens · 80 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="486.62" y="652.72" width="107.71" height="106.75" fill="#d3cbcd" stroke="white" stroke-width="0.5"><title>tools/trace/trace_atlas.py
+7,131 est. tokens · 371 loc · ccn 100 · commits (last 12mo) 3</title></rect>
+<rect x="486.62" y="759.47" width="107.71" height="64.00" fill="#d3d0d3" stroke="white" stroke-width="0.5"><title>tools/trace/score.py
+4,275 est. tokens · 140 loc · ccn 41 · commits (last 12mo) 2</title></rect>
+<rect x="594.33" y="652.72" width="44.93" height="77.80" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/trace/masks.py
+2,168 est. tokens · 74 loc · ccn 13 · commits (last 12mo) 1</title></rect>
+<rect x="639.26" y="652.72" width="41.49" height="77.80" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/trace/lattice.py
+2,002 est. tokens · 88 loc · ccn 12 · commits (last 12mo) 1</title></rect>
+<rect x="594.33" y="730.52" width="44.43" height="63.54" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/trace/contour.py
+1,751 est. tokens · 130 loc · ccn 29 · commits (last 12mo) 1</title></rect>
+<rect x="638.76" y="730.52" width="41.99" height="63.54" fill="#d3d1d3" stroke="white" stroke-width="0.5"><title>tools/trace/preview.py
+1,655 est. tokens · 123 loc · ccn 33 · commits (last 12mo) 2</title></rect>
+<rect x="594.33" y="794.06" width="86.42" height="29.40" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/trace/report.py
+1,576 est. tokens · 104 loc · ccn 26 · commits (last 12mo) 1</title></rect>
+<rect x="242.15" y="823.46" width="108.30" height="125.04" fill="#d1ced2" stroke="white" stroke-width="0.5"><title>tools/compare/harness.ts
+8,399 est. tokens · 519 loc · ccn 119 · commits (last 12mo) 1</title></rect>
+<rect x="242.15" y="948.50" width="108.30" height="51.50" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>tools/compare/romset.ts
+3,459 est. tokens · 219 loc · ccn 32 · commits (last 12mo) 1</title></rect>
+<rect x="350.45" y="823.46" width="66.76" height="77.79" fill="#d2d0d4" stroke="white" stroke-width="0.5"><title>tools/compare/harness.test.ts
+3,221 est. tokens · 247 loc · ccn 61 · commits (last 12mo) 1</title></rect>
+<rect x="417.22" y="823.46" width="64.34" height="77.79" fill="#d2d0d4" stroke="white" stroke-width="0.5"><title>tools/compare/cli.ts
+3,104 est. tokens · 265 loc · ccn 65 · commits (last 12mo) 1</title></rect>
+<rect x="350.45" y="901.25" width="50.13" height="98.75" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/compare/report.ts
+3,070 est. tokens · 247 loc · ccn 19 · commits (last 12mo) 1</title></rect>
+<rect x="400.58" y="901.25" width="80.97" height="57.27" fill="#d2d0d4" stroke="white" stroke-width="0.5"><title>tools/compare/cli.test.ts
+2,876 est. tokens · 193 loc · ccn 43 · commits (last 12mo) 1</title></rect>
+<rect x="400.58" y="958.52" width="80.97" height="41.48" fill="#d2d0d4" stroke="white" stroke-width="0.5"><title>tools/compare/romset.test.ts
+2,083 est. tokens · 159 loc · ccn 45 · commits (last 12mo) 1</title></rect>
+<rect x="481.55" y="823.46" width="92.66" height="102.34" fill="#d4cecf" stroke="white" stroke-width="0.5"><title>tools/video/score_windows.py
+5,881 est. tokens · 277 loc · ccn 68 · commits (last 12mo) 3</title></rect>
+<rect x="481.55" y="925.80" width="92.66" height="74.20" fill="#d4cfd0" stroke="white" stroke-width="0.5"><title>tools/video/blanking.py
+4,264 est. tokens · 252 loc · ccn 59 · commits (last 12mo) 3</title></rect>
+<rect x="574.21" y="823.46" width="55.24" height="70.78" fill="#d2d0d4" stroke="white" stroke-width="0.5"><title>tools/video/sprites.py
+2,425 est. tokens · 117 loc · ccn 43 · commits (last 12mo) 1</title></rect>
+<rect x="629.45" y="823.46" width="51.30" height="70.78" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/video/cells.py
+2,252 est. tokens · 117 loc · ccn 25 · commits (last 12mo) 1</title></rect>
+<rect x="574.21" y="894.24" width="61.66" height="53.03" fill="#d2d0d4" stroke="white" stroke-width="0.5"><title>tools/video/rows.py
+2,028 est. tokens · 96 loc · ccn 52 · commits (last 12mo) 1</title></rect>
+<rect x="574.21" y="947.28" width="61.66" height="52.72" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/video/clip.py
+2,016 est. tokens · 94 loc · ccn 19 · commits (last 12mo) 1</title></rect>
+<rect x="635.87" y="894.24" width="44.88" height="62.61" fill="#d2d0d4" stroke="white" stroke-width="0.5"><title>tools/video/measure.py
+1,743 est. tokens · 118 loc · ccn 48 · commits (last 12mo) 1</title></rect>
+<rect x="635.87" y="956.86" width="44.88" height="43.14" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>tools/video/clicks.py
+1,201 est. tokens · 63 loc · ccn 15 · commits (last 12mo) 1</title></rect>
+<rect x="680.75" y="0.00" width="246.33" height="170.54" fill="#ded8d2" stroke="white" stroke-width="0.5"><title>src/machine/tube/atlas.json
+26,055 est. tokens · 1233 loc · ccn 0 · commits (last 12mo) 13</title></rect>
+<rect x="927.08" y="0.00" width="127.10" height="170.54" fill="#e3dad1" stroke="white" stroke-width="0.5"><title>src/machine/tube/ATLAS-COORDINATES.md
+13,443 est. tokens · 775 loc · ccn 0 · commits (last 12mo) 18</title></rect>
+<rect x="680.75" y="170.54" width="124.10" height="136.87" fill="#ca9699" stroke="white" stroke-width="0.5"><title>src/machine/tube/atlas.test.ts
+10,535 est. tokens · 606 loc · ccn 166 · commits (last 12mo) 13</title></rect>
+<rect x="680.75" y="307.41" width="124.10" height="103.40" fill="#c0a6aa" stroke="white" stroke-width="0.5"><title>src/machine/tube/silkscreen.test.ts
+7,959 est. tokens · 513 loc · ccn 202 · commits (last 12mo) 9</title></rect>
+<rect x="680.75" y="410.82" width="124.10" height="85.33" fill="#d9d2cd" stroke="white" stroke-width="0.5"><title>src/machine/tube/silkscreen.ts
+6,568 est. tokens · 278 loc · ccn 23 · commits (last 12mo) 8</title></rect>
+<rect x="804.85" y="170.54" width="97.29" height="98.66" fill="#d7bdba" stroke="white" stroke-width="0.5"><title>src/machine/tube/renderer.test.ts
+5,953 est. tokens · 457 loc · ccn 107 · commits (last 12mo) 9</title></rect>
+<rect x="902.14" y="170.54" width="76.19" height="98.66" fill="#d4d0d1" stroke="white" stroke-width="0.5"><title>src/machine/tube/phosphor.ts
+4,662 est. tokens · 157 loc · ccn 43 · commits (last 12mo) 3</title></rect>
+<rect x="978.33" y="170.54" width="75.85" height="98.66" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>src/machine/tube/mesh.ts
+4,641 est. tokens · 133 loc · ccn 23 · commits (last 12mo) 1</title></rect>
+<rect x="804.85" y="269.20" width="84.07" height="83.87" fill="#d4ccce" stroke="white" stroke-width="0.5"><title>src/machine/tube/phosphor.test.ts
+4,373 est. tokens · 316 loc · ccn 82 · commits (last 12mo) 3</title></rect>
+<rect x="804.85" y="353.07" width="84.07" height="78.14" fill="#d7d3d1" stroke="white" stroke-width="0.5"><title>src/machine/tube/layout.ts
+4,074 est. tokens · 108 loc · ccn 14 · commits (last 12mo) 6</title></rect>
+<rect x="804.85" y="431.21" width="84.07" height="64.94" fill="#d6cfcd" stroke="white" stroke-width="0.5"><title>src/machine/tube/renderer.ts
+3,386 est. tokens · 190 loc · ccn 49 · commits (last 12mo) 5</title></rect>
+<rect x="888.92" y="269.20" width="86.86" height="59.25" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>src/machine/tube/path.ts
+3,192 est. tokens · 330 loc · ccn 25 · commits (last 12mo) 1</title></rect>
+<rect x="975.78" y="269.20" width="78.40" height="59.25" fill="#d3d0d2" stroke="white" stroke-width="0.5"><title>src/machine/tube/palette.test.ts
+2,881 est. tokens · 193 loc · ccn 57 · commits (last 12mo) 2</title></rect>
+<rect x="888.92" y="328.45" width="55.62" height="76.24" fill="#d8cac6" stroke="white" stroke-width="0.5"><title>src/machine/tube/atlas.ts
+2,630 est. tokens · 214 loc · ccn 69 · commits (last 12mo) 7</title></rect>
+<rect x="944.54" y="328.45" width="55.05" height="76.24" fill="#d4cdce" stroke="white" stroke-width="0.5"><title>src/machine/tube/fake-canvas.ts
+2,603 est. tokens · 275 loc · ccn 74 · commits (last 12mo) 3</title></rect>
+<rect x="999.59" y="328.45" width="54.59" height="76.24" fill="#d7d0cd" stroke="white" stroke-width="0.5"><title>src/machine/tube/layout.test.ts
+2,581 est. tokens · 176 loc · ccn 39 · commits (last 12mo) 6</title></rect>
+<rect x="888.92" y="404.68" width="88.51" height="46.80" fill="#dad5d3" stroke="white" stroke-width="0.5"><title>src/machine/tube/atlas-schema.ts
+2,569 est. tokens · 83 loc · ccn 1 · commits (last 12mo) 9</title></rect>
+<rect x="888.92" y="451.48" width="88.51" height="44.67" fill="#d5d2d3" stroke="white" stroke-width="0.5"><title>src/machine/tube/palette.ts
+2,452 est. tokens · 64 loc · ccn 10 · commits (last 12mo) 4</title></rect>
+<rect x="977.43" y="404.68" width="76.75" height="46.83" fill="#d2d1d4" stroke="white" stroke-width="0.5"><title>src/machine/tube/mesh.test.ts
+2,229 est. tokens · 173 loc · ccn 36 · commits (last 12mo) 1</title></rect>
+<rect x="977.43" y="451.51" width="76.75" height="44.64" fill="#d2d0d4" stroke="white" stroke-width="0.5"><title>src/machine/tube/path.test.ts
+2,125 est. tokens · 198 loc · ccn 52 · commits (last 12mo) 1</title></rect>
+<rect x="1054.18" y="0.00" width="77.48" height="104.65" fill="#d3d0d3" stroke="white" stroke-width="0.5"><title>src/machine/board/o-pla.ts
+5,029 est. tokens · 225 loc · ccn 42 · commits (last 12mo) 2</title></rect>
+<rect x="1131.66" y="0.00" width="68.93" height="104.65" fill="#d6cccb" stroke="white" stroke-width="0.5"><title>src/machine/board/display.test.ts
+4,474 est. tokens · 332 loc · ccn 69 · commits (last 12mo) 5</title></rect>
+<rect x="1200.60" y="0.00" width="67.28" height="104.65" fill="#d4cfd0" stroke="white" stroke-width="0.5"><title>src/machine/board/board.ts
+4,367 est. tokens · 223 loc · ccn 56 · commits (last 12mo) 3</title></rect>
+<rect x="1054.18" y="104.65" width="73.35" height="94.59" fill="#d4ced0" stroke="white" stroke-width="0.5"><title>src/machine/board/board.test.ts
+4,303 est. tokens · 346 loc · ccn 64 · commits (last 12mo) 3</title></rect>
+<rect x="1127.53" y="104.65" width="70.86" height="94.59" fill="#d6cfcd" stroke="white" stroke-width="0.5"><title>src/machine/board/display.ts
+4,157 est. tokens · 168 loc · ccn 48 · commits (last 12mo) 5</title></rect>
+<rect x="1198.39" y="104.65" width="69.50" height="94.59" fill="#d3cdd0" stroke="white" stroke-width="0.5"><title>src/machine/board/o-pla.test.ts
+4,077 est. tokens · 290 loc · ccn 88 · commits (last 12mo) 2</title></rect>
+<rect x="1054.18" y="199.24" width="57.21" height="77.65" fill="#d4d1d2" stroke="white" stroke-width="0.5"><title>src/machine/board/pwm.ts
+2,755 est. tokens · 144 loc · ccn 29 · commits (last 12mo) 3</title></rect>
+<rect x="1054.18" y="276.88" width="57.21" height="73.42" fill="#d3d2d5" stroke="white" stroke-width="0.5"><title>src/machine/board/tms1370-cadence.ts
+2,605 est. tokens · 16 loc · ccn 1 · commits (last 12mo) 2</title></rect>
+<rect x="1111.39" y="199.24" width="65.74" height="62.77" fill="#d3d0d3" stroke="white" stroke-width="0.5"><title>src/machine/board/tms1370-input.test.ts
+2,559 est. tokens · 208 loc · ccn 41 · commits (last 12mo) 2</title></rect>
+<rect x="1111.39" y="262.00" width="65.74" height="47.48" fill="#d2d0d4" stroke="white" stroke-width="0.5"><title>src/machine/board/pwm.test.ts
+1,936 est. tokens · 199 loc · ccn 51 · commits (last 12mo) 1</title></rect>
+<rect x="1111.39" y="309.49" width="65.74" height="40.81" fill="#d3d1d3" stroke="white" stroke-width="0.5"><title>src/machine/board/speaker.test.ts
+1,664 est. tokens · 158 loc · ccn 33 · commits (last 12mo) 2</title></rect>
+<rect x="1177.13" y="199.24" width="45.64" height="57.65" fill="#d3d1d3" stroke="white" stroke-width="0.5"><title>src/machine/board/tms1370-input.ts
+1,632 est. tokens · 82 loc · ccn 25 · commits (last 12mo) 2</title></rect>
+<rect x="1222.77" y="199.24" width="45.11" height="57.65" fill="#d4d1d3" stroke="white" stroke-width="0.5"><title>src/machine/board/tms1370-cadence.test.ts
+1,613 est. tokens · 87 loc · ccn 17 · commits (last 12mo) 3</title></rect>
+<rect x="1177.13" y="256.89" width="47.75" height="49.00" fill="#d3d1d4" stroke="white" stroke-width="0.5"><title>src/machine/board/power.test.ts
+1,451 est. tokens · 132 loc · ccn 21 · commits (last 12mo) 2</title></rect>
+<rect x="1224.87" y="256.89" width="43.01" height="49.00" fill="#d3d2d5" stroke="white" stroke-width="0.5"><title>src/machine/board/power.ts
+1,307 est. tokens · 54 loc · ccn 5 · commits (last 12mo) 2</title></rect>
+<rect x="1177.13" y="305.89" width="46.76" height="44.41" fill="#d3d1d4" stroke="white" stroke-width="0.5"><title>src/machine/board/speaker.ts
+1,288 est. tokens · 66 loc · ccn 16 · commits (last 12mo) 2</title></rect>
+<rect x="1223.88" y="305.89" width="44.00" height="27.45" fill="#d3d1d3" stroke="white" stroke-width="0.5"><title>src/machine/board/input.ts
+749 est. tokens · 60 loc · ccn 26 · commits (last 12mo) 2</title></rect>
+<rect x="1223.88" y="333.33" width="44.00" height="16.97" fill="#d3d1d4" stroke="white" stroke-width="0.5"><title>src/machine/board/input.test.ts
+463 est. tokens · 52 loc · ccn 15 · commits (last 12mo) 2</title></rect>
+<rect x="1267.88" y="0.00" width="109.72" height="85.28" fill="#d2d0d3" stroke="white" stroke-width="0.5"><title>src/machine/cpu/tms1370/cpu.test.ts
+5,803 est. tokens · 439 loc · ccn 73 · commits (last 12mo) 1</title></rect>
+<rect x="1377.60" y="0.00" width="99.19" height="85.28" fill="#d3d1d4" stroke="white" stroke-width="0.5"><title>src/machine/cpu/tms1370/cpu.ts
+5,246 est. tokens · 330 loc · ccn 17 · commits (last 12mo) 2</title></rect>
+<rect x="1267.88" y="85.28" width="72.02" height="94.25" fill="#d2cfd3" stroke="white" stroke-width="0.5"><title>src/machine/cpu/tms1370/instructions.test.ts
+4,210 est. tokens · 436 loc · ccn 75 · commits (last 12mo) 1</title></rect>
+<rect x="1339.90" y="85.28" width="69.40" height="94.25" fill="#d3d1d3" stroke="white" stroke-width="0.5"><title>src/machine/cpu/tms1370/isa.ts
+4,057 est. tokens · 230 loc · ccn 27 · commits (last 12mo) 2</title></rect>
+<rect x="1409.31" y="85.28" width="67.49" height="94.25" fill="#d3d0d2" stroke="white" stroke-width="0.5"><title>src/machine/cpu/tms1370/registers.ts
+3,945 est. tokens · 275 loc · ccn 57 · commits (last 12mo) 2</title></rect>
+<rect x="1267.88" y="179.53" width="73.20" height="85.46" fill="#d3d1d4" stroke="white" stroke-width="0.5"><title>src/machine/cpu/tms1370/ports.ts
+3,880 est. tokens · 157 loc · ccn 19 · commits (last 12mo) 2</title></rect>
+<rect x="1267.88" y="264.99" width="73.20" height="85.31" fill="#d3d0d2" stroke="white" stroke-width="0.5"><title>src/machine/cpu/tms1370/registers.test.ts
+3,873 est. tokens · 370 loc · ccn 58 · commits (last 12mo) 2</title></rect>
+<rect x="1341.08" y="179.53" width="87.88" height="57.57" fill="#d3d0d2" stroke="white" stroke-width="0.5"><title>src/machine/cpu/tms1370/ports.test.ts
+3,138 est. tokens · 306 loc · ccn 49 · commits (last 12mo) 2</title></rect>
+<rect x="1428.96" y="179.53" width="47.83" height="57.57" fill="#d3d1d3" stroke="white" stroke-width="0.5"><title>src/machine/cpu/tms1370/isa.test.ts
+1,708 est. tokens · 144 loc · ccn 31 · commits (last 12mo) 2</title></rect>
+<rect x="1341.08" y="237.10" width="37.49" height="59.91" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>src/machine/cpu/tms1370/opla.ts
+1,393 est. tokens · 35 loc · ccn 6 · commits (last 12mo) 1</title></rect>
+<rect x="1341.08" y="297.01" width="37.49" height="53.29" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>src/machine/cpu/tms1370/memory.ts
+1,239 est. tokens · 64 loc · ccn 11 · commits (last 12mo) 1</title></rect>
+<rect x="1378.57" y="237.10" width="49.18" height="34.46" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>src/machine/cpu/tms1370/ram.ts
+1,051 est. tokens · 39 loc · ccn 8 · commits (last 12mo) 1</title></rect>
+<rect x="1427.75" y="237.10" width="49.04" height="34.46" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>src/machine/cpu/tms1370/ram.test.ts
+1,048 est. tokens · 107 loc · ccn 22 · commits (last 12mo) 1</title></rect>
+<rect x="1378.57" y="271.56" width="40.07" height="40.92" fill="#d3d2d5" stroke="white" stroke-width="0.5"><title>src/machine/cpu/tms1370/timing.ts
+1,017 est. tokens · 8 loc · ccn 1 · commits (last 12mo) 2</title></rect>
+<rect x="1378.57" y="312.48" width="40.07" height="37.82" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>src/machine/cpu/tms1370/timing.test.ts
+940 est. tokens · 55 loc · ccn 11 · commits (last 12mo) 1</title></rect>
+<rect x="1418.64" y="271.56" width="32.38" height="44.67" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>src/machine/cpu/tms1370/opla.test.ts
+897 est. tokens · 63 loc · ccn 16 · commits (last 12mo) 1</title></rect>
+<rect x="1451.02" y="271.56" width="25.77" height="44.67" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>src/machine/cpu/tms1370/memory.test.ts
+714 est. tokens · 70 loc · ccn 12 · commits (last 12mo) 1</title></rect>
+<rect x="1418.64" y="316.22" width="30.71" height="34.08" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>src/machine/cpu/tms1370/decoder.test.ts
+649 est. tokens · 53 loc · ccn 9 · commits (last 12mo) 1</title></rect>
+<rect x="1449.35" y="316.22" width="27.44" height="34.08" fill="#d3d2d5" stroke="white" stroke-width="0.5"><title>src/machine/cpu/tms1370/decoder.ts
+580 est. tokens · 38 loc · ccn 4 · commits (last 12mo) 2</title></rect>
+<rect x="1054.18" y="350.30" width="98.30" height="145.85" fill="#d0c5c9" stroke="white" stroke-width="0.5"><title>src/machine/audio/driver.test.ts
+8,892 est. tokens · 780 loc · ccn 152 · commits (last 12mo) 3</title></rect>
+<rect x="1152.48" y="350.30" width="121.56" height="84.85" fill="#d4cdcf" stroke="white" stroke-width="0.5"><title>src/machine/audio/driver.ts
+6,397 est. tokens · 437 loc · ccn 73 · commits (last 12mo) 3</title></rect>
+<rect x="1152.48" y="435.15" width="121.56" height="61.00" fill="#d7ccc9" stroke="white" stroke-width="0.5"><title>src/machine/audio/transport-loop.test.ts
+4,599 est. tokens · 275 loc · ccn 65 · commits (last 12mo) 6</title></rect>
+<rect x="1274.04" y="350.30" width="64.02" height="74.25" fill="#d4d1d2" stroke="white" stroke-width="0.5"><title>src/machine/audio/spectral.test.ts
+2,948 est. tokens · 149 loc · ccn 27 · commits (last 12mo) 3</title></rect>
+<rect x="1274.04" y="424.55" width="64.02" height="71.60" fill="#d3d0d2" stroke="white" stroke-width="0.5"><title>src/machine/audio/edge-buffer.ts
+2,843 est. tokens · 192 loc · ccn 51 · commits (last 12mo) 2</title></rect>
+<rect x="1338.06" y="350.30" width="61.13" height="73.38" fill="#d3d0d2" stroke="white" stroke-width="0.5"><title>src/machine/audio/edge-buffer.test.ts
+2,782 est. tokens · 276 loc · ccn 57 · commits (last 12mo) 2</title></rect>
+<rect x="1399.19" y="350.30" width="57.79" height="73.38" fill="#d3d0d3" stroke="white" stroke-width="0.5"><title>src/machine/audio/square-synth.test.ts
+2,630 est. tokens · 222 loc · ccn 41 · commits (last 12mo) 2</title></rect>
+<rect x="1338.06" y="423.68" width="48.77" height="72.47" fill="#d3d0d3" stroke="white" stroke-width="0.5"><title>src/machine/audio/square-synth.ts
+2,192 est. tokens · 140 loc · ccn 45 · commits (last 12mo) 2</title></rect>
+<rect x="1386.83" y="423.68" width="70.15" height="39.65" fill="#d3d0d3" stroke="white" stroke-width="0.5"><title>src/machine/audio/spectrum.ts
+1,725 est. tokens · 163 loc · ccn 43 · commits (last 12mo) 2</title></rect>
+<rect x="1386.83" y="463.33" width="70.15" height="32.82" fill="#d2d0d4" stroke="white" stroke-width="0.5"><title>src/machine/audio/spectrum.test.ts
+1,428 est. tokens · 150 loc · ccn 39 · commits (last 12mo) 1</title></rect>
+<rect x="1456.98" y="350.30" width="19.81" height="75.94" fill="#d3d1d5" stroke="white" stroke-width="0.5"><title>src/machine/topology.test.ts
+933 est. tokens · 51 loc · ccn 10 · commits (last 12mo) 2</title></rect>
+<rect x="1456.98" y="426.24" width="19.81" height="69.91" fill="#d3d2d5" stroke="white" stroke-width="0.5"><title>src/machine/topology.ts
+859 est. tokens · 22 loc · ccn 1 · commits (last 12mo) 2</title></rect>
+<rect x="1476.79" y="0.00" width="123.21" height="75.23" fill="#d9b7b3" stroke="white" stroke-width="0.5"><title>src/viewer3d/main.ts
+5,749 est. tokens · 395 loc · ccn 112 · commits (last 12mo) 11</title></rect>
+<rect x="1476.79" y="75.23" width="62.45" height="87.06" fill="#d7d0cd" stroke="white" stroke-width="0.5"><title>src/viewer3d/scene.ts
+3,372 est. tokens · 249 loc · ccn 37 · commits (last 12mo) 6</title></rect>
+<rect x="1539.24" y="75.23" width="60.76" height="87.06" fill="#d4cccd" stroke="white" stroke-width="0.5"><title>src/viewer3d/dock.ts
+3,281 est. tokens · 301 loc · ccn 84 · commits (last 12mo) 3</title></rect>
+<rect x="1476.79" y="162.30" width="65.16" height="48.50" fill="#d6cfce" stroke="white" stroke-width="0.5"><title>src/viewer3d/explode.ts
+1,960 est. tokens · 152 loc · ccn 46 · commits (last 12mo) 5</title></rect>
+<rect x="1541.95" y="162.30" width="58.05" height="48.50" fill="#d4d1d3" stroke="white" stroke-width="0.5"><title>src/viewer3d/controls3d.ts
+1,746 est. tokens · 83 loc · ccn 20 · commits (last 12mo) 3</title></rect>
+<rect x="1476.79" y="210.80" width="67.17" height="41.00" fill="#d5d1d2" stroke="white" stroke-width="0.5"><title>src/viewer3d/explode.test.ts
+1,708 est. tokens · 156 loc · ccn 23 · commits (last 12mo) 4</title></rect>
+<rect x="1543.96" y="210.80" width="56.04" height="41.00" fill="#d4d2d4" stroke="white" stroke-width="0.5"><title>src/viewer3d/styles.ts
+1,425 est. tokens · 203 loc · ccn 5 · commits (last 12mo) 3</title></rect>
+<rect x="1476.79" y="251.80" width="42.48" height="41.48" fill="#d3d1d4" stroke="white" stroke-width="0.5"><title>src/viewer3d/intro.ts
+1,093 est. tokens · 78 loc · ccn 23 · commits (last 12mo) 2</title></rect>
+<rect x="1519.27" y="251.80" width="41.20" height="41.48" fill="#d3d1d4" stroke="white" stroke-width="0.5"><title>src/viewer3d/controls3d.test.ts
+1,060 est. tokens · 88 loc · ccn 14 · commits (last 12mo) 2</title></rect>
+<rect x="1560.47" y="251.80" width="39.53" height="41.48" fill="#d3d1d3" stroke="white" stroke-width="0.5"><title>src/viewer3d/picking.ts
+1,017 est. tokens · 95 loc · ccn 29 · commits (last 12mo) 2</title></rect>
+<rect x="1476.79" y="293.28" width="34.28" height="44.83" fill="#d3d1d5" stroke="white" stroke-width="0.5"><title>src/viewer3d/tube-texture.ts
+953 est. tokens · 52 loc · ccn 6 · commits (last 12mo) 2</title></rect>
+<rect x="1476.79" y="338.11" width="34.28" height="38.52" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>src/viewer3d/registration.ts
+819 est. tokens · 44 loc · ccn 2 · commits (last 12mo) 1</title></rect>
+<rect x="1511.07" y="293.28" width="28.98" height="41.73" fill="#d3d1d4" stroke="white" stroke-width="0.5"><title>src/viewer3d/touch-bar.ts
+750 est. tokens · 59 loc · ccn 14 · commits (last 12mo) 2</title></rect>
+<rect x="1511.07" y="335.01" width="28.98" height="41.62" fill="#d3d1d4" stroke="white" stroke-width="0.5"><title>src/viewer3d/intro.test.ts
+748 est. tokens · 67 loc · ccn 14 · commits (last 12mo) 2</title></rect>
+<rect x="1540.05" y="293.28" width="31.15" height="36.90" fill="#d3d1d5" stroke="white" stroke-width="0.5"><title>src/viewer3d/registration.test.ts
+713 est. tokens · 45 loc · ccn 6 · commits (last 12mo) 2</title></rect>
+<rect x="1571.20" y="293.28" width="28.80" height="36.90" fill="#d3d1d4" stroke="white" stroke-width="0.5"><title>src/viewer3d/dock.test.ts
+659 est. tokens · 57 loc · ccn 12 · commits (last 12mo) 2</title></rect>
+<rect x="1540.05" y="330.18" width="39.47" height="25.53" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>src/viewer3d/visibility.test.ts
+625 est. tokens · 68 loc · ccn 12 · commits (last 12mo) 1</title></rect>
+<rect x="1540.05" y="355.71" width="39.47" height="20.92" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>src/viewer3d/visibility.ts
+512 est. tokens · 49 loc · ccn 17 · commits (last 12mo) 1</title></rect>
+<rect x="1579.52" y="330.18" width="20.48" height="35.51" fill="#d3d1d4" stroke="white" stroke-width="0.5"><title>src/viewer3d/dependency-boundary.test.ts
+451 est. tokens · 31 loc · ccn 14 · commits (last 12mo) 2</title></rect>
+<rect x="1579.52" y="365.69" width="20.48" height="10.94" fill="#d4d2d5" stroke="white" stroke-width="0.5"><title>src/viewer3d/panel.ts
+139 est. tokens · 17 loc · ccn 3 · commits (last 12mo) 3</title></rect>
+<rect x="1476.79" y="376.63" width="69.03" height="46.69" fill="#d3d1d3" stroke="white" stroke-width="0.5"><title>src/app/driver.ts
+1,999 est. tokens · 113 loc · ccn 33 · commits (last 12mo) 2</title></rect>
+<rect x="1476.79" y="423.32" width="39.46" height="48.70" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>src/app/driver.test.ts
+1,192 est. tokens · 108 loc · ccn 23 · commits (last 12mo) 1</title></rect>
+<rect x="1516.26" y="423.32" width="29.57" height="48.70" fill="#d3d1d4" stroke="white" stroke-width="0.5"><title>src/app/viewport.ts
+893 est. tokens · 48 loc · ccn 18 · commits (last 12mo) 2</title></rect>
+<rect x="1476.79" y="472.02" width="42.83" height="24.13" fill="#d3d1d4" stroke="white" stroke-width="0.5"><title>src/app/clock-owner.test.ts
+641 est. tokens · 40 loc · ccn 16 · commits (last 12mo) 2</title></rect>
+<rect x="1519.63" y="472.02" width="26.20" height="24.13" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>src/app/mute-toggle.ts
+392 est. tokens · 36 loc · ccn 9 · commits (last 12mo) 1</title></rect>
+<rect x="1545.82" y="376.63" width="54.18" height="77.91" fill="#d6cecd" stroke="white" stroke-width="0.5"><title>src/input/input.ts
+2,618 est. tokens · 203 loc · ccn 56 · commits (last 12mo) 5</title></rect>
+<rect x="1545.82" y="454.54" width="45.53" height="31.34" fill="#d4d1d2" stroke="white" stroke-width="0.5"><title>src/input/input.test.ts
+885 est. tokens · 92 loc · ccn 24 · commits (last 12mo) 3</title></rect>
+<rect x="1591.36" y="454.54" width="8.64" height="31.34" fill="#d5d3d4" stroke="white" stroke-width="0.5"><title>src/input/index.ts
+168 est. tokens · 19 loc · ccn 1 · commits (last 12mo) 4</title></rect>
+<rect x="1545.82" y="485.88" width="54.18" height="10.27" fill="#d4d2d5" stroke="white" stroke-width="0.5"><title>src/asm.d.ts
+345 est. tokens · 10 loc · ccn 1 · commits (last 12mo) 3</title></rect>
+<rect x="680.75" y="496.15" width="305.60" height="155.06" fill="#eadecf" stroke="white" stroke-width="0.5"><title>docs/evidence/open-questions.md
+29,389 est. tokens · 1536 loc · ccn 0 · commits (last 12mo) 25</title></rect>
+<rect x="680.75" y="651.21" width="162.40" height="182.67" fill="#e5dbd0" stroke="white" stroke-width="0.5"><title>docs/evidence/timing-analysis.md
+18,399 est. tokens · 1003 loc · ccn 0 · commits (last 12mo) 20</title></rect>
+<rect x="843.15" y="651.21" width="143.19" height="182.67" fill="#dbd6d3" stroke="white" stroke-width="0.5"><title>docs/evidence/audio-reference.md
+16,223 est. tokens · 944 loc · ccn 0 · commits (last 12mo) 10</title></rect>
+<rect x="680.75" y="833.88" width="148.30" height="91.10" fill="#d7d4d4" stroke="white" stroke-width="0.5"><title>docs/evidence/playability-audit.md
+8,379 est. tokens · 474 loc · ccn 0 · commits (last 12mo) 6</title></rect>
+<rect x="680.75" y="924.97" width="148.30" height="75.03" fill="#d4d2d5" stroke="white" stroke-width="0.5"><title>docs/evidence/vfd-appearance.md
+6,901 est. tokens · 409 loc · ccn 0 · commits (last 12mo) 3</title></rect>
+<rect x="829.05" y="833.88" width="83.86" height="76.45" fill="#dbd6d3" stroke="white" stroke-width="0.5"><title>docs/evidence/console-dimensions.md
+3,976 est. tokens · 211 loc · ccn 0 · commits (last 12mo) 10</title></rect>
+<rect x="912.91" y="833.88" width="73.44" height="76.45" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/evidence/cadence-rederivation.md
+3,482 est. tokens · 199 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="829.05" y="910.33" width="56.66" height="89.67" fill="#d5d3d5" stroke="white" stroke-width="0.5"><title>docs/evidence/owner-entity-model.md
+3,151 est. tokens · 181 loc · ccn 0 · commits (last 12mo) 4</title></rect>
+<rect x="885.71" y="910.33" width="75.19" height="46.44" fill="#d3d2d5" stroke="white" stroke-width="0.5"><title>docs/evidence/tube-mesh.md
+2,166 est. tokens · 121 loc · ccn 0 · commits (last 12mo) 2</title></rect>
+<rect x="885.71" y="956.77" width="75.19" height="43.23" fill="#d8d4d4" stroke="white" stroke-width="0.5"><title>docs/evidence/README.md
+2,016 est. tokens · 69 loc · ccn 0 · commits (last 12mo) 7</title></rect>
+<rect x="960.90" y="910.33" width="25.44" height="61.16" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/evidence/playfield/README.md
+965 est. tokens · 56 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="960.90" y="971.48" width="25.44" height="28.52" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/evidence/palette/README.md
+450 est. tokens · 29 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="986.35" y="496.15" width="93.20" height="178.92" fill="#d3d2d5" stroke="white" stroke-width="0.5"><title>docs/research/tms1370-io.md
+10,342 est. tokens · 690 loc · ccn 0 · commits (last 12mo) 2</title></rect>
+<rect x="1079.54" y="496.15" width="105.39" height="122.79" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/research/tms1370-architecture.md
+8,026 est. tokens · 449 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="1184.93" y="496.15" width="63.61" height="122.79" fill="#d3d2d5" stroke="white" stroke-width="0.5"><title>docs/research/pla-design.md
+4,844 est. tokens · 276 loc · ccn 0 · commits (last 12mo) 2</title></rect>
+<rect x="1079.54" y="618.93" width="97.22" height="56.14" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/research/comparison-surface.md
+3,385 est. tokens · 201 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="1176.77" y="618.93" width="71.78" height="56.14" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/research/mp2110-timing-measurement.md
+2,499 est. tokens · 148 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="986.35" y="675.07" width="139.39" height="94.51" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/prd/jet-fighters-v4.md
+8,170 est. tokens · 430 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="986.35" y="769.58" width="139.39" height="71.69" fill="#d3d2d5" stroke="white" stroke-width="0.5"><title>docs/prd/jet-fighters-v3.md
+6,198 est. tokens · 338 loc · ccn 0 · commits (last 12mo) 2</title></rect>
+<rect x="1125.73" y="675.07" width="72.77" height="97.34" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/prd/jet-fighters-3d.md
+4,393 est. tokens · 255 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="1198.50" y="675.07" width="50.04" height="97.34" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/prd/jet-fighters-3d-v2.md
+3,021 est. tokens · 166 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="1125.73" y="772.41" width="62.98" height="68.86" fill="#d5d3d5" stroke="white" stroke-width="0.5"><title>docs/prd/jet-fighters-v1.md
+2,690 est. tokens · 148 loc · ccn 0 · commits (last 12mo) 4</title></rect>
+<rect x="1188.72" y="772.41" width="59.82" height="68.86" fill="#d5d3d5" stroke="white" stroke-width="0.5"><title>docs/prd/jet-fighters-v2.md
+2,555 est. tokens · 146 loc · ccn 0 · commits (last 12mo) 4</title></rect>
+<rect x="986.35" y="841.27" width="94.74" height="158.73" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/contract/v4.contract.md
+9,327 est. tokens · 205 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="1081.09" y="841.27" width="132.13" height="97.97" fill="#d3d2d5" stroke="white" stroke-width="0.5"><title>docs/contract/v3.contract.md
+8,029 est. tokens · 236 loc · ccn 0 · commits (last 12mo) 2</title></rect>
+<rect x="1081.09" y="939.24" width="85.40" height="60.76" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/contract/v3-entities.contract.md
+3,218 est. tokens · 113 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="1166.49" y="939.24" width="46.73" height="60.76" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>docs/contract/v2.contract.md
+1,761 est. tokens · 88 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="1213.22" y="841.27" width="35.32" height="158.73" fill="#d4d2d5" stroke="white" stroke-width="0.5"><title>docs/design/jet-model.md
+3,477 est. tokens · 210 loc · ccn 0 · commits (last 12mo) 3</title></rect>
+<rect x="1248.54" y="496.15" width="337.59" height="238.71" fill="#fee8ca" stroke="white" stroke-width="0.5"><title>asm/jetfighter.asm
+49,981 est. tokens · 2117 loc · ccn 0 · commits (last 12mo) 44</title></rect>
+<rect x="1586.13" y="496.15" width="13.87" height="238.71" fill="#d3d2d5" stroke="white" stroke-width="0.5"><title>asm/opla.inc.asm
+2,053 est. tokens · 36 loc · ccn 0 · commits (last 12mo) 2</title></rect>
+<rect x="1248.54" y="734.86" width="163.38" height="265.14" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>assets/reference/skill3-video-cells.csv
+26,867 est. tokens · 709 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="1411.92" y="734.86" width="121.59" height="198.00" fill="#d7d4d4" stroke="white" stroke-width="0.5"><title>assets/reference/sprites/README.md
+14,931 est. tokens · 820 loc · ccn 0 · commits (last 12mo) 6</title></rect>
+<rect x="1411.92" y="932.86" width="71.28" height="67.14" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>assets/reference/skill3-video-score.csv
+2,968 est. tokens · 711 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="1483.20" y="932.86" width="50.31" height="50.99" fill="#d3d2d5" stroke="white" stroke-width="0.5"><title>assets/reference/tube-teardown/README.md
+1,591 est. tokens · 87 loc · ccn 0 · commits (last 12mo) 2</title></rect>
+<rect x="1483.20" y="983.85" width="50.31" height="16.15" fill="#d3d2d5" stroke="white" stroke-width="0.5"><title>assets/reference/case/README.md
+504 est. tokens · 17 loc · ccn 0 · commits (last 12mo) 2</title></rect>
+<rect x="1533.51" y="734.86" width="66.49" height="104.49" fill="#e4dbd0" stroke="white" stroke-width="0.5"><title>README.md
+4,309 est. tokens · 220 loc · ccn 0 · commits (last 12mo) 19</title></rect>
+<rect x="1533.51" y="839.35" width="66.49" height="82.40" fill="#e2dad1" stroke="white" stroke-width="0.5"><title>CLAUDE.md
+3,398 est. tokens · 176 loc · ccn 0 · commits (last 12mo) 17</title></rect>
+<rect x="1533.51" y="921.75" width="43.15" height="34.26" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>scripts/contract/_shim.py
+917 est. tokens · 50 loc · ccn 16 · commits (last 12mo) 1</title></rect>
+<rect x="1576.66" y="921.75" width="11.81" height="11.74" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>scripts/contract/validate_completion.py
+86 est. tokens · 6 loc · ccn 1 · commits (last 12mo) 1</title></rect>
+<rect x="1588.47" y="921.75" width="11.53" height="11.74" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>scripts/contract/record_readiness.py
+84 est. tokens · 6 loc · ccn 1 · commits (last 12mo) 1</title></rect>
+<rect x="1576.66" y="933.49" width="11.88" height="11.26" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>scripts/contract/spawn_verifier.py
+83 est. tokens · 6 loc · ccn 1 · commits (last 12mo) 1</title></rect>
+<rect x="1576.66" y="944.75" width="11.88" height="11.26" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>scripts/contract/complete_gate.py
+83 est. tokens · 6 loc · ccn 1 · commits (last 12mo) 1</title></rect>
+<rect x="1588.54" y="933.49" width="11.46" height="11.40" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>scripts/contract/start_gate.py
+81 est. tokens · 6 loc · ccn 1 · commits (last 12mo) 1</title></rect>
+<rect x="1588.54" y="944.89" width="11.46" height="11.12" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>scripts/contract/freeze.py
+79 est. tokens · 6 loc · ccn 1 · commits (last 12mo) 1</title></rect>
+<rect x="1533.51" y="956.01" width="31.45" height="26.81" fill="#d3d2d5" stroke="white" stroke-width="0.5"><title>.github/workflows/ci.yml
+523 est. tokens · 51 loc · ccn 0 · commits (last 12mo) 2</title></rect>
+<rect x="1533.51" y="982.83" width="31.45" height="17.17" fill="#d8d4d4" stroke="white" stroke-width="0.5"><title>package.json
+335 est. tokens · 33 loc · ccn 0 · commits (last 12mo) 7</title></rect>
+<rect x="1564.96" y="956.01" width="19.13" height="22.50" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>LICENSE
+267 est. tokens · 17 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="1584.09" y="956.01" width="15.91" height="22.50" fill="#d6d3d4" stroke="white" stroke-width="0.5"><title>index.html
+222 est. tokens · 37 loc · ccn 0 · commits (last 12mo) 5</title></rect>
+<rect x="1564.96" y="978.51" width="13.58" height="21.49" fill="#d8d4d4" stroke="white" stroke-width="0.5"><title>vite.config.ts
+181 est. tokens · 12 loc · ccn 1 · commits (last 12mo) 7</title></rect>
+<rect x="1578.54" y="978.51" width="21.46" height="11.87" fill="#d4d2d5" stroke="white" stroke-width="0.5"><title>tsconfig.json
+158 est. tokens · 22 loc · ccn 0 · commits (last 12mo) 3</title></rect>
+<rect x="1578.54" y="990.38" width="11.90" height="9.62" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>public/3d.html
+71 est. tokens · 11 loc · ccn 0 · commits (last 12mo) 1</title></rect>
+<rect x="1590.44" y="990.38" width="9.56" height="9.62" fill="#d2d1d5" stroke="white" stroke-width="0.5"><title>eslint.config.js
+57 est. tokens · 9 loc · ccn 1 · commits (last 12mo) 1</title></rect>
+</svg>

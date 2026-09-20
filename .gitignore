@@ -11,3 +11,7 @@ __pycache__/
 # Built on demand for review in the Blender app (npm run model:blend)
 tools/model/console.blend
 tools/model/console.blend1
+
+# Transient rotation file the next /assess run overwrites
+.assess/complexity-stats.prior.json
+.assess/.cache/

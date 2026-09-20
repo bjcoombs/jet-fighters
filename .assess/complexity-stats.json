@@ -1,0 +1,417 @@
+{
+  "artifact_schema_version": "1.1.0",
+  "run_id": "20260920145145-96e53b38",
+  "plugin_version": "1.87.1",
+  "schema_version": 5,
+  "lizard_version": "1.23.0",
+  "scc_version": "3.7.0",
+  "files_scored": 261,
+  "excluded_generated": [],
+  "scoring_coverage": {
+    "lizard": 208,
+    "scc": 53
+  },
+  "churn_window": "commits (last 12mo)",
+  "churn_degenerate": false,
+  "loc": {
+    "p50": 146.0,
+    "p95": 645.0,
+    "max": 2117.0,
+    "max_code": 2117.0,
+    "max_data": 1233.0,
+    "total": 55332
+  },
+  "est_tokens": {
+    "p50": 2425.0,
+    "p95": 12303.0,
+    "max": 49981.0,
+    "max_code": 49981.0,
+    "max_data": 26055.0,
+    "total": 992339,
+    "budget": {
+      "total": 992339,
+      "budget": 200000,
+      "budget_basis": "estimate (~4 chars/token, documented default)",
+      "chars_per_token": 4,
+      "files_over_budget": 0,
+      "subtrees_over_budget": 2,
+      "over_budget_subtrees": [
+        {
+          "path": "tools",
+          "est_tokens": 422209
+        },
+        {
+          "path": "src",
+          "est_tokens": 282869
+        }
+      ]
+    }
+  },
+  "ccn": {
+    "basis": "file-aggregate",
+    "p50": 19.0,
+    "p95": 112.0,
+    "max": 202.0
+  },
+  "fn_ccn": {
+    "basis": "per-function",
+    "source": [
+      {
+        "name": "lizard",
+        "approximate": false
+      }
+    ],
+    "backend_by_language": {
+      "JavaScript": "lizard",
+      "Python": "lizard",
+      "Shell": null,
+      "TypeScript": "lizard",
+      "TypeScript Typings": "lizard"
+    },
+    "function_count": 4461,
+    "p50": 1.0,
+    "p95": 5.0,
+    "max": 102.0
+  },
+  "churn": {
+    "p50": 2.0,
+    "p95": 11.0,
+    "max": 44.0
+  },
+  "top_hotspots": [
+    {
+      "path": "tools/probe/render-fidelity.test.ts",
+      "loc": 576,
+      "est_tokens": 12303,
+      "ccn": 103.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 102.0,
+      "max_fn_name": "roving",
+      "commits": 8,
+      "source": "lizard"
+    },
+    {
+      "path": "tools/probe/battleship-arrival.test.ts",
+      "loc": 542,
+      "est_tokens": 13682,
+      "ccn": 116.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 46.0,
+      "max_fn_name": "firstTransition",
+      "commits": 11,
+      "source": "lizard"
+    },
+    {
+      "path": "tools/model/build_console.py",
+      "loc": 975,
+      "est_tokens": 18165,
+      "ccn": 141.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 12.0,
+      "max_fn_name": "build_passives",
+      "commits": 9,
+      "source": "lizard"
+    },
+    {
+      "path": "tools/probe/scoring-ruler.test.ts",
+      "loc": 413,
+      "est_tokens": 12898,
+      "ccn": 96.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 20.0,
+      "max_fn_name": "aimedDrive",
+      "commits": 10,
+      "source": "lizard"
+    },
+    {
+      "path": "tools/probe/launcher-lives.test.ts",
+      "loc": 429,
+      "est_tokens": 12431,
+      "ccn": 131.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 15.0,
+      "max_fn_name": "standStill",
+      "commits": 11,
+      "source": "lizard"
+    },
+    {
+      "path": "tools/probe/sweep-timing.test.ts",
+      "loc": 403,
+      "est_tokens": 13116,
+      "ccn": 119.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 11.0,
+      "max_fn_name": "(anonymous)",
+      "commits": 13,
+      "source": "lizard"
+    },
+    {
+      "path": "tools/probe/tms1370-rom.test.ts",
+      "loc": 541,
+      "est_tokens": 12030,
+      "ccn": 136.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 15.0,
+      "max_fn_name": "parkedGame",
+      "commits": 10,
+      "source": "lizard"
+    },
+    {
+      "path": "tools/model/measure.py",
+      "loc": 461,
+      "est_tokens": 9061,
+      "ccn": 76.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 28.0,
+      "max_fn_name": "write_overlays",
+      "commits": 9,
+      "source": "lizard"
+    },
+    {
+      "path": "src/machine/tube/atlas.test.ts",
+      "loc": 606,
+      "est_tokens": 10535,
+      "ccn": 166.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 7.0,
+      "max_fn_name": "cellOf",
+      "commits": 13,
+      "source": "lizard"
+    },
+    {
+      "path": "tools/probe/speaker-bands.test.ts",
+      "loc": 410,
+      "est_tokens": 11541,
+      "ccn": 140.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 7.0,
+      "max_fn_name": "soundsIn",
+      "commits": 10,
+      "source": "lizard"
+    }
+  ],
+  "top_complex": [
+    {
+      "path": "src/machine/tube/silkscreen.test.ts",
+      "loc": 513,
+      "est_tokens": 7959,
+      "ccn": 202.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 11.0,
+      "max_fn_name": "(anonymous)",
+      "commits": 9,
+      "source": "lizard"
+    },
+    {
+      "path": "src/machine/tube/atlas.test.ts",
+      "loc": 606,
+      "est_tokens": 10535,
+      "ccn": 166.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 7.0,
+      "max_fn_name": "cellOf",
+      "commits": 13,
+      "source": "lizard"
+    },
+    {
+      "path": "src/machine/audio/driver.test.ts",
+      "loc": 780,
+      "est_tokens": 8892,
+      "ccn": 152.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 6.0,
+      "max_fn_name": "constructor",
+      "commits": 3,
+      "source": "lizard"
+    },
+    {
+      "path": "tools/probe/positioned-planes.test.ts",
+      "loc": 479,
+      "est_tokens": 10821,
+      "ccn": 145.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 15.0,
+      "max_fn_name": "roving",
+      "commits": 3,
+      "source": "lizard"
+    },
+    {
+      "path": "tools/model/build_console.py",
+      "loc": 975,
+      "est_tokens": 18165,
+      "ccn": 141.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 12.0,
+      "max_fn_name": "build_passives",
+      "commits": 9,
+      "source": "lizard"
+    },
+    {
+      "path": "tools/probe/speaker-bands.test.ts",
+      "loc": 410,
+      "est_tokens": 11541,
+      "ccn": 140.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 7.0,
+      "max_fn_name": "soundsIn",
+      "commits": 10,
+      "source": "lizard"
+    },
+    {
+      "path": "tools/tmsasm/assembler.test.ts",
+      "loc": 380,
+      "est_tokens": 4488,
+      "ccn": 137.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 3.0,
+      "max_fn_name": "(anonymous)",
+      "commits": 2,
+      "source": "lizard"
+    },
+    {
+      "path": "tools/probe/tms1370-rom.test.ts",
+      "loc": 541,
+      "est_tokens": 12030,
+      "ccn": 136.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 15.0,
+      "max_fn_name": "parkedGame",
+      "commits": 10,
+      "source": "lizard"
+    },
+    {
+      "path": "tools/probe/launcher-lives.test.ts",
+      "loc": 429,
+      "est_tokens": 12431,
+      "ccn": 131.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 15.0,
+      "max_fn_name": "standStill",
+      "commits": 11,
+      "source": "lizard"
+    },
+    {
+      "path": "tools/compare/harness.ts",
+      "loc": 519,
+      "est_tokens": 8399,
+      "ccn": 119.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 14.0,
+      "max_fn_name": "record",
+      "commits": 1,
+      "source": "lizard"
+    }
+  ],
+  "top_large": [
+    {
+      "path": "asm/jetfighter.asm",
+      "loc": 2117,
+      "est_tokens": 49981,
+      "ccn": 0.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 44,
+      "source": "scc"
+    },
+    {
+      "path": "docs/evidence/open-questions.md",
+      "loc": 1536,
+      "est_tokens": 29389,
+      "ccn": 0.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 25,
+      "source": "scc"
+    },
+    {
+      "path": "src/machine/tube/atlas.json",
+      "loc": 1233,
+      "est_tokens": 26055,
+      "ccn": 0.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 13,
+      "source": "scc"
+    },
+    {
+      "path": "tools/model/dimensions.json",
+      "loc": 1082,
+      "est_tokens": 6849,
+      "ccn": 0.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 8,
+      "source": "scc"
+    },
+    {
+      "path": "docs/evidence/timing-analysis.md",
+      "loc": 1003,
+      "est_tokens": 18399,
+      "ccn": 0.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 20,
+      "source": "scc"
+    },
+    {
+      "path": "tools/model/build_console.py",
+      "loc": 975,
+      "est_tokens": 18165,
+      "ccn": 141.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 12.0,
+      "max_fn_name": "build_passives",
+      "commits": 9,
+      "source": "lizard"
+    },
+    {
+      "path": "docs/evidence/audio-reference.md",
+      "loc": 944,
+      "est_tokens": 16223,
+      "ccn": 0.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 10,
+      "source": "scc"
+    },
+    {
+      "path": "assets/reference/sprites/README.md",
+      "loc": 820,
+      "est_tokens": 14931,
+      "ccn": 0.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 6,
+      "source": "scc"
+    },
+    {
+      "path": "src/machine/audio/driver.test.ts",
+      "loc": 780,
+      "est_tokens": 8892,
+      "ccn": 152.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": 6.0,
+      "max_fn_name": "constructor",
+      "commits": 3,
+      "source": "lizard"
+    },
+    {
+      "path": "src/machine/tube/ATLAS-COORDINATES.md",
+      "loc": 775,
+      "est_tokens": 13443,
+      "ccn": 0.0,
+      "ccn_basis": "file-aggregate",
+      "max_fn_ccn": null,
+      "max_fn_name": null,
+      "commits": 18,
+      "source": "scc"
+    }
+  ]
+}
