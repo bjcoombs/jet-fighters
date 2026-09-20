@@ -1,0 +1,3561 @@
+{
+  "run_id": "20260920145155-6530f2a0",
+  "artifact_schema_version": "1.1.0",
+  "run_date": "2026-09-20",
+  "scope": null,
+  "scope_slug": null,
+  "measured_commit": {
+    "available": true,
+    "head_sha": "4170e9ac39168153eabf30934ec29a757ac0d5aa",
+    "head_short": "4170e9ac3916",
+    "committed_date": "2026-09-08",
+    "subject": "fix: The bay is two cells by two, with its loading label (#195)",
+    "dirty": false,
+    "upstream": null,
+    "behind": null
+  },
+  "prior_stats_exists": false,
+  "stats_summary": {
+    "files_scored": 261,
+    "loc": {
+      "p50": 146.0,
+      "p95": 645.0,
+      "max": 2117.0,
+      "max_code": 2117.0,
+      "max_data": 1233.0,
+      "total": 55332
+    },
+    "est_tokens": {
+      "p50": 2425.0,
+      "p95": 12303.0,
+      "max": 49981.0,
+      "max_code": 49981.0,
+      "max_data": 26055.0,
+      "total": 992339,
+      "budget": {
+        "total": 992339,
+        "budget": 200000,
+        "budget_basis": "estimate (~4 chars/token, documented default)",
+        "chars_per_token": 4,
+        "files_over_budget": 0,
+        "subtrees_over_budget": 2,
+        "over_budget_subtrees": [
+          {
+            "path": "tools",
+            "est_tokens": 422209
+          },
+          {
+            "path": "src",
+            "est_tokens": 282869
+          }
+        ]
+      }
+    },
+    "ccn": {
+      "basis": "file-aggregate",
+      "p50": 19.0,
+      "p95": 112.0,
+      "max": 202.0
+    },
+    "top_hotspots": [
+      {
+        "path": "tools/probe/render-fidelity.test.ts",
+        "loc": 576,
+        "est_tokens": 12303,
+        "ccn": 103.0,
+        "ccn_basis": "file-aggregate",
+        "max_fn_ccn": 102.0,
+        "max_fn_name": "roving",
+        "commits": 8,
+        "source": "lizard"
+      },
+      {
+        "path": "tools/probe/battleship-arrival.test.ts",
+        "loc": 542,
+        "est_tokens": 13682,
+        "ccn": 116.0,
+        "ccn_basis": "file-aggregate",
+        "max_fn_ccn": 46.0,
+        "max_fn_name": "firstTransition",
+        "commits": 11,
+        "source": "lizard"
+      },
+      {
+        "path": "tools/model/build_console.py",
+        "loc": 975,
+        "est_tokens": 18165,
+        "ccn": 141.0,
+        "ccn_basis": "file-aggregate",
+        "max_fn_ccn": 12.0,
+        "max_fn_name": "build_passives",
+        "commits": 9,
+        "source": "lizard"
+      },
+      {
+        "path": "tools/probe/scoring-ruler.test.ts",
+        "loc": 413,
+        "est_tokens": 12898,
+        "ccn": 96.0,
+        "ccn_basis": "file-aggregate",
+        "max_fn_ccn": 20.0,
+        "max_fn_name": "aimedDrive",
+        "commits": 10,
+        "source": "lizard"
+      },
+      {
+        "path": "tools/probe/launcher-lives.test.ts",
+        "loc": 429,
+        "est_tokens": 12431,
+        "ccn": 131.0,
+        "ccn_basis": "file-aggregate",
+        "max_fn_ccn": 15.0,
+        "max_fn_name": "standStill",
+        "commits": 11,
+        "source": "lizard"
+      },
+      {
+        "path": "tools/probe/sweep-timing.test.ts",
+        "loc": 403,
+        "est_tokens": 13116,
+        "ccn": 119.0,
+        "ccn_basis": "file-aggregate",
+        "max_fn_ccn": 11.0,
+        "max_fn_name": "(anonymous)",
+        "commits": 13,
+        "source": "lizard"
+      },
+      {
+        "path": "tools/probe/tms1370-rom.test.ts",
+        "loc": 541,
+        "est_tokens": 12030,
+        "ccn": 136.0,
+        "ccn_basis": "file-aggregate",
+        "max_fn_ccn": 15.0,
+        "max_fn_name": "parkedGame",
+        "commits": 10,
+        "source": "lizard"
+      },
+      {
+        "path": "tools/model/measure.py",
+        "loc": 461,
+        "est_tokens": 9061,
+        "ccn": 76.0,
+        "ccn_basis": "file-aggregate",
+        "max_fn_ccn": 28.0,
+        "max_fn_name": "write_overlays",
+        "commits": 9,
+        "source": "lizard"
+      },
+      {
+        "path": "src/machine/tube/atlas.test.ts",
+        "loc": 606,
+        "est_tokens": 10535,
+        "ccn": 166.0,
+        "ccn_basis": "file-aggregate",
+        "max_fn_ccn": 7.0,
+        "max_fn_name": "cellOf",
+        "commits": 13,
+        "source": "lizard"
+      },
+      {
+        "path": "tools/probe/speaker-bands.test.ts",
+        "loc": 410,
+        "est_tokens": 11541,
+        "ccn": 140.0,
+        "ccn_basis": "file-aggregate",
+        "max_fn_ccn": 7.0,
+        "max_fn_name": "soundsIn",
+        "commits": 10,
+        "source": "lizard"
+      }
+    ]
+  },
+  "instruction_files": {
+    "CLAUDE.md": {
+      "grade": "A",
+      "score": 85,
+      "subscores": {
+        "positive_directives": 28,
+        "tradeoff_phrases": 5,
+        "path_references": 54,
+        "verifiable_outcomes": 0,
+        "line_count": 213,
+        "word_count": 2025,
+        "bloat_penalty": 0
+      },
+      "freshness_days": 12,
+      "line_count": 213,
+      "present": true
+    }
+  },
+  "instructions_grade": "A",
+  "diff": {
+    "graduated": 0,
+    "regressed": 0,
+    "new": 10,
+    "persistent": 0
+  },
+  "diff_reliable": true,
+  "diff_version_note": null,
+  "diff_trend_reset": false,
+  "prior_plugin_version": null,
+  "schema_version": 5,
+  "prior_schema_version": null,
+  "tool_versions": {
+    "lizard": "1.23.0",
+    "scc": "3.7.0"
+  },
+  "prior_tool_versions": {},
+  "diff_detail": {
+    "graduated": [],
+    "regressed": [],
+    "new": [
+      {
+        "path": "tools/probe/render-fidelity.test.ts",
+        "ccn_delta": 0,
+        "commits_delta": 0,
+        "loc_delta": 0
+      },
+      {
+        "path": "tools/probe/battleship-arrival.test.ts",
+        "ccn_delta": 0,
+        "commits_delta": 0,
+        "loc_delta": 0
+      },
+      {
+        "path": "tools/model/build_console.py",
+        "ccn_delta": 0,
+        "commits_delta": 0,
+        "loc_delta": 0
+      },
+      {
+        "path": "tools/probe/scoring-ruler.test.ts",
+        "ccn_delta": 0,
+        "commits_delta": 0,
+        "loc_delta": 0
+      },
+      {
+        "path": "tools/probe/launcher-lives.test.ts",
+        "ccn_delta": 0,
+        "commits_delta": 0,
+        "loc_delta": 0
+      },
+      {
+        "path": "tools/probe/sweep-timing.test.ts",
+        "ccn_delta": 0,
+        "commits_delta": 0,
+        "loc_delta": 0
+      },
+      {
+        "path": "tools/probe/tms1370-rom.test.ts",
+        "ccn_delta": 0,
+        "commits_delta": 0,
+        "loc_delta": 0
+      },
+      {
+        "path": "tools/model/measure.py",
+        "ccn_delta": 0,
+        "commits_delta": 0,
+        "loc_delta": 0
+      },
+      {
+        "path": "src/machine/tube/atlas.test.ts",
+        "ccn_delta": 0,
+        "commits_delta": 0,
+        "loc_delta": 0
+      },
+      {
+        "path": "tools/probe/speaker-bands.test.ts",
+        "ccn_delta": 0,
+        "commits_delta": 0,
+        "loc_delta": 0
+      }
+    ],
+    "persistent": []
+  },
+  "pruned_hotspots": [],
+  "retired_excluded_hotspots": [],
+  "dropped_first_flagged": [],
+  "provisional_first_flagged": [
+    "src/machine/tube/atlas.test.ts",
+    "tools/model/build_console.py",
+    "tools/model/measure.py",
+    "tools/probe/battleship-arrival.test.ts",
+    "tools/probe/launcher-lives.test.ts",
+    "tools/probe/render-fidelity.test.ts",
+    "tools/probe/scoring-ruler.test.ts",
+    "tools/probe/speaker-bands.test.ts",
+    "tools/probe/sweep-timing.test.ts",
+    "tools/probe/tms1370-rom.test.ts"
+  ],
+  "log_integrity": {
+    "valid": true,
+    "broken_at_entry": null
+  },
+  "doc_graph": {
+    "available": true,
+    "reason": "",
+    "doc_count": 36,
+    "edge_count": 159,
+    "hubs": [
+      {
+        "path": "docs/evidence/open-questions.md",
+        "pagerank": 0.1456,
+        "out_degree": 9,
+        "in_degree": 19
+      },
+      {
+        "path": "docs/evidence/audio-reference.md",
+        "pagerank": 0.0821,
+        "out_degree": 6,
+        "in_degree": 12
+      },
+      {
+        "path": "docs/prd/jet-fighters-v3.md",
+        "pagerank": 0.0812,
+        "out_degree": 9,
+        "in_degree": 10
+      },
+      {
+        "path": "docs/prd/jet-fighters-v2.md",
+        "pagerank": 0.0804,
+        "out_degree": 2,
+        "in_degree": 9
+      },
+      {
+        "path": "docs/evidence/timing-analysis.md",
+        "pagerank": 0.0725,
+        "out_degree": 9,
+        "in_degree": 13
+      },
+      {
+        "path": "src/machine/tube/ATLAS-COORDINATES.md",
+        "pagerank": 0.0639,
+        "out_degree": 6,
+        "in_degree": 8
+      },
+      {
+        "path": "docs/evidence/vfd-appearance.md",
+        "pagerank": 0.0551,
+        "out_degree": 2,
+        "in_degree": 11
+      },
+      {
+        "path": "assets/reference/sprites/README.md",
+        "pagerank": 0.0521,
+        "out_degree": 4,
+        "in_degree": 8
+      },
+      {
+        "path": "CLAUDE.md",
+        "pagerank": 0.0337,
+        "out_degree": 9,
+        "in_degree": 7
+      },
+      {
+        "path": "docs/prd/jet-fighters-v1.md",
+        "pagerank": 0.0289,
+        "out_degree": 2,
+        "in_degree": 3
+      }
+    ],
+    "orphans": [
+      "assets/reference/case/README.md",
+      "docs/evidence/palette/README.md",
+      "docs/evidence/playfield/README.md",
+      "docs/prd/jet-fighters-3d-v2.md",
+      "docs/research/comparison-surface.md",
+      "tools/model/README.md"
+    ],
+    "orphan_rate": 0.167,
+    "island_count": 2,
+    "reachability_pct": 0.667,
+    "entry_points": [
+      "CLAUDE.md",
+      "README.md"
+    ],
+    "unreachable": [
+      "assets/reference/case/README.md",
+      "docs/contract/v3-entities.contract.md",
+      "docs/contract/v4.contract.md",
+      "docs/design/jet-model.md",
+      "docs/evidence/cadence-rederivation.md",
+      "docs/evidence/palette/README.md",
+      "docs/evidence/playability-audit.md",
+      "docs/evidence/playfield/README.md",
+      "docs/prd/jet-fighters-3d-v2.md",
+      "docs/prd/jet-fighters-v4.md",
+      "docs/research/comparison-surface.md",
+      "tools/model/README.md"
+    ],
+    "declared_mocs": [],
+    "moc_named_but_not_wired": [],
+    "doc_to_code_edges": [
+      {
+        "doc": "README.md",
+        "code": "tools/model/compare.py"
+      }
+    ],
+    "dangling_links": 0,
+    "broken_links": [],
+    "missing_xrefs": [],
+    "ambiguous_wikilinks": 0,
+    "vault_detected": false,
+    "obsidiantools_available": false,
+    "excluded_raw_trees": [],
+    "raw_source_doc_count": 0,
+    "curated_doc_count": 36,
+    "raw_source_orphan_rate": 0.0,
+    "raw_source_broken_links": 0,
+    "excluded_working_notes_trees": [],
+    "working_notes_doc_count": 0,
+    "working_notes_orphan_rate": 0.0,
+    "working_notes_broken_links": 0,
+    "link_only_orphan_rate": 0.667,
+    "link_only_reachability_pct": 0.333,
+    "directory_breakdown": [
+      {
+        "path": "docs",
+        "doc_count": 28,
+        "unreachable_count": 10,
+        "broken_link_count": 0
+      },
+      {
+        "path": "assets",
+        "doc_count": 3,
+        "unreachable_count": 1,
+        "broken_link_count": 0
+      },
+      {
+        "path": "tools",
+        "doc_count": 2,
+        "unreachable_count": 1,
+        "broken_link_count": 0
+      },
+      {
+        "path": ".",
+        "doc_count": 2,
+        "unreachable_count": 0,
+        "broken_link_count": 0
+      },
+      {
+        "path": "src",
+        "doc_count": 1,
+        "unreachable_count": 0,
+        "broken_link_count": 0
+      }
+    ],
+    "directory_count": 5
+  },
+  "doc_staleness": {
+    "available": true,
+    "churn_window": "commits (last 12mo)",
+    "churn_degenerate": false,
+    "docs": [
+      {
+        "path": "docs/evidence/cadence-rederivation.md",
+        "last_commit_days": 53,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 582.0,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/evidence/palette/README.md",
+        "last_commit_days": 55,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 582.0,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/evidence/playfield/README.md",
+        "last_commit_days": 55,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 582.0,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/prd/jet-fighters-3d-v2.md",
+        "last_commit_days": 14,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 582.0,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/prd/jet-fighters-3d.md",
+        "last_commit_days": 15,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 582.0,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/prd/jet-fighters-v4.md",
+        "last_commit_days": 11,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 582.0,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/research/comparison-surface.md",
+        "last_commit_days": 53,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 582.0,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/research/mp2110-timing-measurement.md",
+        "last_commit_days": 53,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 582.0,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/research/tms1370-architecture.md",
+        "last_commit_days": 54,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 582.0,
+        "confidence": "low"
+      },
+      {
+        "path": "assets/reference/case/README.md",
+        "last_commit_days": 11,
+        "doc_churn_in_window": 2,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 291.0,
+        "confidence": "low"
+      },
+      {
+        "path": "assets/reference/tube-teardown/README.md",
+        "last_commit_days": 54,
+        "doc_churn_in_window": 2,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 291.0,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/evidence/tube-mesh.md",
+        "last_commit_days": 54,
+        "doc_churn_in_window": 2,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 291.0,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/prd/jet-fighters-v3.md",
+        "last_commit_days": 52,
+        "doc_churn_in_window": 2,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 291.0,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/research/pla-design.md",
+        "last_commit_days": 53,
+        "doc_churn_in_window": 2,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 291.0,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/research/tms1370-io.md",
+        "last_commit_days": 52,
+        "doc_churn_in_window": 2,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 291.0,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/design/jet-model.md",
+        "last_commit_days": 12,
+        "doc_churn_in_window": 3,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 194.0,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/evidence/vfd-appearance.md",
+        "last_commit_days": 55,
+        "doc_churn_in_window": 3,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 194.0,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/evidence/owner-entity-model.md",
+        "last_commit_days": 12,
+        "doc_churn_in_window": 4,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 145.5,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/prd/jet-fighters-v1.md",
+        "last_commit_days": 52,
+        "doc_churn_in_window": 4,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 145.5,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/prd/jet-fighters-v2.md",
+        "last_commit_days": 52,
+        "doc_churn_in_window": 4,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 145.5,
+        "confidence": "low"
+      },
+      {
+        "path": "assets/reference/sprites/README.md",
+        "last_commit_days": 52,
+        "doc_churn_in_window": 6,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 97.0,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/evidence/playability-audit.md",
+        "last_commit_days": 14,
+        "doc_churn_in_window": 6,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 97.0,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/evidence/README.md",
+        "last_commit_days": 15,
+        "doc_churn_in_window": 7,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 83.14,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/evidence/audio-reference.md",
+        "last_commit_days": 24,
+        "doc_churn_in_window": 10,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 58.2,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/evidence/console-dimensions.md",
+        "last_commit_days": 11,
+        "doc_churn_in_window": 10,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 58.2,
+        "confidence": "low"
+      },
+      {
+        "path": "CLAUDE.md",
+        "last_commit_days": 12,
+        "doc_churn_in_window": 17,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 34.24,
+        "confidence": "low"
+      },
+      {
+        "path": "src/machine/tube/ATLAS-COORDINATES.md",
+        "last_commit_days": 14,
+        "doc_churn_in_window": 18,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 32.33,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/evidence/timing-analysis.md",
+        "last_commit_days": 12,
+        "doc_churn_in_window": 20,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 29.1,
+        "confidence": "low"
+      },
+      {
+        "path": "README.md",
+        "last_commit_days": 11,
+        "doc_churn_in_window": 19,
+        "code_churn_in_window": 507,
+        "subject_code_count": 178,
+        "subject_method": "nearest-ancestor",
+        "ratio": 26.68,
+        "confidence": "high"
+      },
+      {
+        "path": "tools/probe/drives/README.md",
+        "last_commit_days": 25,
+        "doc_churn_in_window": 2,
+        "code_churn_in_window": 52,
+        "subject_code_count": 27,
+        "subject_method": "nearest-ancestor",
+        "ratio": 26.0,
+        "confidence": "high"
+      },
+      {
+        "path": "docs/evidence/open-questions.md",
+        "last_commit_days": 15,
+        "doc_churn_in_window": 25,
+        "code_churn_in_window": 582,
+        "subject_code_count": 209,
+        "subject_method": "repo-baseline",
+        "ratio": 23.28,
+        "confidence": "low"
+      },
+      {
+        "path": "docs/contract/v2.contract.md",
+        "last_commit_days": 56,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 7,
+        "subject_code_count": 7,
+        "subject_method": "parallel-docs-tree",
+        "ratio": 7.0,
+        "confidence": "high"
+      },
+      {
+        "path": "docs/contract/v3-entities.contract.md",
+        "last_commit_days": 26,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 7,
+        "subject_code_count": 7,
+        "subject_method": "parallel-docs-tree",
+        "ratio": 7.0,
+        "confidence": "high"
+      },
+      {
+        "path": "docs/contract/v4.contract.md",
+        "last_commit_days": 11,
+        "doc_churn_in_window": 1,
+        "code_churn_in_window": 7,
+        "subject_code_count": 7,
+        "subject_method": "parallel-docs-tree",
+        "ratio": 7.0,
+        "confidence": "high"
+      },
+      {
+        "path": "docs/contract/v3.contract.md",
+        "last_commit_days": 53,
+        "doc_churn_in_window": 2,
+        "code_churn_in_window": 7,
+        "subject_code_count": 7,
+        "subject_method": "parallel-docs-tree",
+        "ratio": 3.5,
+        "confidence": "high"
+      },
+      {
+        "path": "tools/model/README.md",
+        "last_commit_days": 12,
+        "doc_churn_in_window": 7,
+        "code_churn_in_window": 23,
+        "subject_code_count": 4,
+        "subject_method": "nearest-ancestor",
+        "ratio": 3.29,
+        "confidence": "high"
+      }
+    ],
+    "bulk_commits_skipped": [],
+    "bulk_commits_skipped_total": 0,
+    "bulk_commit_scan_complete": true,
+    "creation_date_fallback_count": 0,
+    "association": {
+      "code_file_count": 209,
+      "doc_count": 36,
+      "code_under_base_doc": 209,
+      "pct_code_under_base_doc": 1.0,
+      "docs_mapping_to_code": 7,
+      "pct_docs_mapping_to_code": 0.194,
+      "methods": {
+        "repo-baseline": 29,
+        "nearest-ancestor": 3,
+        "parallel-docs-tree": 4
+      }
+    },
+    "modularity": {
+      "module_dir_count": 19,
+      "module_dirs_with_base_doc": 9,
+      "base_doc_dir_ratio": 0.474,
+      "base_doc_coverage_when_present": 1.0,
+      "code_file_count": 209,
+      "large_repo": true
+    }
+  },
+  "stale_hubs": [
+    {
+      "path": "docs/prd/jet-fighters-v3.md",
+      "pagerank": 0.0812,
+      "last_commit_days": 52,
+      "code_churn_in_window": 582,
+      "ratio": 291.0,
+      "subject_method": "repo-baseline",
+      "confidence": "low",
+      "priority": 23.629
+    },
+    {
+      "path": "docs/prd/jet-fighters-v2.md",
+      "pagerank": 0.0804,
+      "last_commit_days": 52,
+      "code_churn_in_window": 582,
+      "ratio": 145.5,
+      "subject_method": "repo-baseline",
+      "confidence": "low",
+      "priority": 11.698
+    },
+    {
+      "path": "docs/evidence/vfd-appearance.md",
+      "pagerank": 0.0551,
+      "last_commit_days": 55,
+      "code_churn_in_window": 582,
+      "ratio": 194.0,
+      "subject_method": "repo-baseline",
+      "confidence": "low",
+      "priority": 10.689
+    },
+    {
+      "path": "assets/reference/sprites/README.md",
+      "pagerank": 0.0521,
+      "last_commit_days": 52,
+      "code_churn_in_window": 582,
+      "ratio": 97.0,
+      "subject_method": "repo-baseline",
+      "confidence": "low",
+      "priority": 5.054
+    },
+    {
+      "path": "docs/evidence/audio-reference.md",
+      "pagerank": 0.0821,
+      "last_commit_days": 24,
+      "code_churn_in_window": 582,
+      "ratio": 58.2,
+      "subject_method": "repo-baseline",
+      "confidence": "low",
+      "priority": 4.778
+    },
+    {
+      "path": "docs/prd/jet-fighters-v1.md",
+      "pagerank": 0.0289,
+      "last_commit_days": 52,
+      "code_churn_in_window": 582,
+      "ratio": 145.5,
+      "subject_method": "repo-baseline",
+      "confidence": "low",
+      "priority": 4.205
+    },
+    {
+      "path": "docs/evidence/open-questions.md",
+      "pagerank": 0.1456,
+      "last_commit_days": 15,
+      "code_churn_in_window": 582,
+      "ratio": 23.28,
+      "subject_method": "repo-baseline",
+      "confidence": "low",
+      "priority": 3.39
+    },
+    {
+      "path": "docs/evidence/timing-analysis.md",
+      "pagerank": 0.0725,
+      "last_commit_days": 12,
+      "code_churn_in_window": 582,
+      "ratio": 29.1,
+      "subject_method": "repo-baseline",
+      "confidence": "low",
+      "priority": 2.11
+    },
+    {
+      "path": "src/machine/tube/ATLAS-COORDINATES.md",
+      "pagerank": 0.0639,
+      "last_commit_days": 14,
+      "code_churn_in_window": 582,
+      "ratio": 32.33,
+      "subject_method": "repo-baseline",
+      "confidence": "low",
+      "priority": 2.066
+    },
+    {
+      "path": "CLAUDE.md",
+      "pagerank": 0.0337,
+      "last_commit_days": 12,
+      "code_churn_in_window": 582,
+      "ratio": 34.24,
+      "subject_method": "repo-baseline",
+      "confidence": "low",
+      "priority": 1.154
+    }
+  ],
+  "churn_degenerate": false,
+  "untracked_instruction_files": [],
+  "broken_instruction_refs": [],
+  "sensitive_instruction_content": {},
+  "archetype": {
+    "available": true,
+    "archetype": "software",
+    "detected_via": "heuristic",
+    "override": null,
+    "override_contradicts_signals": false,
+    "contradiction_details": null,
+    "reason": "a runtime surface is present (code-file ratio 0.85); scored as a software repo",
+    "signals": {
+      "code_file_count": 209,
+      "doc_file_count": 36,
+      "other_file_count": 134,
+      "code_file_ratio": 0.853,
+      "has_runtime_surface": true
+    },
+    "applicable_layers": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "na_layers": [],
+    "denominator": 8,
+    "kb_maintenance": {
+      "documented": false,
+      "signals_found": [],
+      "gist_cited": false,
+      "gist": "https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f"
+    }
+  },
+  "ancestor_instruction_files": [
+    "CLAUDE.md (5 level(s) above repo root)",
+    "~/.claude/CLAUDE.md (global user instructions)"
+  ],
+  "skills_present": false,
+  "skills_count": 0,
+  "skill_files": [],
+  "instruction_file_size": {
+    "CLAUDE.md": {
+      "line_count": 213,
+      "word_count": 2025,
+      "bloat_penalty": 0
+    }
+  },
+  "dead_code": {
+    "available": true,
+    "candidate_count": 32,
+    "candidates": [
+      {
+        "path": "vite.config.ts",
+        "line": 5,
+        "kind": "unused export",
+        "symbol": "default"
+      },
+      {
+        "path": "src/input/index.ts",
+        "line": 10,
+        "kind": "unused export",
+        "symbol": "InputCallback"
+      },
+      {
+        "path": "src/input/index.ts",
+        "line": 11,
+        "kind": "unused export",
+        "symbol": "InputSystem"
+      },
+      {
+        "path": "src/input/index.ts",
+        "line": 12,
+        "kind": "unused export",
+        "symbol": "InputOptions"
+      },
+      {
+        "path": "src/input/index.ts",
+        "line": 14,
+        "kind": "unused export",
+        "symbol": "KeyAction"
+      },
+      {
+        "path": "src/input/index.ts",
+        "line": 15,
+        "kind": "unused export",
+        "symbol": "Lane"
+      },
+      {
+        "path": "src/input/index.ts",
+        "line": 16,
+        "kind": "unused export",
+        "symbol": "LaneDirection"
+      },
+      {
+        "path": "src/input/index.ts",
+        "line": 17,
+        "kind": "unused export",
+        "symbol": "SkillLevel"
+      },
+      {
+        "path": "src/input/index.ts",
+        "line": 23,
+        "kind": "unused export",
+        "symbol": "classifyKey"
+      },
+      {
+        "path": "src/input/index.ts",
+        "line": 24,
+        "kind": "unused export",
+        "symbol": "resolveLane"
+      },
+      {
+        "path": "src/input/index.ts",
+        "line": 25,
+        "kind": "unused export",
+        "symbol": "pushDirection"
+      },
+      {
+        "path": "src/input/index.ts",
+        "line": 26,
+        "kind": "unused export",
+        "symbol": "removeDirection"
+      },
+      {
+        "path": "src/input/index.ts",
+        "line": 27,
+        "kind": "unused export",
+        "symbol": "powerInput"
+      },
+      {
+        "path": "src/viewer3d/dock.ts",
+        "line": 362,
+        "kind": "unused export",
+        "symbol": "DETENTS"
+      },
+      {
+        "path": "tools/tmsasm/assembler.ts",
+        "line": 967,
+        "kind": "unused export",
+        "symbol": "RESET_ORDINAL"
+      },
+      {
+        "path": "tools/tmsasm/parser.ts",
+        "line": 97,
+        "kind": "unused export",
+        "symbol": "OperandKind"
+      },
+      {
+        "path": "tools/tmsasm/vite-plugin.ts",
+        "line": 212,
+        "kind": "unused export",
+        "symbol": "default"
+      },
+      {
+        "path": "src/machine/board/input.ts",
+        "line": 22,
+        "kind": "unused export",
+        "symbol": "ControlName"
+      },
+      {
+        "path": "src/machine/tube/atlas-schema.ts",
+        "line": 56,
+        "kind": "unused export",
+        "symbol": "ColumnIndex"
+      },
+      {
+        "path": "src/machine/tube/atlas-schema.ts",
+        "line": 71,
+        "kind": "unused export",
+        "symbol": "ScoreDigitIndex"
+      },
+      {
+        "path": "src/machine/tube/fake-canvas.ts",
+        "line": 364,
+        "kind": "unused export",
+        "symbol": "fillColorsUsed"
+      },
+      {
+        "path": "tools/probe/drives/march-wall-clock.ts",
+        "line": 74,
+        "kind": "unused export",
+        "symbol": "ruleRung"
+      },
+      {
+        "path": "tools/tmsasm/analysis/cfg.ts",
+        "line": 58,
+        "kind": "unused export",
+        "symbol": "BRANCH_MNEMONIC"
+      },
+      {
+        "path": "tools/tmsasm/analysis/index.ts",
+        "line": 48,
+        "kind": "unused export",
+        "symbol": "FlowKind"
+      },
+      {
+        "path": "tools/tmsasm/analysis/index.ts",
+        "line": 49,
+        "kind": "unused export",
+        "symbol": "CfgNode"
+      },
+      {
+        "path": "tools/tmsasm/analysis/index.ts",
+        "line": 49,
+        "kind": "unused export",
+        "symbol": "ControlFlowGraph"
+      },
+      {
+        "path": "tools/tmsasm/analysis/index.ts",
+        "line": 53,
+        "kind": "unused export",
+        "symbol": "R_OUTPUT_MNEMONICS"
+      },
+      {
+        "path": "src/machine/cpu/tms1370/cpu.ts",
+        "line": 73,
+        "kind": "unused export",
+        "symbol": "K_PIN_COUNT"
+      },
+      {
+        "path": "src/machine/cpu/tms1370/decoder.ts",
+        "line": 26,
+        "kind": "unused export",
+        "symbol": "CYCLES_PER_INSTRUCTION"
+      },
+      {
+        "path": "src/machine/cpu/tms1370/decoder.ts",
+        "line": 32,
+        "kind": "unused export",
+        "symbol": "encodeInstruction"
+      },
+      {
+        "path": "src/machine/cpu/tms1370/decoder.ts",
+        "line": 34,
+        "kind": "unused export",
+        "symbol": "IsaEntry"
+      },
+      {
+        "path": "src/machine/cpu/tms1370/ports.ts",
+        "line": 103,
+        "kind": "unused export",
+        "symbol": "R_SPEAKER_MASK"
+      }
+    ],
+    "tools": [
+      {
+        "language": "python",
+        "tool": "vulture",
+        "status": "ran",
+        "reason": "0 candidate(s)"
+      },
+      {
+        "language": "typescript",
+        "tool": "ts-prune",
+        "status": "ran",
+        "reason": "32 candidate(s)"
+      },
+      {
+        "language": "javascript",
+        "tool": "knip",
+        "status": "not_applicable",
+        "reason": "182 TypeScript file(s) against 1 JavaScript file(s); the dominant language's tool is used, so knip is not run and the 1 JavaScript file(s) are not analysed"
+      }
+    ],
+    "caveat": "Static reachability proves nothing in THIS repo references the symbol; it cannot prove no external consumer (a mobile app, another service) calls it. Cross-boundary liveness needs telemetry or a named human."
+  },
+  "observability": {
+    "rung": 0,
+    "instrumented": {
+      "present": false,
+      "signals": []
+    },
+    "discoverable": {
+      "present": false,
+      "signals": []
+    },
+    "reachable": {
+      "present": false,
+      "signals": []
+    },
+    "boundary": "Scores what the repo makes agent-reachable; cannot observe the agent's live environment."
+  },
+  "coverage_report": {
+    "available": false,
+    "source": "none found"
+  },
+  "test_pressure": {
+    "mutation_config_present": false,
+    "mutation_tools_detected": [],
+    "ci_integrated": false,
+    "mutation_run": false,
+    "mutation_scope": [],
+    "per_file": [],
+    "survivor_density": {
+      "overall": null,
+      "total_survived": 0,
+      "total_mutants": null,
+      "by_file": {}
+    },
+    "survivor_clusters": [],
+    "gap_signal": "not assessed",
+    "cheap_heuristics": {
+      "assertion_on_internal": [],
+      "untested_boundaries": [],
+      "duplicate_truth": [
+        {
+          "file": "tools/model/build_console.py",
+          "field_name": "Z_CHANNEL",
+          "derives_from": "Z_WING",
+          "confidence": "medium"
+        },
+        {
+          "file": "tools/model/build_console.py",
+          "field_name": "operation",
+          "derives_from": "op",
+          "confidence": "medium"
+        },
+        {
+          "file": "tools/model/build_console.py",
+          "field_name": "object",
+          "derives_from": "other",
+          "confidence": "medium"
+        },
+        {
+          "file": "tools/model/build_console.py",
+          "field_name": "parent",
+          "derives_from": "to",
+          "confidence": "medium"
+        },
+        {
+          "file": "tools/model/build_console.py",
+          "field_name": "align_x",
+          "derives_from": "align",
+          "confidence": "medium"
+        },
+        {
+          "file": "tools/model/build_console.py",
+          "field_name": "resolution_u",
+          "derives_from": "resolution",
+          "confidence": "medium"
+        },
+        {
+          "file": "tools/model/build_console.py",
+          "field_name": "taa_render_samples",
+          "derives_from": "samples",
+          "confidence": "medium"
+        },
+        {
+          "file": "tools/model/build_console.py",
+          "field_name": "camera",
+          "derives_from": "obj",
+          "confidence": "medium"
+        }
+      ],
+      "confidence_note": "candidate signals for human judgement, never verdicts"
+    },
+    "mutation_note": "opt-in required: mutation testing mutates and runs code"
+  },
+  "mutation_not_run_cap": {
+    "applies": true,
+    "mutation_run": false,
+    "max_layer6_band": "Partial",
+    "annotation": "truth-pressure unproven (mutation not run)"
+  },
+  "test_focus": {
+    "available": true,
+    "coverage_present": false,
+    "entries": [
+      {
+        "path": "tools/model/build_console.py",
+        "risk_band": "high",
+        "test_signal": "unsupported",
+        "hollow_heuristic_kinds": [],
+        "suggested_action": "measure_coverage"
+      },
+      {
+        "path": "tools/probe/render-fidelity.test.ts",
+        "risk_band": "high",
+        "test_signal": "sibling_test_only",
+        "hollow_heuristic_kinds": [],
+        "suggested_action": "measure_coverage"
+      },
+      {
+        "path": "tools/probe/battleship-arrival.test.ts",
+        "risk_band": "high",
+        "test_signal": "sibling_test_only",
+        "hollow_heuristic_kinds": [],
+        "suggested_action": "measure_coverage"
+      },
+      {
+        "path": "tools/probe/scoring-ruler.test.ts",
+        "risk_band": "medium",
+        "test_signal": "sibling_test_only",
+        "hollow_heuristic_kinds": [],
+        "suggested_action": "measure_coverage"
+      },
+      {
+        "path": "tools/probe/launcher-lives.test.ts",
+        "risk_band": "medium",
+        "test_signal": "sibling_test_only",
+        "hollow_heuristic_kinds": [],
+        "suggested_action": "measure_coverage"
+      },
+      {
+        "path": "tools/probe/sweep-timing.test.ts",
+        "risk_band": "medium",
+        "test_signal": "sibling_test_only",
+        "hollow_heuristic_kinds": [],
+        "suggested_action": "measure_coverage"
+      },
+      {
+        "path": "tools/probe/tms1370-rom.test.ts",
+        "risk_band": "medium",
+        "test_signal": "sibling_test_only",
+        "hollow_heuristic_kinds": [],
+        "suggested_action": "measure_coverage"
+      },
+      {
+        "path": "tools/model/measure.py",
+        "risk_band": "low",
+        "test_signal": "unsupported",
+        "hollow_heuristic_kinds": [],
+        "suggested_action": "measure_coverage"
+      },
+      {
+        "path": "src/machine/tube/atlas.test.ts",
+        "risk_band": "low",
+        "test_signal": "sibling_test_only",
+        "hollow_heuristic_kinds": [],
+        "suggested_action": "measure_coverage"
+      },
+      {
+        "path": "tools/probe/speaker-bands.test.ts",
+        "risk_band": "low",
+        "test_signal": "sibling_test_only",
+        "hollow_heuristic_kinds": [],
+        "suggested_action": "measure_coverage"
+      }
+    ],
+    "total_focus_targets": 10
+  },
+  "promissory_markers": {
+    "available": true,
+    "reason": "",
+    "aging_reliable": true,
+    "stale_touches_threshold": 5,
+    "families": {
+      "todo": {
+        "total": 5,
+        "stale": 0,
+        "linked": 0,
+        "justified": 0,
+        "agent_introduced": 0
+      },
+      "suppression": {
+        "total": 18,
+        "stale": 0,
+        "linked": 0,
+        "justified": 0,
+        "agent_introduced": 0
+      }
+    },
+    "todo_bare": 5,
+    "todo_linked": 0,
+    "total_markers": 23,
+    "total_stale": 0,
+    "stale_agent_introduced": 0,
+    "stale_by_file": {},
+    "top_offenders": []
+  },
+  "agent_ops": {
+    "available": true,
+    "settings": [],
+    "hooks_dir": {
+      "path": ".claude/hooks",
+      "present": false,
+      "file_count": 0,
+      "tracked_count": 0
+    },
+    "routine_dirs": [
+      {
+        "path": ".claude/workflows",
+        "present": false,
+        "file_count": 0,
+        "tracked_count": 0
+      },
+      {
+        "path": ".claude/routines",
+        "present": false,
+        "file_count": 0,
+        "tracked_count": 0
+      }
+    ],
+    "summary": {
+      "permissions_encoded": false,
+      "hooks_present": false,
+      "routines_present": false
+    }
+  },
+  "config_drift": {
+    "available": true,
+    "entries": [],
+    "dropped": 0,
+    "snapshots": []
+  },
+  "review_reality": {
+    "available": true,
+    "merged_count": 30,
+    "oldest_merged_days_ago": 15,
+    "reviewed_share": 0.4,
+    "approved_share": 0.0,
+    "bot_review_share": 1.0,
+    "self_merged_share": 1.0,
+    "review_required": false,
+    "hollow_required_review": false,
+    "required_approval_bypassed": false
+  },
+  "gate_cost_estimate": {
+    "available": true,
+    "runs_per_month": 65,
+    "minutes_per_run": 5,
+    "minutes_per_month": 325,
+    "assumption": "Assumes 5 minutes per gate run (a fixed figure, not measured on this repository) and one run per merged pull request: 65 merged in the last 30 days. Re-pushes to an open pull request add runs, so the run count is a floor.",
+    "capped": false,
+    "private": false
+  },
+  "accretion_ratchet": {
+    "available": true,
+    "reason": "",
+    "reliable": true,
+    "deletion_fraction_threshold": 0.15,
+    "files": [
+      {
+        "path": "tools/model/build_console.py",
+        "net_additions": 1379,
+        "commit_count": 9,
+        "deletion_fraction": 0.1172,
+        "time_span_months": 0.1
+      },
+      {
+        "path": "tools/probe/tms1370-rom.test.ts",
+        "net_additions": 1045,
+        "commit_count": 10,
+        "deletion_fraction": 0.1404,
+        "time_span_months": 1.3
+      },
+      {
+        "path": "src/machine/audio/driver.test.ts",
+        "net_additions": 1005,
+        "commit_count": 3,
+        "deletion_fraction": 0.0126,
+        "time_span_months": 0.1
+      },
+      {
+        "path": "tools/probe/speaker-bands.test.ts",
+        "net_additions": 967,
+        "commit_count": 10,
+        "deletion_fraction": 0.1442,
+        "time_span_months": 1.0
+      },
+      {
+        "path": "src/machine/tube/silkscreen.test.ts",
+        "net_additions": 721,
+        "commit_count": 9,
+        "deletion_fraction": 0.1025,
+        "time_span_months": 0.1
+      },
+      {
+        "path": "tools/model/measure.py",
+        "net_additions": 601,
+        "commit_count": 9,
+        "deletion_fraction": 0.0341,
+        "time_span_months": 0.1
+      }
+    ],
+    "total_in_band": 6
+  },
+  "structure": {
+    "available": true,
+    "reason": "no importable Python packages found",
+    "keyhole_budget": 2000,
+    "footprints": [],
+    "sccs": [],
+    "modularity_q": 0.0,
+    "front_door_ratio": 1.0,
+    "internal_burrow_edges": [],
+    "breakup_candidates": [],
+    "module_count": 0,
+    "edge_count": 0
+  },
+  "behaviour": {
+    "available": true,
+    "containment_by_dir": {
+      "tools": 0.1304,
+      "docs": 0.314,
+      "src": 0.4487,
+      "tools/probe": 0.1618,
+      "docs/evidence": 0.2308,
+      "src/machine": 0.3878,
+      "asm": 0.0638,
+      "src/machine/tube": 0.3529,
+      "assets": 0.25,
+      "assets/reference": 0.25,
+      "tools/probe/drives": 0.0667,
+      "public": 0.0,
+      "src/ui": 0.4615,
+      "tools/model": 0.0,
+      "src/viewer3d": 0.1667,
+      "docs/prd": 0.4,
+      "public/models": 0.0,
+      "src/machine/audio": 0.2222,
+      "src/machine/board": 0.125,
+      "docs/research": 0.4286,
+      "src/machine/cpu": 0.5714,
+      "tools/video": 0.0,
+      "assets/reference/sprites": 0.3333,
+      "src/input": 0.1667,
+      "docs/contract": 0.6,
+      "src/audio": 0.2,
+      "src/machine/cpu/tms1370": 0.4,
+      "tools/tmsasm": 0.2
+    },
+    "change_coupling_pairs": [
+      {
+        "file_a": "asm/jetfighter.asm",
+        "file_b": "tools/probe/jetfighter-rom.test.ts",
+        "co_change_count": 15,
+        "support_pct": 7.69
+      },
+      {
+        "file_a": "asm/jetfighter.asm",
+        "file_b": "tools/probe/sweep-timing.test.ts",
+        "co_change_count": 11,
+        "support_pct": 5.64
+      },
+      {
+        "file_a": "src/machine/tube/ATLAS-COORDINATES.md",
+        "file_b": "src/machine/tube/atlas.json",
+        "co_change_count": 11,
+        "support_pct": 5.64
+      },
+      {
+        "file_a": "src/machine/tube/ATLAS-COORDINATES.md",
+        "file_b": "src/machine/tube/atlas.test.ts",
+        "co_change_count": 11,
+        "support_pct": 5.64
+      },
+      {
+        "file_a": "src/machine/tube/atlas.json",
+        "file_b": "src/machine/tube/atlas.test.ts",
+        "co_change_count": 11,
+        "support_pct": 5.64
+      },
+      {
+        "file_a": "asm/jetfighter.asm",
+        "file_b": "docs/evidence/timing-analysis.md",
+        "co_change_count": 10,
+        "support_pct": 5.13
+      },
+      {
+        "file_a": "src/ui/case.css",
+        "file_b": "src/ui/case.ts",
+        "co_change_count": 10,
+        "support_pct": 5.13
+      },
+      {
+        "file_a": "docs/evidence/console-dimensions.md",
+        "file_b": "tools/model/measure.py",
+        "co_change_count": 9,
+        "support_pct": 4.62
+      },
+      {
+        "file_a": "docs/evidence/open-questions.md",
+        "file_b": "docs/evidence/timing-analysis.md",
+        "co_change_count": 9,
+        "support_pct": 4.62
+      },
+      {
+        "file_a": "public/models/console.glb",
+        "file_b": "tools/model/build_console.py",
+        "co_change_count": 9,
+        "support_pct": 4.62
+      },
+      {
+        "file_a": "tools/probe/blank-to-glass.test.ts",
+        "file_b": "tools/probe/sweep-timing.test.ts",
+        "co_change_count": 9,
+        "support_pct": 4.62
+      },
+      {
+        "file_a": "asm/jetfighter.asm",
+        "file_b": "tools/probe/battleship-arrival.test.ts",
+        "co_change_count": 8,
+        "support_pct": 4.1
+      },
+      {
+        "file_a": "asm/jetfighter.asm",
+        "file_b": "tools/probe/blank-to-glass.test.ts",
+        "co_change_count": 8,
+        "support_pct": 4.1
+      },
+      {
+        "file_a": "asm/jetfighter.asm",
+        "file_b": "tools/probe/launcher-lives.test.ts",
+        "co_change_count": 8,
+        "support_pct": 4.1
+      },
+      {
+        "file_a": "asm/jetfighter.asm",
+        "file_b": "tools/probe/tms1370-rom.test.ts",
+        "co_change_count": 8,
+        "support_pct": 4.1
+      },
+      {
+        "file_a": "docs/evidence/console-dimensions.md",
+        "file_b": "tools/model/dimensions.json",
+        "co_change_count": 8,
+        "support_pct": 4.1
+      },
+      {
+        "file_a": "docs/evidence/console-model-board.jpg",
+        "file_b": "public/models/console.glb",
+        "co_change_count": 8,
+        "support_pct": 4.1
+      },
+      {
+        "file_a": "docs/evidence/console-model-front.jpg",
+        "file_b": "public/models/console.glb",
+        "co_change_count": 8,
+        "support_pct": 4.1
+      },
+      {
+        "file_a": "src/machine/tube/ATLAS-COORDINATES.md",
+        "file_b": "src/machine/tube/atlas-schema.ts",
+        "co_change_count": 8,
+        "support_pct": 4.1
+      },
+      {
+        "file_a": "src/machine/tube/atlas-schema.ts",
+        "file_b": "src/machine/tube/atlas.test.ts",
+        "co_change_count": 8,
+        "support_pct": 4.1
+      },
+      {
+        "file_a": "src/machine/tube/silkscreen.test.ts",
+        "file_b": "src/machine/tube/silkscreen.ts",
+        "co_change_count": 8,
+        "support_pct": 4.1
+      },
+      {
+        "file_a": "tools/model/dimensions.json",
+        "file_b": "tools/model/measure.py",
+        "co_change_count": 8,
+        "support_pct": 4.1
+      },
+      {
+        "file_a": "README.md",
+        "file_b": "src/viewer3d/main.ts",
+        "co_change_count": 7,
+        "support_pct": 3.59
+      },
+      {
+        "file_a": "asm/jetfighter.asm",
+        "file_b": "tools/probe/machine-probe.test.ts",
+        "co_change_count": 7,
+        "support_pct": 3.59
+      },
+      {
+        "file_a": "asm/jetfighter.asm",
+        "file_b": "tools/probe/render-fidelity.test.ts",
+        "co_change_count": 7,
+        "support_pct": 3.59
+      },
+      {
+        "file_a": "asm/jetfighter.asm",
+        "file_b": "tools/probe/rom-atlas-conformance.test.ts",
+        "co_change_count": 7,
+        "support_pct": 3.59
+      },
+      {
+        "file_a": "asm/jetfighter.asm",
+        "file_b": "tools/probe/scoring-ruler.test.ts",
+        "co_change_count": 7,
+        "support_pct": 3.59
+      },
+      {
+        "file_a": "docs/evidence/console-dimensions.md",
+        "file_b": "docs/evidence/console-model-board.jpg",
+        "co_change_count": 7,
+        "support_pct": 3.59
+      },
+      {
+        "file_a": "docs/evidence/console-dimensions.md",
+        "file_b": "public/models/console.glb",
+        "co_change_count": 7,
+        "support_pct": 3.59
+      },
+      {
+        "file_a": "docs/evidence/console-model-board.jpg",
+        "file_b": "tools/model/build_console.py",
+        "co_change_count": 7,
+        "support_pct": 3.59
+      },
+      {
+        "file_a": "docs/evidence/console-model-board.jpg",
+        "file_b": "tools/model/dimensions.json",
+        "co_change_count": 7,
+        "support_pct": 3.59
+      },
+      {
+        "file_a": "docs/evidence/console-model-board.jpg",
+        "file_b": "tools/model/measure.py",
+        "co_change_count": 7,
+        "support_pct": 3.59
+      },
+      {
+        "file_a": "docs/evidence/console-model-front.jpg",
+        "file_b": "tools/model/build_console.py",
+        "co_change_count": 7,
+        "support_pct": 3.59
+      },
+      {
+        "file_a": "public/models/console.glb",
+        "file_b": "tools/model/dimensions.json",
+        "co_change_count": 7,
+        "support_pct": 3.59
+      },
+      {
+        "file_a": "public/models/console.glb",
+        "file_b": "tools/model/measure.py",
+        "co_change_count": 7,
+        "support_pct": 3.59
+      },
+      {
+        "file_a": "src/machine/tube/ATLAS-COORDINATES.md",
+        "file_b": "src/machine/tube/atlas.ts",
+        "co_change_count": 7,
+        "support_pct": 3.59
+      },
+      {
+        "file_a": "src/machine/tube/atlas-schema.ts",
+        "file_b": "src/machine/tube/atlas.json",
+        "co_change_count": 7,
+        "support_pct": 3.59
+      },
+      {
+        "file_a": "src/machine/tube/atlas-schema.ts",
+        "file_b": "src/machine/tube/atlas.ts",
+        "co_change_count": 7,
+        "support_pct": 3.59
+      },
+      {
+        "file_a": "src/machine/tube/atlas.json",
+        "file_b": "src/machine/tube/atlas.ts",
+        "co_change_count": 7,
+        "support_pct": 3.59
+      },
+      {
+        "file_a": "src/machine/tube/atlas.test.ts",
+        "file_b": "src/machine/tube/atlas.ts",
+        "co_change_count": 7,
+        "support_pct": 3.59
+      },
+      {
+        "file_a": "tools/probe/launcher-lives.test.ts",
+        "file_b": "tools/probe/sweep-timing.test.ts",
+        "co_change_count": 7,
+        "support_pct": 3.59
+      },
+      {
+        "file_a": "CLAUDE.md",
+        "file_b": "README.md",
+        "co_change_count": 6,
+        "support_pct": 3.08
+      },
+      {
+        "file_a": "asm/jetfighter.asm",
+        "file_b": "docs/evidence/open-questions.md",
+        "co_change_count": 6,
+        "support_pct": 3.08
+      },
+      {
+        "file_a": "asm/jetfighter.asm",
+        "file_b": "tools/probe/speaker-bands.test.ts",
+        "co_change_count": 6,
+        "support_pct": 3.08
+      },
+      {
+        "file_a": "docs/evidence/console-dimensions.md",
+        "file_b": "tools/model/build_console.py",
+        "co_change_count": 6,
+        "support_pct": 3.08
+      },
+      {
+        "file_a": "docs/evidence/console-model-board.jpg",
+        "file_b": "docs/evidence/console-model-front.jpg",
+        "co_change_count": 6,
+        "support_pct": 3.08
+      },
+      {
+        "file_a": "docs/evidence/console-model-front.jpg",
+        "file_b": "tools/model/README.md",
+        "co_change_count": 6,
+        "support_pct": 3.08
+      },
+      {
+        "file_a": "public/models/console.glb",
+        "file_b": "tools/model/README.md",
+        "co_change_count": 6,
+        "support_pct": 3.08
+      },
+      {
+        "file_a": "tools/model/README.md",
+        "file_b": "tools/model/build_console.py",
+        "co_change_count": 6,
+        "support_pct": 3.08
+      },
+      {
+        "file_a": "tools/model/build_console.py",
+        "file_b": "tools/model/dimensions.json",
+        "co_change_count": 6,
+        "support_pct": 3.08
+      },
+      {
+        "file_a": "tools/model/build_console.py",
+        "file_b": "tools/model/measure.py",
+        "co_change_count": 6,
+        "support_pct": 3.08
+      },
+      {
+        "file_a": "tools/probe/battleship-arrival.test.ts",
+        "file_b": "tools/probe/blank-to-glass.test.ts",
+        "co_change_count": 6,
+        "support_pct": 3.08
+      },
+      {
+        "file_a": "tools/probe/battleship-arrival.test.ts",
+        "file_b": "tools/probe/sweep-timing.test.ts",
+        "co_change_count": 6,
+        "support_pct": 3.08
+      },
+      {
+        "file_a": "tools/probe/blank-to-glass.test.ts",
+        "file_b": "tools/probe/launcher-lives.test.ts",
+        "co_change_count": 6,
+        "support_pct": 3.08
+      },
+      {
+        "file_a": "tools/probe/game-lifetime.test.ts",
+        "file_b": "tools/probe/launcher-lives.test.ts",
+        "co_change_count": 6,
+        "support_pct": 3.08
+      },
+      {
+        "file_a": "tools/probe/jetfighter-rom.test.ts",
+        "file_b": "tools/probe/sweep-timing.test.ts",
+        "co_change_count": 6,
+        "support_pct": 3.08
+      },
+      {
+        "file_a": "tools/probe/rom-atlas-conformance.test.ts",
+        "file_b": "tools/probe/sweep-timing.test.ts",
+        "co_change_count": 6,
+        "support_pct": 3.08
+      },
+      {
+        "file_a": "CLAUDE.md",
+        "file_b": "docs/evidence/open-questions.md",
+        "co_change_count": 5,
+        "support_pct": 2.56
+      },
+      {
+        "file_a": "asm/jetfighter.asm",
+        "file_b": "tools/probe/game-lifetime.test.ts",
+        "co_change_count": 5,
+        "support_pct": 2.56
+      },
+      {
+        "file_a": "docs/evidence/audio-reference.md",
+        "file_b": "docs/evidence/open-questions.md",
+        "co_change_count": 5,
+        "support_pct": 2.56
+      },
+      {
+        "file_a": "docs/evidence/console-dimensions.md",
+        "file_b": "docs/evidence/console-model-front.jpg",
+        "co_change_count": 5,
+        "support_pct": 2.56
+      },
+      {
+        "file_a": "docs/evidence/console-dimensions.md",
+        "file_b": "tools/model/README.md",
+        "co_change_count": 5,
+        "support_pct": 2.56
+      },
+      {
+        "file_a": "docs/evidence/console-dimensions.md",
+        "file_b": "tools/model/pixels.json",
+        "co_change_count": 5,
+        "support_pct": 2.56
+      },
+      {
+        "file_a": "docs/evidence/console-model-front.jpg",
+        "file_b": "tools/model/dimensions.json",
+        "co_change_count": 5,
+        "support_pct": 2.56
+      },
+      {
+        "file_a": "docs/evidence/console-model-front.jpg",
+        "file_b": "tools/model/measure.py",
+        "co_change_count": 5,
+        "support_pct": 2.56
+      },
+      {
+        "file_a": "src/machine/tube/ATLAS-COORDINATES.md",
+        "file_b": "src/machine/tube/renderer.test.ts",
+        "co_change_count": 5,
+        "support_pct": 2.56
+      },
+      {
+        "file_a": "src/machine/tube/layout.test.ts",
+        "file_b": "src/machine/tube/layout.ts",
+        "co_change_count": 5,
+        "support_pct": 2.56
+      },
+      {
+        "file_a": "src/ui/case.css",
+        "file_b": "src/ui/geometry.ts",
+        "co_change_count": 5,
+        "support_pct": 2.56
+      },
+      {
+        "file_a": "src/ui/case.ts",
+        "file_b": "src/ui/geometry.ts",
+        "co_change_count": 5,
+        "support_pct": 2.56
+      },
+      {
+        "file_a": "src/viewer3d/explode.ts",
+        "file_b": "src/viewer3d/main.ts",
+        "co_change_count": 5,
+        "support_pct": 2.56
+      },
+      {
+        "file_a": "src/viewer3d/main.ts",
+        "file_b": "src/viewer3d/scene.ts",
+        "co_change_count": 5,
+        "support_pct": 2.56
+      },
+      {
+        "file_a": "tools/model/measure.py",
+        "file_b": "tools/model/pixels.json",
+        "co_change_count": 5,
+        "support_pct": 2.56
+      },
+      {
+        "file_a": "tools/probe/battleship-arrival.test.ts",
+        "file_b": "tools/probe/jetfighter-rom.test.ts",
+        "co_change_count": 5,
+        "support_pct": 2.56
+      },
+      {
+        "file_a": "tools/probe/blank-to-glass.test.ts",
+        "file_b": "tools/probe/rom-atlas-conformance.test.ts",
+        "co_change_count": 5,
+        "support_pct": 2.56
+      },
+      {
+        "file_a": "tools/probe/jetfighter-rom.test.ts",
+        "file_b": "tools/probe/machine-probe.test.ts",
+        "co_change_count": 5,
+        "support_pct": 2.56
+      },
+      {
+        "file_a": "tools/probe/launcher-lives.test.ts",
+        "file_b": "tools/probe/rom-atlas-conformance.test.ts",
+        "co_change_count": 5,
+        "support_pct": 2.56
+      },
+      {
+        "file_a": "tools/probe/launcher-lives.test.ts",
+        "file_b": "tools/probe/tms1370-rom.test.ts",
+        "co_change_count": 5,
+        "support_pct": 2.56
+      },
+      {
+        "file_a": "tools/probe/render-fidelity.test.ts",
+        "file_b": "tools/probe/scoring-ruler.test.ts",
+        "co_change_count": 5,
+        "support_pct": 2.56
+      },
+      {
+        "file_a": "tools/probe/render-fidelity.test.ts",
+        "file_b": "tools/probe/tms1370-rom.test.ts",
+        "co_change_count": 5,
+        "support_pct": 2.56
+      },
+      {
+        "file_a": "tools/probe/speaker-bands.test.ts",
+        "file_b": "tools/probe/sweep-timing.test.ts",
+        "co_change_count": 5,
+        "support_pct": 2.56
+      },
+      {
+        "file_a": "README.md",
+        "file_b": "docs/evidence/console-dimensions.md",
+        "co_change_count": 4,
+        "support_pct": 2.05
+      },
+      {
+        "file_a": "README.md",
+        "file_b": "src/input/input.ts",
+        "co_change_count": 4,
+        "support_pct": 2.05
+      },
+      {
+        "file_a": "README.md",
+        "file_b": "src/main.ts",
+        "co_change_count": 4,
+        "support_pct": 2.05
+      },
+      {
+        "file_a": "README.md",
+        "file_b": "src/viewer3d/scene.ts",
+        "co_change_count": 4,
+        "support_pct": 2.05
+      },
+      {
+        "file_a": "README.md",
+        "file_b": "vite.config.ts",
+        "co_change_count": 4,
+        "support_pct": 2.05
+      },
+      {
+        "file_a": "asm/jetfighter.asm",
+        "file_b": "docs/evidence/playability-audit.md",
+        "co_change_count": 4,
+        "support_pct": 2.05
+      },
+      {
+        "file_a": "docs/evidence/console-model-board.jpg",
+        "file_b": "tools/model/README.md",
+        "co_change_count": 4,
+        "support_pct": 2.05
+      },
+      {
+        "file_a": "docs/evidence/console-model-front.jpg",
+        "file_b": "tools/model/compare.py",
+        "co_change_count": 4,
+        "support_pct": 2.05
+      },
+      {
+        "file_a": "docs/evidence/open-questions.md",
+        "file_b": "tools/probe/speaker-bands.test.ts",
+        "co_change_count": 4,
+        "support_pct": 2.05
+      },
+      {
+        "file_a": "docs/evidence/open-questions.md",
+        "file_b": "tools/probe/sweep-timing.test.ts",
+        "co_change_count": 4,
+        "support_pct": 2.05
+      },
+      {
+        "file_a": "docs/evidence/timing-analysis.md",
+        "file_b": "tools/probe/jetfighter-rom.test.ts",
+        "co_change_count": 4,
+        "support_pct": 2.05
+      },
+      {
+        "file_a": "docs/evidence/timing-analysis.md",
+        "file_b": "tools/probe/sweep-timing.test.ts",
+        "co_change_count": 4,
+        "support_pct": 2.05
+      },
+      {
+        "file_a": "index.html",
+        "file_b": "src/ui/case.css",
+        "co_change_count": 4,
+        "support_pct": 2.05
+      },
+      {
+        "file_a": "public/models/console.glb",
+        "file_b": "tools/model/compare.py",
+        "co_change_count": 4,
+        "support_pct": 2.05
+      },
+      {
+        "file_a": "src/audio/audio.test.ts",
+        "file_b": "src/audio/audio.ts",
+        "co_change_count": 4,
+        "support_pct": 2.05
+      },
+      {
+        "file_a": "src/machine/board/display.test.ts",
+        "file_b": "src/machine/board/display.ts",
+        "co_change_count": 4,
+        "support_pct": 2.05
+      },
+      {
+        "file_a": "src/machine/tube/ATLAS-COORDINATES.md",
+        "file_b": "tools/probe/jetfighter-rom.test.ts",
+        "co_change_count": 4,
+        "support_pct": 2.05
+      },
+      {
+        "file_a": "src/machine/tube/ATLAS-COORDINATES.md",
+        "file_b": "tools/probe/rom-atlas-conformance.test.ts",
+        "co_change_count": 4,
+        "support_pct": 2.05
+      },
+      {
+        "file_a": "src/machine/tube/atlas-schema.ts",
+        "file_b": "tools/probe/jetfighter-rom.test.ts",
+        "co_change_count": 4,
+        "support_pct": 2.05
+      },
+      {
+        "file_a": "src/machine/tube/atlas-schema.ts",
+        "file_b": "tools/probe/rom-atlas-conformance.test.ts",
+        "co_change_count": 4,
+        "support_pct": 2.05
+      }
+    ],
+    "static_history_disagreement": [
+      {
+        "path": "public",
+        "containment_ratio": 0.0,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": "public/models",
+        "containment_ratio": 0.0,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": "tools/model",
+        "containment_ratio": 0.0,
+        "finding": "hidden_coupling",
+        "recommendation": "investigate the seam - the static boundary looks modular but its commits bleed outside it; the boundary is lying"
+      },
+      {
+        "path": "tools/video",
+        "containment_ratio": 0.0,
+        "finding": "hidden_coupling",
+        "recommendation": "investigate the seam - the static boundary looks modular but its commits bleed outside it; the boundary is lying"
+      },
+      {
+        "path": "asm",
+        "containment_ratio": 0.0638,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": "tools/probe/drives",
+        "containment_ratio": 0.0667,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": "src/machine/board",
+        "containment_ratio": 0.125,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": "tools",
+        "containment_ratio": 0.1304,
+        "finding": "hidden_coupling",
+        "recommendation": "investigate the seam - the static boundary looks modular but its commits bleed outside it; the boundary is lying"
+      },
+      {
+        "path": "tools/probe",
+        "containment_ratio": 0.1618,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": "src/input",
+        "containment_ratio": 0.1667,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": "src/viewer3d",
+        "containment_ratio": 0.1667,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": "src/audio",
+        "containment_ratio": 0.2,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": "tools/tmsasm",
+        "containment_ratio": 0.2,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": "src/machine/audio",
+        "containment_ratio": 0.2222,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": "docs/evidence",
+        "containment_ratio": 0.2308,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": "assets",
+        "containment_ratio": 0.25,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      },
+      {
+        "path": "assets/reference",
+        "containment_ratio": 0.25,
+        "finding": "bleeding_module",
+        "recommendation": "edits here bleed outside the directory (low containment); no static import graph available to cross-check the boundary"
+      }
+    ],
+    "hidden_coupling_findings": [
+      {
+        "path": "tools/model",
+        "containment_ratio": 0.0,
+        "finding": "hidden_coupling",
+        "recommendation": "investigate the seam - the static boundary looks modular but its commits bleed outside it; the boundary is lying"
+      },
+      {
+        "path": "tools/video",
+        "containment_ratio": 0.0,
+        "finding": "hidden_coupling",
+        "recommendation": "investigate the seam - the static boundary looks modular but its commits bleed outside it; the boundary is lying"
+      },
+      {
+        "path": "tools",
+        "containment_ratio": 0.1304,
+        "finding": "hidden_coupling",
+        "recommendation": "investigate the seam - the static boundary looks modular but its commits bleed outside it; the boundary is lying"
+      }
+    ],
+    "refactor_boundaries": [],
+    "static_modularity_projection": "repo-level (coarse)"
+  },
+  "documentation": {
+    "available": true,
+    "high_ccn_threshold": 112.0,
+    "freshness_by_doc": {
+      "src/machine/tube/ATLAS-COORDINATES.md": -1.0,
+      "README.md": -1.0,
+      "tools/model/README.md": -0.645,
+      "CLAUDE.md": -1.0,
+      "assets/reference/case/README.md": -1.0,
+      "assets/reference/sprites/README.md": -1.0,
+      "assets/reference/tube-teardown/README.md": -1.0,
+      "docs/contract/v2.contract.md": -1.0,
+      "docs/contract/v3-entities.contract.md": -1.0,
+      "docs/contract/v3.contract.md": -0.75,
+      "docs/contract/v4.contract.md": -1.0,
+      "docs/design/jet-model.md": -1.0,
+      "docs/evidence/README.md": -1.0,
+      "docs/evidence/audio-reference.md": -1.0,
+      "docs/evidence/cadence-rederivation.md": -1.0,
+      "docs/evidence/console-dimensions.md": -1.0,
+      "docs/evidence/open-questions.md": -1.0,
+      "docs/evidence/owner-entity-model.md": -1.0,
+      "docs/evidence/palette/README.md": -1.0,
+      "docs/evidence/playability-audit.md": -1.0,
+      "docs/evidence/playfield/README.md": -1.0,
+      "docs/evidence/timing-analysis.md": -1.0,
+      "docs/evidence/tube-mesh.md": -1.0,
+      "docs/evidence/vfd-appearance.md": -1.0,
+      "docs/prd/jet-fighters-3d-v2.md": -1.0,
+      "docs/prd/jet-fighters-3d.md": -1.0,
+      "docs/prd/jet-fighters-v1.md": -1.0,
+      "docs/prd/jet-fighters-v2.md": -1.0,
+      "docs/prd/jet-fighters-v3.md": -1.0,
+      "docs/prd/jet-fighters-v4.md": -1.0,
+      "docs/research/comparison-surface.md": -1.0,
+      "docs/research/mp2110-timing-measurement.md": -1.0,
+      "docs/research/pla-design.md": -1.0,
+      "docs/research/tms1370-architecture.md": -1.0,
+      "docs/research/tms1370-io.md": -1.0,
+      "tools/probe/drives/README.md": -1.0
+    },
+    "complexity_coverage": {
+      "src/machine/tube/ATLAS-COORDINATES.md": {
+        "complexity_summarised": 202.0,
+        "subject_code_count": 4,
+        "doc_value": -202.0
+      },
+      "README.md": {
+        "complexity_summarised": 152.0,
+        "subject_code_count": 12,
+        "doc_value": -152.0
+      },
+      "tools/model/README.md": {
+        "complexity_summarised": 141.0,
+        "subject_code_count": 3,
+        "doc_value": -90.945
+      },
+      "CLAUDE.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "assets/reference/case/README.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "assets/reference/sprites/README.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 1,
+        "doc_value": -0.0
+      },
+      "assets/reference/tube-teardown/README.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/contract/v2.contract.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/contract/v3-entities.contract.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/contract/v3.contract.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/contract/v4.contract.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/design/jet-model.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/evidence/README.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/evidence/audio-reference.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/evidence/cadence-rederivation.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/evidence/console-dimensions.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/evidence/open-questions.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/evidence/owner-entity-model.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/evidence/palette/README.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/evidence/playability-audit.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/evidence/playfield/README.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/evidence/timing-analysis.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/evidence/tube-mesh.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/evidence/vfd-appearance.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 3,
+        "doc_value": -0.0
+      },
+      "docs/prd/jet-fighters-3d-v2.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/prd/jet-fighters-3d.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/prd/jet-fighters-v1.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/prd/jet-fighters-v2.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/prd/jet-fighters-v3.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/prd/jet-fighters-v4.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/research/comparison-surface.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/research/mp2110-timing-measurement.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/research/pla-design.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/research/tms1370-architecture.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "docs/research/tms1370-io.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      },
+      "tools/probe/drives/README.md": {
+        "complexity_summarised": 0.0,
+        "subject_code_count": 0,
+        "doc_value": -0.0
+      }
+    },
+    "stale_doc_on_complexity": [
+      {
+        "path": "README.md",
+        "complexity_summarised": 152.0,
+        "freshness": -1.0,
+        "doc_value": -152.0,
+        "finding": "lying_map",
+        "confidence": "high",
+        "subject_code_count": 12,
+        "recommendation": "Fix or DELETE this doc. A stale summary over complex code is worse than none -- it lies to the next agent. Do not auto-generate a replacement; a hollow summary is still a lying map."
+      },
+      {
+        "path": "tools/model/README.md",
+        "complexity_summarised": 141.0,
+        "freshness": -0.645,
+        "doc_value": -90.945,
+        "finding": "lying_map",
+        "confidence": "high",
+        "subject_code_count": 3,
+        "recommendation": "Fix or DELETE this doc. A stale summary over complex code is worse than none -- it lies to the next agent. Do not auto-generate a replacement; a hollow summary is still a lying map."
+      }
+    ],
+    "unexplained_complexity": [],
+    "good_contracts": []
+  },
+  "understanding": {
+    "available": true,
+    "high_ccn_threshold": 112.0,
+    "human_anchor_by_path": {
+      "asm/jetfighter.asm": true,
+      "assets/reference/sprites/README.md": true,
+      "docs/evidence/audio-reference.md": true,
+      "docs/evidence/open-questions.md": true,
+      "docs/evidence/timing-analysis.md": true,
+      "src/machine/audio/driver.test.ts": true,
+      "src/machine/tube/ATLAS-COORDINATES.md": true,
+      "src/machine/tube/atlas.json": true,
+      "src/machine/tube/atlas.test.ts": true,
+      "src/machine/tube/silkscreen.test.ts": true,
+      "tools/compare/harness.ts": true,
+      "tools/model/build_console.py": true,
+      "tools/model/dimensions.json": true,
+      "tools/model/measure.py": true,
+      "tools/probe/battleship-arrival.test.ts": true,
+      "tools/probe/launcher-lives.test.ts": true,
+      "tools/probe/positioned-planes.test.ts": true,
+      "tools/probe/render-fidelity.test.ts": true,
+      "tools/probe/scoring-ruler.test.ts": true,
+      "tools/probe/speaker-bands.test.ts": true,
+      "tools/probe/sweep-timing.test.ts": true,
+      "tools/probe/tms1370-rom.test.ts": true,
+      "tools/tmsasm/assembler.test.ts": true
+    },
+    "intent_source_by_path": {
+      "asm/jetfighter.asm": true,
+      "assets/reference/sprites/README.md": true,
+      "docs/evidence/audio-reference.md": true,
+      "docs/evidence/open-questions.md": true,
+      "docs/evidence/timing-analysis.md": true,
+      "src/machine/audio/driver.test.ts": true,
+      "src/machine/tube/ATLAS-COORDINATES.md": true,
+      "src/machine/tube/atlas.json": true,
+      "src/machine/tube/atlas.test.ts": true,
+      "src/machine/tube/silkscreen.test.ts": true,
+      "tools/compare/harness.ts": true,
+      "tools/model/build_console.py": true,
+      "tools/model/dimensions.json": true,
+      "tools/model/measure.py": true,
+      "tools/probe/battleship-arrival.test.ts": true,
+      "tools/probe/launcher-lives.test.ts": true,
+      "tools/probe/positioned-planes.test.ts": true,
+      "tools/probe/render-fidelity.test.ts": true,
+      "tools/probe/scoring-ruler.test.ts": true,
+      "tools/probe/speaker-bands.test.ts": true,
+      "tools/probe/sweep-timing.test.ts": true,
+      "tools/probe/tms1370-rom.test.ts": true,
+      "tools/tmsasm/assembler.test.ts": true
+    },
+    "authorship_class_by_path": {
+      "asm/jetfighter.asm": "human",
+      "assets/reference/sprites/README.md": "human",
+      "docs/evidence/audio-reference.md": "human",
+      "docs/evidence/open-questions.md": "human",
+      "docs/evidence/timing-analysis.md": "human",
+      "src/machine/audio/driver.test.ts": "human",
+      "src/machine/tube/ATLAS-COORDINATES.md": "human",
+      "src/machine/tube/atlas.json": "human",
+      "src/machine/tube/atlas.test.ts": "human",
+      "src/machine/tube/silkscreen.test.ts": "human",
+      "tools/compare/harness.ts": "human",
+      "tools/model/build_console.py": "human",
+      "tools/model/dimensions.json": "human",
+      "tools/model/measure.py": "human",
+      "tools/probe/battleship-arrival.test.ts": "human",
+      "tools/probe/launcher-lives.test.ts": "human",
+      "tools/probe/positioned-planes.test.ts": "human",
+      "tools/probe/render-fidelity.test.ts": "human",
+      "tools/probe/scoring-ruler.test.ts": "human",
+      "tools/probe/speaker-bands.test.ts": "human",
+      "tools/probe/sweep-timing.test.ts": "human",
+      "tools/probe/tms1370-rom.test.ts": "human",
+      "tools/tmsasm/assembler.test.ts": "human"
+    },
+    "orphaned_understanding": [],
+    "modules": [
+      {
+        "path": "asm/jetfighter.asm",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 12,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "assets/reference/sprites/README.md",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 52,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "docs/evidence/audio-reference.md",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 24,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "docs/evidence/open-questions.md",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 15,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "docs/evidence/timing-analysis.md",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 12,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "src/machine/audio/driver.test.ts",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 52,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "src/machine/tube/ATLAS-COORDINATES.md",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 14,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "src/machine/tube/atlas.json",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 53,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "src/machine/tube/atlas.test.ts",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 14,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "src/machine/tube/silkscreen.test.ts",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 53,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "tools/compare/harness.ts",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 53,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "tools/model/build_console.py",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 11,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "tools/model/dimensions.json",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 11,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "tools/model/measure.py",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 11,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "tools/probe/battleship-arrival.test.ts",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 14,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "tools/probe/launcher-lives.test.ts",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 25,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "tools/probe/positioned-planes.test.ts",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 25,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "tools/probe/render-fidelity.test.ts",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 14,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "tools/probe/scoring-ruler.test.ts",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 25,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "tools/probe/speaker-bands.test.ts",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 24,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "tools/probe/sweep-timing.test.ts",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 15,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "tools/probe/tms1370-rom.test.ts",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 14,
+        "finding": null,
+        "recommendation": null
+      },
+      {
+        "path": "tools/tmsasm/assembler.test.ts",
+        "human_anchor": true,
+        "intent_source": true,
+        "authorship_class": "human",
+        "days_since_comprehension_event": 53,
+        "finding": null,
+        "recommendation": null
+      }
+    ]
+  },
+  "runtime": {
+    "available": true,
+    "static_reachability": {
+      "available": true,
+      "candidate_count": 32,
+      "candidates": [
+        {
+          "path": "vite.config.ts",
+          "line": 5,
+          "kind": "unused export",
+          "symbol": "default"
+        },
+        {
+          "path": "src/input/index.ts",
+          "line": 10,
+          "kind": "unused export",
+          "symbol": "InputCallback"
+        },
+        {
+          "path": "src/input/index.ts",
+          "line": 11,
+          "kind": "unused export",
+          "symbol": "InputSystem"
+        },
+        {
+          "path": "src/input/index.ts",
+          "line": 12,
+          "kind": "unused export",
+          "symbol": "InputOptions"
+        },
+        {
+          "path": "src/input/index.ts",
+          "line": 14,
+          "kind": "unused export",
+          "symbol": "KeyAction"
+        },
+        {
+          "path": "src/input/index.ts",
+          "line": 15,
+          "kind": "unused export",
+          "symbol": "Lane"
+        },
+        {
+          "path": "src/input/index.ts",
+          "line": 16,
+          "kind": "unused export",
+          "symbol": "LaneDirection"
+        },
+        {
+          "path": "src/input/index.ts",
+          "line": 17,
+          "kind": "unused export",
+          "symbol": "SkillLevel"
+        },
+        {
+          "path": "src/input/index.ts",
+          "line": 23,
+          "kind": "unused export",
+          "symbol": "classifyKey"
+        },
+        {
+          "path": "src/input/index.ts",
+          "line": 24,
+          "kind": "unused export",
+          "symbol": "resolveLane"
+        },
+        {
+          "path": "src/input/index.ts",
+          "line": 25,
+          "kind": "unused export",
+          "symbol": "pushDirection"
+        },
+        {
+          "path": "src/input/index.ts",
+          "line": 26,
+          "kind": "unused export",
+          "symbol": "removeDirection"
+        },
+        {
+          "path": "src/input/index.ts",
+          "line": 27,
+          "kind": "unused export",
+          "symbol": "powerInput"
+        },
+        {
+          "path": "src/viewer3d/dock.ts",
+          "line": 362,
+          "kind": "unused export",
+          "symbol": "DETENTS"
+        },
+        {
+          "path": "tools/tmsasm/assembler.ts",
+          "line": 967,
+          "kind": "unused export",
+          "symbol": "RESET_ORDINAL"
+        },
+        {
+          "path": "tools/tmsasm/parser.ts",
+          "line": 97,
+          "kind": "unused export",
+          "symbol": "OperandKind"
+        },
+        {
+          "path": "tools/tmsasm/vite-plugin.ts",
+          "line": 212,
+          "kind": "unused export",
+          "symbol": "default"
+        },
+        {
+          "path": "src/machine/board/input.ts",
+          "line": 22,
+          "kind": "unused export",
+          "symbol": "ControlName"
+        },
+        {
+          "path": "src/machine/tube/atlas-schema.ts",
+          "line": 56,
+          "kind": "unused export",
+          "symbol": "ColumnIndex"
+        },
+        {
+          "path": "src/machine/tube/atlas-schema.ts",
+          "line": 71,
+          "kind": "unused export",
+          "symbol": "ScoreDigitIndex"
+        },
+        {
+          "path": "src/machine/tube/fake-canvas.ts",
+          "line": 364,
+          "kind": "unused export",
+          "symbol": "fillColorsUsed"
+        },
+        {
+          "path": "tools/probe/drives/march-wall-clock.ts",
+          "line": 74,
+          "kind": "unused export",
+          "symbol": "ruleRung"
+        },
+        {
+          "path": "tools/tmsasm/analysis/cfg.ts",
+          "line": 58,
+          "kind": "unused export",
+          "symbol": "BRANCH_MNEMONIC"
+        },
+        {
+          "path": "tools/tmsasm/analysis/index.ts",
+          "line": 48,
+          "kind": "unused export",
+          "symbol": "FlowKind"
+        },
+        {
+          "path": "tools/tmsasm/analysis/index.ts",
+          "line": 49,
+          "kind": "unused export",
+          "symbol": "CfgNode"
+        },
+        {
+          "path": "tools/tmsasm/analysis/index.ts",
+          "line": 49,
+          "kind": "unused export",
+          "symbol": "ControlFlowGraph"
+        },
+        {
+          "path": "tools/tmsasm/analysis/index.ts",
+          "line": 53,
+          "kind": "unused export",
+          "symbol": "R_OUTPUT_MNEMONICS"
+        },
+        {
+          "path": "src/machine/cpu/tms1370/cpu.ts",
+          "line": 73,
+          "kind": "unused export",
+          "symbol": "K_PIN_COUNT"
+        },
+        {
+          "path": "src/machine/cpu/tms1370/decoder.ts",
+          "line": 26,
+          "kind": "unused export",
+          "symbol": "CYCLES_PER_INSTRUCTION"
+        },
+        {
+          "path": "src/machine/cpu/tms1370/decoder.ts",
+          "line": 32,
+          "kind": "unused export",
+          "symbol": "encodeInstruction"
+        },
+        {
+          "path": "src/machine/cpu/tms1370/decoder.ts",
+          "line": 34,
+          "kind": "unused export",
+          "symbol": "IsaEntry"
+        },
+        {
+          "path": "src/machine/cpu/tms1370/ports.ts",
+          "line": 103,
+          "kind": "unused export",
+          "symbol": "R_SPEAKER_MASK"
+        }
+      ],
+      "tools": [
+        {
+          "language": "python",
+          "tool": "vulture",
+          "status": "ran",
+          "reason": "0 candidate(s)"
+        },
+        {
+          "language": "typescript",
+          "tool": "ts-prune",
+          "status": "ran",
+          "reason": "32 candidate(s)"
+        },
+        {
+          "language": "javascript",
+          "tool": "knip",
+          "status": "not_applicable",
+          "reason": "182 TypeScript file(s) against 1 JavaScript file(s); the dominant language's tool is used, so knip is not run and the 1 JavaScript file(s) are not analysed"
+        }
+      ],
+      "caveat": "Static reachability proves nothing in THIS repo references the symbol; it cannot prove no external consumer (a mobile app, another service) calls it. Cross-boundary liveness needs telemetry or a named human."
+    },
+    "observability_rung": 0,
+    "runtime_evidence_available": false
+  },
+  "derived_findings": [
+    {
+      "name": "hidden_coupling",
+      "paths": [
+        "tools",
+        "tools/model",
+        "tools/video"
+      ],
+      "action": "investigate the seam"
+    },
+    {
+      "name": "lying_map",
+      "paths": [
+        "README.md",
+        "tools/model/README.md"
+      ],
+      "action": "fix or delete the doc"
+    },
+    {
+      "name": "unexplained_complexity",
+      "paths": [],
+      "action": "write the missing contract (do NOT auto-generate)"
+    },
+    {
+      "name": "untrusted_hotspot",
+      "paths": [],
+      "action": "strengthen tests to pin observable behaviour (not internal state)"
+    },
+    {
+      "name": "self_referential_tests",
+      "paths": [
+        "tools/compare/harness.ts"
+      ],
+      "action": "request human review - tests verify internal consistency, not truth"
+    },
+    {
+      "name": "unactioned_intent",
+      "paths": [],
+      "action": "action the promise: fix it, ticket it, or delete the marker/skip (stale: an untracked marker that survived 5 or more edits to its own file)"
+    },
+    {
+      "name": "accretion_ratchet",
+      "paths": [
+        "src/machine/audio/driver.test.ts",
+        "src/machine/tube/silkscreen.test.ts",
+        "tools/model/build_console.py",
+        "tools/model/measure.py",
+        "tools/probe/speaker-bands.test.ts",
+        "tools/probe/tms1370-rom.test.ts"
+      ],
+      "action": "refactor down: extract, delete dead code, or split the file"
+    },
+    {
+      "name": "orphaned_understanding",
+      "paths": [],
+      "action": "assign a human anchor before further change"
+    },
+    {
+      "name": "candidate_dead_weight",
+      "paths": [],
+      "action": "verify liveness, then delete if dead"
+    },
+    {
+      "name": "override_contradicts_signals",
+      "paths": [],
+      "action": "Review archetype marker - deterministic signals suggest a different classification"
+    },
+    {
+      "name": "refactor_boundary",
+      "paths": [],
+      "action": "safe to hand an agent in isolation"
+    }
+  ],
+  "attention": [
+    {
+      "path": "tools/model/build_console.py",
+      "findings": [
+        "accretion_ratchet"
+      ],
+      "score": 1
+    },
+    {
+      "path": "tools/probe/tms1370-rom.test.ts",
+      "findings": [
+        "accretion_ratchet"
+      ],
+      "score": 1
+    },
+    {
+      "path": "tools/model/measure.py",
+      "findings": [
+        "accretion_ratchet"
+      ],
+      "score": 1
+    },
+    {
+      "path": "tools/probe/speaker-bands.test.ts",
+      "findings": [
+        "accretion_ratchet"
+      ],
+      "score": 1
+    },
+    {
+      "path": "tools/model",
+      "findings": [
+        "hidden_coupling"
+      ],
+      "score": 1
+    },
+    {
+      "path": "tools/video",
+      "findings": [
+        "hidden_coupling"
+      ],
+      "score": 1
+    },
+    {
+      "path": "tools",
+      "findings": [
+        "hidden_coupling"
+      ],
+      "score": 1
+    },
+    {
+      "path": "README.md",
+      "findings": [
+        "lying_map"
+      ],
+      "score": 1
+    },
+    {
+      "path": "src/machine/audio/driver.test.ts",
+      "findings": [
+        "accretion_ratchet"
+      ],
+      "score": 1
+    },
+    {
+      "path": "src/machine/tube/silkscreen.test.ts",
+      "findings": [
+        "accretion_ratchet"
+      ],
+      "score": 1
+    }
+  ],
+  "attention_low_signal": true,
+  "findings_markdown": "## Cross-Layer Findings (Keyhole Readiness)\n\n### hidden_coupling\n\nAction: investigate the seam\n\nPaths:\n- tools\n- tools/model\n- tools/video\n\n### lying_map\n\nAction: fix or delete the doc\n\nPaths:\n- README.md\n- tools/model/README.md\n\n### self_referential_tests\n\nAction: request human review - tests verify internal consistency, not truth\n\nPaths:\n- tools/compare/harness.ts\n\n### accretion_ratchet\n\nAction: refactor down: extract, delete dead code, or split the file\n\nPaths:\n- src/machine/audio/driver.test.ts\n- src/machine/tube/silkscreen.test.ts\n- tools/model/build_console.py\n- tools/model/measure.py\n- tools/probe/speaker-bands.test.ts\n- tools/probe/tms1370-rom.test.ts\n\n### Attention List (Priority Order)\n\n- tools/model/build_console.py (score 1): accretion_ratchet\n- tools/probe/tms1370-rom.test.ts (score 1): accretion_ratchet\n- tools/model/measure.py (score 1): accretion_ratchet\n- tools/probe/speaker-bands.test.ts (score 1): accretion_ratchet\n- tools/model (score 1): hidden_coupling\n",
+  "keyhole_summary": {
+    "concerns": [
+      {
+        "name": "hidden_coupling",
+        "count": 3
+      },
+      {
+        "name": "lying_map",
+        "count": 2
+      },
+      {
+        "name": "self_referential_tests",
+        "count": 1
+      },
+      {
+        "name": "accretion_ratchet",
+        "count": 6
+      }
+    ],
+    "safe_zones": 0,
+    "total_concerns": 12,
+    "summary_text": "12 structural concerns (3 hidden coupling, 2 lying map, 1 self-referential tests, 6 accretion ratchet), 0 safe zones."
+  },
+  "prescribed_actions": [
+    {
+      "path": "tools/model/build_console.py",
+      "action": "refactor down: extract, delete dead code, or split the file",
+      "findings": [
+        "accretion_ratchet"
+      ],
+      "rank": 1
+    }
+  ],
+  "gap_actions": [
+    {
+      "signal": "coverage_report",
+      "action": "Generate a line-coverage report (coverage.xml or lcov.info) in CI and read it for the top hotspots first: no report was found, so how well the tests cover the riskiest files is unmeasured.",
+      "paths": [
+        "tools/probe/render-fidelity.test.ts",
+        "tools/probe/battleship-arrival.test.ts",
+        "tools/model/build_console.py"
+      ]
+    }
+  ],
+  "excluded_by_config": {
+    "dirs": [],
+    "patterns": [],
+    "affected_finding_paths": [],
+    "count": 0
+  },
+  "excluded_as_archive": {
+    "affected_finding_paths": [],
+    "count": 0
+  },
+  "pruned_finding_paths": {
+    "paths": [],
+    "count": 0,
+    "rename_map_complete": true
+  },
+  "excluded_generated": [],
+  "structure_drift": {
+    "tier_0": {
+      "available": true,
+      "empty_ownership_patterns": [
+        {
+          "pattern": "../../../assets/reference/tube-closeup-score0.webp",
+          "declared_in": "docs/evidence/playfield/README.md::Playfield geometry: before and after",
+          "owners": []
+        },
+        {
+          "pattern": "../tube-closeup-score0.webp",
+          "declared_in": "assets/reference/sprites/README.md::Source photographs",
+          "owners": []
+        },
+        {
+          "pattern": "../tube-closeup-score10.webp",
+          "declared_in": "assets/reference/sprites/README.md::Source photographs",
+          "owners": []
+        },
+        {
+          "pattern": "1/2/3",
+          "declared_in": "docs/evidence/README.md::Photographs",
+          "owners": []
+        },
+        {
+          "pattern": "1/30",
+          "declared_in": "assets/reference/sprites/README.md::What the recording actually is, and what that costs",
+          "owners": []
+        },
+        {
+          "pattern": "200/150/150",
+          "declared_in": "assets/reference/sprites/README.md::What the recording actually is, and what that costs",
+          "owners": []
+        },
+        {
+          "pattern": "5/A",
+          "declared_in": "assets/reference/sprites/README.md::What the recording actually is, and what that costs",
+          "owners": []
+        },
+        {
+          "pattern": "5/D",
+          "declared_in": "assets/reference/sprites/README.md::What the recording actually is, and what that costs",
+          "owners": []
+        },
+        {
+          "pattern": "750/940/1240",
+          "declared_in": "assets/reference/sprites/README.md::What the recording actually is, and what that costs",
+          "owners": []
+        },
+        {
+          "pattern": "I/O",
+          "declared_in": "tools/model/README.md::What the glTF contains",
+          "owners": []
+        },
+        {
+          "pattern": "ON/OFF",
+          "declared_in": "README.md::Running it, changing it, watching it without a browser",
+          "owners": []
+        },
+        {
+          "pattern": "ON/OFF",
+          "declared_in": "docs/evidence/README.md::Photographs",
+          "owners": []
+        },
+        {
+          "pattern": "blue/cyan",
+          "declared_in": "docs/evidence/README.md::Photographs",
+          "owners": []
+        },
+        {
+          "pattern": "cream/white",
+          "declared_in": "assets/reference/sprites/README.md::6. The white marks are printed paint, not segments",
+          "owners": []
+        },
+        {
+          "pattern": "npx vite-node tools/probe/drives/<file>.ts",
+          "declared_in": "tools/probe/drives/README.md::Reading a drive",
+          "owners": []
+        },
+        {
+          "pattern": "orange/amber",
+          "declared_in": "docs/evidence/README.md::Photographs",
+          "owners": []
+        },
+        {
+          "pattern": "python3 tools/model/measure.py --overlay docs/evidence",
+          "declared_in": "docs/evidence/README.md::Documents in this directory",
+          "owners": []
+        },
+        {
+          "pattern": "sea/wave",
+          "declared_in": "assets/reference/tube-teardown/README.md::The playfield is seven cells of three lanes",
+          "owners": []
+        },
+        {
+          "pattern": "smoke/cloud",
+          "declared_in": "assets/reference/tube-teardown/README.md::The playfield is seven cells of three lanes",
+          "owners": []
+        },
+        {
+          "pattern": "smoke/cloud",
+          "declared_in": "assets/reference/tube-teardown/README.md::What these photographs still do not settle",
+          "owners": []
+        },
+        {
+          "pattern": "src/audio",
+          "declared_in": "docs/evidence/README.md::Documents in this directory",
+          "owners": []
+        },
+        {
+          "pattern": "tools/model/photos.py",
+          "declared_in": "assets/reference/case/README.md::The assembled unit, photographed for the model",
+          "owners": []
+        },
+        {
+          "pattern": "video/attacker-colon-2.png",
+          "declared_in": "assets/reference/sprites/README.md::Sprite catalogue",
+          "owners": []
+        },
+        {
+          "pattern": "video/attacker-colon.png",
+          "declared_in": "assets/reference/sprites/README.md::Sprite catalogue",
+          "owners": []
+        },
+        {
+          "pattern": "video/attacker-colon.png",
+          "declared_in": "assets/reference/sprites/README.md::The owner's account of the mechanics",
+          "owners": []
+        },
+        {
+          "pattern": "video/battleship-col0-lane{0,1,2}.png",
+          "declared_in": "assets/reference/sprites/README.md::Reference material still wanted",
+          "owners": []
+        },
+        {
+          "pattern": "video/battleship-col0-lane{0,1,2}.png",
+          "declared_in": "assets/reference/sprites/README.md::Sprite catalogue",
+          "owners": []
+        },
+        {
+          "pattern": "video/battleship-kill-burst-lane0.png",
+          "declared_in": "assets/reference/sprites/README.md::Sprite catalogue",
+          "owners": []
+        },
+        {
+          "pattern": "video/battleship-kill-burst-lane2.png",
+          "declared_in": "assets/reference/sprites/README.md::Sprite catalogue",
+          "owners": []
+        },
+        {
+          "pattern": "video/battleship-kill-burst-lane{0,2}.png",
+          "declared_in": "assets/reference/sprites/README.md::Sprite catalogue",
+          "owners": []
+        },
+        {
+          "pattern": "video/jet-col*-lane*.png",
+          "declared_in": "assets/reference/sprites/README.md::Sprite catalogue",
+          "owners": []
+        },
+        {
+          "pattern": "video/jet-col5-lane0.png",
+          "declared_in": "assets/reference/sprites/README.md::The field: seven cells, three lanes, and which cell holds what",
+          "owners": []
+        },
+        {
+          "pattern": "video/jet-grid.png",
+          "declared_in": "assets/reference/sprites/README.md::Sprite catalogue",
+          "owners": []
+        },
+        {
+          "pattern": "video/jet-grid.png",
+          "declared_in": "assets/reference/sprites/README.md::The owner's account of the mechanics",
+          "owners": []
+        },
+        {
+          "pattern": "video/jet-kill-burst-col*-lane*.png",
+          "declared_in": "assets/reference/sprites/README.md::Sprite catalogue",
+          "owners": []
+        },
+        {
+          "pattern": "video/jet-kill-burst-col3-lane0.png",
+          "declared_in": "assets/reference/sprites/README.md::The owner's account of the mechanics",
+          "owners": []
+        },
+        {
+          "pattern": "video/jet-two-poses.png",
+          "declared_in": "assets/reference/sprites/README.md::The jet changes shape between cells - what the video shows",
+          "owners": []
+        },
+        {
+          "pattern": "video/player-hit-lane{0,2}.png",
+          "declared_in": "assets/reference/sprites/README.md::5. The cyan shape near G is the player's ship",
+          "owners": []
+        },
+        {
+          "pattern": "video/player-hit-lane{0,2}.png",
+          "declared_in": "assets/reference/sprites/README.md::Sprite catalogue",
+          "owners": []
+        },
+        {
+          "pattern": "video/player-missile-col*-lane*.png",
+          "declared_in": "assets/reference/sprites/README.md::Sprite catalogue",
+          "owners": []
+        },
+        {
+          "pattern": "video/player-missile-grid.png",
+          "declared_in": "assets/reference/sprites/README.md::4. The missile is two vertically-stacked bursts",
+          "owners": []
+        },
+        {
+          "pattern": "video/player-missile-grid.png",
+          "declared_in": "assets/reference/sprites/README.md::Sprite catalogue",
+          "owners": []
+        },
+        {
+          "pattern": "video/player-missile-grid.png",
+          "declared_in": "assets/reference/sprites/README.md::The owner's account of the mechanics",
+          "owners": []
+        },
+        {
+          "pattern": "video/player-ship-lane{0,1,2}.png",
+          "declared_in": "assets/reference/sprites/README.md::Sprite catalogue",
+          "owners": []
+        },
+        {
+          "pattern": "video/playfield-zone-brackets.png",
+          "declared_in": "assets/reference/sprites/README.md::The field: seven cells, three lanes, and which cell holds what",
+          "owners": []
+        },
+        {
+          "pattern": "video/score-field.png",
+          "declared_in": "assets/reference/sprites/README.md::Sprite catalogue",
+          "owners": []
+        },
+        {
+          "pattern": "video/segment-core-masks-cyan-burst.png",
+          "declared_in": "assets/reference/sprites/README.md::Sprite catalogue",
+          "owners": []
+        },
+        {
+          "pattern": "video/segment-core-masks-cyan-missile.png",
+          "declared_in": "assets/reference/sprites/README.md::Sprite catalogue",
+          "owners": []
+        },
+        {
+          "pattern": "video/segment-core-masks-red.png",
+          "declared_in": "assets/reference/sprites/README.md::Sprite catalogue",
+          "owners": []
+        },
+        {
+          "pattern": "wing/module",
+          "declared_in": "assets/reference/case/README.md::The assembled unit, photographed for the model",
+          "owners": []
+        }
+      ],
+      "total_patterns": 129,
+      "matched_patterns": 79
+    },
+    "tier_1": {
+      "available": true,
+      "human_grouped_static_splits_count": 19665,
+      "human_split_static_fuses_count": 0,
+      "human_grouped_never_cochange_count": 19660,
+      "human_split_but_cochange_count": 2,
+      "human_static_agree_count": 0,
+      "human_cochange_agree_count": 5,
+      "seam_allowlist_applied": true,
+      "allowlist_pairs_count": 2
+    }
+  },
+  "plugin_version": "1.87.1",
+  "decline_markers": [],
+  "reoffer_mutation": false,
+  "decline_disclosures": [],
+  "interactive": true,
+  "offers": [],
+  "uninstall_instructions_path": "references/uninstall.md",
+  "instruction_claims": {
+    "total": 1,
+    "verified": 0,
+    "failed": 1,
+    "failures": [
+      {
+        "file": "CLAUDE.md",
+        "line": 101,
+        "kind": "enforcement",
+        "path": "tools/probe/drives/missile-transit.ts",
+        "reason": "no CI configuration or task runner references the script"
+      }
+    ]
+  },
+  "anomalies": []
+}

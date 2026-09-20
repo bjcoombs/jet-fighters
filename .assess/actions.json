@@ -1,0 +1,54 @@
+{
+  "schema": 2,
+  "run_id": "20260920145155-6530f2a0",
+  "actions": [
+    {
+      "rank": 1,
+      "action": "Refactor down tools/model/build_console.py - characterization test first, then extract the passive-component builder into its own module",
+      "layer": 3,
+      "effort": "medium",
+      "files": [
+        "tools/model/build_console.py"
+      ],
+      "first_step": "Add tools/model/test_build_console.py pinning the current output of build_passives, then extract it to tools/model/passives.py",
+      "done_when": "A characterization test asserts the current build_passives output byte-for-byte and passes; build_console.py drops below 800 LOC in the next /assess run's complexity-stats.json",
+      "scope_fence": "Only tools/model/; do not change the generated console output, and do not touch tools/model/measure.py in the same change",
+      "finding": "accretion_ratchet",
+      "status": "pending",
+      "claimed_by": null,
+      "completed_sha": null,
+      "mode": "refactor_safe"
+    },
+    {
+      "rank": 2,
+      "action": "Generate a line-coverage report in CI and read it for the top hotspots first",
+      "layer": 6,
+      "effort": "small",
+      "files": [
+        "vite.config.ts",
+        ".github/workflows/ci.yml"
+      ],
+      "first_step": "Add a coverage reporter to the test block in vite.config.ts and run npm test -- --coverage in .github/workflows/ci.yml",
+      "done_when": ".assess/run-context.json .coverage_report.available is true on the next /assess run, and the top three hotspots carry a reported line-coverage number",
+      "scope_fence": "Report the number only; do not add a failing threshold in this change, and do not edit any test file to raise coverage",
+      "status": "pending",
+      "claimed_by": null,
+      "completed_sha": null,
+      "mode": "characterize_first"
+    },
+    {
+      "rank": 3,
+      "action": "Add a ruleset on main requiring the build status check, so the lint, test and build gates block a merge",
+      "layer": 5,
+      "effort": "small",
+      "files": [],
+      "first_step": "Create a branch ruleset on main with gh api --method POST repos/bjcoombs/jet-fighters/rulesets --input - and a body of {\"name\":\"main: require CI\",\"target\":\"branch\",\"enforcement\":\"active\",\"conditions\":{\"ref_name\":{\"include\":[\"refs/heads/main\"],\"exclude\":[]}},\"rules\":[{\"type\":\"required_status_checks\",\"parameters\":{\"strict_required_status_checks_policy\":false,\"required_status_checks\":[{\"context\":\"build\"}]}}]} - or configure the equivalent in Settings then Rules",
+      "done_when": "gh api repos/bjcoombs/jet-fighters/rulesets returns a non-empty list and a PR whose build check is red cannot be merged",
+      "scope_fence": "Only the repository ruleset; do not change .github/workflows/ci.yml, and do not add a required-approval rule in the same change",
+      "status": "pending",
+      "claimed_by": null,
+      "completed_sha": null,
+      "mode": "characterize_first"
+    }
+  ]
+}

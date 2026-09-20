@@ -1,5 +1,7 @@
 # Jet Fighters
 
+[![AI-readiness](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbjcoombs%2Fjet-fighters%2Fmain%2F.assess%2Fbadge.json)](.assess/assess-report.md)
+
 **[Play it here](https://bjcoombs.github.io/jet-fighters/).** A 1979 CGL Jet Fighters, taken
 apart, measured against the pitch of its chip's pins, and rebuilt in a browser - not the
 game, the machine. It opens as the unit sits on a table. Turn it over, lift the red shell

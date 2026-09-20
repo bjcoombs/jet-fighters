@@ -1,0 +1,262 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 1230" width="1180" height="1230" preserveAspectRatio="xMidYMid meet" role="img">
+<title>Documentation Navigability Graph</title>
+<desc>Graph showing documentation structure, reachability from entry point, and staleness indicators</desc>
+<style>
+  text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #1a1a1a; }
+  circle:hover { stroke: #000; stroke-width: 2; }
+</style>
+<rect x="0" y="0" width="1180" height="1230" fill="#ffffff"/>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9aa0a6"/></marker></defs>
+<line data-edge-kind="reference" x1="705.4" y1="644.7" x2="499.9" y2="806.6" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="705.4" y1="644.7" x2="746.8" y2="440.4" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="705.4" y1="644.7" x2="650.3" y2="390.5" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="705.4" y1="644.7" x2="538.4" y2="385.8" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="705.4" y1="644.7" x2="439.5" y2="437.0" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="705.4" y1="644.7" x2="808.9" y2="638.4" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="705.4" y1="644.7" x2="413.7" y2="739.9" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="705.4" y1="644.7" x2="598.0" y2="837.9" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="705.4" y1="644.7" x2="703.4" y2="799.7" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="474.6" y1="573.3" x2="737.9" y2="433.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="474.6" y1="573.3" x2="800.1" y2="524.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="474.6" y1="573.3" x2="478.2" y2="796.3" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="474.6" y1="573.3" x2="585.4" y2="837.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="474.6" y1="573.3" x2="687.8" y2="805.7" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="474.6" y1="573.3" x2="379.8" y2="531.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="474.6" y1="573.3" x2="361.6" y2="633.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="474.6" y1="573.3" x2="401.7" y2="726.2" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="474.6" y1="573.3" x2="770.3" y2="735.0" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="474.6" y1="573.3" x2="809.2" y2="633.4" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="765.0" y1="1059.2" x2="600.2" y2="861.6" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="789.3" y1="745.4" x2="720.0" y2="807.3" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="789.3" y1="745.4" x2="414.9" y2="746.9" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="789.3" y1="745.4" x2="504.8" y2="816.7" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="789.3" y1="745.4" x2="379.4" y2="532.4" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="815.2" y1="892.8" x2="828.7" y2="658.1" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="815.2" y1="892.8" x2="505.1" y2="828.8" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="580.1" y1="971.1" x2="532.3" y2="387.9" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="580.1" y1="971.1" x2="688.7" y2="839.8" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="516.5" y1="1086.4" x2="286.0" y2="432.5" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="516.5" y1="1086.4" x2="482.5" y2="850.0" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="516.5" y1="1086.4" x2="358.9" y2="891.4" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="349.7" y1="880.0" x2="638.4" y2="388.6" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="349.7" y1="880.0" x2="453.9" y2="834.2" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="349.7" y1="880.0" x2="680.7" y2="826.0" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="287.6" y1="985.7" x2="1026.3" y2="444.1" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="287.6" y1="985.7" x2="505.2" y2="1081.4" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="287.6" y1="985.7" x2="458.1" y2="840.8" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="287.6" y1="985.7" x2="342.2" y2="892.6" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="287.6" y1="985.7" x2="382.6" y2="768.1" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="287.6" y1="985.7" x2="361.0" y2="541.6" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="287.6" y1="985.7" x2="412.2" y2="177.1" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="287.6" y1="985.7" x2="741.1" y2="437.6" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="287.6" y1="985.7" x2="117.8" y2="548.8" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="287.6" y1="985.7" x2="935.1" y2="686.2" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="287.6" y1="985.7" x2="694.7" y2="653.4" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="139.8" y1="784.0" x2="276.3" y2="432.4" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="139.8" y1="784.0" x2="451.8" y2="820.2" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="139.8" y1="784.0" x2="369.0" y2="750.4" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="231.7" y1="662.1" x2="521.8" y2="383.9" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="231.7" y1="662.1" x2="681.7" y2="815.1" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="231.7" y1="662.1" x2="371.5" y2="736.2" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="231.7" y1="662.1" x2="351.7" y2="536.9" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="231.7" y1="662.1" x2="337.9" y2="641.5" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="231.7" y1="662.1" x2="578.2" y2="843.8" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="231.7" y1="662.1" x2="767.9" y2="742.2" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="link" x1="703.1" y1="822.4" x2="377.0" y2="535.9" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="703.1" y1="822.4" x2="535.9" y2="387.0" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="703.1" y1="822.4" x2="587.5" y2="962.1" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="703.1" y1="822.4" x2="505.7" y2="823.2" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="703.1" y1="822.4" x2="773.1" y2="759.8" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="703.1" y1="822.4" x2="935.6" y2="687.0" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="112.6" y1="535.5" x2="630.9" y2="379.1" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="112.6" y1="535.5" x2="341.4" y2="868.0" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="112.6" y1="535.5" x2="736.5" y2="429.8" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="112.6" y1="535.5" x2="346.4" y2="525.1" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="112.6" y1="535.5" x2="682.7" y2="812.5" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="112.6" y1="535.5" x2="799.9" y2="522.7" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="591.0" y1="850.5" x2="478.4" y2="280.2" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="478.7" y1="823.3" x2="768.3" y2="750.6" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="478.7" y1="823.3" x2="409.1" y2="762.2" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="478.7" y1="823.3" x2="370.1" y2="540.6" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="478.7" y1="823.3" x2="811.3" y2="647.0" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="478.7" y1="823.3" x2="430.8" y2="442.0" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="478.7" y1="823.3" x2="641.0" y2="389.8" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="478.7" y1="823.3" x2="529.7" y2="387.8" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="478.7" y1="823.3" x2="680.4" y2="822.5" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="478.7" y1="823.3" x2="742.0" y2="438.3" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="281.4" y1="419.4" x2="466.8" y2="799.0" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="281.4" y1="419.4" x2="384.5" y2="725.2" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="415.0" y1="158.8" x2="476.1" y2="796.4" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="415.0" y1="158.8" x2="698.3" y2="632.9" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="415.0" y1="158.8" x2="777.6" y2="727.1" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="415.0" y1="158.8" x2="392.7" y2="724.0" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="415.0" y1="158.8" x2="694.1" y2="801.6" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="415.0" y1="158.8" x2="366.3" y2="507.0" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="663.5" y1="131.6" x2="785.0" y2="724.1" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="391.8" y1="747.0" x2="526.6" y2="387.1" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="391.8" y1="747.0" x2="681.1" y2="817.0" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="391.8" y1="747.0" x2="366.0" y2="541.7" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="391.8" y1="747.0" x2="767.6" y2="745.5" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="391.8" y1="747.0" x2="458.4" y2="805.5" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="391.8" y1="747.0" x2="809.5" y2="642.2" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="391.8" y1="747.0" x2="285.8" y2="432.6" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="391.8" y1="747.0" x2="934.2" y2="682.9" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="391.8" y1="747.0" x2="241.7" y2="667.5" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="350.4" y1="639.1" x2="808.8" y2="637.2" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="363.8" y1="524.3" x2="686.1" y2="807.4" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="363.8" y1="524.3" x2="388.9" y2="724.1" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="892.4" y1="232.3" x2="490.6" y2="264.1" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="892.4" y1="232.3" x2="597.3" y2="837.5" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="475.5" y1="265.3" x2="632.8" y2="365.4" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="475.5" y1="265.3" x2="698.2" y2="632.9" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="475.5" y1="265.3" x2="588.2" y2="836.4" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="475.5" y1="265.3" x2="395.8" y2="724.3" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="475.5" y1="265.3" x2="889.4" y2="428.9" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="475.5" y1="265.3" x2="809.5" y2="882.2" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="475.5" y1="265.3" x2="474.7" y2="558.8" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="475.5" y1="265.3" x2="237.6" y2="652.4" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="429.1" y1="428.9" x2="519.6" y2="380.9" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="429.1" y1="428.9" x2="630.7" y2="378.3" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="531.2" y1="374.8" x2="630.2" y2="374.3" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="531.2" y1="374.8" x2="481.8" y2="796.5" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="646.8" y1="374.3" x2="544.4" y2="374.7" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="646.8" y1="374.3" x2="441.9" y2="425.7" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="646.8" y1="374.3" x2="488.1" y2="798.0" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="646.8" y1="374.3" x2="888.5" y2="431.8" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="646.8" y1="374.3" x2="712.3" y2="286.6" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="646.8" y1="374.3" x2="702.5" y2="631.3" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="646.8" y1="374.3" x2="581.4" y2="959.5" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="646.8" y1="374.3" x2="357.1" y2="867.4" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="646.8" y1="374.3" x2="817.8" y2="619.9" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="1040.2" y1="434.0" x2="663.2" y2="376.8" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="1040.2" y1="434.0" x2="299.0" y2="977.3" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="1040.2" y1="434.0" x2="500.8" y2="807.9" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="1040.2" y1="434.0" x2="381.2" y2="522.0" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="1040.2" y1="434.0" x2="412.6" y2="737.0" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="1040.2" y1="434.0" x2="295.3" y2="419.6" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="1040.2" y1="434.0" x2="718.0" y2="805.2" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="1040.2" y1="434.0" x2="431.9" y2="166.3" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="1040.2" y1="434.0" x2="948.8" y2="671.6" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="1040.2" y1="434.0" x2="126.8" y2="533.9" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="1040.2" y1="434.0" x2="153.4" y2="778.7" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="1040.2" y1="434.0" x2="524.2" y2="1076.8" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="1067.4" y1="682.5" x2="919.7" y2="453.8" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="1067.4" y1="682.5" x2="828.5" y2="530.7" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="1067.4" y1="682.5" x2="660.2" y2="384.1" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="749.4" y1="427.6" x2="359.3" y2="869.1" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="749.4" y1="427.6" x2="661.6" y2="381.9" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="749.4" y1="427.6" x2="708.1" y2="631.2" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="749.4" y1="427.6" x2="726.2" y2="289.9" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="749.4" y1="427.6" x2="380.8" y2="520.0" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="749.4" y1="427.6" x2="409.0" y2="731.7" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="815.4" y1="522.4" x2="893.4" y2="450.5" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="815.4" y1="522.4" x2="361.3" y2="871.1" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="815.4" y1="522.4" x2="729.4" y2="289.1" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="723.2" y1="272.1" x2="489.6" y2="798.6" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="723.2" y1="272.1" x2="706.0" y2="631.0" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="908.6" y1="436.5" x2="498.7" y2="805.2" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="908.6" y1="436.5" x2="837.5" y2="617.5" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="908.6" y1="436.5" x2="714.9" y2="634.9" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="829.9" y1="637.1" x2="796.9" y2="725.0" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="829.9" y1="637.1" x2="363.1" y2="639.1" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="829.9" y1="637.1" x2="815.9" y2="880.8" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="829.9" y1="637.1" x2="541.1" y2="383.4" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="829.9" y1="637.1" x2="901.0" y2="455.7" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="829.9" y1="637.1" x2="502.5" y2="810.7" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="966.7" y1="911.4" x2="484.6" y2="277.4" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="966.7" y1="911.4" x2="605.2" y2="852.8" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line data-edge-kind="reference" x1="944.9" y1="681.6" x2="504.5" y2="815.5" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round" marker-end="url(#arrow)"/>
+<circle cx="705.4" cy="644.7" r="10.7" fill="#fddaaa" stroke="#0072B2" stroke-width="3.5"><title>CLAUDE.md
+214 lines · in 7 · out 9 · entry · 12d stale, subject churn 582</title></circle>
+<circle cx="474.6" cy="573.3" r="11.5" fill="#f7dbb5" stroke="#0072B2" stroke-width="3.5"><title>README.md
+264 lines · in 1 · out 10 · entry · 11d stale, subject churn 507</title></circle>
+<circle cx="765.0" cy="1059.2" r="6.1" fill="#fddcb0" stroke="#1a1a1a" stroke-width="1.8" stroke-dasharray="3,2"><title>assets/reference/case/README.md
+21 lines · in 0 · out 1 · orphan · 11d stale, subject churn 582</title></circle>
+<circle cx="789.3" cy="745.4" r="18.7" fill="#9c0000" stroke="#b8b8b8" stroke-width="1.0"><title>assets/reference/sprites/README.md
+1020 lines · in 8 · out 4 · reachable · 52d stale, subject churn 582</title></circle>
+<circle cx="815.2" cy="892.8" r="9.0" fill="#8d0000" stroke="#b8b8b8" stroke-width="1.0"><title>assets/reference/tube-teardown/README.md
+116 lines · in 2 · out 2 · reachable · 54d stale, subject churn 582</title></circle>
+<circle cx="580.1" cy="971.1" r="8.7" fill="#d0ced3" stroke="#b8b8b8" stroke-width="1.0"><title>docs/contract/v2.contract.md
+103 lines · in 2 · out 2 · reachable · 56d stale, subject churn 7</title></circle>
+<circle cx="516.5" cy="1086.4" r="9.3" fill="#d1d0d4" stroke="#b8b8b8" stroke-width="1.0"><title>docs/contract/v3-entities.contract.md
+134 lines · in 2 · out 3 · island · 26d stale, subject churn 7</title></circle>
+<circle cx="349.7" cy="880.0" r="11.6" fill="#d0ced3" stroke="#b8b8b8" stroke-width="1.0"><title>docs/contract/v3.contract.md
+275 lines · in 6 · out 3 · reachable · 53d stale, subject churn 7</title></circle>
+<circle cx="287.6" cy="985.7" r="11.1" fill="#d1d1d5" stroke="#b8b8b8" stroke-width="1.0"><title>docs/contract/v4.contract.md
+238 lines · in 1 · out 11 · island · 11d stale, subject churn 7</title></circle>
+<circle cx="139.8" cy="784.0" r="11.6" fill="#fddaaa" stroke="#b8b8b8" stroke-width="1.0"><title>docs/design/jet-model.md
+271 lines · in 1 · out 3 · island · 12d stale, subject churn 582</title></circle>
+<circle cx="231.7" cy="662.1" r="8.4" fill="#fdd09a" stroke="#b8b8b8" stroke-width="1.0"><title>docs/evidence/README.md
+90 lines · in 2 · out 7 · reachable · 15d stale, subject churn 582</title></circle>
+<circle cx="703.1" cy="822.4" r="19.7" fill="#fca771" stroke="#b8b8b8" stroke-width="1.0"><title>docs/evidence/audio-reference.md
+1160 lines · in 12 · out 6 · reachable · 24d stale, subject churn 582</title></circle>
+<circle cx="112.6" cy="535.5" r="11.3" fill="#940000" stroke="#b8b8b8" stroke-width="1.0"><title>docs/evidence/cadence-rederivation.md
+251 lines · in 2 · out 6 · island · 53d stale, subject churn 582</title></circle>
+<circle cx="591.0" cy="850.5" r="11.4" fill="#fddcb0" stroke="#b8b8b8" stroke-width="1.0"><title>docs/evidence/console-dimensions.md
+260 lines · in 7 · out 1 · reachable · 11d stale, subject churn 582</title></circle>
+<circle cx="478.7" cy="823.3" r="24.0" fill="#fdd09a" stroke="#b8b8b8" stroke-width="1.0"><title>docs/evidence/open-questions.md
+1889 lines · in 19 · out 9 · reachable · 15d stale, subject churn 582</title></circle>
+<circle cx="281.4" cy="419.4" r="10.9" fill="#fddaaa" stroke="#b8b8b8" stroke-width="1.0"><title>docs/evidence/owner-entity-model.md
+227 lines · in 4 · out 2 · reachable · 12d stale, subject churn 582</title></circle>
+<circle cx="213.3" cy="306.6" r="6.9" fill="#850000" stroke="#1a1a1a" stroke-width="1.8" stroke-dasharray="3,2"><title>docs/evidence/palette/README.md
+39 lines · in 0 · out 0 · orphan · 55d stale, subject churn 582</title></circle>
+<circle cx="415.0" cy="158.8" r="15.4" fill="#fdd39d" stroke="#b8b8b8" stroke-width="1.0"><title>docs/evidence/playability-audit.md
+619 lines · in 2 · out 6 · island · 14d stale, subject churn 582</title></circle>
+<circle cx="663.5" cy="131.6" r="7.8" fill="#850000" stroke="#1a1a1a" stroke-width="1.8" stroke-dasharray="3,2"><title>docs/evidence/playfield/README.md
+69 lines · in 0 · out 1 · orphan · 55d stale, subject churn 582</title></circle>
+<circle cx="391.8" cy="747.0" r="20.1" fill="#fddaaa" stroke="#b8b8b8" stroke-width="1.0"><title>docs/evidence/timing-analysis.md
+1217 lines · in 13 · out 9 · reachable · 12d stale, subject churn 582</title></circle>
+<circle cx="350.4" cy="639.1" r="9.7" fill="#8d0000" stroke="#b8b8b8" stroke-width="1.0"><title>docs/evidence/tube-mesh.md
+154 lines · in 3 · out 1 · reachable · 54d stale, subject churn 582</title></circle>
+<circle cx="363.8" cy="524.3" r="14.5" fill="#850000" stroke="#b8b8b8" stroke-width="1.0"><title>docs/evidence/vfd-appearance.md
+521 lines · in 11 · out 2 · reachable · 55d stale, subject churn 582</title></circle>
+<circle cx="892.4" cy="232.3" r="10.5" fill="#fdd39d" stroke="#1a1a1a" stroke-width="1.8" stroke-dasharray="3,2"><title>docs/prd/jet-fighters-3d-v2.md
+201 lines · in 0 · out 2 · orphan · 14d stale, subject churn 582</title></circle>
+<circle cx="475.5" cy="265.3" r="12.2" fill="#fdd09a" stroke="#b8b8b8" stroke-width="1.0"><title>docs/prd/jet-fighters-3d.md
+317 lines · in 3 · out 8 · reachable · 15d stale, subject churn 582</title></circle>
+<circle cx="429.1" cy="428.9" r="10.2" fill="#9c0000" stroke="#b8b8b8" stroke-width="1.0"><title>docs/prd/jet-fighters-v1.md
+181 lines · in 3 · out 2 · reachable · 52d stale, subject churn 582</title></circle>
+<circle cx="531.2" cy="374.8" r="10.1" fill="#9c0000" stroke="#b8b8b8" stroke-width="1.0"><title>docs/prd/jet-fighters-v2.md
+178 lines · in 9 · out 2 · reachable · 52d stale, subject churn 582</title></circle>
+<circle cx="646.8" cy="374.3" r="13.6" fill="#9c0000" stroke="#b8b8b8" stroke-width="1.0"><title>docs/prd/jet-fighters-v3.md
+436 lines · in 10 · out 9 · reachable · 52d stale, subject churn 582</title></circle>
+<circle cx="1040.2" cy="434.0" r="14.2" fill="#fddcb0" stroke="#b8b8b8" stroke-width="1.0"><title>docs/prd/jet-fighters-v4.md
+491 lines · in 1 · out 12 · island · 11d stale, subject churn 582</title></circle>
+<circle cx="1067.4" cy="682.5" r="11.4" fill="#940000" stroke="#1a1a1a" stroke-width="1.8" stroke-dasharray="3,2"><title>docs/research/comparison-surface.md
+260 lines · in 0 · out 3 · orphan · 53d stale, subject churn 582</title></circle>
+<circle cx="749.4" cy="427.6" r="10.1" fill="#940000" stroke="#b8b8b8" stroke-width="1.0"><title>docs/research/mp2110-timing-measurement.md
+173 lines · in 5 · out 6 · reachable · 53d stale, subject churn 582</title></circle>
+<circle cx="815.4" cy="522.4" r="12.5" fill="#940000" stroke="#b8b8b8" stroke-width="1.0"><title>docs/research/pla-design.md
+342 lines · in 3 · out 3 · reachable · 53d stale, subject churn 582</title></circle>
+<circle cx="723.2" cy="272.1" r="15.1" fill="#8d0000" stroke="#b8b8b8" stroke-width="1.0"><title>docs/research/tms1370-architecture.md
+579 lines · in 3 · out 2 · reachable · 54d stale, subject churn 582</title></circle>
+<circle cx="908.6" cy="436.5" r="17.6" fill="#9c0000" stroke="#b8b8b8" stroke-width="1.0"><title>docs/research/tms1370-io.md
+872 lines · in 5 · out 3 · reachable · 52d stale, subject churn 582</title></circle>
+<circle cx="829.9" cy="637.1" r="18.0" fill="#fdd39d" stroke="#b8b8b8" stroke-width="1.0"><title>src/machine/tube/ATLAS-COORDINATES.md
+930 lines · in 8 · out 6 · reachable · 14d stale, subject churn 582</title></circle>
+<circle cx="966.7" cy="911.4" r="7.6" fill="#d2d1d4" stroke="#1a1a1a" stroke-width="1.8" stroke-dasharray="3,2"><title>tools/model/README.md
+62 lines · in 0 · out 2 · orphan · 12d stale, subject churn 23</title></circle>
+<circle cx="944.9" cy="681.6" r="7.8" fill="#d4cccc" stroke="#b8b8b8" stroke-width="1.0"><title>tools/probe/drives/README.md
+67 lines · in 4 · out 1 · reachable · 25d stale, subject churn 52</title></circle>
+
+<text x="590" y="40" font-size="24" font-weight="600" text-anchor="middle">Doc map — 36 docs, 159 edges, 2 islands</text>
+<text x="590" y="66" font-size="14" fill="#555" text-anchor="middle">17% orphaned · 67% reachable from the entry point</text>
+<defs><linearGradient id="stalegrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff7ec"/><stop offset="0.5" stop-color="#fc8d59"/><stop offset="1" stop-color="#7f0000"/></linearGradient><pattern id="unmeasured" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="#ffffff"/><line x1="0" y1="0" x2="0" y2="5" stroke="#8c8c8c" stroke-width="1.6"/></pattern></defs>
+<text x="254" y="1162" font-size="12" fill="#555" text-anchor="end">stable</text>
+<rect x="260" y="1151" width="110" height="12" rx="3" fill="url(#stalegrad)"/>
+<text x="376" y="1162" font-size="12" fill="#555">lying map</text>
+<circle cx="465" cy="1158" r="8" fill="url(#unmeasured)" stroke="#b8b8b8" stroke-width="1"/>
+<text x="479" y="1162" font-size="13">not measured</text>
+<circle cx="600" cy="1158" r="8" fill="#dddddd" stroke="#0072B2" stroke-width="3"/>
+<text x="614" y="1162" font-size="13">entry</text>
+<circle cx="695" cy="1158" r="8" fill="#dddddd" stroke="#1a1a1a" stroke-width="2" stroke-dasharray="3,2"/>
+<text x="709" y="1162" font-size="13">orphan</text>
+<circle cx="795" cy="1158" r="8" fill="#ffffff" stroke="#CC79A7" stroke-width="1.8" stroke-dasharray="3,2"/>
+<text x="809" y="1162" font-size="13">ghost (broken link)</text>
+<line data-legend-kind="link" x1="440" y1="1177" x2="468" y2="1177" stroke="#9aa0a6" stroke-width="1.2" opacity="0.6"/>
+<text x="474" y="1181" font-size="13">link</text>
+<line data-legend-kind="reference" x1="550" y1="1177" x2="578" y2="1177" stroke="#9aa0a6" stroke-dasharray="0.1,4" stroke-width="1.6" opacity="0.8" stroke-linecap="round"/>
+<text x="584" y="1181" font-size="13">reference (backticked path)</text>
+<text x="590" y="1198" font-size="12" fill="#555" text-anchor="middle">colour = staleness · size = file length (lines) · rings = link-distance from entry · rim = unreachable</text>
+</svg>
