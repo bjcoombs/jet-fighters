@@ -103,7 +103,17 @@ band.** The tube's active area is 258.30 x 53.68 units, an aspect ratio of 4.8:1
 the panel's 2:1, so a uniform fit of the whole face leaves the rocket 1.8 pixels wide and
 unreadable. Scaling the playfield alone to 128 pixels gives a factor of 0.6017: a
 128 x 33 playfield band in which a jet is 10 x 7 and a rocket 2 x 7, with the score
-rendered beneath it at the same factor as a 22 x 22 block. The spare rows carry the lever
+rendered beneath it at the same factor as a 22 x 22 block. **A uniform scale at that factor cannot draw the thin segments, and the rule that fixes
+it is a decision rather than a generator detail.** Rasterized at 0.6017 with a half-
+coverage threshold, each of the fifteen rockets comes out as one or two lit pixels in a
+2x8 box - their outlines enclose about 7% of a bounding box 2.16 pixels wide - and
+`sea_lane1` comes out empty. So: **a segment whose outline is thinner than a pixel is
+drawn at a one-pixel minimum stroke along its medial axis.** It applies only where the
+thresholded bitmap would be empty or a single pixel, the generator applies it and records
+it in the header, and the report names every segment it fired on with what it cost in ink
+- the rocket carries several times its true coverage. That is the price of the panel
+being legible, and stating it is what separates this from the same operation arriving
+quietly as a threshold nobody wrote down. The spare rows carry the lever
 and skill positions, because on the real unit those are visible on the case and the
 Arduboy has no case to look at. **That indicator reads the input layer's control state
 and never the emulated RAM** - it is the case, not the game.
@@ -165,7 +175,10 @@ RAM survives `reset()`. The core owns no clock and no timer; it advances only wh
 stepped.
 
 **Done when** every case in `src/machine/cpu/tms1370/*.test.ts` that describes a core
-behaviour has a counterpart in `arduboy/test/`, running on the host, and R9's trace is
+behaviour has a counterpart in `arduboy/test/` that **runs** - the suite reports zero
+skipped, disabled or filtered cases, since the cases most likely to be skipped are the
+ones no drive and no mutant can reach, which is the whole reason this requirement exists
+beside R9 - running on the host, and R9's trace is
 equal for a 10-second drive.
 
 ### R2 - The board: R latch, display sweep, K matrix, speaker bit (5 points)
@@ -214,10 +227,18 @@ writes `arduboy/src/generated/atlas.h`: one bitmap per **distinct rasterization*
 108-entry table mapping `(grid, plate)` to a bitmap and a pixel origin.
 
 Distinctness is measured, not assumed from the family names. Every outline in
-`atlas.json` is traced separately and few are identical: at this layout factor the 94
-segments rasterize to roughly 64 distinct bitmaps - the fifteen jets to twelve, the
-fifteen bursts to fifteen - which costs about 1.1 KB with the tables and sits well inside
-the ceiling. The jets carry a wing-beat on `(column + lane)` parity, a tall silhouette
+`atlas.json` is traced separately and few are identical: measured at this layout factor the 94
+segments rasterize to 69 distinct bitmaps - the fifteen jets to twelve, the fifteen
+bursts to fifteen - which costs well under 1 KB of bitmaps and sits comfortably inside
+the ceiling. The count is measured by whoever checks it rather than taken from this
+document.
+
+The coverage threshold that decides whether a sample becomes a set pixel is a field of
+the generated header and is the same threshold R5 pins its reference at; a generator free
+to choose its own threshold can inflate a thin segment's ink several times over without
+performing any operation this PRD forbids. Decision 4's one-pixel minimum stroke is
+applied here, only to segments whose thresholded bitmap would be empty or a single pixel,
+and recorded with the segments it fired on. The jets carry a wing-beat on `(column + lane)` parity, a tall silhouette
 against a short one, and a build that collapses the family to one shape marches a rigid
 squadron. Two cells share a bitmap when their rasterizations are identical and for no
 other reason; the flash is not short enough to buy fidelity with. The table is the only place
@@ -262,6 +283,13 @@ fattens every reference shape by about a pixel, which is exactly enough to agree
 fattened atlas. It is not a second implementation of the Arduboy blit and it does not
 read the generated atlas: a reference built from the same atlas agrees with
 the build by construction whatever either of them draws.
+
+Agreement is bounded per cell, not per frame: no `(grid, plate)` cell's blitted pixels
+differ from that cell's reference rasterization by more than two set pixels. Two
+independent rasterizers of the same outlines disagree on a few percent of set pixels even
+at matched thresholds, so a frame-level budget has to be invented to make the comparison
+satisfiable - and a few percent of a played frame is several times the entire ink of a
+rocket, which is exactly the error it would hide.
 
 **Done when** frames captured from the host build match that reference over a state set
 spanning all three skill settings, including the squadron past the ladder's opening rungs,
@@ -363,8 +391,9 @@ the poke outright is a contradiction, and this is the reference harness's own ru
 Drives cover at minimum: power-on through the first sweep, a full game to game over, the
 win jingle, a capture, and a fire press at a cycle that exercises the entropy
 accumulator. They span all three skill settings, and at least one reaches the highest
-kills count the ladder admits before the march floors - computed from `STEP_HI_MAX` and
-`STEP_SKILL` at skill 3, not from whatever this run's own drives happen to reach - so the march ladder's upper rungs and the
+kills count the ladder admits before the march floors - computed as `STEP_HI_MAX - STEP_SKILL * (skill - 1) - STEP_HI_MIN`
+at skill 3 - which is 3 on today's constants, and needs all three of them, since
+`STEP_HI_MIN` is what decides where the march floors - not from whatever this run's own drives happen to reach - so the march ladder's upper rungs and the
 skill-2 and skill-3 step tables are executed rather than merely present. A set run
 entirely at skill 1 spans the five categories and exercises none of that; a full-game
 drive that presses fire zero times is the cheapest way to reach game over without
