@@ -22,7 +22,7 @@ _First flagged: 2026-09-20. Last seen: 2026-09-20. Status: new._
 
 Use this briefing when about to modify `tools/probe/speaker-bands.test.ts`:
 
-Hotspot (new). 410 LOC, max cyclomatic complexity 140.0, 10 commits in churn window. (Briefing refined by LLM via assess_finalize - see Suggested actions below.) Growth profile: monotonic (+967 LOC, 0 net reductions over 10 commits in 1 months).
+Hotspot (new). 410 LOC, file-aggregate cyclomatic complexity 140.0, 10 commits in churn window. (Briefing refined by LLM via assess_finalize - see Suggested actions below.) Growth profile: monotonic (+967 LOC, 0 net reductions over 10 commits in 1 months).
 
 ## Suggested actions
 

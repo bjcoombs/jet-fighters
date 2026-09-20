@@ -22,7 +22,7 @@ _First flagged: 2026-09-20. Last seen: 2026-09-20. Status: new._
 
 Use this briefing when about to modify `tools/probe/tms1370-rom.test.ts`:
 
-Hotspot (new). 541 LOC, max cyclomatic complexity 136.0, 10 commits in churn window. (Briefing refined by LLM via assess_finalize - see Suggested actions below.) Growth profile: monotonic (+1045 LOC, 0 net reductions over 10 commits in 1 months).
+Hotspot (new). 541 LOC, file-aggregate cyclomatic complexity 136.0, 10 commits in churn window. (Briefing refined by LLM via assess_finalize - see Suggested actions below.) Growth profile: monotonic (+1045 LOC, 0 net reductions over 10 commits in 1 months).
 
 ## Suggested actions
 

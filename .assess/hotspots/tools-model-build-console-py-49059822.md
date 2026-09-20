@@ -22,7 +22,7 @@ _First flagged: 2026-09-20. Last seen: 2026-09-20. Status: new._
 
 Use this briefing when about to modify `tools/model/build_console.py`:
 
-Hotspot (new). 975 LOC, max cyclomatic complexity 141.0, 9 commits in churn window. (Briefing refined by LLM via assess_finalize - see Suggested actions below.) Growth profile: monotonic (+1379 LOC, 0 net reductions over 9 commits in 0 months).
+Hotspot (new). 975 LOC, file-aggregate cyclomatic complexity 141.0, 9 commits in churn window. (Briefing refined by LLM via assess_finalize - see Suggested actions below.) Growth profile: monotonic (+1379 LOC, 0 net reductions over 9 commits in 0 months).
 
 ## Suggested actions
 

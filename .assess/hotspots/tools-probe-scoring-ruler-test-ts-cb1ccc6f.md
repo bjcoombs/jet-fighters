@@ -22,7 +22,7 @@ _First flagged: 2026-09-20. Last seen: 2026-09-20. Status: new._
 
 Use this briefing when about to modify `tools/probe/scoring-ruler.test.ts`:
 
-Hotspot (new). 413 LOC, max cyclomatic complexity 96.0, 10 commits in churn window. (Briefing refined by LLM via assess_finalize - see Suggested actions below.)
+Hotspot (new). 413 LOC, file-aggregate cyclomatic complexity 96.0, 10 commits in churn window. (Briefing refined by LLM via assess_finalize - see Suggested actions below.)
 
 ## Suggested actions
 

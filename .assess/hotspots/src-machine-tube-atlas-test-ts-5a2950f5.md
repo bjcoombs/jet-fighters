@@ -22,7 +22,7 @@ _First flagged: 2026-09-20. Last seen: 2026-09-20. Status: new._
 
 Use this briefing when about to modify `src/machine/tube/atlas.test.ts`:
 
-Hotspot (new). 606 LOC, max cyclomatic complexity 166.0, 13 commits in churn window. (Briefing refined by LLM via assess_finalize - see Suggested actions below.)
+Hotspot (new). 606 LOC, file-aggregate cyclomatic complexity 166.0, 13 commits in churn window. (Briefing refined by LLM via assess_finalize - see Suggested actions below.)
 
 ## Suggested actions
 
