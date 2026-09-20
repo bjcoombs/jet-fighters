@@ -106,11 +106,16 @@ unreadable. Scaling the playfield alone to 128 pixels gives a factor of 0.6017: 
 rendered beneath it at the same factor as a 22 x 22 block. **A uniform scale at that factor cannot draw the thin segments, and the rule that fixes
 it is a decision rather than a generator detail.** Rasterized at 0.6017 with a half-
 coverage threshold, each of the fifteen rockets comes out as one or two lit pixels in a
-2x8 box - their outlines enclose about 7% of a bounding box 2.16 pixels wide - and
-`sea_lane1` comes out empty. So: **a segment whose outline is thinner than a pixel is
-drawn at a one-pixel minimum stroke along its medial axis.** It applies only where the
-thresholded bitmap would be empty or a single pixel, the generator applies it and records
-it in the header, and the report names every segment it fired on with what it cost in ink
+2x8 box - their outlines enclose roughly 15% of a bounding box under 2.2 pixels wide,
+a mean width near a third of a pixel - and the sea, thinner still at about a sixth of a
+pixel, comes out empty or nearly so. So: **a segment whose outline is thinner than a pixel is
+drawn at a one-pixel minimum stroke along its medial axis.** It fires on any segment whose **mean width** - path area over medial-axis
+length - is under a pixel, and on no other. Scoping it by the rasterized result instead
+would make it alignment-dependent: whether a given rocket lands on zero pixels or two
+moves with where the pixel grid falls, so the rule would fire on some cells of a family
+and not others and send a rocket across the ladder as bar, bar, dot, dot, bar. The grid
+origin is pinned in the generated header for the same reason. The generator applies the
+rule and records it in the header, and the report names every segment it fired on with what it cost in ink
 - the rocket carries several times its true coverage. That is the price of the panel
 being legible, and stating it is what separates this from the same operation arriving
 quietly as a threshold nobody wrote down. The spare rows carry the lever
@@ -227,11 +232,10 @@ writes `arduboy/src/generated/atlas.h`: one bitmap per **distinct rasterization*
 108-entry table mapping `(grid, plate)` to a bitmap and a pixel origin.
 
 Distinctness is measured, not assumed from the family names. Every outline in
-`atlas.json` is traced separately and few are identical: measured at this layout factor the 94
-segments rasterize to 69 distinct bitmaps - the fifteen jets to twelve, the fifteen
-bursts to fifteen - which costs well under 1 KB of bitmaps and sits comfortably inside
-the ceiling. The count is measured by whoever checks it rather than taken from this
-document.
+`atlas.json` is traced separately and few are identical: at this layout factor the 94 segments rasterize to
+fewer than 70 distinct bitmaps, well under 1 KB, comfortably inside the ceiling. The
+count is measured by whoever checks it and is deliberately not stated here - three
+different figures have been written into this project's documents and two were wrong.
 
 The coverage threshold that decides whether a sample becomes a set pixel is a field of
 the generated header and is the same threshold R5 pins its reference at; a generator free
@@ -285,7 +289,14 @@ read the generated atlas: a reference built from the same atlas agrees with
 the build by construction whatever either of them draws.
 
 Agreement is bounded per cell, not per frame: no `(grid, plate)` cell's blitted pixels
-differ from that cell's reference rasterization by more than two set pixels. Two
+differ from that cell's reference rasterization by more than two set pixels - **for the
+cells the minimum-stroke rule did not fire on.** A stroked cell is graded against a
+stroke the checker computes independently from the segment's own medial axis, never
+against the reference, and the ink it added is reported rather than bounded. The bound
+and the stroke are otherwise contradictory for exactly the cells the stroke exists to
+rescue, and the only way out of that is to run the generator's stroke into the reference
+too - which turns the thinnest segments on the panel into a comparison of a thing with
+itself. Two
 independent rasterizers of the same outlines disagree on a few percent of set pixels even
 at matched thresholds, so a frame-level budget has to be invented to make the comparison
 satisfiable - and a few percent of a played frame is several times the entire ink of a
