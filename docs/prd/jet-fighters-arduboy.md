@@ -186,7 +186,13 @@ is 7/889, and both figures are read from the shared cadence constants rather tha
 
 `arduboy/tools/genrom.ts` runs the assembler and writes
 `arduboy/src/generated/rom.h`: a 2048-byte `PROGMEM` array, the 32-entry PLA, and the
-source ROM's sha256 in a comment. The header is committed.
+source ROM's sha256 in a comment. **The array is indexed by physical ROM address** -
+`chapter << 10 | page << 6 | offset`, where `offset` is `LFSR_SEQUENCE[ordinal]` and not
+the ordinal. A generator emitting source or ordinal order regenerates byte-identically
+every run and matches every count, and ships a ROM whose program counter walks into the
+wrong words; the assembler's listing prints both orders on every row for that reason.
+Words the source never wrote are `0x00`, which decodes as `MNEA` so a runaway counter
+walks quietly - not flash's erased `0xFF`, which is `CALL` and writes outputs. The header is committed.
 
 `arduboy/tools/gencadence.ts` does the same for the cadence constants, emitting
 `arduboy/src/generated/cadence.h` from `src/machine/board/tms1370-cadence.ts` and
@@ -204,12 +210,17 @@ stale.
 ### R4 - The sprite atlas, generated from `atlas.json` (5 points)
 
 `arduboy/tools/genatlas.ts` rasterizes the 94 segment outlines at the layout factor and
-writes `arduboy/src/generated/atlas.h`: one bitmap per distinct shape - jet, rocket,
-missile, burst, battleship, sea, battleship burst, capture, launcher, explosion, seven
-digit segments, the hundreds bar, the score label - plus a 108-entry table mapping
-`(grid, plate)` to a shape and a pixel origin.
+writes `arduboy/src/generated/atlas.h`: one bitmap per **distinct rasterization**, plus a
+108-entry table mapping `(grid, plate)` to a bitmap and a pixel origin.
 
-Shapes repeat across lanes and columns and are stored once. The table is the only place
+Distinctness is measured, not assumed from the family names. Every outline in
+`atlas.json` is traced separately and few are identical: at this layout factor the 94
+segments rasterize to roughly 64 distinct bitmaps - the fifteen jets to twelve, the
+fifteen bursts to fifteen - which costs about 1.1 KB with the tables and sits well inside
+the ceiling. The jets carry a wing-beat on `(column + lane)` parity, a tall silhouette
+against a short one, and a build that collapses the family to one shape marches a rigid
+squadron. Two cells share a bitmap when their rasterizations are identical and for no
+other reason; the flash is not short enough to buy fidelity with. The table is the only place
 that knows which cell is which.
 
 Shapes are rasterized from each segment's `path`, never filled from its `bounds`. The
@@ -231,7 +242,9 @@ phrased in output pixels while fattening every sprite on the panel.
 ### R5 - The renderer and the 128x64 layout (5 points)
 
 A sweep boundary triggers a render: cells whose duty exceeded zero blit their shape into
-the 1024-byte frame buffer, which then goes out over SPI. A second trigger is what makes
+the 1024-byte frame buffer as a **union** - overlapping segments OR together, never
+overwrite, since sixty pairs share a cell and nearly every frame of a played drive lights
+at least one - and the buffer goes out over SPI. A second trigger is what makes
 the tube blink: once the display has gone longer than `REFRESH_TIMEOUT_CYCLES` without
 being scanned, the buffer is cleared and pushed. The port carries a counterpart of
 `Display.isRefreshing()` and the render site reads it. Playfield band at the 0.6017
@@ -239,7 +252,11 @@ factor, score beneath it, control indicator in the spare rows.
 
 The reference to compare against is `src/machine/tube/`'s own renderer at the layout
 factor, thresholded to one bit with the phosphor at full brightness, the ghost layer and
-bloom disabled, and the threshold at half the segment fill's own alpha. Those settings
+bloom disabled, the silkscreen off, and the threshold at half the segment fill's own
+alpha. It needs a rasterizing 2D context and the repo has none - `fake-canvas.ts` records
+calls rather than pixels - so that context comes from a dev dependency added for it. A
+builder who finds no canvas writes one, and a hand-written rasterizer is the
+author-written reference this requirement exists to exclude. Those settings
 are fixed here rather than left to whoever builds it: bloom on with the threshold dropped
 fattens every reference shape by about a pixel, which is exactly enough to agree with a
 fattened atlas. It is not a second implementation of the Arduboy blit and it does not
@@ -266,8 +283,10 @@ tap is dropped - exercised by nothing but the operator's thumb.
 
 ### R7 - The speaker (2 points)
 
-R15's level is written to the Arduboy's piezo pins whenever it changes. No tone library,
-no synthesis, Timer3 untouched.
+R15's level is written to the Arduboy's piezo pins whenever it changes, both pins driven
+in antiphase - the piezo is a differential pair, and driving both in phase is silence
+behind a speaker trace that is perfect in every other respect. No tone library, no
+synthesis, Timer3 untouched.
 
 **Done when** a capture of the pin's edges over a drive that plays the win jingle matches
 `speakerEdges` from the same drive on the TypeScript core, within one instruction period
@@ -301,7 +320,13 @@ estimated.
 
 **Done when** the measured instruction rate over a 60-second run is within 1% of
 `CYCLE_HZ`, the worst-case catch-up interval is under one sweep period, and the report of
-where the cycles went is committed alongside it. The catch-up bound is not pedantry: it
+where the cycles went is committed alongside it. A second bound sits beside it: the longest interval in which the interpreter executes no
+instruction at all, measured across a march note and a jingle note, under a tenth of a
+period at the measured band. The blanking render fires one `REFRESH_TIMEOUT_CYCLES` into
+a stall several times that long, so a 1024-byte SPI push lands inside every note by
+construction, and at ~16,400 ATmega cycles that is most of a period of the note it lands
+in - an audible click that emulated-cycle comparisons cannot see. The catch-up bound is
+not pedantry: it
 is the only place in this port where device timing meets wall time, since R7 and R10
 compare in emulated-cycle coordinates where jitter is invisible, and tens of milliseconds
 of it smears the pitch of every note.
