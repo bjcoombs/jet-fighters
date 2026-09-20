@@ -264,8 +264,11 @@ read the generated atlas: a reference built from the same atlas agrees with
 the build by construction whatever either of them draws.
 
 **Done when** frames captured from the host build match that reference over a state set
-spanning all three skill settings, including the squadron past the ladder's opening rungs
-and at least one state taken while the display is not refreshing, and the render plus transfer costs less than 15% of a sweep period (R8 measures
+spanning all three skill settings, including the squadron past the ladder's opening rungs,
+at least one state taken while the display is not refreshing, one taken between power-on
+and the first completed sweep, one with the battleship up and an explosion running, one
+at a capture and one at a three-digit score, with the set's cell coverage reported as the
+union of the `(grid, plate)` cells it lights, and the render plus transfer costs less than 15% of a sweep period (R8 measures
 it).
 
 ### R6 - Controls (3 points)
@@ -338,10 +341,30 @@ TypeScript core with the same ROM, the same `RAM_POWER_ON_FILL` and the same scr
 inputs at the same cycles, and requires the traces to be equal: every `[grid, plate,
 duty]` triple and every `[cycle, level]` speaker edge.
 
+The triples come from the **observed** frame - `getLitSegments()`'s empty answer past
+`REFRESH_TIMEOUT_CYCLES` - and not from `getFrame()`'s last completed sweep, which
+`machine-probe.ts` uses by deliberate design and in which the blink cannot appear. The
+dark-frame fraction each side produces over the full-game drive is reported and the two
+are equal. Both counters mean instructions retired, zeroed at the INIT reset, with a pin
+event stamped at the instant its writing instruction began; traces are compared as
+emitted, with no offset or rescale, because a rebased counter is isomorphic to the
+reference and nothing else here would catch it. An input scheduled at cycle N lands at
+the first instruction boundary at or after N on both sides. Duty crosses the comparison
+as the integer pair it is accumulated from, never as a float: `avr-gcc` makes `double`
+32 bits, so an exact comparison of a fraction is unsatisfiable and degrades in practice
+to comparing which cells were lit - which is what every accumulator error leaves alone.
+
+The win-jingle drive is the one place the RAM poke is allowed, and only to move the
+machine *next to* the behaviour: score to 198, then a kill carries it to 199 through the
+ROM's own `add_score`, so `as_win` and `game_win` are entered by the program. The jingle
+needs 199 points, which is minutes of emulated play; requiring the drive and forbidding
+the poke outright is a contradiction, and this is the reference harness's own rule.
+
 Drives cover at minimum: power-on through the first sweep, a full game to game over, the
 win jingle, a capture, and a fire press at a cycle that exercises the entropy
 accumulator. They span all three skill settings, and at least one reaches the highest
-kills count a played game at skill 3 reaches, so the march ladder's upper rungs and the
+kills count the ladder admits before the march floors - computed from `STEP_HI_MAX` and
+`STEP_SKILL` at skill 3, not from whatever this run's own drives happen to reach - so the march ladder's upper rungs and the
 skill-2 and skill-3 step tables are executed rather than merely present. A set run
 entirely at skill 1 spans the five categories and exercises none of that; a full-game
 drive that presses fire zero times is the cheapest way to reach game over without
@@ -349,9 +372,12 @@ exercising anything at all.
 
 **Done when** the traces are equal over every drive, and five corrupted opcode handlers -
 picked from the assembler listing's opcode histogram, including its three rarest, rather
-than chosen by whoever wrote the core - each make at least one drive fail. One mutant on
-a hot opcode fails every drive in the first hundred instructions and shows nothing about
-coverage.
+than chosen by whoever wrote the core - each make at least one drive fail. Each must leave at least one drive passing, and
+the drive it fails must be one the listing shows executes that byte value: this ISA
+dispatches by family, and ten of the ROM's twelve rarest byte values share a handler with
+a hot one, so a mutant on the rarest byte kills a hot constant in the first hundred
+instructions, fails everything, and shows the sharing rather than the coverage. Where a
+handler serves a family the mutation goes in the operand path for that byte value alone.
 
 ### R10 - On-target conformance and the flash budget (5 points)
 
