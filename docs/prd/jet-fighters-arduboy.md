@@ -231,7 +231,10 @@ phrased in output pixels while fattening every sprite on the panel.
 ### R5 - The renderer and the 128x64 layout (5 points)
 
 A sweep boundary triggers a render: cells whose duty exceeded zero blit their shape into
-the 1024-byte frame buffer, which then goes out over SPI. Playfield band at the 0.6017
+the 1024-byte frame buffer, which then goes out over SPI. A second trigger is what makes
+the tube blink: once the display has gone longer than `REFRESH_TIMEOUT_CYCLES` without
+being scanned, the buffer is cleared and pushed. The port carries a counterpart of
+`Display.isRefreshing()` and the render site reads it. Playfield band at the 0.6017
 factor, score beneath it, control indicator in the spare rows.
 
 The reference to compare against is `src/machine/tube/`'s own renderer at the layout
@@ -244,8 +247,8 @@ read the generated atlas: a reference built from the same atlas agrees with
 the build by construction whatever either of them draws.
 
 **Done when** frames captured from the host build match that reference over a state set
-spanning all three skill settings and including the squadron past the ladder's opening
-rungs, and the render plus transfer costs less than 15% of a sweep period (R8 measures
+spanning all three skill settings, including the squadron past the ladder's opening rungs
+and at least one state taken while the display is not refreshing, and the render plus transfer costs less than 15% of a sweep period (R8 measures
 it).
 
 ### R6 - Controls (3 points)
@@ -255,7 +258,11 @@ translation mirrors `src/input/input.ts`, and a control movement reaches the gam
 closing a contact the ROM reads on its next sample.
 
 **Done when** a scripted button sequence produces the same K-line history as the
-equivalent `--input` spec on `tools/probe/machine-probe.ts`.
+equivalent `--input` spec on `tools/probe/machine-probe.ts`, entering through the same
+poll path, poll rate and confirm window the device runs rather than below them. A host
+build that sets contacts directly makes the histories equal by construction and leaves
+the debounce - once per sweep with a three-poll confirm is a 46 ms window, and a shorter
+tap is dropped - exercised by nothing but the operator's thumb.
 
 ### R7 - The speaker (2 points)
 
@@ -269,7 +276,11 @@ per edge.
 ### R8 - Real-time pacing and the cycle budget (5 points)
 
 The emulator runs at 58,333 instructions per second against wall time, catching up after
-a render rather than free-running. The budget to verify:
+a render rather than free-running. The 60-second measurement is played, not idle: at
+skill 3, fire pressed and lever moved throughout, including a full squadron with the
+battleship up and an explosion running. An idle sweep blits the launcher, the sea and two
+score digits where that one blits four times as many, so a minute on the desk never
+reaches the sweep the budget turns on. The budget to verify:
 
 | Per sweep (889 instructions, 15.24 ms, 243,840 ATmega cycles) | Cycles |
 | --- | --- |
@@ -324,7 +335,9 @@ CDC port the device already presents. The trace build differs from the shipped b
 by that emission - the flag guards the serialization sites and nothing else, and in
 particular does not compile out the renderer, the SPI transfer or the pacer. A trace
 build missing any of them verifies a binary nobody plays, which is the opposite of this
-requirement's purpose. A host script runs the same drives against the
+requirement's purpose. The two build configurations differ by that define alone and by no
+other flag, optimization level included: identical sources compiled differently are two
+binaries, and a check that greps for `#if` cannot see the difference. A host script runs the same drives against the
 flashed binary and compares against the TypeScript core.
 
 `avr-size` reports flash and SRAM against the measured bootloader size, and the build
