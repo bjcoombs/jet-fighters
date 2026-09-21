@@ -1,0 +1,184 @@
+// Emit the assembled ROM and output PLA as a C header for the Arduboy port.
+//
+// The header is a *copy* of the ROM, and this repository already refuses
+// hand-edited copies for atlas coordinates, video cadences and console
+// dimensions. The reason transfers exactly: a hex table someone fixed by hand
+// is a second ROM that no longer has to agree with `asm/jetfighter.asm`. So the
+// file this writes is committed - a clean checkout builds the firmware without
+// Node - and CI fails when it does not match a fresh run.
+//
+// ## The one thing this file exists to get right
+//
+// The array is indexed by **physical ROM address**, not by the order the
+// instructions appear in the source. `romImage` in `tools/tmsasm/output.ts`
+// already does this: it writes `image[word.address]`, and `word.address` is
+// `chapter << 10 | page << 6 | LFSR_SEQUENCE[ordinal]`.
+//
+// The failure this avoids is silent and total. A generator that walked
+// `result.instructions` in source order, or that numbered words by ordinal,
+// would produce a header that regenerates byte-identically on every run,
+// matches the listing's word count, matches the PLA slot count, and ships a ROM
+// whose program counter walks into words the program never wrote. That is why
+// `output.ts` prints both `ORD` and `OFF` on every listing row, including the
+// five of sixty-four where they agree - so a reader can tell a correct
+// assembler from a linear one without reassembling. The conformance check for
+// this header is a spot check against listing rows where the two disagree.
+//
+// ## Unprogrammed words
+//
+// `romImage` fills them with `0x00`, which this core decodes as `MNEA`: a
+// status-only instruction with no side effect, so a runaway program counter
+// walks quietly rather than writing outputs (`src/machine/cpu/tms1370/memory.ts`).
+// Flash's erased state is `0xFF`, which is `CALL`. The array is written out in
+// full, all 2048 entries, rather than relying on the linker or on a partial
+// initialiser - a sparse array would leave the tail as whatever the toolchain
+// chooses, which is the one thing the fill word exists to decide.
+
+import { createHash } from 'node:crypto';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { basename, dirname, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { assemble, OPLA_SLOT_COUNT, type AssemblyResult } from '../../tools/tmsasm/assembler.js';
+import { oplaImage, romImage } from '../../tools/tmsasm/output.js';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+
+/** Repo root, from `arduboy/tools/`. */
+export const REPO_ROOT = resolve(HERE, '../..');
+
+/** The ROM this port runs. One source, shared with the web target. */
+export const ROM_SOURCE = resolve(REPO_ROOT, 'asm/jetfighter.asm');
+
+/** Where the header lands. Committed, so a clean checkout builds without Node. */
+export const HEADER_PATH = resolve(REPO_ROOT, 'arduboy/src/generated/rom.h');
+
+/** Words in the program ROM. The TMS1370's whole address space. */
+export const ROM_WORDS = 2048;
+
+/** Bytes per line in the emitted array - 16 keeps a row inside 80 columns. */
+const PER_LINE = 16;
+
+/** Assemble `asm/jetfighter.asm` with includes resolved from disk. */
+export function assembleRom(source = ROM_SOURCE): AssemblyResult {
+  return assemble(readFileSync(source, 'utf8'), source, {
+    readInclude: (included, fromFile) => {
+      const resolved = resolve(dirname(fromFile), included);
+      return { file: resolved, source: readFileSync(resolved, 'utf8') };
+    },
+  });
+}
+
+/** `0x1F,` - every byte the same width, so a diff points at the byte that moved. */
+function hex(value: number): string {
+  return `0x${value.toString(16).toUpperCase().padStart(2, '0')}`;
+}
+
+/** One `PROGMEM` array, `PER_LINE` bytes to a row, each row's first address in a comment. */
+function formatArray(image: Uint8Array, indent = '    '): string {
+  const rows: string[] = [];
+  for (let base = 0; base < image.length; base += PER_LINE) {
+    const row = Array.from(image.slice(base, base + PER_LINE), hex).join(', ');
+    rows.push(`${indent}${row},`);
+  }
+  return rows.join('\n');
+}
+
+/** sha256 of the source ROM's bytes, so a stale header is identifiable by eye. */
+export function sourceDigest(source = ROM_SOURCE): string {
+  return createHash('sha256').update(readFileSync(source)).digest('hex');
+}
+
+/** The header's full text, including the generator banner. */
+export function renderHeader(result: AssemblyResult, digest: string, source = ROM_SOURCE): string {
+  const rom = romImage(result);
+  const opla = oplaImage(result);
+
+  if (rom.length !== ROM_WORDS) {
+    throw new RangeError(`ROM image is ${rom.length} words, expected ${ROM_WORDS}`);
+  }
+  if (opla.length !== OPLA_SLOT_COUNT) {
+    throw new RangeError(`O PLA image is ${opla.length} slots, expected ${OPLA_SLOT_COUNT}`);
+  }
+
+  const rel = relative(REPO_ROOT, source);
+  const declared = result.oplaEntries.length;
+
+  return `// Generated by arduboy/tools/genrom.ts - do not edit.
+//
+// Source:      ${rel}
+// sha256:      ${digest}
+// Words:       ${result.words.length} of ${ROM_WORDS} emitted
+// O PLA slots: ${declared} of ${OPLA_SLOT_COUNT} declared
+//
+// Regenerate with \`npm run arduboy:rom\`. A gameplay rule is changed in the
+// assembly and reassembled, never here: this file is a copy of the ROM and a
+// hand-edited copy is a second ROM that need not agree with the first.
+//
+// JF_ROM is indexed by PHYSICAL ROM address - chapter << 10 | page << 6 |
+// offset, where offset is the LFSR state for that ordinal and NOT the ordinal.
+// A table in source or ordinal order regenerates byte-identically every run and
+// still runs the wrong program. Words the source never wrote are 0x00, which
+// decodes as MNEA so a runaway program counter walks quietly; flash's erased
+// 0xFF is CALL and would write outputs.
+
+#pragma once
+
+#include <stdint.h>
+#include <avr/pgmspace.h>
+
+/** Words in the program ROM. */
+#define JF_ROM_WORDS ${ROM_WORDS}
+
+/** Entries in the output PLA - the 5-bit O index's whole range. */
+#define JF_OPLA_SLOTS ${OPLA_SLOT_COUNT}
+
+/** The assembled program, by physical ROM address. */
+const uint8_t JF_ROM[JF_ROM_WORDS] PROGMEM = {
+${formatArray(rom)}
+};
+
+/** The output PLA: one eight-bit plate mask per value of the 5-bit O index. */
+const uint8_t JF_OPLA[JF_OPLA_SLOTS] PROGMEM = {
+${formatArray(opla)}
+};
+`;
+}
+
+/** Assemble, render and write. Returns the text written. */
+export function generate(source = ROM_SOURCE, target = HEADER_PATH): string {
+  // `assemble` throws on a source error rather than returning diagnostics, so
+  // a bad ROM fails here loudly instead of writing a plausible header.
+  const result = assembleRom(source);
+  const text = renderHeader(result, sourceDigest(source), source);
+  writeFileSync(target, text, 'utf8');
+  return text;
+}
+
+/**
+ * True when this module is the program rather than an import.
+ *
+ * The `vite-node` arm is not belt and braces: run under vite-node,
+ * `process.argv[1]` is the runner's own binary and never this file, so the
+ * path comparison alone never fires. `tools/tmsasm/cli.ts` carries the same
+ * pair for the same reason.
+ */
+function isEntryPoint(): boolean {
+  const entry = process.argv[1];
+  if (entry === undefined) return false;
+  try {
+    return (
+      resolve(entry) === fileURLToPath(import.meta.url) ||
+      basename(entry).startsWith('vite-node')
+    );
+  } catch {
+    return false;
+  }
+}
+
+if (isEntryPoint()) {
+  const text = generate();
+  process.stdout.write(
+    `arduboy/src/generated/rom.h written (${text.split('\n').length} lines)\n`,
+  );
+}
