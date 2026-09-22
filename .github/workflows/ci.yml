@@ -5,6 +5,11 @@ on:
   push:
     branches: [main]
 
+# Read-only by default. deploy sets its own job-level block for Pages, which
+# replaces this one for that job.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
