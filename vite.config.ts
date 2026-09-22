@@ -16,5 +16,19 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
+    coverage: {
+      provider: 'v8',
+      // `text` prints the table in the CI log; `lcov` writes coverage/lcov.info,
+      // which is what /assess reads to say how well the riskiest files are
+      // covered. Both land under coverage/, which is gitignored - the number is
+      // measured on demand, not committed.
+      reporter: ['text', 'lcov'],
+      // Count every source file, not only the ones a test happens to import:
+      // a module no test reaches should read as 0%, not be absent from the
+      // table. The Python under tools/model/ is out of reach of this runner and
+      // needs coverage.py if it is ever wanted.
+      include: ['src/**/*.ts', 'tools/**/*.ts'],
+      exclude: ['**/*.test.ts', '**/*.d.ts'],
+    },
   },
 });

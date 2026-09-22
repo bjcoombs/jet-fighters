@@ -5,6 +5,11 @@ on:
   push:
     branches: [main]
 
+# Read-only by default. deploy sets its own job-level block for Pages, which
+# replaces this one for that job.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -35,6 +40,40 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+
+  # Separate from `build` on purpose. `build` is the check that gates a merge, so
+  # it stays the thing that must be green and it stays fast. This job measures;
+  # it does not gate. Nothing fails the pull request on a coverage number, and
+  # the probe drives are wall-clock sensitive, so a slow runner must not be able
+  # to turn a coverage measurement into a blocked merge.
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Same decoder the build job needs, for the same drive.
+      - name: Ensure ffmpeg for the loss-warning-partials drive
+        run: |
+          ffmpeg -version >/dev/null 2>&1 || {
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq --no-install-recommends ffmpeg
+          }
+      - run: npm run test:coverage
+      # coverage/ is gitignored, so the report lives as an artifact rather than
+      # in the tree. Download it and put lcov.info where /assess can read it to
+      # get coverage figures against the hotspot list.
+      - name: Upload the coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
+          if-no-files-found: error
+          retention-days: 30
 
   deploy:
     needs: build
